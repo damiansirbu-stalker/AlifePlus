@@ -1,0 +1,40 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.0)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get repo name
+        id: repo
+        run: echo "name=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag
+        run: |
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+
+      - name: Pack zip
+        run: |
+          zip -r "${{ steps.repo.outputs.name }}-${{ inputs.version }}.zip" . \
+            -x ".*" "*/.*" \
+               "doc/img/*" "README.md" "VERSION" "meta.ini" \
+               "*.tmp" "*.bak" "*~"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          files: ${{ steps.repo.outputs.name }}-${{ inputs.version }}.zip
+          generate_release_notes: false
