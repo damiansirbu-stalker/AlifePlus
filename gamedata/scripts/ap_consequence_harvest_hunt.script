@@ -1,0 +1,67 @@
+--- ap_consequence_harvest_hunt: Outlaws and mutants chase artefact takers
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local CAUSE = ap_const.CAUSE
+local CONSEQUENCE = ap_const.CONSEQUENCE
+
+local cfg
+local community_harvest = ap_data.community_harvest
+
+local chase_opts = {
+    handler_key = "harvest_chase",
+    log_prefix = "CONSEQUENCE.HARVEST_HUNT",
+    max_chases_key = "consequence_harvest_hunt_max_chases",
+    pda_chance_key = "consequence_harvest_hunt_pda_chance",
+    pda_start = "text_pda_consequence_harvest_hunt",
+    pda_lost = "text_pda_consequence_harvest_hunt_lost",
+    pda_found = "text_pda_consequence_harvest_hunt_found",
+    marker = "Hunting",
+}
+
+local function _handler(event_data)
+    local trace = event_data._trace or ap_debug.null_trace()
+    return ap_debug.observe(trace, CONSEQUENCE.HARVEST_HUNT, function()
+        if not cfg.consequence_harvest_hunt_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not xmath.chance(cfg.consequence_harvest_hunt_chance) then return { code = RESULT.CHANCE_NEXT } end
+
+        local taker_is_player = event_data.taker_is_player
+        local taker_squad_id = event_data.taker_squad_id
+        local position, level_id = event_data.position, event_data.level_id
+        if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+
+        local chasers = ap_utils.find_squads_observed(trace, position, {
+            factions = community_harvest,
+            min_distance = ap_const.RADIUS_CLOSE_MAX, max_distance = ap_const.RADIUS_DISTANT_MAX,
+            level_id = level_id, max_count = cfg.consequence_harvest_hunt_max_squads,
+            exclude_unscriptable = true,
+        })
+        if #chasers == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local target_squad
+        if not taker_is_player then
+            target_squad = xobject.se(taker_squad_id)
+            if not target_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_TARGET_SQUAD } end
+        end
+
+        local location = ap_utils.get_location_description(nil, position, level_id)
+        local moved, dst_id = ap_utils.chase_start(trace, chasers, target_squad,
+            { location = location }, chase_opts)
+        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+
+        return ap_debug.result_squads(moved, {
+            code = RESULT.OK_STOP, reason = #moved .. "_hunters", dst_id = dst_id or 0,
+        })
+    end)
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    chase_opts.cfg = cfg
+    ap_utils.chase_register(chase_opts)
+    ap_consumer.register(CONSEQUENCE.HARVEST_HUNT, {
+        event = CAUSE.HARVEST,
+        priority = 15,
+        condition = function() return cfg.consequence_harvest_hunt_enabled end,
+    }, _handler)
+    ap_debug.info("[CONSEQUENCE.HARVEST_HUNT] Initialized")
+end

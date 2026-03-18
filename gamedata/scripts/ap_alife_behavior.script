@@ -1,0 +1,141 @@
+--- ap_alife_behavior: Applies rank boost, grenade restock, and AP ammo restock for elites
+
+local ipairs, os_clock = ipairs, os.clock
+local math_ceil = math.ceil
+local CALLBACK = ap_const.CALLBACK
+
+local cfg
+local _grenade_restock_times = {}
+local _ap_ammo_restock_times = {}
+
+local RANK_THRESHOLDS = { 10000, 10000, 20000, 20000, 25000, 25000, 35000, 35000, 50000, 50000 }
+local _kap_cache = {}
+
+local function _has_grenade(npc)
+    for _, sec in ipairs(ap_data.grenades) do
+        if npc:object(sec) then return true end
+    end
+    return false
+end
+
+local function _give_grenades(npc_id, count)
+    local given = 0
+    for _ = 1, count do
+        if xobject.create_item(xmath.sample(ap_data.grenades), npc_id) then given = given + 1 end
+    end
+    return given
+end
+
+local function _is_degraded(sec)
+    return sec:sub(-4) == "_bad" or sec:sub(-8) == "_verybad"
+end
+
+local function _get_kap(sec)
+    local v = _kap_cache[sec]
+    if v then return v end
+    v = ini_sys:r_float_ex(sec, "k_ap") or 0
+    _kap_cache[sec] = v
+    return v
+end
+
+local function _find_best_ap_ammo(npc)
+    local wpn = npc:item_in_slot(2) or npc:item_in_slot(3)
+    if not wpn then return nil end
+    local ammo_list = utils_item.get_ammo(wpn:section(), wpn:id())
+    if not ammo_list then return nil end
+    local best_sec, best_ap = nil, 0
+    for _, sec in ipairs(ammo_list) do
+        if _is_degraded(sec) then goto skip end
+        local k_ap = _get_kap(sec)
+        if k_ap > best_ap then
+            best_ap = k_ap
+            best_sec = sec
+        end
+        ::skip::
+    end
+    return best_sec
+end
+
+local function _try_grenade_restock(npc, npc_id, level)
+    if not cfg.elite_grenade_restock_enabled then return end
+    local now = os_clock()
+    local last = _grenade_restock_times[npc_id]
+    if last and (now - last) < cfg.elite_grenade_restock_cooldown_hours * 3600 then
+        ap_debug.debug("[BEHAVIOR] grenade_restock SKIP id=%d cooldown", npc_id)
+        return
+    end
+    if _has_grenade(npc) then
+        ap_debug.debug("[BEHAVIOR] grenade_restock SKIP id=%d has_grenade", npc_id)
+        return
+    end
+    local given = _give_grenades(npc_id, level)
+    _grenade_restock_times[npc_id] = now
+    if given > 0 then
+        ap_debug.debug("[BEHAVIOR] grenade_restock id=%d level=%d given=%d", npc_id, level, given)
+    end
+end
+
+local function _try_ap_ammo_restock(npc, npc_id, level)
+    if not cfg.elite_ap_ammo_enabled then return end
+    local now = os_clock()
+    local last = _ap_ammo_restock_times[npc_id]
+    if last and (now - last) < cfg.elite_ap_ammo_cooldown_hours * 3600 then
+        ap_debug.debug("[BEHAVIOR] ap_ammo_restock SKIP id=%d cooldown", npc_id)
+        return
+    end
+    local best_sec = _find_best_ap_ammo(npc)
+    if not best_sec then
+        ap_debug.debug("[BEHAVIOR] ap_ammo_restock SKIP id=%d no_weapon", npc_id)
+        return
+    end
+    if npc:object(best_sec) then
+        ap_debug.debug("[BEHAVIOR] ap_ammo_restock SKIP id=%d has_ap sec=%s", npc_id, best_sec)
+        return
+    end
+    local box_size = xobject.get_box_size(best_sec)
+    if not box_size then
+        ap_debug.debug("[BEHAVIOR] ap_ammo_restock SKIP id=%d no_box_size sec=%s", npc_id, best_sec)
+        return
+    end
+    local boxes = math_ceil(level / 2)
+    local total = box_size * boxes
+    local se = xobject.create_item(best_sec, npc_id, { ammo = total })
+    _ap_ammo_restock_times[npc_id] = now
+    if se then
+        ap_debug.debug("[BEHAVIOR] ap_ammo_restock id=%d level=%d sec=%s boxes=%d rounds=%d",
+            npc_id, level, best_sec, boxes, total)
+    end
+end
+
+local function _try_rank_boost(npc, npc_id, level)
+    if not cfg.rank_boost_enabled then return end
+    local threshold = RANK_THRESHOLDS[level]
+    if not threshold then return end
+    local current_rank = npc:character_rank()
+    if current_rank < threshold then
+        npc:set_character_rank(threshold)
+        ap_debug.debug("[BEHAVIOR] rank_boost id=%d level=%d rank=%d->%d", npc_id, level, current_rank, threshold)
+    else
+        ap_debug.debug("[BEHAVIOR] rank_boost SKIP id=%d rank=%d >= %d", npc_id, current_rank, threshold)
+    end
+end
+
+local function _on_before_hit(npc, shit, bone_id, flags)
+    if not xtable.acquire_lock(ap_const.LOCK_PREFIX.HIT_MODIFIER, ap_const.HIT_MODIFIER_LOCK_SEC) then
+        return
+    end
+    local npc_id = npc and npc:id()
+    if not npc_id or not xcreature.is_stalker(npc) then return end
+    local level = ap_alife_tracker.get_elite_level(npc_id)
+    if level == 0 then return end
+    ap_debug.debug("[BEHAVIOR] elite_hit id=%d level=%d", npc_id, level)
+    _try_grenade_restock(npc, npc_id, level)
+    _try_ap_ammo_restock(npc, npc_id, level)
+    _try_rank_boost(npc, npc_id, level)
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_before_hit)
+    ap_debug.info("[BEHAVIOR] Initialized")
+end

@@ -1,0 +1,76 @@
+--- ap_consequence_stash_fill: Actor squad moves to stash and hides loot on arrival
+
+local random = math.random
+
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local CAUSE = ap_const.CAUSE
+local CONSEQUENCE = ap_const.CONSEQUENCE
+local ACTION = ap_const.ACTION
+
+local cfg
+local community_stalker = ap_data.community_stalker
+
+local function _pick_random_items(count)
+    local pool = ap_data.stash_fill_items
+    local items = {}
+    for i = 1, count do
+        items[i] = pool[random(#pool)]
+    end
+    return items
+end
+
+local function _on_arrive(squad, args)
+    if not xstash.fill_stash(args.stash_id, args.items, false) then
+        ap_debug.warn("[CONSEQUENCE.STASH_FILL] on_arrive failed: stash=%d squad=%d", args.stash_id, squad.id)
+        return
+    end
+    ap_debug.debug("[CONSEQUENCE.STASH_FILL] on_arrive ok: stash=%d squad=%d items=%d", args.stash_id, squad.id, #args.items)
+    ap_utils.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
+end
+
+local function _handler(event_data)
+    local trace = event_data._trace or ap_debug.null_trace()
+    return ap_debug.observe(trace, CONSEQUENCE.STASH_FILL, function()
+        if not cfg.consequence_stash_fill_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not community_stalker[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
+        if not xmath.chance(cfg.consequence_stash_fill_chance) then return { code = RESULT.CHANCE_NEXT } end
+
+        local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
+        if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end
+
+        local squad = xobject.se(event_data.squad_id)
+        if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local smart = ap_utils.find_smart_observed(trace, position, { level_id = level_id })
+        if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+
+        local item_count = random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items)
+        local items = _pick_random_items(item_count)
+
+        local res
+        ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            res = ap_alife_tracker.script_squad(squad, smart, { rush = true, on_arrive = "stash_fill", on_arrive_args = { stash_id = stash_id, items = items } })
+            return res
+        end)
+        if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
+
+        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
+            ap_utils.mark(squad.id, "Fill stash")
+            return ap_debug.result_squad(squad)
+        end)
+        return { code = RESULT.OK_STOP, reason = item_count .. "_items",
+            id = squad.id, dst_id = smart.id, stash_id = stash_id }
+    end)
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    ap_alife_tracker.register_arrival_handler("stash_fill", _on_arrive)
+    ap_consumer.register(CONSEQUENCE.STASH_FILL, {
+        event = CAUSE.STASH,
+        priority = 30,
+        condition = function() return cfg.consequence_stash_fill_enabled end,
+    }, _handler)
+    ap_debug.info("[CONSEQUENCE.STASH_FILL] Initialized")
+end

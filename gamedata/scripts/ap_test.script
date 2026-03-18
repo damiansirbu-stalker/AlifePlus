@@ -1,0 +1,103 @@
+--- ap_test: MCM test tools - stateless, called from MCM button functors
+
+local pairs = pairs
+local math_floor, math_huge = math.floor, math.huge
+
+local ARTEFACTS = {
+    "af_medusa", "af_cristall_flower", "af_fireball",
+    "af_electra_sparkler", "af_gravi", "af_gold_fish",
+    "af_mincer_meat", "af_eye",
+}
+
+local function _tip(msg)
+    local actor = db.actor
+    if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
+end
+
+local function _find_nearest_elite()
+    local actor = db.actor
+    if not actor then return nil, "Not in game" end
+    local sim = alife()
+    local actor_se = sim:actor()
+    if not actor_se then return nil, "No actor entity" end
+    local actor_level = xlevel.get_level_id(actor_se)
+    local pos = actor:position()
+    local elites = ap_alife_tracker.get_elites()
+    local total, on_level = 0, 0
+    local best_id, best_data, best_dist, best_pos = nil, nil, math_huge, nil
+    for npc_id, data in pairs(elites) do
+        total = total + 1
+        if data.level_id ~= actor_level then goto skip end
+        on_level = on_level + 1
+        local se = sim:object(npc_id)
+        if not se then goto skip end
+        local dist = pos:distance_to(se.position)
+        if dist < best_dist then
+            best_id = npc_id
+            best_data = data
+            best_dist = dist
+            best_pos = se.position
+        end
+        ::skip::
+    end
+    ap_debug.debug("[TEST] elite_search total=%d on_level=%d level_id=%d", total, on_level, actor_level)
+    if not best_id then return nil, "No elites on this level" end
+    local squad = xsquad.get_squad_by_member(best_id)
+    if not squad then
+        ap_debug.debug("[TEST] elite_search no_squad npc_id=%d", best_id)
+        return nil, "Elite squad not found"
+    end
+    return { id = best_id, data = best_data, dist = best_dist, pos = best_pos, squad = squad }
+end
+
+--- @export console
+function pull_elite()
+    ap_debug.debug("[TEST] pull_elite pressed")
+    local result, reason = _find_nearest_elite()
+    if not result then
+        ap_debug.debug("[TEST] pull_elite SKIP %s", reason)
+        return _tip(reason)
+    end
+    local actor = db.actor
+    local pos = actor:position()
+    local tp = vector():set(pos.x + 10, pos.y, pos.z)
+    TeleportSquad(result.squad, tp, actor:level_vertex_id(), actor:game_vertex_id())
+    ap_debug.debug("[TEST] pull_elite OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
+        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        math_floor(result.dist), result.squad:get_squad_community())
+    _tip("Pulled elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " from " .. math_floor(result.dist) .. "m")
+end
+
+--- @export console
+function goto_elite()
+    ap_debug.debug("[TEST] goto_elite pressed")
+    local result, reason = _find_nearest_elite()
+    if not result then
+        ap_debug.debug("[TEST] goto_elite SKIP %s", reason)
+        return _tip(reason)
+    end
+    db.actor:set_actor_position(result.pos)
+    ap_debug.debug("[TEST] goto_elite OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
+        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        math_floor(result.dist), result.squad:get_squad_community())
+    _tip("Teleported to elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
+end
+
+--- @export console
+function spawn_artefact()
+    ap_debug.debug("[TEST] spawn_artefact pressed")
+    local actor = db.actor
+    if not actor then
+        ap_debug.debug("[TEST] spawn_artefact SKIP no_actor")
+        return _tip("Not in game")
+    end
+    local sec = xmath.sample(ARTEFACTS)
+    local se = xobject.create_item(sec, actor:id())
+    if se then
+        ap_debug.debug("[TEST] spawn_artefact OK sec=%s", sec)
+        _tip("Spawned " .. sec)
+    else
+        ap_debug.debug("[TEST] spawn_artefact FAIL sec=%s", sec)
+        _tip("Failed to spawn " .. sec)
+    end
+end

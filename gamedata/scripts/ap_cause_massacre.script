@@ -1,0 +1,42 @@
+--- ap_cause_massacre: Tracks stalker death clusters near smarts, publishes cause:massacre at threshold
+
+local CAUSE = ap_const.CAUSE
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+
+local cfg
+local deaths = nil
+
+local function on_squad_npc_death(trace, squad, se_victim, se_killer)
+    if not cfg.cause_massacre_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not se_victim then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
+    if not xcreature.is_stalker(se_victim) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
+
+    local smart = xsquad.get_squad_smart(squad)
+    if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+    if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+
+    local count = ap_utils.count_deaths_massacre(deaths, smart.id, cfg.cause_massacre_threshold)
+    if not count then return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD } end
+
+    return {
+        cause = CAUSE.MASSACRE,
+        smart = smart,
+        position = smart.position,
+        level_id = xlevel.get_level_id(smart),
+        faction = xcreature.community(se_victim),
+        total_deaths = count,
+    }
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_massacre_decay_time })
+
+    ap_producer_reactive.register(CAUSE.MASSACRE, {
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+    }, on_squad_npc_death)
+
+    ap_debug.info("[CAUSE.MASSACRE] Initialized")
+end

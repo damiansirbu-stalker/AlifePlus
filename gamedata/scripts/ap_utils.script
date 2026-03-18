@@ -1,0 +1,434 @@
+--- ap_utils: Event wrappers, PDA helpers, location formatting, lock utilities
+local error, pairs, ipairs, type, next, time_global, math_huge, tostring, table_concat = error, pairs, ipairs, type, next, time_global, math.huge, tostring, table.concat
+local CALLBACK = ap_const.CALLBACK
+local ACTION = ap_const.ACTION
+local RESULT = ap_const.RESULT
+
+-- PDA sender cache: ephemeral list of online stalkers with valid name+icon.
+-- Rebuilt lazily when empty (online set changes on level transitions).
+local _pda_senders = {}
+
+local function refresh_pda_senders()
+    -- @safety nil-guarded: alife sim, se, method existence, return values all checked
+    local t0 = time_global()
+    _pda_senders = {}
+    local squads = xsquad.find_online_squads(nil, {
+        factions = ap_data.community_stalker,
+        exclude_unscriptable = true,
+        max_count = 20,
+    })
+    local t1 = time_global()
+
+    local sim = alife()
+    if not sim then return end
+
+    for _, squad in ipairs(squads or {}) do
+        local cmd_id = squad:commander_id()
+        local se = cmd_id and sim:object(cmd_id)
+        if not se or not se.character_name or not se.character_icon then goto continue end
+        local name, icon = se:character_name(), se:character_icon()
+        if name and icon and #name > 0 and #icon > 0 then
+            _pda_senders[#_pda_senders + 1] = { name = name, icon = icon }
+        end
+        ::continue::
+    end
+    local t2 = time_global()
+    ap_debug.debug("[PDA_SENDER] refresh: find_squads=%dms, total=%dms, senders=%d", t1-t0, t2-t0, #_pda_senders)
+end
+
+local function get_pda_sender()
+    if #_pda_senders == 0 then refresh_pda_senders() end
+    if #_pda_senders == 0 then return nil end
+    return xmath.sample(_pda_senders)
+end
+
+--- Subscribe to an event with logging
+function event_subscribe(event_name, callback, subscriber_name)
+    local ok = xbus.subscribe(event_name, callback, subscriber_name)
+    if ok then
+        ap_debug.debug("[XBUS] subscribe: %s -> %s", subscriber_name, event_name)
+    else
+        ap_debug.err("[XBUS] subscribe FAILED: %s -> %s (already exists?)", subscriber_name, event_name)
+    end
+    return ok
+end
+
+--- Publish an event (uses trace from event_data._trace if present)
+--- @param event_name string Event name
+--- @param event_data table Event payload (should include _trace from cause)
+function event_publish(event_name, event_data)
+    local result = xbus.publish(event_name, event_data)
+    ap_debug.debug("[EVENT.%s] published", event_name)
+    return result
+end
+
+--- Get human-readable location description for an entity
+--- @param se_obj userdata|nil Server entity (extracts position and level_id if provided)
+--- @param pos vector|nil Position override
+--- @param level_id number|nil Level ID override (use this for event-based locations)
+function get_location_description(se_obj, pos, level_id)
+    local entity_pos = pos
+    local entity_lvl = level_id
+
+    if se_obj then
+        entity_pos = entity_pos or se_obj.position
+        entity_lvl = entity_lvl or xlevel.get_level_id(se_obj)
+    end
+
+    if not entity_lvl then
+        entity_lvl = xlevel.get_actor_level_id()
+    end
+
+    return xlevel.get_location_name(entity_pos, entity_lvl)
+end
+
+--- Send a PDA message as zone gossip (chance gated, message resolved from key)
+--- @param chance number PDA chance (0-100), 100 = always
+--- @param key string ap_messages key
+--- @param params table|nil Substitution parameters for ap_messages.get
+function send_pda(chance, key, params)
+    if not xmath.chance(chance) then return { code = "chance", key = key } end
+    local msg = ap_messages and ap_messages.get(key, params)
+    if not msg then return { code = "no_msg", key = key } end
+    local sender = get_pda_sender()
+    if not sender then return { code = "no_sender", key = key } end
+    xpda.send(sender.name, msg, sender.icon)
+    return { code = "sent", key = key, sender = sender.name }
+end
+
+--- Debug PDA map marker (no-op when debug disabled)
+--- Type dispatch: number = plain label, squad object = appends ": community_name"
+--- @param target number|userdata Entity/squad ID (number) or squad object (appends community name)
+--- @param label string Marker label (plain for number, prefix for squad object)
+--- @param entity boolean|nil If true, use entity marker instead of squad marker
+function mark(target, label, entity)
+    if not ap_debug.enabled() then return { code = "disabled" } end
+    local id
+    if type(target) == "number" then
+        id = target
+    else
+        id = target.id
+        label = label .. ": " .. xsquad.get_community_name(target)
+    end
+    local fn = entity and xpda.mark_entity or xpda.mark_squad
+    fn(id, { label = label, marker_type = ap_data.MARKER_TYPE })
+    local kind = entity and "entity" or "squad"
+    return { code = "ok", id = id, label = label, kind = kind }
+end
+
+--- Increment death count at key, check threshold, reset on fire. Returns count or nil.
+--- @param deaths table TTL table instance (xttltable.create_ttl_table)
+--- @param key number Smart terrain ID
+--- @param threshold number Minimum deaths to fire
+--- @return number|nil Count if threshold reached, nil otherwise
+function count_deaths_massacre(deaths, key, threshold)
+    local count = (deaths:get(key) or 0) + 1
+    deaths:set(key, count)
+    if count < threshold then return nil end
+    deaths:remove(key)
+    return count
+end
+
+--- Build rate limit key for cause
+function get_cause_rate_key(name)
+    return "lock:" .. name
+end
+
+--- Build rate limit key for consequence
+function get_consequence_rate_key(name)
+    return "lock:" .. name
+end
+
+-- Rate limit counters (lazy init)
+local _cause_counter = nil
+local _consequence_counter = nil
+
+local function _ensure_cause_counter()
+    if not _cause_counter then
+        _cause_counter = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.cause_window_sec })
+    end
+    return _cause_counter
+end
+
+local function _ensure_consequence_counter()
+    if not _consequence_counter then
+        _consequence_counter = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.consequence_window_sec })
+    end
+    return _consequence_counter
+end
+
+--- Check cause rate limit (true = allowed, false = blocked)
+function check_cause_rate_limit(name)
+    local counter = _ensure_cause_counter()
+    local key = get_cause_rate_key(name)
+    local count = counter:count(key)
+    local max = ap_mcm.cfg.cause_window_max_events
+    if count >= max then
+        ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
+        return false
+    end
+    return true
+end
+
+--- Increment cause counter after publish
+function increment_cause_counter(name)
+    local counter = _ensure_cause_counter()
+    counter:add(get_cause_rate_key(name))
+end
+
+--- Check consequence rate limit (true = allowed, false = blocked)
+function check_consequence_rate_limit(name)
+    local counter = _ensure_consequence_counter()
+    local key = get_consequence_rate_key(name)
+    local count = counter:count(key)
+    local max = ap_mcm.cfg.consequence_window_max_events
+    if count >= max then
+        ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
+        return false
+    end
+    return true
+end
+
+--- Increment consequence counter after success
+function increment_consequence_counter(name)
+    local counter = _ensure_consequence_counter()
+    counter:add(get_consequence_rate_key(name))
+end
+
+--- Acquire cause lock (class-isolated: on-map and off-map have separate locks)
+--- @param on_map boolean|nil true = on-map lock, false/nil = off-map lock
+function acquire_cause_lock(on_map)
+    local key = on_map and ap_const.LOCK_PREFIX.CAUSE_ON_MAP or ap_const.LOCK_PREFIX.CAUSE_OFF_MAP
+    return xtable.acquire_lock(key, ap_mcm.cfg.global_cause_lock_sec)
+end
+
+--- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)
+--- @param obj userdata|nil Game object or server entity
+--- @return number|nil Valid ID or nil
+function get_entity_id(obj)
+    if not obj then return nil end
+    local id = type(obj.id) == "function" and obj:id() or obj.id
+    if not id or id == ap_const.INVALID_ID then return nil end
+    return id
+end
+
+--- Create an isolated cooldown checker (each caller gets its own cache)
+--- @param expire_ms number Cooldown duration in milliseconds
+--- @return table { check = function(key, now), mark = function(key, now) }
+function create_cooldown(expire_ms)
+    local cache = {}
+    return {
+        check = function(key, now)
+            local exp = cache[key]
+            return exp and exp > now
+        end,
+        mark = function(key, now)
+            cache[key] = now + expire_ms
+        end,
+    }
+end
+
+--- Find nearest squad, excluding AP-scripted squads before luabind
+--- @param pos vector Origin position
+--- @param opts table Options (forwarded to xsquad.find_squad with exclude_ids injected)
+--- @return table|nil Nearest matching squad
+function find_squad(pos, opts)
+    opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
+    local result = xsquad.find_squad(pos, opts)
+    if not result and ap_debug.enabled() then
+        ap_debug.debug("[DISPATCH.FIND_SQUAD] empty")
+    end
+    return result
+end
+
+local function _serialize_factions(factions)
+    if not factions then return "any" end
+    if type(factions) == "string" then return factions end
+    local keys = {}
+    for k in pairs(factions) do keys[#keys + 1] = tostring(k) end
+    return #keys > 0 and table_concat(keys, ",") or "empty"
+end
+
+--- Find squads, excluding AP-scripted squads before luabind
+--- @param pos vector Origin position
+--- @param opts table Options (forwarded to xsquad.find_squads with exclude_ids injected)
+--- @return table Array of squad server objects
+function find_squads(pos, opts)
+    opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
+    local result = xsquad.find_squads(pos, opts)
+    if ap_debug.enabled() then
+        local params = "factions=" .. _serialize_factions(opts.factions)
+            .. " lv=" .. tostring(opts.level_id or "any")
+            .. " dist=" .. tostring(opts.min_distance or 0) .. "-" .. tostring(opts.max_distance)
+            .. " excl_smart=" .. tostring(opts.exclude_at_smart_id or "none")
+            .. " excl_ids=" .. (opts.exclude_ids and tostring(next(opts.exclude_ids) and "yes" or "none") or "none")
+        if #result == 0 then
+            ap_debug.debug("[DISPATCH.FIND_SQUADS] count=0 | %s", params)
+        else
+            local ids = {}
+            for i = 1, #result do ids[i] = tostring(result[i].id) end
+            ap_debug.debug("[DISPATCH.FIND_SQUADS] count=%d ids=%s | %s", #result, table_concat(ids, ","), params)
+        end
+    end
+    return result
+end
+
+--- Find squads with FIND_TARGETS observe wrapper. Returns squads array (may be empty).
+--- @param trace table Trace from event_data._trace
+--- @param position vector Origin position
+--- @param opts table Options (forwarded to ap_utils.find_squads)
+--- @return table Array of squad server objects
+function find_squads_observed(trace, position, opts)
+    local squads
+    ap_debug.observe(trace, ACTION.FIND_TARGETS, function()
+        squads = find_squads(position, opts)
+        return ap_debug.result_squads(squads)
+    end)
+    return squads
+end
+
+--- Find nearest smart with FIND_DESTINATION observe wrapper. Returns smart or nil.
+--- @param trace table Trace from event_data._trace
+--- @param position vector Origin position
+--- @param opts table Options (forwarded to xsmart.find_smart)
+--- @return table|nil Smart server object or nil
+function find_smart_observed(trace, position, opts)
+    local smart
+    ap_debug.observe(trace, ACTION.FIND_DESTINATION, function()
+        smart = xsmart.find_smart(position, opts)
+        if not smart then return { code = "empty" } end
+        return { code = "ok", id = smart.id }
+    end)
+    return smart
+end
+
+-- =============================================================================
+-- CHASE API: standardized NPC pursuit pattern
+-- Modder finds chasers + target, then calls chase_start.
+-- Continuation (re-script on arrival) handled by chase_register.
+-- NPC targets: script_squad with on_arrive -> chase loop.
+-- Player targets (nil): script_actor_target, engine-native pursuit, no chase loop.
+-- =============================================================================
+
+--- Register chase arrival handler. Call once at on_game_start.
+--- Handles: target alive, same level, co-location, max chases, re-script.
+--- @param opts table Chase opts (shared with chase_start):
+---   handler_key: string - arrival handler key (e.g. "revenge_chase")
+---   log_prefix: string - debug log prefix (e.g. "CONSEQUENCE.SQUADKILL_REVENGE")
+---   max_chases_key: string - MCM key for max chase iterations
+---   pda_chance_key: string - MCM key for PDA chance
+---   pda_lost: string - ap_messages key for "target lost"
+---   pda_found: string - ap_messages key for "target found"
+---   marker: string - debug marker label (e.g. "Chasing")
+---   cfg: table - MCM config reference (live, read at call time)
+function chase_register(opts)
+    local cfg = opts.cfg
+    ap_alife_tracker.register_arrival_handler(opts.handler_key, function(squad, args)
+        local target_squad_id = args.target_squad_id
+        if not target_squad_id then return end
+        local chase_count = (args.chase_count or 0) + 1
+        if chase_count > cfg[opts.max_chases_key] then
+            ap_debug.debug("[%s] chase_limit: squad=%d chases=%d",
+                opts.log_prefix, squad.id, chase_count)
+            return
+        end
+        local target_squad = xobject.se(target_squad_id)
+        if not target_squad then
+            send_pda(cfg[opts.pda_chance_key], opts.pda_lost)
+            return
+        end
+        local level_id = xlevel.get_level_id(target_squad)
+        if not level_id then return end
+        local squad_level = xlevel.get_level_id(squad)
+        if squad_level ~= level_id then
+            send_pda(cfg[opts.pda_chance_key], opts.pda_lost)
+            return
+        end
+        ap_debug.observe(nil, ACTION.CHASE_TARGET, function()
+            local smart = xsmart.find_smart(target_squad.position, {
+                level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
+            })
+            if not smart then return { code = "no_smart" } end
+            if xsmart.is_arrived(squad, smart) then
+                send_pda(cfg[opts.pda_chance_key], opts.pda_found)
+                return { code = "co_located", id = squad.id, chase = chase_count }
+            end
+            local res = ap_alife_tracker.script_squad(squad, smart, {
+                rush = true,
+                on_arrive = opts.handler_key,
+                on_arrive_args = {
+                    target_squad_id = target_squad_id, chase_count = chase_count,
+                },
+            })
+            if res.code ~= RESULT.OK_NEXT then
+                return { code = res.code, reason = res.reason }
+            end
+            mark(squad, opts.marker)
+            return { code = "ok", id = squad.id, dst_id = smart.id, chase = chase_count }
+        end)
+    end)
+end
+
+--- Start a chase: script chasers toward target's current position.
+--- Pass target=nil for player targets (uses script_actor_target, no chase loop).
+--- Pass target=squad for NPC targets (uses script_squad with on_arrive chase handler).
+--- @param trace table Trace context from event_data._trace
+--- @param chasers table Array of chaser squad server objects
+--- @param target table|nil Target squad (nil = player)
+--- @param pda_data table|nil Substitution params for start PDA
+--- @param opts table Same opts as chase_register (includes cfg), plus pda_start
+--- @return table moved Array of scripted squads
+--- @return number|nil dst_id Target smart ID (or 0 for player)
+function chase_start(trace, chasers, target, pda_data, opts)
+    if not chasers or #chasers == 0 then return {}, nil end
+    local cfg = opts.cfg
+    local is_player = not target
+    local smart, dst_id
+    if is_player then
+        dst_id = 0
+    else
+        local level_id = xlevel.get_level_id(target)
+        smart = find_smart_observed(trace, target.position, {
+            level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
+        })
+        if not smart then return {}, nil end
+        dst_id = smart.id
+    end
+    local moved = {}
+    ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+        for _, chaser in ipairs(chasers) do
+            local res
+            if is_player then
+                res = ap_alife_tracker.script_actor_target(chaser)
+            else
+                res = ap_alife_tracker.script_squad(chaser, smart, {
+                    rush = true,
+                    on_arrive = opts.handler_key,
+                    on_arrive_args = { target_squad_id = target.id },
+                })
+            end
+            if res and res.code == RESULT.OK_NEXT then
+                moved[#moved + 1] = chaser
+            end
+        end
+        return ap_debug.result_squads(moved, {
+            dst_id = dst_id, rejected = #chasers - #moved,
+        })
+    end)
+    if #moved == 0 then return moved, dst_id end
+    ap_debug.observe(trace, ACTION.ADD_MARKER, function()
+        for _, chaser in ipairs(moved) do
+            mark(chaser, opts.marker)
+        end
+        return ap_debug.result_squads(moved)
+    end)
+    ap_debug.observe(trace, ACTION.SEND_PDA, function()
+        return send_pda(cfg[opts.pda_chance_key], opts.pda_start, pda_data)
+    end)
+    return moved, dst_id
+end
+
+function on_game_start()
+    -- Debug: ephemeral squad markers cleared on level load; entity markers (elites) use persistent path in ap_alife_tracker
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, xpda.clear_squad_markers)
+end

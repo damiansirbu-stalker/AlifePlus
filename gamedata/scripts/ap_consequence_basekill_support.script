@@ -1,0 +1,65 @@
+--- ap_consequence_basekill_support: Nearby friendly squad rushes to reinforce base under attack
+
+local ipairs = ipairs
+
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local CAUSE = ap_const.CAUSE
+local CONSEQUENCE = ap_const.CONSEQUENCE
+local ACTION = ap_const.ACTION
+
+local cfg
+
+local function _handler(event_data)
+    local trace = event_data._trace or ap_debug.null_trace()
+    return ap_debug.observe(trace, CONSEQUENCE.BASEKILL_SUPPORT, function()
+        if not cfg.consequence_basekill_support_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not xmath.chance(cfg.consequence_basekill_support_chance) then return { code = RESULT.CHANCE_NEXT } end
+
+        local smart = event_data.smart
+        local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
+        if not smart or not factions or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+
+        local squads = ap_utils.find_squads_observed(trace, position, {
+            factions = factions,
+            min_distance = ap_const.RADIUS_CLOSE_MAX, max_distance = ap_const.RADIUS_DISTANT_MAX,
+            level_id = level_id,
+            max_count = cfg.consequence_basekill_support_max_squads,
+            exclude_at_smart_id = smart.id, exclude_unscriptable = true,
+        })
+        if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local moved = {}
+        local last_reason
+        ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            for _, squad in ipairs(squads) do
+                local res = ap_alife_tracker.script_squad(squad, smart, { rush = true })
+                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
+            for _, squad in ipairs(moved) do
+                ap_utils.mark(squad, "Reinforcing base")
+            end
+            return ap_debug.result_squads(moved)
+        end)
+        ap_debug.observe(trace, ACTION.SEND_PDA, function()
+            local location = ap_utils.get_location_description(nil, position, level_id)
+            return ap_utils.send_pda(cfg.consequence_basekill_support_pda_chance, "text_pda_consequence_basekill_support", { location = location })
+        end)
+
+        return ap_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_squads", dst_id = smart.id, faction = event_data.faction })
+    end)
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    ap_consumer.register(CONSEQUENCE.BASEKILL_SUPPORT, {
+        event = CAUSE.BASEKILL,
+        priority = 15,
+        condition = function() return cfg.consequence_basekill_support_enabled end,
+    }, _handler)
+    ap_debug.info("[CONSEQUENCE.BASEKILL_SUPPORT] Initialized")
+end

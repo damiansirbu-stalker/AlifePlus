@@ -1,0 +1,67 @@
+--- ap_consequence_squadkill_flee: Nearby same-faction squads flee to base when squad wiped
+
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local ipairs = ipairs
+local CAUSE = ap_const.CAUSE
+local CONSEQUENCE = ap_const.CONSEQUENCE
+local ACTION = ap_const.ACTION
+
+local cfg
+
+local function _handler(event_data)
+    local trace = event_data._trace or ap_debug.null_trace()
+    return ap_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
+        if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not xmath.chance(cfg.consequence_squadkill_flee_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not ap_data.community_stalker[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
+
+        local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
+
+        if not position or not victim_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+
+        local base = ap_utils.find_smart_observed(trace, position, { factions = victim_faction, level_id = level_id, filter = xsmart.is_base })
+        if not base then return { code = RESULT.RULES_NEXT, reason = REASON.NO_BASE } end
+
+        local fleeing = ap_utils.find_squads_observed(trace, position, {
+            factions = { [victim_faction] = true },
+            min_distance = ap_const.RADIUS_CLOSE_MAX, max_distance = ap_const.RADIUS_DISTANT_MAX,
+            level_id = level_id, max_count = cfg.consequence_squadkill_flee_max_squads,
+            exclude_at_smart_id = base.id, exclude_unscriptable = true,
+        })
+        if #fleeing == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local moved = {}
+        local last_reason
+        ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            for _, squad in ipairs(fleeing) do
+                local res = ap_alife_tracker.script_squad(squad, base, { rush = true })
+                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_debug.result_squads(moved, { dst_id = base.id, rejected = #fleeing - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
+            for _, squad in ipairs(moved) do
+                ap_utils.mark(squad, "Fleeing")
+            end
+            return ap_debug.result_squads(moved)
+        end)
+        ap_debug.observe(trace, ACTION.SEND_PDA, function()
+            local location = ap_utils.get_location_description(nil, position, level_id)
+            return ap_utils.send_pda(cfg.consequence_squadkill_flee_pda_chance, "text_pda_consequence_squadkill_flee", { location = location })
+        end)
+
+        return ap_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
+    end)
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    ap_consumer.register(CONSEQUENCE.SQUADKILL_FLEE, {
+        event = CAUSE.SQUADKILL,
+        priority = 25,
+        condition = function() return cfg.consequence_squadkill_flee_enabled end,
+    }, _handler)
+    ap_debug.info("[CONSEQUENCE.SQUADKILL_FLEE] Initialized")
+end

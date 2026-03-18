@@ -1,0 +1,45 @@
+--- ap_cause_stash: Squad near stash (consequences filter community)
+
+local CAUSE = ap_const.CAUSE
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+
+local cfg
+
+local function _on_smart(trace, squad, smart)
+    if not cfg.cause_stash_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    local stashes = xstash.find_stashes(squad.position, {
+        max_distance = ap_const.RADIUS_NEAR_MAX,
+        level_id = level_id,
+        max_count = 1,
+    })
+    local stash = stashes[1]
+    if not stash then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_NEARBY } end
+
+    return {
+        cause = CAUSE.STASH,
+        squad_id = squad.id,
+        community = squad.player_id,
+        stash_id = stash.id,
+        stash_filled = stash.filled,
+        position = stash.position,
+        level_id = level_id,
+    }
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    ap_producer_reactive.register(CAUSE.STASH, {
+        callback = CALLBACK.SQUAD_ON_ENTER_SMART,
+    }, _on_smart)
+    ap_producer_reactive.register(CAUSE.STASH, {
+        callback = CALLBACK.SQUAD_ON_LEAVE_SMART,
+    }, _on_smart)
+    ap_debug.info("[CAUSE.STASH] Initialized")
+end

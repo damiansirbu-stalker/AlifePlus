@@ -1,0 +1,47 @@
+--- ap_cause_elitekill: Publishes cause:elitekill when an elite dies
+
+local CAUSE = ap_const.CAUSE
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local time_global = time_global
+
+local cfg
+local _cooldown
+
+local function _on_death(trace, squad, npc, killer)
+    if not cfg.cause_elitekill_enabled then return { code = RESULT.DISABLED_NEXT } end
+
+    local victim_id = ap_utils.get_entity_id(npc)
+    local killer_id = ap_utils.get_entity_id(killer)
+    if not victim_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
+
+    if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = "not_elite" } end
+
+    local now = time_global()
+    local key = "elitekill_" .. victim_id
+    if _cooldown.check(key, now) then return { code = RESULT.THROTTLED_NEXT } end
+    _cooldown.mark(key, now)
+
+    local elite_data = ap_alife_tracker.get_elite(victim_id)
+
+    return {
+        cause = CAUSE.ELITEKILL,
+        id = victim_id,
+        killer_id = killer_id,
+        name = elite_data and elite_data.name or "unknown",
+        elite_level = elite_data and elite_data.level or 0,
+        kills = elite_data and elite_data.kills or 0,
+        killer_is_player = killer_id == 0,
+        level_id = xlevel.get_level_id(npc),
+    }
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    _cooldown = ap_utils.create_cooldown(60000)
+    ap_producer_reactive.register(CAUSE.ELITEKILL, {
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+    }, _on_death)
+    ap_debug.info("[CAUSE.ELITEKILL] Initialized")
+end

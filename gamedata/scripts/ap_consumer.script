@@ -1,0 +1,90 @@
+--- ap_consumer: Coordinator that routes cause events to consequences
+local error, pairs, ipairs, table_sort = error, pairs, ipairs, table.sort
+
+local RESULT = ap_const.RESULT
+local CALLBACK = ap_const.CALLBACK
+
+local _registry = {}
+
+local function _priority_compare(a, b)
+    return a.priority < b.priority
+end
+
+--- Register a consequence handler for an event
+function register(name, config, handler)
+    if not name or not config or not handler then
+        ap_debug.err("[CONSUMER] register: missing name, config, or handler")
+        return false
+    end
+    if not config.event then
+        ap_debug.err("[CONSUMER] register '%s': missing event", name)
+        return false
+    end
+
+    local event = config.event
+    if not _registry[event] then
+        _registry[event] = {}
+    end
+
+    _registry[event][#_registry[event]+1] = {
+        name = name,
+        priority = config.priority or 50,
+        condition = config.condition,
+        handler = handler,
+        label = name,
+    }
+
+    table_sort(_registry[event], _priority_compare)
+    ap_debug.info("[CONSUMER] registered: %s event=%s priority=%d", name, event, config.priority or 50)
+    return true
+end
+
+local function _run_handler(entry, event_data)
+    if entry.condition and not entry.condition() then return { code = RESULT.DISABLED_NEXT } end
+    return entry.handler(event_data)
+end
+
+local function _process(event_type, event_data)
+    local consequences = _registry[event_type]
+    if not consequences then return end
+
+    for _, entry in ipairs(consequences) do
+        if not ap_utils.check_consequence_rate_limit(entry.name) then
+            goto continue
+        end
+
+        local result = _run_handler(entry, event_data)
+
+        if result and (result.code == RESULT.OK_NEXT or result.code == RESULT.OK_STOP) then
+            ap_utils.increment_consequence_counter(entry.name)
+        end
+
+        if result and (result.code == RESULT.OK_STOP or result.code == RESULT.ERROR_STOP) then break end
+
+        ::continue::
+    end
+end
+
+local function _make_handler(event)
+    return function(event_data) _process(event, event_data) end
+end
+
+local function _subscribe()
+    for event, _ in pairs(_registry) do
+        ap_utils.event_subscribe(event, _make_handler(event), "consumer")
+    end
+end
+
+local _subscribed = false
+
+local function _on_first_update()
+    if _subscribed then return end
+    _subscribe()
+    _subscribed = true
+end
+
+function on_game_start()
+    _subscribed = false
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
+    ap_debug.info("[CONSUMER] Initialized")
+end

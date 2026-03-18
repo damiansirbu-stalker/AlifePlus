@@ -1,0 +1,97 @@
+--- ap_data: Static data tables - factions, grenades, communities
+--- VERIFIED: All faction values from pure Anomaly squad_descr_*.ltx
+--- See: doc/library/xray-api/squad-factions.md
+
+-- Map marker type for all AlifePlus markers (debug/show, not gameplay)
+MARKER_TYPE = "red_location"
+
+-- All human factions (stalkers, military, bandits, etc.)
+-- src: squad_descr_default_stalkers.ltx
+community_stalker = {
+    ["stalker"] = true,
+    ["dolg"] = true,
+    ["freedom"] = true,
+    ["csky"] = true,
+    ["ecolog"] = true,
+    ["killer"] = true,
+    ["army"] = true,
+    ["bandit"] = true,
+    ["renegade"] = true,
+    ["monolith"] = true,
+    ["greh"] = true,
+    ["isg"] = true,
+}
+
+-- Predator mutants that actively hunt prey
+-- These are granular mutant factions (player_id). get_squad_community() collapses all to "monster".
+-- xsquad.find_squads matches against these tables, so granular factions required.
+-- src: squad_descr_default_mutants.ltx
+community_predator = {
+    ["monster_predatory_day"] = true,
+    ["monster_predatory_night"] = true,
+    ["monster_special"] = true,
+}
+
+-- Sinister types that ambush at stashes
+-- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
+-- greh: Sin faction
+-- monster_zombied_day: controller, snork, fracture
+-- monster_zombied_night: burer, karlik
+-- monster_special: poltergeist, chimera, pseudogiant
+community_ambusher = {
+    ["bandit"] = true,
+    ["renegade"] = true,
+    ["greh"] = true,
+    ["monster_zombied_day"] = true,
+    ["monster_zombied_night"] = true,
+    ["monster_special"] = true,
+}
+
+-- Scavengers: outlaws + necrophile mutants that converge on massacre sites
+-- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
+community_scavenger = {
+    ["bandit"] = true, ["renegade"] = true, ["greh"] = true, ["isg"] = true,
+    ["monster_predatory_day"] = true, ["monster_zombied_day"] = true, ["zombied"] = true,
+}
+
+-- Stash fill item pool (medical, tools, artefacts)
+stash_fill_items = {
+    -- Medical - bandages/tourniquets
+    "bandage", "bandage", "bandage",
+    "army_bandage", "army_bandage",
+    "salicidic_bandage",
+    "tourniquet", "tourniquet",
+    -- Medical - medkits
+    "medkit", "medkit", "medkit",
+    "medkit_army", "medkit_army",
+    "medkit_scientic",
+    -- Medical - drugs
+    "antirad", "antirad",
+    "drug_antidot", "drug_antidot",
+    "drug_radioprotector",
+    "drug_coagulant", "drug_coagulant",
+    "drug_psy_blockade",
+    "yadex",
+    -- Repair tools
+    "toolkit_p", "toolkit_p", "toolkit_p",
+    "toolkit_w", "toolkit_w",
+    "toolkit_a", "toolkit_a",
+    -- Artefacts - low tier (base Anomaly, src: items_artefacts.ltx)
+    "af_itcher", "af_pin", "af_cristall", "af_fireball",
+    "af_blood", "af_bracelet", "af_baloon", "af_electra_sparkler",
+    "af_sponge", "af_ring",
+    -- Artefacts - mid tier (base Anomaly)
+    "af_electra_flash", "af_medusa", "af_vyvert", "af_ameba_slime",
+}
+
+-- Grenade sections for promotion grants
+-- src: configs/items/weapons/m_f1.ltx, m_rgd5.ltx, m_gd5.ltx (base Anomaly)
+grenades = { "grenade_f1", "grenade_rgd5", "grenade_gd-05" }
+
+-- Artefact hunters: outlaws + psy/anomaly mutants
+-- Outlaws chase for profit, psy mutants drawn to anomalous energy
+-- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
+community_harvest = {
+    ["bandit"] = true, ["renegade"] = true, ["greh"] = true, ["isg"] = true,
+    ["monster_zombied_day"] = true, ["monster_zombied_night"] = true, ["monster_special"] = true,
+}

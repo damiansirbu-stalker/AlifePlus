@@ -1,0 +1,44 @@
+--- ap_cause_elite: Publishes cause:elite when NPC reaches a new elite level
+
+local CAUSE = ap_const.CAUSE
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+local cfg
+
+local function _on_death(trace, squad, se_victim, se_killer)
+    if not cfg.cause_elite_enabled then return { code = RESULT.DISABLED_NEXT } end
+
+    local killer_id = ap_utils.get_entity_id(se_killer)
+    if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+
+    local victim_id = ap_utils.get_entity_id(se_victim)
+    local kills = ap_alife_tracker.projected_kill_count(killer_id, victim_id)
+    local level = ap_alife_tracker.compute_level(kills)
+    if level < 1 then
+        return { code = RESULT.RULES_NEXT, reason = REASON.LOW_KILLS,
+            killer_id = killer_id, kills = kills }
+    end
+
+    local current_level = ap_alife_tracker.get_elite_level(killer_id)
+    if level <= current_level then
+        return { code = RESULT.RULES_NEXT, reason = "same_level",
+            killer_id = killer_id, kills = kills, level = level }
+    end
+
+    return {
+        cause = CAUSE.ELITE,
+        killer_id = killer_id,
+        kills = kills,
+        level = level,
+        level_id = xlevel.get_level_id(se_killer),
+    }
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+    ap_producer_reactive.register(CAUSE.ELITE, {
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+    }, _on_death)
+    ap_debug.info("[CAUSE.ELITE] Initialized")
+end

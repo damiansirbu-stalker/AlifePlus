@@ -1,0 +1,249 @@
+Manifesto
+
+AlifePlus continues what GSC Game World started and never finished.
+
+The original A-Life was built as an event-driven simulation where NPCs lived autonomous lives, found items, traded with each other, responded to threats, and pursued goals independently of the player. Most of it was cut before Shadow of Chernobyl shipped. What remained was smart terrains -- NPCs walking to locations and sitting by campfires.
+
+AlifePlus restores the spirit of what was cut. Every design choice traces back to the original engine architecture or to documented GSC developer intent. Nothing is invented. Nothing is faked.
+
+
+The Engine
+
+The X-Ray engine is event-driven at every level.
+
+The C++ source defines 53 callback types in GameObject::ECallbackType (game_object_space.h). Death, hit, trade, zone enter/exit, item take/drop, patrol points, weapon events, actor actions. Each fires a Lua functor through the CScriptCallbackEx bridge.
+
+The death chain alone crosses four layers:
+
+  CEntityAlive::Die()                           entity_alive.cpp:321
+    -> callback(GameObject::eDeath)()           fires Lua death callback
+    -> GE_DIE net event                         xrServer_process_event.cpp:184
+    -> game_sv_Single::on_death()               game_sv_single.cpp:338
+    -> alife().on_death()                       alife_simulator_base2.cpp:84
+    -> notify_on_member_death()                 alife_online_offline_group.cpp:305
+
+Smart terrain transitions fire through on_location_change() in the A-Life path manager (alife_monster_detail_path_manager.cpp:275). Every graph node transition propagates through the brain to the task system. Anomaly's sim_board.script hooks this for enter/leave callbacks.
+
+The engine processes A-Life at two speeds. m_fGoingSpeed for background simulation, m_fCurrentLevelGoingSpeed for the player's level (alife_movement_manager_holder.h:15-16). The selection is explicit:
+
+  // alife_monster_detail_path_manager.cpp:211-217
+  void CALifeMonsterDetailPathManager::setup_current_speed() {
+      if (game_graph.vertex(m_tGraphID)->level_id() == level_graph.level_id())
+          speed(object().m_fCurrentLevelGoingSpeed);  // player's level
+      else
+          speed(object().m_fGoingSpeed);              // background
+  }
+
+STALKER is not a timer-driven simulation. It is a callback-driven simulation. AlifePlus works with this, not against it.
+
+
+The Work
+
+AlifePlus was built by reverse engineering the X-Ray Monolith engine source code. Every callback was extracted from the C++ source, documented with full API signatures, and measured in a live game environment.
+
+162 callbacks were catalogued. Their fire rates, payload structures, and engine-side guards were recorded from real gameplay sessions. The full callback registry, with fire counts and payload logging, is available in TestZone (the companion debug mod).
+
+Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts. The mechanism uses the same infrastructure the original developers built for extending events: AddScriptCallback declares a new callback name, SendScriptCallback dispatches it to all registered handlers. The hook wraps an existing function at runtime (via _G module table replacement), calls the original, and emits the new event alongside it. No base scripts are modified. No files are overwritten.
+
+Example: the engine has no callback for "NPC used a medkit." But xr_eat_medkit.consume_medkit is called when it happens. AlifePlus hooks that function and emits x_npc_medkit_use -- a synthetic callback that behaves identically to any native engine callback. The wounded cause subscribes to it the same way it subscribes to actor_on_item_use.
+
+This is the engine's own extension mechanism, used the way the original developers designed it.
+
+Where the engine provides a callback but Anomaly ignores it, AlifePlus picks it up.
+
+All engine work is extracted into xlibs, a shared library that wraps raw engine APIs with safety annotations, complexity documentation, and source code references to the original C++.
+
+
+Core Principles
+
+Reactive, not polling
+
+AlifePlus does not scan the game world. It does not iterate entities on a timer. It does not pick random squads and roll dice.
+
+It listens. When the engine fires a callback -- a death, a smart terrain transition, an item pickup -- the system evaluates and responds. Zero cost when nothing happens.
+
+This is how the engine itself works. The A-Life scheduler (alife_schedule_registry.h) processes entities through time-sliced updates. Events propagate through callbacks. AlifePlus extends this pattern into the gameplay layer.
+
+Radiant evaluation
+
+Squads evaluate their surroundings when they naturally transition between smart terrains -- the normal flow of A-Life. A squad arrives at a new location and looks around. Is there a stash nearby? An unguarded outpost? A threat?
+
+This is the smart terrain system working as designed. Dmitriy Iassenev, GSC's AI programmer:
+
+  "A character's life now worked in such a way, that he took the quest generated by some smart
+  terrain, then walked to the destination it had set for him. After getting there, he would get
+  points, and the smart terrain would take him under control for some time."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+AlifePlus adds evaluation at the transition point. The smart terrain system provides the movement. AlifePlus provides the awareness.
+
+Nothing is faked
+
+No entities are spawned out of thin air. No items are teleported. No squads are created to fill a role. Every creature, item, or object involved was already there, living its own A-Life. AlifePlus extends what they are already doing.
+
+Squads physically walk to their destinations. If they die on the way, they die. If they encounter enemies, the engine handles combat. If they arrive, the consequence resolves. Real distances, real movement, real risk.
+
+
+Mechanics
+
+Stash: loot, ambush, fill
+
+A squad transitions at a smart terrain. It looks around and discovers a nearby stash. Depending on faction, it walks there to loot it, camps there to ambush others, or hides supplies inside.
+
+The NPC physically walks the distance. They can be intercepted, killed, or beaten to the stash. The stash interaction is visible in-world.
+
+GSC's original vision had NPCs autonomously finding items in the world:
+
+  "The character would take on a quest to search for the artifact, go to the approximate area in
+  which it could be found, if able to find the artifact, brought it back to the dealer, traded it,
+  then picked a new quest."
+
+  "I was very happy with the work done when I followed a stalker from one level to another, saw how
+  he searched for artifacts, found them, returned to the dealer, approached him, traded, picked a new
+  quest, went on -- too bad this did not make it into the original game."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+Stashes sitting across the Zone, ignored by every NPC, waiting exclusively for the player -- that is the simplified version that shipped, not the intended design.
+
+Harvest: hunt
+
+An NPC or the player picks up an artefact. Nearby outlaws see an opportunity and pursue the carrier as it moves. Uses the chase API -- real movement, real pursuit, real risk.
+
+This is the artifact economy loop that Iassenev watched working internally:
+
+  "In early versions of the simulator, a character knew one or several dealers, which had sets of
+  quests that they generated based on the map of anomalous activity and requests from organizations,
+  which wanted to get rich from artifacts found in the Zone."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+Artifacts had value. NPCs competed for them. AlifePlus restores the competition.
+
+Elite: promote, buffs
+
+An NPC accumulates kills and levels up. 10 levels, each granting better ammo, grenades, and engine rank. The engine rank system already exists in the C++ source (ai_stalker.cpp:748-771) -- it affects dispersion, combat properties, and NPC-to-NPC respect. AlifePlus feeds it.
+
+  "Every character in the game always has a goal: to uncover the mystery of the Zone."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+NPCs were meant to have progression. The engine supports it. AlifePlus connects the two.
+
+EliteKill: bounty, targeted
+
+An elite dies. The killer receives rubles scaled by the elite's level. Other elites on the same level pursue the killer. Death has consequences. Killing a dangerous NPC attracts dangerous attention.
+
+The engine's death callback chain fires through five layers (see The Engine above). AlifePlus subscribes to this chain and publishes consequences.
+
+GSC's Clear Sky described their vision:
+
+  "One of the goals that developers set for themselves when creating the mechanics of the Faction War
+  is for the player to see what his actions lead to."
+  -- Clear Sky pre-release interview, The Cutting Room Floor
+
+Massacre, SquadKill, BaseKill: scavenge, investigate, revenge, flee, support
+
+Deaths pile up. Factions respond. Scavengers converge on massacre sites. Victims' factions investigate. Survivors flee to the nearest base or rally to defend it. Squads pursue killers across the map.
+
+The engine fires notify_on_member_death() when a squad member dies (alife_online_offline_group.cpp:305). Anomaly's sim_board propagates this as squad_on_npc_death. AlifePlus evaluates the pattern -- isolated kill or massacre? -- and dispatches faction-appropriate consequences.
+
+GSC designed faction response into the core:
+
+  "Furious war of factions for the new territories, resources, and control points of the important
+  paths to the center of the Zone."
+  -- S.T.A.L.K.E.R.: Clear Sky official gameplay page
+
+  "To notify player about the offline activity, we used news, which were generated if some character
+  could see an event or its consequences."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+Events generate consequences. Consequences generate news. AlifePlus implements this chain.
+
+Wounded: hunt, help
+
+An NPC or the player uses a healing item. Nearby predator mutants sense weakness and move toward the wounded. Nearby same-faction squads rush to help.
+
+This cause uses a synthetic callback. The engine has no native event for "NPC used a medkit." AlifePlus hooks the existing xr_eat_medkit.consume_medkit function at runtime and emits x_npc_medkit_use through AddScriptCallback/SendScriptCallback -- the same mechanism the original developers built for extending the event system. No base scripts are modified.
+
+Iassenev wanted NPCs with needs:
+
+  "I would very much like to play a game in which characters would live their own lives, each would
+  have his own goal in the game, each would have human-like (or some specific for monsters) needs
+  that the character would have to satisfy."
+  -- Dmitriy Iassenev, Game Developer (2008)
+
+The engine's lead programmer on creature life cycles:
+
+  "A complex AI system with a life simulation system that enables any monster and NPC to act
+  independently on any game level, with creatures having a full life cycle where they hunt, feed,
+  take rest, and sleep."
+  -- Oles Shishkovtsov, ModDB interview
+
+Mutants were meant to hunt. Stalkers were meant to help each other. The behavior was described. AlifePlus implements it.
+
+Area: conquer
+
+A squad discovers an unguarded smart terrain nearby. It walks there. If it arrives alive, it claims the area. The engine spawns the squad's faction at that smart terrain.
+
+  "A control point leading to a place with artifacts is controlled by bandits. Their destruction
+  means that the path to resources is safe. The player will see how the stalkers of his group go to
+  the place with artifacts."
+  -- Clear Sky pre-release interview, The Cutting Room Floor
+
+  "The more points with artifacts the faction controls, the cooler stalkers it can recruit."
+  -- Clear Sky pre-release interview, The Cutting Room Floor
+
+Territory changes hands through movement, not scripts.
+
+Going Speed: two-rate simulation
+
+30 maps simulate simultaneously. Without bias, ~97% of cause events fire on maps the player never sees.
+
+The engine already solves this. The C++ source (alife_monster_detail_path_manager.cpp:211-217) selects between two speeds every time an entity moves: m_fGoingSpeed for background levels, m_fCurrentLevelGoingSpeed for the player's level. Entities on distant maps move slower. Entities near the player move at full speed. The differential is built into the engine by design.
+
+Anomaly equalized both values (m_stalker.ltx:372-373), neutralizing the split entirely. Every map simulates at the same rate.
+
+AlifePlus restores this differential at the cause evaluation layer. X-Ray processes A-Life at two speeds: per-frame on the player's level, round-robin on distant levels. AlifePlus applies the same split to incoming X-Ray events, gating all downstream causes and consequences. A Bresenham ratio gate determines how many out of 10 event slots go to the player's map. On-map and off-map have separate cooldowns, so one cannot starve the other.
+
+At the default setting of 8, the ratio is 4:1 favoring on-map. For every 4 causes on the player's map, 1 off-map cause is allowed through. The slider goes from -10 (off-map only) to +10 (on-map only). Zero means equal across all maps.
+
+This is not a new mechanic. It is restoring an engine feature that Anomaly disabled.
+
+
+The Player
+
+  "The player is not the most powerful or the strongest -- he is one of many, whose lives crossed
+  the Zone."
+  -- Alexey Sytianov, Shpil Magazine
+
+AlifePlus treats the player as one entity among many. Causes fire for all creatures equally. Consequences resolve for all factions equally. The simulation does not revolve around the player.
+
+You are not special.
+
+
+Links
+
+Developer interviews:
+  Dmitriy Iassenev (AI programmer, SoC/CS):
+    https://www.gamedeveloper.com/game-platforms/interview-inside-the-ai-of-i-s-t-a-l-k-e-r-i-
+  Alexey Sytianov (game designer, SoC):
+    https://stalker.fandom.com/wiki/Interview_with_Alexey_Sytianov_in_Shpil
+  Oles Shishkovtsov (engine programmer):
+    https://www.moddb.com/features/stalker-interview
+
+Official GSC:
+  Clear Sky gameplay page:
+    https://cs.stalker-game.com/en/?page=gameplay
+  Clear Sky pre-release interviews:
+    https://tcrf.net/Prerelease:S.T.A.L.K.E.R.:_Clear_Sky/Interviews
+
+Analysis:
+  A-Life: An Insight into Ambitious AI:
+    https://blackshellmedia.com/2017/08/a-life-an-insight-into-ambitious-ai/
+  The Birth of the A-Life System:
+    https://indiegamesdevel.com/stalker-shadow-of-chernobyl-and-the-birth-of-the-a-life-system/
+
+Engine source (X-Ray Monolith):
+  Callback types: game_object_space.h
+  Death chain: entity_alive.cpp, xrServer_process_event.cpp, game_sv_single.cpp, alife_simulator_base2.cpp
+  A-Life path manager: alife_monster_detail_path_manager.cpp
+  Two-speed system: alife_movement_manager_holder.h
+  Rank combat properties: ai_stalker.cpp

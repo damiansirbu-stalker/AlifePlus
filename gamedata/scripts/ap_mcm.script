@@ -1,0 +1,647 @@
+--- ap_mcm: MCM menu definition with defaults, config reader, and UI builder
+local type = type
+
+defaults = {
+    -- Going Speed (cause-layer differential, mirrors engine going_speed vs current_level_going_speed)
+    going_speed = 8,
+
+    -- General
+    global_cause_lock_sec = 30,
+    cause_window_max_events = 10,
+    cause_window_sec = 60,
+    consequence_window_max_events = 3,
+    consequence_window_sec = 60,
+
+    -- Distributor
+    distributor_max_xray_events = 10,
+    distributor_window_sec = 60,
+
+    -- A-Life Tracker
+    alife_periodic_sync_enabled = false,
+    alife_sync_interval = 600,
+
+    -- Cause: Elite
+    cause_elite_enabled = true,
+    elite_kills_per_level = 2,
+
+    -- Cause: Elitekill
+    cause_elitekill_enabled = true,
+
+    -- Cause: Massacre
+    cause_massacre_enabled = true,
+    cause_massacre_threshold = 3,
+    cause_massacre_decay_time = 300,
+
+    -- Cause: Stash
+    cause_stash_enabled = true,
+
+    -- Cause: Squadkill
+    cause_squadkill_enabled = true,
+
+    -- Cause: Basekill
+    cause_basekill_enabled = true,
+    cause_basekill_threshold = 2,
+    cause_basekill_decay_time = 300,
+
+    -- Cause: Harvest
+    cause_harvest_enabled = true,
+
+    -- Cause: Wounded
+    cause_wounded_enabled = true,
+
+    -- Cause: Area
+    cause_area_enabled = true,
+
+    -- Consequence: Elite Promote
+    consequence_elite_promote_enabled = true,
+    consequence_elite_promote_pda_chance = 20,
+    max_elites = 40,
+
+    -- Elite Buffs
+    rank_boost_enabled = true,
+    elite_grenade_restock_enabled = true,
+    elite_grenade_restock_cooldown_hours = 4,
+    elite_ap_ammo_enabled = true,
+    elite_ap_ammo_cooldown_hours = 4,
+
+    -- Consequence: Elitekill Bounty
+    consequence_elitekill_bounty_enabled = true,
+    consequence_elitekill_bounty_base = 1000,
+    consequence_elitekill_bounty_max = 20000,
+    consequence_elitekill_bounty_pda_chance = 20,
+
+    -- Consequence: Elitekill Targeted
+    consequence_elitekill_targeted_enabled = true,
+    consequence_elitekill_targeted_chance = 30,
+    consequence_elitekill_targeted_max_squads = 3,
+    consequence_elitekill_targeted_max_chases = 5,
+    consequence_elitekill_targeted_pda_chance = 20,
+
+    -- Consequence: Massacre Scavenge
+    consequence_massacre_scavenge_enabled = true,
+    consequence_massacre_scavenge_chance = 10,
+    consequence_massacre_scavenge_max_squads = 2,
+    consequence_massacre_scavenge_pda_chance = 20,
+
+    -- Consequence: Massacre Investigate
+    consequence_massacre_investigate_enabled = true,
+    consequence_massacre_investigate_chance = 10,
+    consequence_massacre_investigate_max_squads = 2,
+    consequence_massacre_investigate_pda_chance = 20,
+
+    -- Consequence: Stash Ambush
+    consequence_stash_ambush_enabled = true,
+    consequence_stash_ambush_chance = 10,
+    consequence_stash_ambush_pda_chance = 20,
+
+    -- Consequence: Stash Loot
+    consequence_stash_loot_enabled = true,
+    consequence_stash_loot_chance = 10,
+    consequence_stash_loot_pda_chance = 20,
+
+    -- Consequence: Stash Fill
+    consequence_stash_fill_enabled = true,
+    consequence_stash_fill_chance = 10,
+    consequence_stash_fill_min_items = 1,
+    consequence_stash_fill_max_items = 3,
+    consequence_stash_fill_pda_chance = 20,
+
+    -- Consequence: Squadkill Revenge
+    consequence_squadkill_revenge_enabled = true,
+    consequence_squadkill_revenge_chance = 10,
+    consequence_squadkill_revenge_max_squads = 2,
+    consequence_squadkill_revenge_max_chases = 5,
+    consequence_squadkill_revenge_pda_chance = 20,
+
+    -- Consequence: Squadkill Flee
+    consequence_squadkill_flee_enabled = true,
+    consequence_squadkill_flee_chance = 10,
+    consequence_squadkill_flee_max_squads = 2,
+    consequence_squadkill_flee_pda_chance = 20,
+
+    -- Consequence: Basekill Support
+    consequence_basekill_support_enabled = true,
+    consequence_basekill_support_chance = 10,
+    consequence_basekill_support_max_squads = 2,
+    consequence_basekill_support_pda_chance = 20,
+
+    -- Consequence: Basekill Flee
+    consequence_basekill_flee_enabled = true,
+    consequence_basekill_flee_chance = 10,
+    consequence_basekill_flee_max_squads = 2,
+    consequence_basekill_flee_pda_chance = 20,
+
+    -- Consequence: Wounded Hunt
+    consequence_wounded_hunt_enabled = true,
+    consequence_wounded_hunt_chance = 10,
+    consequence_wounded_hunt_max_squads = 2,
+    consequence_wounded_hunt_pda_chance = 20,
+
+    -- Consequence: Wounded Faction Help
+    consequence_wounded_help_enabled = true,
+    consequence_wounded_help_chance = 10,
+    consequence_wounded_help_max_squads = 2,
+    consequence_wounded_help_pda_chance = 20,
+
+    -- Consequence: Area Conquer
+    consequence_area_conquer_enabled = true,
+    consequence_area_conquer_chance = 10,
+    consequence_area_conquer_pda_chance = 20,
+
+    -- Consequence: Harvest Hunt
+    consequence_harvest_hunt_enabled = true,
+    consequence_harvest_hunt_chance = 10,
+    consequence_harvest_hunt_max_squads = 2,
+    consequence_harvest_hunt_max_chases = 5,
+    consequence_harvest_hunt_pda_chance = 20,
+
+    -- Area Conquest (persistent ownership)
+    area_conquest_enabled = true,
+    area_conquest_max_smarts = 50,
+    area_conquest_spawn_num = 2,
+
+    -- Development
+    log_level = "WARN",
+
+}
+
+local key_to_tab = {
+    log_level = "development",
+    going_speed = "general",
+    distributor_max_xray_events = "general",
+    distributor_window_sec = "general",
+    global_cause_lock_sec = "general",
+    cause_window_max_events = "general",
+    cause_window_sec = "general",
+    consequence_window_max_events = "general",
+    consequence_window_sec = "general",
+    alife_periodic_sync_enabled = "alife_tracker",
+    alife_sync_interval = "alife_tracker",
+    cause_elite_enabled = "causes/elite",
+    elite_kills_per_level = "causes/elite",
+    cause_elitekill_enabled = "causes/elitekill",
+    cause_massacre_enabled = "causes/massacre",
+    cause_massacre_threshold = "causes/massacre",
+    cause_massacre_decay_time = "causes/massacre",
+    cause_stash_enabled = "causes/stash",
+    cause_squadkill_enabled = "causes/squadkill",
+    cause_basekill_enabled = "causes/basekill",
+    cause_basekill_threshold = "causes/basekill",
+    cause_basekill_decay_time = "causes/basekill",
+    cause_harvest_enabled = "causes/harvest",
+    cause_wounded_enabled = "causes/wounded",
+    cause_area_enabled = "causes/area",
+    consequence_elite_promote_enabled = "consequences/elite_promote",
+    consequence_elite_promote_pda_chance = "consequences/elite_promote",
+    max_elites = "consequences/elite_promote",
+    rank_boost_enabled = "consequences/elite_promote",
+    elite_grenade_restock_enabled = "consequences/elite_promote",
+    elite_grenade_restock_cooldown_hours = "consequences/elite_promote",
+    elite_ap_ammo_enabled = "consequences/elite_promote",
+    elite_ap_ammo_cooldown_hours = "consequences/elite_promote",
+    consequence_elitekill_bounty_enabled = "consequences/elitekill_bounty",
+    consequence_elitekill_bounty_base = "consequences/elitekill_bounty",
+    consequence_elitekill_bounty_max = "consequences/elitekill_bounty",
+    consequence_elitekill_bounty_pda_chance = "consequences/elitekill_bounty",
+    consequence_elitekill_targeted_enabled = "consequences/elitekill_targeted",
+    consequence_elitekill_targeted_chance = "consequences/elitekill_targeted",
+    consequence_elitekill_targeted_max_squads = "consequences/elitekill_targeted",
+    consequence_elitekill_targeted_max_chases = "consequences/elitekill_targeted",
+    consequence_elitekill_targeted_pda_chance = "consequences/elitekill_targeted",
+    consequence_massacre_scavenge_enabled = "consequences/massacre_scavenge",
+    consequence_massacre_scavenge_chance = "consequences/massacre_scavenge",
+    consequence_massacre_scavenge_max_squads = "consequences/massacre_scavenge",
+    consequence_massacre_scavenge_pda_chance = "consequences/massacre_scavenge",
+    consequence_massacre_investigate_enabled = "consequences/massacre_investigate",
+    consequence_massacre_investigate_chance = "consequences/massacre_investigate",
+    consequence_massacre_investigate_max_squads = "consequences/massacre_investigate",
+    consequence_massacre_investigate_pda_chance = "consequences/massacre_investigate",
+    consequence_stash_ambush_enabled = "consequences/stash_ambush",
+    consequence_stash_ambush_chance = "consequences/stash_ambush",
+    consequence_stash_ambush_pda_chance = "consequences/stash_ambush",
+    consequence_stash_loot_enabled = "consequences/stash_loot",
+    consequence_stash_loot_chance = "consequences/stash_loot",
+    consequence_stash_loot_pda_chance = "consequences/stash_loot",
+    consequence_stash_fill_enabled = "consequences/stash_fill",
+    consequence_stash_fill_chance = "consequences/stash_fill",
+    consequence_stash_fill_min_items = "consequences/stash_fill",
+    consequence_stash_fill_max_items = "consequences/stash_fill",
+    consequence_stash_fill_pda_chance = "consequences/stash_fill",
+    consequence_squadkill_revenge_enabled = "consequences/squadkill_revenge",
+    consequence_squadkill_revenge_chance = "consequences/squadkill_revenge",
+    consequence_squadkill_revenge_max_squads = "consequences/squadkill_revenge",
+    consequence_squadkill_revenge_max_chases = "consequences/squadkill_revenge",
+    consequence_squadkill_revenge_pda_chance = "consequences/squadkill_revenge",
+    consequence_squadkill_flee_enabled = "consequences/squadkill_flee",
+    consequence_squadkill_flee_chance = "consequences/squadkill_flee",
+    consequence_squadkill_flee_max_squads = "consequences/squadkill_flee",
+    consequence_squadkill_flee_pda_chance = "consequences/squadkill_flee",
+    consequence_basekill_support_enabled = "consequences/basekill_support",
+    consequence_basekill_support_chance = "consequences/basekill_support",
+    consequence_basekill_support_max_squads = "consequences/basekill_support",
+    consequence_basekill_support_pda_chance = "consequences/basekill_support",
+    consequence_basekill_flee_enabled = "consequences/basekill_flee",
+    consequence_basekill_flee_chance = "consequences/basekill_flee",
+    consequence_basekill_flee_max_squads = "consequences/basekill_flee",
+    consequence_basekill_flee_pda_chance = "consequences/basekill_flee",
+    consequence_wounded_hunt_enabled = "consequences/wounded_hunt",
+    consequence_wounded_hunt_chance = "consequences/wounded_hunt",
+    consequence_wounded_hunt_max_squads = "consequences/wounded_hunt",
+    consequence_wounded_hunt_pda_chance = "consequences/wounded_hunt",
+    consequence_wounded_help_enabled = "consequences/wounded_help",
+    consequence_wounded_help_chance = "consequences/wounded_help",
+    consequence_wounded_help_max_squads = "consequences/wounded_help",
+    consequence_wounded_help_pda_chance = "consequences/wounded_help",
+    consequence_area_conquer_enabled = "consequences/area_conquer",
+    consequence_area_conquer_chance = "consequences/area_conquer",
+    consequence_area_conquer_pda_chance = "consequences/area_conquer",
+    area_conquest_enabled = "consequences/area_conquer",
+    area_conquest_max_smarts = "consequences/area_conquer",
+    area_conquest_spawn_num = "consequences/area_conquer",
+    consequence_harvest_hunt_enabled = "consequences/harvest_hunt",
+    consequence_harvest_hunt_chance = "consequences/harvest_hunt",
+    consequence_harvest_hunt_max_squads = "consequences/harvest_hunt",
+    consequence_harvest_hunt_max_chases = "consequences/harvest_hunt",
+    consequence_harvest_hunt_pda_chance = "consequences/harvest_hunt",
+}
+
+local path_builder = function(key)
+    local tab = key_to_tab[key]
+    return tab and ("ap/" .. tab .. "/" .. key) or nil
+end
+get_config = xmcm.create_getter("ap", defaults, path_builder)
+cfg = setmetatable({}, { __index = function(_, k)
+    return get_config(k)
+end })
+
+local function slide(txt)
+    return {
+        id = "title", type = "slide", link = "ui_options_slider_player",
+        text = txt, size = { 512, 50 }, spacing = 20
+    }
+end
+
+local function desc(txt)
+    return { id = "desc", type = "desc", text = txt }
+end
+
+local function check(key, def)
+    return { id = key, type = "check", val = 1, def = def }
+end
+
+local function track(key, mn, mx, st, def)
+    return { id = key, type = "track", val = 2, min = mn, max = mx, step = st, def = def }
+end
+
+local function list(key, def, content)
+    return { id = key, type = "list", val = 0, def = def, content = content }
+end
+
+function on_mcm_load()
+    return {
+        id = "ap",
+        gr = {
+            {
+                id = "general",
+                sh = true,
+                gr = {
+                    slide("ui_mcm_ap_general_title"),
+                    desc("ui_mcm_ap_general_desc"),
+                    track("going_speed", -10, 10, 1, 8),
+                    { id = "div_distributor", type = "line" },
+                    track("distributor_max_xray_events", 1, 100, 1, 10),
+                    track("distributor_window_sec", 1, 300, 10, 60),
+                    { id = "div_cause", type = "line" },
+                    track("global_cause_lock_sec", 1, 300, 1, 30),
+                    track("cause_window_max_events", 1, 60, 1, 10),
+                    track("cause_window_sec", 1, 300, 10, 60),
+                    { id = "div_consequence", type = "line" },
+                    track("consequence_window_max_events", 1, 30, 1, 3),
+                    track("consequence_window_sec", 1, 300, 10, 60),
+                    { id = "div_version", type = "line" },
+                    { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
+                },
+            },
+            {
+                id = "alife_tracker",
+                sh = true,
+                gr = {
+                    slide("ui_mcm_ap_alife_tracker_title"),
+                    desc("ui_mcm_ap_alife_tracker_desc"),
+                    check("alife_periodic_sync_enabled", false),
+                    track("alife_sync_interval", 300, 1800, 60, 600),
+                },
+            },
+            {
+                id = "causes",
+                gr = {
+                    {
+                        id = "elite",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_elite_title"),
+                            desc("ui_mcm_ap_causes_elite_desc"),
+                            check("cause_elite_enabled", true),
+                            track("elite_kills_per_level", 1, 10, 1, 2),
+                        },
+                    },
+                    {
+                        id = "elitekill",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_elitekill_title"),
+                            desc("ui_mcm_ap_causes_elitekill_desc"),
+                            check("cause_elitekill_enabled", true),
+                        },
+                    },
+                    {
+                        id = "massacre",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_massacre_title"),
+                            desc("ui_mcm_ap_causes_massacre_desc"),
+                            check("cause_massacre_enabled", true),
+                            track("cause_massacre_threshold", 1, 10, 1, 3),
+                            track("cause_massacre_decay_time", 60, 600, 30, 300),
+                        },
+                    },
+                    {
+                        id = "stash",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_stash_title"),
+                            desc("ui_mcm_ap_causes_stash_desc"),
+                            check("cause_stash_enabled", true),
+                        },
+                    },
+                    {
+                        id = "squadkill",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_squadkill_title"),
+                            desc("ui_mcm_ap_causes_squadkill_desc"),
+                            check("cause_squadkill_enabled", true),
+                        },
+                    },
+                    {
+                        id = "basekill",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_basekill_title"),
+                            desc("ui_mcm_ap_causes_basekill_desc"),
+                            check("cause_basekill_enabled", true),
+                            track("cause_basekill_threshold", 1, 10, 1, 2),
+                            track("cause_basekill_decay_time", 60, 600, 30, 300),
+                        },
+                    },
+                    {
+                        id = "wounded",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_wounded_title"),
+                            desc("ui_mcm_ap_causes_wounded_desc"),
+                            check("cause_wounded_enabled", true),
+                        },
+                    },
+                    {
+                        id = "area",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_area_title"),
+                            desc("ui_mcm_ap_causes_area_desc"),
+                            check("cause_area_enabled", true),
+                        },
+                    },
+                    {
+                        id = "harvest",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_harvest_title"),
+                            desc("ui_mcm_ap_causes_harvest_desc"),
+                            check("cause_harvest_enabled", true),
+                        },
+                    },
+                },
+            },
+            {
+                id = "consequences",
+                gr = {
+                    {
+                        id = "elite_promote",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_elite_promote_title"),
+                            desc("ui_mcm_ap_consequences_elite_promote_desc"),
+                            check("consequence_elite_promote_enabled", true),
+                            track("max_elites", 0, 300, 5, 40),
+                            track("consequence_elite_promote_pda_chance", 0, 100, 5, 20),
+                            check("rank_boost_enabled", true),
+                            check("elite_grenade_restock_enabled", true),
+                            track("elite_grenade_restock_cooldown_hours", 1, 48, 1, 4),
+                            check("elite_ap_ammo_enabled", true),
+                            track("elite_ap_ammo_cooldown_hours", 1, 48, 1, 4),
+                        },
+                    },
+                    {
+                        id = "elitekill_bounty",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_elitekill_bounty_title"),
+                            desc("ui_mcm_ap_consequences_elitekill_bounty_desc"),
+                            check("consequence_elitekill_bounty_enabled", true),
+                            track("consequence_elitekill_bounty_base", 100, 5000, 100, 1000),
+                            track("consequence_elitekill_bounty_max", 5000, 50000, 1000, 20000),
+                            track("consequence_elitekill_bounty_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "elitekill_targeted",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_elitekill_targeted_title"),
+                            desc("ui_mcm_ap_consequences_elitekill_targeted_desc"),
+                            check("consequence_elitekill_targeted_enabled", true),
+                            track("consequence_elitekill_targeted_chance", 0, 100, 5, 30),
+                            track("consequence_elitekill_targeted_max_squads", 1, 10, 1, 3),
+                            track("consequence_elitekill_targeted_max_chases", 0, 10, 1, 5),
+                            track("consequence_elitekill_targeted_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "massacre_scavenge",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_massacre_scavenge_title"),
+                            desc("ui_mcm_ap_consequences_massacre_scavenge_desc"),
+                            check("consequence_massacre_scavenge_enabled", true),
+                            track("consequence_massacre_scavenge_chance", 0, 100, 5, 10),
+                            track("consequence_massacre_scavenge_max_squads", 1, 20, 1, 2),
+                            track("consequence_massacre_scavenge_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "massacre_investigate",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_massacre_investigate_title"),
+                            desc("ui_mcm_ap_consequences_massacre_investigate_desc"),
+                            check("consequence_massacre_investigate_enabled", true),
+                            track("consequence_massacre_investigate_chance", 0, 100, 5, 10),
+                            track("consequence_massacre_investigate_max_squads", 1, 20, 1, 2),
+                            track("consequence_massacre_investigate_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "stash_ambush",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_stash_ambush_title"),
+                            desc("ui_mcm_ap_consequences_stash_ambush_desc"),
+                            check("consequence_stash_ambush_enabled", true),
+                            track("consequence_stash_ambush_chance", 0, 100, 5, 10),
+                            track("consequence_stash_ambush_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "stash_loot",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_stash_loot_title"),
+                            desc("ui_mcm_ap_consequences_stash_loot_desc"),
+                            check("consequence_stash_loot_enabled", true),
+                            track("consequence_stash_loot_chance", 0, 100, 5, 10),
+                            track("consequence_stash_loot_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "stash_fill",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_stash_fill_title"),
+                            desc("ui_mcm_ap_consequences_stash_fill_desc"),
+                            check("consequence_stash_fill_enabled", true),
+                            track("consequence_stash_fill_chance", 0, 100, 5, 10),
+                            track("consequence_stash_fill_min_items", 1, 5, 1, 1),
+                            track("consequence_stash_fill_max_items", 1, 10, 1, 3),
+                            track("consequence_stash_fill_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "squadkill_revenge",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_squadkill_revenge_title"),
+                            desc("ui_mcm_ap_consequences_squadkill_revenge_desc"),
+                            check("consequence_squadkill_revenge_enabled", true),
+                            track("consequence_squadkill_revenge_chance", 0, 100, 5, 10),
+                            track("consequence_squadkill_revenge_max_squads", 1, 20, 1, 2),
+                            track("consequence_squadkill_revenge_max_chases", 0, 10, 1, 5),
+                            track("consequence_squadkill_revenge_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "squadkill_flee",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_squadkill_flee_title"),
+                            desc("ui_mcm_ap_consequences_squadkill_flee_desc"),
+                            check("consequence_squadkill_flee_enabled", true),
+                            track("consequence_squadkill_flee_chance", 0, 100, 5, 10),
+                            track("consequence_squadkill_flee_max_squads", 1, 20, 1, 2),
+                            track("consequence_squadkill_flee_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "basekill_support",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_basekill_support_title"),
+                            desc("ui_mcm_ap_consequences_basekill_support_desc"),
+                            check("consequence_basekill_support_enabled", true),
+                            track("consequence_basekill_support_chance", 0, 100, 5, 10),
+                            track("consequence_basekill_support_max_squads", 1, 20, 1, 2),
+                            track("consequence_basekill_support_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "basekill_flee",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_basekill_flee_title"),
+                            desc("ui_mcm_ap_consequences_basekill_flee_desc"),
+                            check("consequence_basekill_flee_enabled", true),
+                            track("consequence_basekill_flee_chance", 0, 100, 5, 10),
+                            track("consequence_basekill_flee_max_squads", 1, 20, 1, 2),
+                            track("consequence_basekill_flee_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "wounded_hunt",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_wounded_hunt_title"),
+                            desc("ui_mcm_ap_consequences_wounded_hunt_desc"),
+                            check("consequence_wounded_hunt_enabled", true),
+                            track("consequence_wounded_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_wounded_hunt_max_squads", 1, 20, 1, 2),
+                            track("consequence_wounded_hunt_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "wounded_help",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_wounded_help_title"),
+                            desc("ui_mcm_ap_consequences_wounded_help_desc"),
+                            check("consequence_wounded_help_enabled", true),
+                            track("consequence_wounded_help_chance", 0, 100, 5, 10),
+                            track("consequence_wounded_help_max_squads", 1, 20, 1, 2),
+                            track("consequence_wounded_help_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "area_conquer",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_area_conquer_title"),
+                            desc("ui_mcm_ap_consequences_area_conquer_desc"),
+                            check("consequence_area_conquer_enabled", true),
+                            track("consequence_area_conquer_chance", 0, 100, 5, 10),
+                            track("consequence_area_conquer_pda_chance", 0, 100, 5, 20),
+                            check("area_conquest_enabled", true),
+                            track("area_conquest_max_smarts", 10, 100, 5, 50),
+                            track("area_conquest_spawn_num", 1, 5, 1, 2),
+                        },
+                    },
+                    {
+                        id = "harvest_hunt",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_harvest_hunt_title"),
+                            desc("ui_mcm_ap_consequences_harvest_hunt_desc"),
+                            check("consequence_harvest_hunt_enabled", true),
+                            track("consequence_harvest_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_harvest_hunt_max_squads", 1, 20, 1, 2),
+                            track("consequence_harvest_hunt_max_chases", 0, 10, 1, 5),
+                            track("consequence_harvest_hunt_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                },
+            },
+            {
+                id = "development",
+                sh = true,
+                gr = {
+                    slide("ui_mcm_ap_development_title"),
+                    desc("ui_mcm_ap_development_desc"),
+                    list("log_level", "WARN", {
+                        {"ERROR", "error"},
+                        {"WARN", "warn"},
+                        {"INFO", "info"},
+                        {"DEBUG", "debug"},
+                    }),
+                },
+            },
+        },
+    }
+end

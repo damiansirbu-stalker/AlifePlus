@@ -1,0 +1,183 @@
+--- ap_producer_reactive: Dispatches cause predicates on engine callbacks
+local next, pairs, tostring = next, pairs, tostring
+
+local CALLBACK = ap_const.CALLBACK
+local _handlers = {}
+local _subscribed = {}
+local _limiter = nil
+
+--- Actor callbacks are always on the player's level (no level extraction needed)
+local _actor_callbacks = {
+    [CALLBACK.ACTOR_ON_ITEM_USE] = true,
+    [CALLBACK.ACTOR_ON_ITEM_TAKE] = true,
+}
+
+--- Weighted fair share counters for on-map vs off-map ratio enforcement
+local _on_count = 0
+local _off_count = 0
+
+--- Resolve whether an event is on the player's current map
+--- @return boolean|nil true = on-map, false = off-map, nil = unknown
+local function _resolve_on_map(callback_type, first_arg)
+    if _actor_callbacks[callback_type] then return true end
+    if not first_arg then return nil end
+    local ev = xlevel.get_level_id(first_arg)
+    local ac = xlevel.get_actor_level_id()
+    if not ev or not ac then return nil end
+    return ev == ac
+end
+
+--- Weighted fair share gate: enforces on-map vs off-map cause ratio.
+--- gs > 0: on-map favored, off-map throttled. gs < 0: inverse. gs = 0: disabled.
+--- Formula: throttled_count * |gs| <= (10 - |gs|) * favored_count
+--- @param on_map boolean true = on-map, false = off-map
+--- @return boolean true = allowed, false = blocked
+local function _ratio_gate(on_map)
+    if _on_count + _off_count >= 32768 then
+        _on_count = 0
+        _off_count = 0
+    end
+    local gs = ap_mcm.cfg.going_speed
+    if gs == 0 then return true end
+
+    if gs > 0 then
+        if on_map then
+            _on_count = _on_count + 1
+            return true
+        end
+        if _off_count * gs <= (10 - gs) * _on_count then
+            _off_count = _off_count + 1
+            return true
+        end
+        return false
+    end
+
+    local ags = -gs
+    if not on_map then
+        _off_count = _off_count + 1
+        return true
+    end
+    if _on_count * ags <= (10 - ags) * _off_count then
+        _on_count = _on_count + 1
+        return true
+    end
+    return false
+end
+
+local function distributor_check(callback)
+    local cfg = ap_mcm.cfg
+    local ttl = cfg.distributor_window_sec
+    if not _limiter or _limiter._ttl ~= ttl then
+        _limiter = xttltable.create_ttl_counter({ ttl = ttl })
+    end
+
+    local base = cfg.distributor_max_xray_events
+    local is_radiant = callback == CALLBACK.SQUAD_ON_ENTER_SMART
+                    or callback == CALLBACK.SQUAD_ON_LEAVE_SMART
+    local limit = is_radiant and (base * 2) or base
+
+    if _limiter:count(callback) >= limit then return false end
+    _limiter:add(callback)
+    return true
+end
+
+--- Register a cause handler
+--- @param name string Handler name
+--- @param config table { callback = "callback_name" }
+--- @param handler function(trace, ...) Handler function
+function register(name, config, handler)
+    if not name or not config or not handler then
+        ap_debug.err("[PRODUCER.REACTIVE] register: missing name, config, or handler")
+        return false
+    end
+    local callback = config.callback
+    if not callback then
+        ap_debug.err("[PRODUCER.REACTIVE] register '%s': missing callback", name)
+        return false
+    end
+    if not _handlers[callback] then
+        _handlers[callback] = {}
+    end
+    _handlers[callback][name] = { handler = handler, label = name }
+    ap_debug.info("[PRODUCER.REACTIVE] registered: %s callback=%s", name, callback)
+    return true
+end
+
+function unregister(name, callback)
+    if _handlers[callback] and _handlers[callback][name] then
+        _handlers[callback][name] = nil
+        ap_debug.debug("[PRODUCER.REACTIVE] unregistered: handler=%s callback=%s", name, callback)
+        return true
+    end
+    return false
+end
+
+local function dispatch(callback_type, ...)
+    local handlers = _handlers[callback_type]
+    if not handlers or not next(handlers) then return end
+
+    if not distributor_check(callback_type) then
+        ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s", callback_type)
+        return
+    end
+
+    local first_arg = select(1, ...)
+    local on_map = _resolve_on_map(callback_type, first_arg)
+
+    if on_map ~= nil and not _ratio_gate(on_map) then
+        ap_debug.debug("[PRODUCER.REACTIVE] RATIO_BLOCKED %s on_map=%s on=%d off=%d",
+            callback_type, tostring(on_map), _on_count, _off_count)
+        return
+    end
+
+    if not ap_utils.acquire_cause_lock(on_map) then
+        ap_debug.debug("[PRODUCER.REACTIVE] LOCK_BLOCKED %s on_map=%s", callback_type, tostring(on_map))
+        return
+    end
+
+    local args = {...}
+    for name, entry in pairs(handlers) do
+        if not ap_utils.check_cause_rate_limit(name) then
+            goto continue
+        end
+
+        local trace = ap_debug.trace()
+        local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
+
+        if result and result.cause then
+            result._trace = trace
+            ap_utils.event_publish(result.cause, result, name)
+            ap_utils.increment_cause_counter(name)
+        end
+
+        ::continue::
+    end
+end
+
+local function _create_dispatcher(callback)
+    return function(...) dispatch(callback, ...) end
+end
+
+local _dispatchers = {}
+
+local function subscribe_to_callbacks()
+    for callback in pairs(_handlers) do
+        if _subscribed[callback] then goto continue end
+        local dispatcher = _create_dispatcher(callback)
+        _dispatchers[callback] = dispatcher
+        RegisterScriptCallback(callback, dispatcher)
+        _subscribed[callback] = true
+        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s", callback)
+        ::continue::
+    end
+end
+
+function on_game_start()
+    -- Reset state on new game/load
+    _dispatchers = {}
+    _subscribed = {}
+    _on_count = 0
+    _off_count = 0
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, subscribe_to_callbacks)
+    ap_debug.info("[PRODUCER.REACTIVE] Initialized")
+end

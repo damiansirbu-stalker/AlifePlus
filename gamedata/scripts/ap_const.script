@@ -1,0 +1,164 @@
+--- ap_const: Shared enums and constants for AlifePlus
+
+local _VERSION = "1.1.0"
+
+function version()
+    return _VERSION
+end
+
+--- Distance thresholds (meters)
+RADIUS_CLOSE_MAX = 50
+RADIUS_NEAR_MAX = 200
+RADIUS_DISTANT_MAX = 500
+
+--- X-Ray invalid entity ID sentinel (alife_space.h:39, 0xFFFF)
+INVALID_ID = 65535
+
+--- Hit modifier throttle (seconds)
+HIT_MODIFIER_LOCK_SEC = 1
+
+--- Scripted squad TTL (os.clock seconds, 2 hours)
+SCRIPTED_SQUAD_TTL = 7200
+
+--- X-Ray callback names
+CALLBACK = {
+    -- Cause triggers (via producer)
+    SQUAD_ON_NPC_DEATH = "squad_on_npc_death",
+    SQUAD_ON_ENTER_SMART = "squad_on_enter_smart",
+    SQUAD_ON_LEAVE_SMART = "squad_on_leave_smart",
+    X_NPC_MEDKIT_USE = "x_npc_medkit_use",
+    ACTOR_ON_ITEM_USE = "actor_on_item_use",
+    ACTOR_ON_ITEM_TAKE = "actor_on_item_take",
+    NPC_ON_ITEM_TAKE = "npc_on_item_take",
+    -- Lifecycle
+    ACTOR_ON_FIRST_UPDATE = "actor_on_first_update",
+    SAVE_STATE = "save_state",
+    LOAD_STATE = "load_state",
+    ON_GAME_LOAD = "on_game_load",
+    ON_OPTION_CHANGE = "on_option_change",
+    -- Behavior (elite buffs)
+    NPC_ON_BEFORE_HIT = "npc_on_before_hit",
+}
+
+--- Lock key prefixes for rate limiting
+LOCK_PREFIX = {
+    CAUSE_ON_MAP = "lock:cause:on_map",
+    CAUSE_OFF_MAP = "lock:cause:off_map",
+    HIT_MODIFIER = "lock:hit_modifier",
+}
+
+--- Cause event names
+CAUSE = {
+    ELITE = "cause:elite",
+    ELITEKILL = "cause:elitekill",
+    MASSACRE = "cause:massacre",
+    SQUADKILL = "cause:squadkill",
+    BASEKILL = "cause:basekill",
+    AREA = "cause:area",
+    WOUNDED = "cause:wounded",
+    STASH = "cause:stash",
+    HARVEST = "cause:harvest",
+}
+
+--- Result codes (outcome_propagation pattern)
+--- Two stoppers: OK_STOP, ERROR_STOP. All non-success codes propagate (_NEXT).
+RESULT = {
+    OK_STOP = "ok_stop",
+    OK_NEXT = "ok_next",
+    RULES_NEXT = "rules_next",
+    CHANCE_NEXT = "chance_next",
+    DISABLED_NEXT = "disabled_next",
+    THROTTLED_NEXT = "throttled_next",
+    ERROR_STOP = "error_stop",
+}
+
+--- Skip reasons (cause handlers)
+REASON = {
+    -- argument validation
+    NIL_ARGS          = "nil_args",
+    NIL_SQUAD         = "nil_squad",
+    NO_KILLER         = "no_killer",
+    NO_VICTIM         = "no_victim",
+    NIL_OR_DEAD       = "nil_or_dead",
+    NO_ACTOR          = "no_actor",
+    -- location / environment
+    NO_LEVEL_ID       = "no_level_id",
+    NO_SMART          = "no_smart",
+    NO_POS            = "no_pos",
+    NO_STASH_NEARBY   = "no_stash_nearby",
+    -- faction / community
+    WRONG_COMMUNITY   = "wrong_community",
+    NO_FACTION        = "no_faction",
+    -- threshold / state
+    BELOW_THRESHOLD   = "below_threshold",
+    SQUAD_ALIVE       = "squad_alive",
+    LOW_KILLS         = "low_kills",
+    NOT_AT_BASE       = "not_at_base",
+    AT_BASE           = "at_base",
+    -- identity
+    NOT_HEALING       = "not_healing",
+    NOT_ARTEFACT      = "not_artefact",
+    -- squad lookup
+    NO_SQUAD          = "no_squad",
+    -- tracker
+    MOVE_FAILED       = "move_failed",
+    REGISTER_FAILED   = "register_failed",
+    INVALID_SMART     = "invalid_smart",
+    -- consequence
+    NO_STASH_DATA     = "no_stash_data",
+    NO_KILLER_SQUAD   = "no_killer_squad",
+    NO_KILLER_POS     = "no_killer_pos",
+    PLAYER_KILLER     = "player_killer",
+    MAX_ELITES        = "max_elites",
+    NO_BASE           = "no_base",
+    NO_TARGET_SQUAD   = "no_target_squad",
+}
+
+--- Consequence identifiers (trace operations + rate-limit keys)
+CONSEQUENCE = {
+    ELITE_PROMOTE = "consequence:elite_promote",
+    ELITEKILL_BOUNTY = "consequence:elitekill_bounty",
+    ELITEKILL_TARGETED = "consequence:elitekill_targeted",
+    MASSACRE_SCAVENGE = "consequence:massacre_scavenge",
+    MASSACRE_INVESTIGATE = "consequence:massacre_investigate",
+    STASH_AMBUSH = "consequence:stash_ambush",
+    STASH_LOOT = "consequence:stash_loot",
+    STASH_FILL = "consequence:stash_fill",
+    SQUADKILL_REVENGE = "consequence:squadkill_revenge",
+    SQUADKILL_FLEE = "consequence:squadkill_flee",
+    BASEKILL_SUPPORT = "consequence:basekill_support",
+    BASEKILL_FLEE = "consequence:basekill_flee",
+    WOUNDED_HUNT = "consequence:wounded_hunt",
+    WOUNDED_HELP = "consequence:wounded_help",
+    AREA_CONQUER = "consequence:area_conquer",
+    HARVEST_HUNT = "consequence:harvest_hunt",
+}
+
+--- Action names for xtrace path (ap_debug.observe)
+ACTION = {
+    FIND_TARGETS = "action:find_targets",
+    FIND_DESTINATION = "action:find_destination",
+    MOVE_SQUAD = "action:move_squad",
+    SEND_PDA = "action:send_pda",
+    ADD_MARKER = "action:add_marker",
+    GIVE_MONEY = "action:give_money",
+    UPDATE_ELITE = "action:update_elite",
+    LOOT_STASH = "action:loot_stash",
+    HIDE_STASH = "action:hide_stash",
+    COMPLETE_STASH_LOOT = "action:complete_stash_loot",
+    CHASE_TARGET = "action:chase_target",
+}
+
+--- Squad current_action values (src: sim_squad_scripted.script)
+SQUAD_ACTION = { [0] = "MOVING", [1] = "REACHED" }
+
+--- Event data schemas (documentation)
+--- cause:elitekill { id, killer_id, name, elite_level, kills, killer_is_player, level_id }
+--- cause:massacre { smart, position, level_id, faction, total_deaths }
+--- cause:stash { squad_id, community, stash_id, stash_filled, position, level_id }
+
+--- Standard consequence MCM fields
+--- enabled: bool
+--- chance: 0-100
+--- cooldown: seconds
+--- daily_cap: number

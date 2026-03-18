@@ -1,0 +1,51 @@
+--- ap_cause_squadkill: Publishes cause:squadkill when squad's last member dies
+
+local CAUSE = ap_const.CAUSE
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
+
+local cfg
+
+local function on_squad_npc_death(trace, squad, npc, killer)
+    if not cfg.cause_squadkill_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_SQUAD } end
+
+    -- Check if squad is wiped (count includes dying NPC, so <= 1 means last one)
+    if squad:npc_count() > 1 then return { code = RESULT.RULES_NEXT, reason = REASON.SQUAD_ALIVE } end
+    if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+
+    local victim_faction = squad:get_squad_community()
+    local killer_faction = nil
+    local killer_id = nil
+    local killer_squad_id = nil
+
+    if killer then
+        killer_id = killer.id
+        local killer_squad = xsquad.get_squad_by_member(killer_id)
+        killer_faction = killer_squad and killer_squad.get_squad_community and killer_squad:get_squad_community()
+        killer_squad_id = killer_squad and killer_squad.id
+    end
+
+    return {
+        cause = CAUSE.SQUADKILL,
+        squad_id = squad.id,
+        last_npc_id = npc and npc.id,
+        killer_id = killer_id,
+        killer_faction = killer_faction,
+        killer_squad_id = killer_squad_id,
+        victim_faction = victim_faction,
+        position = npc and npc.position,
+        level_id = xlevel.get_level_id(npc),
+    }
+end
+
+function on_game_start()
+    cfg = ap_mcm.cfg
+
+    ap_producer_reactive.register(CAUSE.SQUADKILL, {
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+    }, on_squad_npc_death)
+
+    ap_debug.info("[CAUSE.SQUADKILL] Initialized")
+end
