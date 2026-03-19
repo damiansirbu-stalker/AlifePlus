@@ -2,24 +2,28 @@
 
 local assert = assert
 
+local MOD_NAME = "AlifePlus"
+local XLIBS_VERSION = "1.0.5"
+local XLIBS_URL = "https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001"
+
 function on_game_start()
     assert(xlog,
-        "\n\n! [AlifePlus] xlibs is not installed.\n"..
-        "! AlifePlus requires xlibs to function.\n"..
+        "\n\n! [" .. MOD_NAME .. "] xlibs is not installed.\n"..
+        "! " .. MOD_NAME .. " requires xlibs to function.\n"..
         "! Install xlibs and restart the game.\n"..
-        "! https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001\n"
+        "! " .. XLIBS_URL .. "\n"
     )
 
     assert(xlibs and xlibs.version,
-        "\n\n! [AlifePlus] xlibs is outdated (no version API).\n"..
+        "\n\n! [" .. MOD_NAME .. "] xlibs is outdated (no version API).\n"..
         "! Update xlibs and restart the game.\n"..
-        "! https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001\n"
+        "! " .. XLIBS_URL .. "\n"
     )
 
-    assert(xlibs.version() >= "1.0.4",
-        "\n\n! [AlifePlus] xlibs " .. (xlibs.version()) .. " is too old.\n"..
-        "! AlifePlus requires xlibs 1.0.4 or later.\n"..
-        "! Update xlibs and restart the game.\n"..
-        "! https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001\n"
+    assert(xlibs.version() == XLIBS_VERSION,
+        "\n\n! [" .. MOD_NAME .. "] xlibs " .. (xlibs.version()) .. " is not compatible.\n"..
+        "! " .. MOD_NAME .. " requires xlibs " .. XLIBS_VERSION .. ".\n"..
+        "! Update both xlibs and " .. MOD_NAME .. ", then restart the game.\n"..
+        "! " .. XLIBS_URL .. "\n"
     )
 end

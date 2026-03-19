@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.1.0 (xlibs 1.0.5)
+Latest: 1.1.1 (xlibs 1.0.5)
 
 You are not special.
 
@@ -117,8 +117,8 @@ Can I configure everything?
   Adjust after playing, not before.
 
 Known issues:
-  Map markers are a debugging feature (log_level=DEBUG). They lack persistence
-  and do not update on entity death, despawn, or level transition.
+Map markers are a debugging feature (log_level=DEBUG).
+They lack persistence and do not update on entity death, despawn, or level transition.
 
 Requirements:
 Anomaly 1.5.3
@@ -147,6 +147,9 @@ The code is validated in real time by a multi-stage pipeline: luacheck, selene, 
 Full report in doc/test-report.log.
 
 Versions:
+
+  1.1.1
+    Fixed: dependency gate uses exact version match instead of string comparison
 
   1.1.0
     10-level elite system replaces binary elite/legend. Going Speed balances simulation across maps.
