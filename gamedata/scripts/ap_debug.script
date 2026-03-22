@@ -36,7 +36,7 @@ function err(fmt, ...)
 end
 
 --- Get profiler (null singleton when debug disabled)
-function timer()
+local function timer()
     if not enabled() then return _null_timer end
     return xprofiler.new()
 end
@@ -110,7 +110,7 @@ local function _dump_settings()
         parts[#parts+1] = key .. "=" .. tostring(ap_mcm.cfg[key])
     end
     table_sort(parts)
-    log.info("[MCM] %s", table_concat(parts, " "))
+    log.debug("[MCM] %s", table_concat(parts, " "))
 end
 
 local function _on_option_change()

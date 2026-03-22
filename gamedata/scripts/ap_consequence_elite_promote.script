@@ -44,7 +44,10 @@ local function _handler(event_data)
             local se = xobject.se(killer_id)
             if not se then return { code = "no_entity" } end
             local location = ap_utils.get_location_description(se, nil, level_id)
-            return ap_utils.send_pda(cfg.consequence_elite_promote_pda_chance, "text_pda_consequence_elite_promote", {
+            local pda_key = event_data.is_stalker
+                and "text_pda_consequence_elite_promote"
+                or "text_pda_consequence_elite_promote_mutant"
+            return ap_utils.send_pda(cfg.consequence_elite_promote_pda_chance, pda_key, {
                 name = name, location = location, level = level,
             })
         end)

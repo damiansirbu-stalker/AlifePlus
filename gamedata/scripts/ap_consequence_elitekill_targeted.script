@@ -67,8 +67,14 @@ local function _handler(event_data)
         end
 
         local location = ap_utils.get_location_description(nil, nil, level_id)
+        local opts = chase_opts
+        if not event_data.is_stalker then
+            opts = {}
+            for k, v in pairs(chase_opts) do opts[k] = v end
+            opts.pda_start = "text_pda_consequence_elitekill_targeted_mutant"
+        end
         local moved, dst_id = ap_utils.chase_start(trace, hunters, killer_squad,
-            { name = victim_name, location = location }, chase_opts)
+            { name = victim_name, location = location }, opts)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
 
         return ap_debug.result_squads(moved, {

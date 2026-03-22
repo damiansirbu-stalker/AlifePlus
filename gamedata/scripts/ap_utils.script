@@ -130,12 +130,12 @@ function count_deaths_massacre(deaths, key, threshold)
 end
 
 --- Build rate limit key for cause
-function get_cause_rate_key(name)
+local function get_cause_rate_key(name)
     return "lock:" .. name
 end
 
 --- Build rate limit key for consequence
-function get_consequence_rate_key(name)
+local function get_consequence_rate_key(name)
     return "lock:" .. name
 end
 
@@ -145,14 +145,14 @@ local _consequence_counter = nil
 
 local function _ensure_cause_counter()
     if not _cause_counter then
-        _cause_counter = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.cause_window_sec })
+        _cause_counter = xttltable.create_ttl_counter({ ttl = ap_const.CAUSE_WINDOW_SEC })
     end
     return _cause_counter
 end
 
 local function _ensure_consequence_counter()
     if not _consequence_counter then
-        _consequence_counter = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.consequence_window_sec })
+        _consequence_counter = xttltable.create_ttl_counter({ ttl = ap_const.CONSEQUENCE_WINDOW_SEC })
     end
     return _consequence_counter
 end
@@ -162,7 +162,7 @@ function check_cause_rate_limit(name)
     local counter = _ensure_cause_counter()
     local key = get_cause_rate_key(name)
     local count = counter:count(key)
-    local max = ap_mcm.cfg.cause_window_max_events
+    local max = ap_const.CAUSE_WINDOW_MAX_EVENTS
     if count >= max then
         ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
         return false
@@ -181,7 +181,7 @@ function check_consequence_rate_limit(name)
     local counter = _ensure_consequence_counter()
     local key = get_consequence_rate_key(name)
     local count = counter:count(key)
-    local max = ap_mcm.cfg.consequence_window_max_events
+    local max = ap_const.CONSEQUENCE_WINDOW_MAX_EVENTS
     if count >= max then
         ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
         return false
@@ -228,17 +228,29 @@ function create_cooldown(expire_ms)
     }
 end
 
---- Find nearest squad, excluding AP-scripted squads before luabind
---- @param pos vector Origin position
---- @param opts table Options (forwarded to xsquad.find_squad with exclude_ids injected)
---- @return table|nil Nearest matching squad
-function find_squad(pos, opts)
-    opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
-    local result = xsquad.find_squad(pos, opts)
-    if not result and ap_debug.enabled() then
-        ap_debug.debug("[DISPATCH.FIND_SQUAD] empty")
+-- =============================================================================
+-- DESTINATION LIMITER
+-- =============================================================================
+
+local _destinations = nil
+
+local function _ensure_destinations()
+    if not _destinations then
+        _destinations = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.destination_ttl_sec })
     end
-    return result
+    return _destinations
+end
+
+--- Check if destination smart has capacity for more squads
+function check_destination(smart_id)
+    if not smart_id then return true end
+    return _ensure_destinations():count(smart_id) < ap_mcm.cfg.destination_max
+end
+
+--- Record a squad being sent to destination smart
+function mark_destination(smart_id)
+    if not smart_id then return end
+    _ensure_destinations():add(smart_id)
 end
 
 local function _serialize_factions(factions)

@@ -50,6 +50,9 @@
     <string id="ui_mcm_menu_harvest">
         <text>Harvest</text>
     </string>
+    <string id="ui_mcm_menu_needs">
+        <text>Needs</text>
+    </string>
 
     <!-- ==================== LEVEL 3 MENU NAMES (CONSEQUENCES) ==================== -->
     <string id="ui_mcm_menu_elite_promote">
@@ -100,65 +103,86 @@
     <string id="ui_mcm_menu_harvest_hunt">
         <text>Harvest Hunt</text>
     </string>
+    <string id="ui_mcm_menu_hunger_campfire">
+        <text>Hunger\nCampfire</text>
+    </string>
+    <string id="ui_mcm_menu_sleep_campfire">
+        <text>Sleep\nCampfire</text>
+    </string>
+    <string id="ui_mcm_menu_rest_campfire">
+        <text>Rest\nCampfire</text>
+    </string>
+    <string id="ui_mcm_menu_heal_base">
+        <text>Heal\nBase</text>
+    </string>
+    <string id="ui_mcm_menu_shelter_indoor">
+        <text>Shelter\nIndoor</text>
+    </string>
+    <string id="ui_mcm_menu_money_search">
+        <text>Money\nSearch</text>
+    </string>
+    <string id="ui_mcm_menu_money_hunt">
+        <text>Money\nHunt</text>
+    </string>
+    <string id="ui_mcm_menu_supply_trader">
+        <text>Supply\nTrader</text>
+    </string>
+    <string id="ui_mcm_menu_job_guard">
+        <text>Job\nGuard</text>
+    </string>
+    <string id="ui_mcm_menu_job_explore">
+        <text>Job\nExplore</text>
+    </string>
+    <string id="ui_mcm_menu_job_research">
+        <text>Job\nResearch</text>
+    </string>
+    <string id="ui_mcm_menu_job_worship">
+        <text>Job\nWorship</text>
+    </string>
+    <string id="ui_mcm_menu_job_exercise">
+        <text>Job\nExercise</text>
+    </string>
+    <string id="ui_mcm_menu_social_campfire">
+        <text>Social\nCampfire</text>
+    </string>
+    <string id="ui_mcm_menu_social_base">
+        <text>Social\nBase</text>
+    </string>
 
     <!-- ==================== GENERAL TAB ==================== -->
     <string id="ui_mcm_ap_general_title">
         <text>General Settings</text>
     </string>
     <string id="ui_mcm_ap_version">
-        <text>%c[d_cyan]1.1.0</text>
+        <text>%c[d_cyan]1.2.0-RC1</text>
     </string>
     <string id="ui_mcm_ap_general_desc">
         <text>Flow control for the AlifePlus event system. Events pass through a distributor, map ratio gate, cooldown, and per-key sliding windows before firing. Causes detect patterns, consequences react. Zero cost when idle.</text>
     </string>
     <string id="ui_mcm_ap_general_going_speed">
-        <text>Going Speed</text>
+        <text>Map Gravity</text>
     </string>
     <string id="ui_mcm_ap_general_going_speed_desc">
-        <text>X-Ray processes A-Life at two speeds: per-frame on your level, round-robin on distant levels. This applies the same split to incoming X-Ray events, gating all downstream causes and consequences. Slider sets how many out of 10 event slots go to your map (8 = ratio 4:1 favoring on-map, 0 = equal, negative = off-map favored). On-map and off-map have separate cooldowns.</text>
+        <text>X-Ray runs the current level per-frame and background levels round-robin. Same simulation, different frequency. Map gravity applies this same split to AlifePlus events. Slider sets how many out of 10 event slots go to the current level (8 = 4:1, 0 = equal, negative = background favored). On-map and off-map have separate cooldowns.</text>
     </string>
 
-    <string id="ui_mcm_ap_general_distributor_max_xray_events">
-        <text>Distributor: max X-Ray events per window</text>
-    </string>
-    <string id="ui_mcm_ap_general_distributor_max_xray_events_desc">
-        <text>How many raw engine events each callback type can process per window. Radiant callbacks (smart transitions) get double budget. Acts as the first gate -- everything downstream only runs if this budget allows.</text>
-    </string>
-    <string id="ui_mcm_ap_general_distributor_window_sec">
-        <text>Distributor: window (sec)</text>
-    </string>
-    <string id="ui_mcm_ap_general_distributor_window_sec_desc">
-        <text>Time window for the distributor budget.</text>
-    </string>
     <string id="ui_mcm_ap_general_global_cause_lock_sec">
         <text>Global cause lock (sec)</text>
     </string>
     <string id="ui_mcm_ap_general_global_cause_lock_sec_desc">
         <text>Cooldown after a cause fires. On-map and off-map have separate cooldowns, so distant events never affect your map.</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_window_max_events">
-        <text>Max cause events per window</text>
+    <string id="ui_mcm_ap_general_destination_max">
+        <text>Max destination locks</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_window_max_events_desc">
-        <text>How many times each cause type can fire per window. Prevents any single cause from dominating.</text>
+    <string id="ui_mcm_ap_general_destination_max_desc">
+        <text>Maximum concurrent destination locks per smart terrain. Prevents multiple squads from converging on the same target.</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_window_sec">
-        <text>Cause window (sec)</text>
+    <string id="ui_mcm_ap_general_destination_ttl_sec">
+        <text>Destination lock TTL (sec)</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_window_sec_desc">
-        <text>Time window for per-cause budgets.</text>
-    </string>
-    <string id="ui_mcm_ap_general_consequence_window_max_events">
-        <text>Max consequence events per window</text>
-    </string>
-    <string id="ui_mcm_ap_general_consequence_window_max_events_desc">
-        <text>How many times each consequence can fire per window. Prevents reaction spam during heavy combat.</text>
-    </string>
-    <string id="ui_mcm_ap_general_consequence_window_sec">
-        <text>Consequence window (sec)</text>
-    </string>
-    <string id="ui_mcm_ap_general_consequence_window_sec_desc">
-        <text>Time window for per-consequence budgets.</text>
+    <string id="ui_mcm_ap_general_destination_ttl_sec_desc">
+        <text>How long a destination lock persists before expiring. Wall-clock seconds.</text>
     </string>
 
     <!-- ==================== A-LIFE TRACKER TAB ==================== -->
@@ -335,6 +359,128 @@
     </string>
     <string id="ui_mcm_ap_causes_harvest_cause_harvest_enabled_desc">
         <text>Fire cause:harvest when artefact is picked up.</text>
+    </string>
+
+    <!-- ==================== CAUSES / NEEDS ==================== -->
+    <string id="ui_mcm_ap_causes_needs_title">
+        <text>Needs</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_desc">
+        <text>Radiant. Squads develop human needs over time (hunger, sleep, rest, healing, shelter, money, supplies, duty, social). Hull drive scoring picks the strongest unmet need. Thresholds are game-hours between need events.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled_desc">
+        <text>Evaluate stalker needs on smart terrain transitions. Strongest unmet need fires as a cause event.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled">
+        <text>Hunger</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled_desc">
+        <text>Enable hunger need. Squads seek campfires to eat when overdue.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_sleep_enabled">
+        <text>Sleep</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_sleep_enabled_desc">
+        <text>Enable sleep need. Night-gated (20:00-05:00). Squads seek campfires to sleep.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_rest_enabled">
+        <text>Rest</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_rest_enabled_desc">
+        <text>Enable rest need. Squads seek campfires to smoke, drink, or relax.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_heal_enabled">
+        <text>Heal</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_heal_enabled_desc">
+        <text>Enable heal need. Squads return to friendly bases for medical attention.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_shelter_enabled">
+        <text>Shelter</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_shelter_enabled_desc">
+        <text>Enable shelter need. Squads seek non-enemy bases for environmental protection.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_money_enabled">
+        <text>Money</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_money_enabled_desc">
+        <text>Enable money need. Squads visit anomaly zones or mutant lairs for resources.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_supply_enabled">
+        <text>Supply</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_supply_enabled_desc">
+        <text>Enable supply need. Squads visit traders for resupply.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_job_enabled">
+        <text>Job</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_job_enabled_desc">
+        <text>Enable job need. Squads guard, explore, research, worship, or exercise based on faction.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_social_enabled">
+        <text>Social</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_social_enabled_desc">
+        <text>Enable social need. Squads gather at campfires or bases for human connection.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_hunger_threshold">
+        <text>Hunger threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_hunger_threshold_desc">
+        <text>Game-hours between hunger events. Default 8 (3 meals/day).</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_sleep_threshold">
+        <text>Sleep threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_sleep_threshold_desc">
+        <text>Game-hours between sleep events. Night-gated (20:00-05:00). Default 16.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_rest_threshold">
+        <text>Rest threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_rest_threshold_desc">
+        <text>Game-hours between rest events (smoke, drink, relax). Default 4.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_heal_threshold">
+        <text>Heal threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_heal_threshold_desc">
+        <text>Game-hours between healing events. Default 12.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_shelter_threshold">
+        <text>Shelter threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_shelter_threshold_desc">
+        <text>Game-hours between shelter events. Default 24.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_money_threshold">
+        <text>Money threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_money_threshold_desc">
+        <text>Game-hours between money-seeking events. Default 24.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_supply_threshold">
+        <text>Supply threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_supply_threshold_desc">
+        <text>Game-hours between supply events (trader visit, stash deposit). Default 48.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_job_threshold">
+        <text>Job threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_job_threshold_desc">
+        <text>Game-hours between job events (guard, explore, research). Default 18.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_social_threshold">
+        <text>Social threshold (hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_needs_cause_social_threshold_desc">
+        <text>Game-hours between social events (campfire gathering, base visit). Default 36.</text>
     </string>
 
     <!-- ==================== CONSEQUENCES / ELITE PROMOTE ==================== -->
@@ -895,6 +1041,396 @@
     </string>
     <string id="ui_mcm_ap_consequences_harvest_hunt_consequence_harvest_hunt_pda_chance_desc">
         <text>Chance to send PDA notification when hunters pursue.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / HUNGER CAMPFIRE ==================== -->
+    <string id="ui_mcm_ap_consequences_hunger_campfire_title">
+        <text>Hunger\nCampfire</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_desc">
+        <text>When hunger fires, squad moves to a campfire smart to eat and drink.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_enabled_desc">
+        <text>Hungry stalkers seek campfires to eat.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_chance_desc">
+        <text>Probability squad moves to campfire when hungry.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / SLEEP CAMPFIRE ==================== -->
+    <string id="ui_mcm_ap_consequences_sleep_campfire_title">
+        <text>Sleep\nCampfire</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_desc">
+        <text>When sleep fires, squad moves to a campfire smart to sleep. Night-gated by cause (20:00-05:00).</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_enabled_desc">
+        <text>Tired stalkers seek campfires to sleep at night.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_chance_desc">
+        <text>Probability squad moves to campfire to sleep.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_sleep_campfire_consequence_sleep_campfire_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / REST CAMPFIRE ==================== -->
+    <string id="ui_mcm_ap_consequences_rest_campfire_title">
+        <text>Rest\nCampfire</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_desc">
+        <text>When rest fires, squad moves to a campfire smart to relax, smoke, or drink.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_enabled_desc">
+        <text>Fatigued stalkers seek campfires to rest.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_chance_desc">
+        <text>Probability squad moves to campfire to rest.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / HEAL BASE ==================== -->
+    <string id="ui_mcm_ap_consequences_heal_base_title">
+        <text>Heal\nBase</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_desc">
+        <text>When heal fires, squad moves to a non-enemy faction base for medical attention.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_enabled_desc">
+        <text>Wounded stalkers seek friendly bases for healing.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_chance_desc">
+        <text>Probability squad moves to base for healing.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_heal_base_consequence_heal_base_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / SHELTER INDOOR ==================== -->
+    <string id="ui_mcm_ap_consequences_shelter_indoor_title">
+        <text>Shelter\nIndoor</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_desc">
+        <text>When shelter fires, squad moves to a non-enemy faction base for environmental protection.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_enabled_desc">
+        <text>Exposed stalkers seek shelter at friendly bases.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_chance_desc">
+        <text>Probability squad moves to base for shelter.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_shelter_indoor_consequence_shelter_indoor_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / MONEY SEARCH ==================== -->
+    <string id="ui_mcm_ap_consequences_money_search_title">
+        <text>Money\nSearch</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_desc">
+        <text>When money fires, squad moves to an anomaly zone to search for artefacts.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_enabled_desc">
+        <text>Stalkers seek anomaly zones when they need money.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_chance_desc">
+        <text>Probability squad moves to anomaly zone for artefacts.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_search_consequence_money_search_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / MONEY HUNT ==================== -->
+    <string id="ui_mcm_ap_consequences_money_hunt_title">
+        <text>Money\nHunt</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_desc">
+        <text>When money fires, squad moves to a mutant lair to hunt for trophies and pelts.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_enabled_desc">
+        <text>Stalkers hunt mutants when they need money.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_chance_desc">
+        <text>Probability squad moves to mutant lair for hunting.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_money_hunt_consequence_money_hunt_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / SUPPLY TRADER ==================== -->
+    <string id="ui_mcm_ap_consequences_supply_trader_title">
+        <text>Supply\nTrader</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_desc">
+        <text>When supply fires, squad moves to a trader smart to exchange goods.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_enabled_desc">
+        <text>Stalkers visit traders when they need supplies.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_chance_desc">
+        <text>Probability squad moves to trader for resupply.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / JOB GUARD ==================== -->
+    <string id="ui_mcm_ap_consequences_job_guard_title">
+        <text>Job\nGuard</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_desc">
+        <text>When job fires, squad moves to own-faction base to stand guard.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_enabled_desc">
+        <text>Stalkers guard their faction bases when duty calls.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_chance_desc">
+        <text>Probability squad moves to base for guard duty.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_guard_consequence_job_guard_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / JOB EXPLORE ==================== -->
+    <string id="ui_mcm_ap_consequences_job_explore_title">
+        <text>Job\nExplore</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_desc">
+        <text>When job fires, squad moves to a distant or unvisited smart terrain to explore.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_enabled_desc">
+        <text>Stalkers explore unknown areas when duty calls.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_chance_desc">
+        <text>Probability squad moves out to explore.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_explore_consequence_job_explore_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / JOB RESEARCH ==================== -->
+    <string id="ui_mcm_ap_consequences_job_research_title">
+        <text>Job\nResearch</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_desc">
+        <text>When job fires, squad moves to an anomaly zone to study anomalous phenomena.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_enabled_desc">
+        <text>Stalkers research anomaly zones when duty calls.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_chance_desc">
+        <text>Probability squad moves to anomaly zone for research.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_research_consequence_job_research_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / JOB WORSHIP ==================== -->
+    <string id="ui_mcm_ap_consequences_job_worship_title">
+        <text>Job\nWorship</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_desc">
+        <text>When job fires, Monolith/Sin/Zombied squads move to a faction smart for psy-worship rituals.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_enabled_desc">
+        <text>Fanatic factions perform worship rituals at their smarts.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_chance_desc">
+        <text>Probability squad moves to faction smart for worship.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_worship_consequence_job_worship_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / JOB EXERCISE ==================== -->
+    <string id="ui_mcm_ap_consequences_job_exercise_title">
+        <text>Job\nExercise</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_desc">
+        <text>When job fires, Military/UNISG squads move to base for physical training exercises.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_enabled_desc">
+        <text>Military factions train at their bases.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_chance_desc">
+        <text>Probability squad moves to base for exercise.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_job_exercise_consequence_job_exercise_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / SOCIAL CAMPFIRE ==================== -->
+    <string id="ui_mcm_ap_consequences_social_campfire_title">
+        <text>Social\nCampfire</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_desc">
+        <text>When social fires, squad moves to a campfire smart to play guitar, tell stories, or socialize.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_enabled_desc">
+        <text>Lonely stalkers seek campfire company.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_chance_desc">
+        <text>Probability squad moves to campfire for socializing.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / SOCIAL BASE ==================== -->
+    <string id="ui_mcm_ap_consequences_social_base_title">
+        <text>Social\nBase</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_desc">
+        <text>When social fires, squad moves to own-faction base for companionship and morale.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_enabled_desc">
+        <text>Lonely stalkers return to base for company.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_chance">
+        <text>Reaction chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_chance_desc">
+        <text>Probability squad moves to base for socializing.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_pda_chance">
+        <text>PDA message chance (%)</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_pda_chance_desc">
+        <text>Chance to send PDA notification. 0 = disabled.</text>
     </string>
 
     <!-- ==================== DEVELOPMENT TAB ==================== -->

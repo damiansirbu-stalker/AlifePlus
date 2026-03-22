@@ -65,13 +65,12 @@ local function _ratio_gate(on_map)
 end
 
 local function distributor_check(callback)
-    local cfg = ap_mcm.cfg
-    local ttl = cfg.distributor_window_sec
+    local ttl = ap_const.DISTRIBUTOR_WINDOW_SEC
     if not _limiter or _limiter._ttl ~= ttl then
         _limiter = xttltable.create_ttl_counter({ ttl = ttl })
     end
 
-    local base = cfg.distributor_max_xray_events
+    local base = ap_const.DISTRIBUTOR_MAX_XRAY_EVENTS
     local is_radiant = callback == CALLBACK.SQUAD_ON_ENTER_SMART
                     or callback == CALLBACK.SQUAD_ON_LEAVE_SMART
     local limit = is_radiant and (base * 2) or base
@@ -146,7 +145,7 @@ local function dispatch(callback_type, ...)
 
         if result and result.cause then
             result._trace = trace
-            ap_utils.event_publish(result.cause, result, name)
+            ap_utils.event_publish(result.cause, result)
             ap_utils.increment_cause_counter(name)
         end
 

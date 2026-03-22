@@ -6,15 +6,11 @@ defaults = {
     going_speed = 8,
 
     -- General
-    global_cause_lock_sec = 30,
-    cause_window_max_events = 10,
-    cause_window_sec = 60,
-    consequence_window_max_events = 3,
-    consequence_window_sec = 60,
+    global_cause_lock_sec = 15,
 
-    -- Distributor
-    distributor_max_xray_events = 10,
-    distributor_window_sec = 60,
+    -- Destination limiter
+    destination_max = 3,
+    destination_ttl_sec = 300,
 
     -- A-Life Tracker
     alife_periodic_sync_enabled = false,
@@ -49,12 +45,33 @@ defaults = {
     -- Cause: Wounded
     cause_wounded_enabled = true,
 
+    -- Cause: Needs (thresholds in game-hours, per-need enabled gates)
+    cause_needs_enabled = true,
+    cause_hunger_enabled = true,
+    cause_sleep_enabled = true,
+    cause_rest_enabled = true,
+    cause_heal_enabled = true,
+    cause_shelter_enabled = true,
+    cause_money_enabled = true,
+    cause_supply_enabled = true,
+    cause_job_enabled = true,
+    cause_social_enabled = true,
+    cause_hunger_threshold = 8,
+    cause_sleep_threshold = 16,
+    cause_rest_threshold = 4,
+    cause_heal_threshold = 12,
+    cause_shelter_threshold = 24,
+    cause_money_threshold = 24,
+    cause_supply_threshold = 48,
+    cause_job_threshold = 18,
+    cause_social_threshold = 36,
+
     -- Cause: Area
     cause_area_enabled = true,
 
     -- Consequence: Elite Promote
     consequence_elite_promote_enabled = true,
-    consequence_elite_promote_pda_chance = 20,
+    consequence_elite_promote_pda_chance = 25,
     max_elites = 40,
 
     -- Elite Buffs
@@ -75,85 +92,161 @@ defaults = {
     consequence_elitekill_targeted_chance = 30,
     consequence_elitekill_targeted_max_squads = 3,
     consequence_elitekill_targeted_max_chases = 5,
-    consequence_elitekill_targeted_pda_chance = 20,
+    consequence_elitekill_targeted_pda_chance = 30,
 
     -- Consequence: Massacre Scavenge
     consequence_massacre_scavenge_enabled = true,
-    consequence_massacre_scavenge_chance = 10,
+    consequence_massacre_scavenge_chance = 30,
     consequence_massacre_scavenge_max_squads = 2,
-    consequence_massacre_scavenge_pda_chance = 20,
+    consequence_massacre_scavenge_pda_chance = 40,
 
     -- Consequence: Massacre Investigate
     consequence_massacre_investigate_enabled = true,
-    consequence_massacre_investigate_chance = 10,
+    consequence_massacre_investigate_chance = 30,
     consequence_massacre_investigate_max_squads = 2,
-    consequence_massacre_investigate_pda_chance = 20,
+    consequence_massacre_investigate_pda_chance = 40,
 
     -- Consequence: Stash Ambush
     consequence_stash_ambush_enabled = true,
-    consequence_stash_ambush_chance = 10,
-    consequence_stash_ambush_pda_chance = 20,
+    consequence_stash_ambush_chance = 15,
+    consequence_stash_ambush_pda_chance = 25,
 
     -- Consequence: Stash Loot
     consequence_stash_loot_enabled = true,
-    consequence_stash_loot_chance = 10,
-    consequence_stash_loot_pda_chance = 20,
+    consequence_stash_loot_chance = 20,
+    consequence_stash_loot_pda_chance = 25,
 
     -- Consequence: Stash Fill
     consequence_stash_fill_enabled = true,
-    consequence_stash_fill_chance = 10,
+    consequence_stash_fill_chance = 20,
     consequence_stash_fill_min_items = 1,
     consequence_stash_fill_max_items = 3,
-    consequence_stash_fill_pda_chance = 20,
+    consequence_stash_fill_pda_chance = 25,
 
     -- Consequence: Squadkill Revenge
     consequence_squadkill_revenge_enabled = true,
-    consequence_squadkill_revenge_chance = 10,
+    consequence_squadkill_revenge_chance = 30,
     consequence_squadkill_revenge_max_squads = 2,
     consequence_squadkill_revenge_max_chases = 5,
-    consequence_squadkill_revenge_pda_chance = 20,
+    consequence_squadkill_revenge_pda_chance = 40,
 
     -- Consequence: Squadkill Flee
     consequence_squadkill_flee_enabled = true,
-    consequence_squadkill_flee_chance = 10,
+    consequence_squadkill_flee_chance = 30,
     consequence_squadkill_flee_max_squads = 2,
-    consequence_squadkill_flee_pda_chance = 20,
+    consequence_squadkill_flee_pda_chance = 40,
 
     -- Consequence: Basekill Support
     consequence_basekill_support_enabled = true,
-    consequence_basekill_support_chance = 10,
+    consequence_basekill_support_chance = 25,
     consequence_basekill_support_max_squads = 2,
-    consequence_basekill_support_pda_chance = 20,
+    consequence_basekill_support_pda_chance = 40,
 
     -- Consequence: Basekill Flee
     consequence_basekill_flee_enabled = true,
-    consequence_basekill_flee_chance = 10,
+    consequence_basekill_flee_chance = 25,
     consequence_basekill_flee_max_squads = 2,
-    consequence_basekill_flee_pda_chance = 20,
+    consequence_basekill_flee_pda_chance = 40,
 
     -- Consequence: Wounded Hunt
     consequence_wounded_hunt_enabled = true,
-    consequence_wounded_hunt_chance = 10,
+    consequence_wounded_hunt_chance = 25,
     consequence_wounded_hunt_max_squads = 2,
-    consequence_wounded_hunt_pda_chance = 20,
+    consequence_wounded_hunt_pda_chance = 30,
 
     -- Consequence: Wounded Faction Help
     consequence_wounded_help_enabled = true,
-    consequence_wounded_help_chance = 10,
+    consequence_wounded_help_chance = 25,
     consequence_wounded_help_max_squads = 2,
-    consequence_wounded_help_pda_chance = 20,
+    consequence_wounded_help_pda_chance = 30,
 
     -- Consequence: Area Conquer
     consequence_area_conquer_enabled = true,
-    consequence_area_conquer_chance = 10,
-    consequence_area_conquer_pda_chance = 20,
+    consequence_area_conquer_chance = 20,
+    consequence_area_conquer_pda_chance = 25,
 
     -- Consequence: Harvest Hunt
     consequence_harvest_hunt_enabled = true,
-    consequence_harvest_hunt_chance = 10,
+    consequence_harvest_hunt_chance = 20,
     consequence_harvest_hunt_max_squads = 2,
     consequence_harvest_hunt_max_chases = 5,
-    consequence_harvest_hunt_pda_chance = 20,
+    consequence_harvest_hunt_pda_chance = 30,
+
+    -- Consequence: Hunger Campfire
+    consequence_hunger_campfire_enabled = true,
+    consequence_hunger_campfire_chance = 10,
+    consequence_hunger_campfire_pda_chance = 20,
+
+    -- Consequence: Sleep Campfire
+    consequence_sleep_campfire_enabled = true,
+    consequence_sleep_campfire_chance = 10,
+    consequence_sleep_campfire_pda_chance = 20,
+
+    -- Consequence: Rest Campfire
+    consequence_rest_campfire_enabled = true,
+    consequence_rest_campfire_chance = 10,
+    consequence_rest_campfire_pda_chance = 20,
+
+    -- Consequence: Heal Base
+    consequence_heal_base_enabled = true,
+    consequence_heal_base_chance = 10,
+    consequence_heal_base_pda_chance = 20,
+
+    -- Consequence: Shelter Indoor
+    consequence_shelter_indoor_enabled = true,
+    consequence_shelter_indoor_chance = 10,
+    consequence_shelter_indoor_pda_chance = 20,
+
+    -- Consequence: Money Search
+    consequence_money_search_enabled = true,
+    consequence_money_search_chance = 10,
+    consequence_money_search_pda_chance = 20,
+
+    -- Consequence: Money Hunt
+    consequence_money_hunt_enabled = true,
+    consequence_money_hunt_chance = 10,
+    consequence_money_hunt_pda_chance = 20,
+
+    -- Consequence: Supply Trader
+    consequence_supply_trader_enabled = true,
+    consequence_supply_trader_chance = 10,
+    consequence_supply_trader_pda_chance = 20,
+
+    -- Consequence: Job Guard
+    consequence_job_guard_enabled = true,
+    consequence_job_guard_chance = 10,
+    consequence_job_guard_pda_chance = 20,
+
+    -- Consequence: Job Explore
+    consequence_job_explore_enabled = true,
+    consequence_job_explore_chance = 10,
+    consequence_job_explore_pda_chance = 20,
+
+    -- Consequence: Job Research
+    consequence_job_research_enabled = true,
+    consequence_job_research_chance = 10,
+    consequence_job_research_pda_chance = 20,
+
+    -- Consequence: Social Campfire
+    consequence_social_campfire_enabled = true,
+    consequence_social_campfire_chance = 10,
+    consequence_social_campfire_pda_chance = 20,
+
+
+    -- Consequence: Job Worship
+    consequence_job_worship_enabled = true,
+    consequence_job_worship_chance = 10,
+    consequence_job_worship_pda_chance = 20,
+
+    -- Consequence: Job Exercise
+    consequence_job_exercise_enabled = true,
+    consequence_job_exercise_chance = 10,
+    consequence_job_exercise_pda_chance = 20,
+
+    -- Consequence: Social Base
+    consequence_social_base_enabled = true,
+    consequence_social_base_chance = 10,
+    consequence_social_base_pda_chance = 20,
 
     -- Area Conquest (persistent ownership)
     area_conquest_enabled = true,
@@ -168,13 +261,9 @@ defaults = {
 local key_to_tab = {
     log_level = "development",
     going_speed = "general",
-    distributor_max_xray_events = "general",
-    distributor_window_sec = "general",
+    destination_max = "general",
+    destination_ttl_sec = "general",
     global_cause_lock_sec = "general",
-    cause_window_max_events = "general",
-    cause_window_sec = "general",
-    consequence_window_max_events = "general",
-    consequence_window_sec = "general",
     alife_periodic_sync_enabled = "alife_tracker",
     alife_sync_interval = "alife_tracker",
     cause_elite_enabled = "causes/elite",
@@ -190,6 +279,25 @@ local key_to_tab = {
     cause_basekill_decay_time = "causes/basekill",
     cause_harvest_enabled = "causes/harvest",
     cause_wounded_enabled = "causes/wounded",
+    cause_needs_enabled = "causes/needs",
+    cause_hunger_enabled = "causes/needs",
+    cause_sleep_enabled = "causes/needs",
+    cause_rest_enabled = "causes/needs",
+    cause_heal_enabled = "causes/needs",
+    cause_shelter_enabled = "causes/needs",
+    cause_money_enabled = "causes/needs",
+    cause_supply_enabled = "causes/needs",
+    cause_job_enabled = "causes/needs",
+    cause_social_enabled = "causes/needs",
+    cause_hunger_threshold = "causes/needs",
+    cause_sleep_threshold = "causes/needs",
+    cause_rest_threshold = "causes/needs",
+    cause_heal_threshold = "causes/needs",
+    cause_shelter_threshold = "causes/needs",
+    cause_money_threshold = "causes/needs",
+    cause_supply_threshold = "causes/needs",
+    cause_job_threshold = "causes/needs",
+    cause_social_threshold = "causes/needs",
     cause_area_enabled = "causes/area",
     consequence_elite_promote_enabled = "consequences/elite_promote",
     consequence_elite_promote_pda_chance = "consequences/elite_promote",
@@ -263,6 +371,51 @@ local key_to_tab = {
     consequence_harvest_hunt_max_squads = "consequences/harvest_hunt",
     consequence_harvest_hunt_max_chases = "consequences/harvest_hunt",
     consequence_harvest_hunt_pda_chance = "consequences/harvest_hunt",
+    consequence_hunger_campfire_enabled = "consequences/hunger_campfire",
+    consequence_hunger_campfire_chance = "consequences/hunger_campfire",
+    consequence_hunger_campfire_pda_chance = "consequences/hunger_campfire",
+    consequence_sleep_campfire_enabled = "consequences/sleep_campfire",
+    consequence_sleep_campfire_chance = "consequences/sleep_campfire",
+    consequence_sleep_campfire_pda_chance = "consequences/sleep_campfire",
+    consequence_rest_campfire_enabled = "consequences/rest_campfire",
+    consequence_rest_campfire_chance = "consequences/rest_campfire",
+    consequence_rest_campfire_pda_chance = "consequences/rest_campfire",
+    consequence_heal_base_enabled = "consequences/heal_base",
+    consequence_heal_base_chance = "consequences/heal_base",
+    consequence_heal_base_pda_chance = "consequences/heal_base",
+    consequence_shelter_indoor_enabled = "consequences/shelter_indoor",
+    consequence_shelter_indoor_chance = "consequences/shelter_indoor",
+    consequence_shelter_indoor_pda_chance = "consequences/shelter_indoor",
+    consequence_money_search_enabled = "consequences/money_search",
+    consequence_money_search_chance = "consequences/money_search",
+    consequence_money_search_pda_chance = "consequences/money_search",
+    consequence_money_hunt_enabled = "consequences/money_hunt",
+    consequence_money_hunt_chance = "consequences/money_hunt",
+    consequence_money_hunt_pda_chance = "consequences/money_hunt",
+    consequence_supply_trader_enabled = "consequences/supply_trader",
+    consequence_supply_trader_chance = "consequences/supply_trader",
+    consequence_supply_trader_pda_chance = "consequences/supply_trader",
+    consequence_job_guard_enabled = "consequences/job_guard",
+    consequence_job_guard_chance = "consequences/job_guard",
+    consequence_job_guard_pda_chance = "consequences/job_guard",
+    consequence_job_explore_enabled = "consequences/job_explore",
+    consequence_job_explore_chance = "consequences/job_explore",
+    consequence_job_explore_pda_chance = "consequences/job_explore",
+    consequence_job_research_enabled = "consequences/job_research",
+    consequence_job_research_chance = "consequences/job_research",
+    consequence_job_research_pda_chance = "consequences/job_research",
+    consequence_social_campfire_enabled = "consequences/social_campfire",
+    consequence_social_campfire_chance = "consequences/social_campfire",
+    consequence_social_campfire_pda_chance = "consequences/social_campfire",
+    consequence_job_worship_enabled = "consequences/job_worship",
+    consequence_job_worship_chance = "consequences/job_worship",
+    consequence_job_worship_pda_chance = "consequences/job_worship",
+    consequence_job_exercise_enabled = "consequences/job_exercise",
+    consequence_job_exercise_chance = "consequences/job_exercise",
+    consequence_job_exercise_pda_chance = "consequences/job_exercise",
+    consequence_social_base_enabled = "consequences/social_base",
+    consequence_social_base_chance = "consequences/social_base",
+    consequence_social_base_pda_chance = "consequences/social_base",
 }
 
 local path_builder = function(key)
@@ -308,16 +461,11 @@ function on_mcm_load()
                     slide("ui_mcm_ap_general_title"),
                     desc("ui_mcm_ap_general_desc"),
                     track("going_speed", -10, 10, 1, 8),
-                    { id = "div_distributor", type = "line" },
-                    track("distributor_max_xray_events", 1, 100, 1, 10),
-                    track("distributor_window_sec", 1, 300, 10, 60),
                     { id = "div_cause", type = "line" },
-                    track("global_cause_lock_sec", 1, 300, 1, 30),
-                    track("cause_window_max_events", 1, 60, 1, 10),
-                    track("cause_window_sec", 1, 300, 10, 60),
-                    { id = "div_consequence", type = "line" },
-                    track("consequence_window_max_events", 1, 30, 1, 3),
-                    track("consequence_window_sec", 1, 300, 10, 60),
+                    track("global_cause_lock_sec", 1, 300, 1, 15),
+                    { id = "div_destination", type = "line" },
+                    track("destination_max", 1, 10, 1, 3),
+                    track("destination_ttl_sec", 60, 600, 30, 300),
                     { id = "div_version", type = "line" },
                     { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
                 },
@@ -421,6 +569,35 @@ function on_mcm_load()
                             check("cause_harvest_enabled", true),
                         },
                     },
+                    {
+                        id = "needs",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_causes_needs_title"),
+                            desc("ui_mcm_ap_causes_needs_desc"),
+                            check("cause_needs_enabled", true),
+                            { id = "div_per_need", type = "line" },
+                            check("cause_hunger_enabled", true),
+                            check("cause_sleep_enabled", true),
+                            check("cause_rest_enabled", true),
+                            check("cause_heal_enabled", true),
+                            check("cause_shelter_enabled", true),
+                            check("cause_money_enabled", true),
+                            check("cause_supply_enabled", true),
+                            check("cause_job_enabled", true),
+                            check("cause_social_enabled", true),
+                            { id = "div_thresholds", type = "line" },
+                            track("cause_hunger_threshold", 1, 72, 1, 8),
+                            track("cause_sleep_threshold", 1, 72, 1, 16),
+                            track("cause_rest_threshold", 1, 72, 1, 4),
+                            track("cause_heal_threshold", 1, 72, 1, 12),
+                            track("cause_shelter_threshold", 1, 72, 1, 24),
+                            track("cause_money_threshold", 1, 72, 1, 24),
+                            track("cause_supply_threshold", 1, 72, 1, 48),
+                            track("cause_job_threshold", 1, 72, 1, 18),
+                            track("cause_social_threshold", 1, 72, 1, 36),
+                        },
+                    },
                 },
             },
             {
@@ -434,7 +611,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_elite_promote_desc"),
                             check("consequence_elite_promote_enabled", true),
                             track("max_elites", 0, 300, 5, 40),
-                            track("consequence_elite_promote_pda_chance", 0, 100, 5, 20),
+                            track("consequence_elite_promote_pda_chance", 0, 100, 5, 25),
                             check("rank_boost_enabled", true),
                             check("elite_grenade_restock_enabled", true),
                             track("elite_grenade_restock_cooldown_hours", 1, 48, 1, 4),
@@ -464,7 +641,7 @@ function on_mcm_load()
                             track("consequence_elitekill_targeted_chance", 0, 100, 5, 30),
                             track("consequence_elitekill_targeted_max_squads", 1, 10, 1, 3),
                             track("consequence_elitekill_targeted_max_chases", 0, 10, 1, 5),
-                            track("consequence_elitekill_targeted_pda_chance", 0, 100, 5, 20),
+                            track("consequence_elitekill_targeted_pda_chance", 0, 100, 5, 30),
                         },
                     },
                     {
@@ -474,9 +651,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_massacre_scavenge_title"),
                             desc("ui_mcm_ap_consequences_massacre_scavenge_desc"),
                             check("consequence_massacre_scavenge_enabled", true),
-                            track("consequence_massacre_scavenge_chance", 0, 100, 5, 10),
+                            track("consequence_massacre_scavenge_chance", 0, 100, 5, 30),
                             track("consequence_massacre_scavenge_max_squads", 1, 20, 1, 2),
-                            track("consequence_massacre_scavenge_pda_chance", 0, 100, 5, 20),
+                            track("consequence_massacre_scavenge_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -486,9 +663,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_massacre_investigate_title"),
                             desc("ui_mcm_ap_consequences_massacre_investigate_desc"),
                             check("consequence_massacre_investigate_enabled", true),
-                            track("consequence_massacre_investigate_chance", 0, 100, 5, 10),
+                            track("consequence_massacre_investigate_chance", 0, 100, 5, 30),
                             track("consequence_massacre_investigate_max_squads", 1, 20, 1, 2),
-                            track("consequence_massacre_investigate_pda_chance", 0, 100, 5, 20),
+                            track("consequence_massacre_investigate_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -498,8 +675,8 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_stash_ambush_title"),
                             desc("ui_mcm_ap_consequences_stash_ambush_desc"),
                             check("consequence_stash_ambush_enabled", true),
-                            track("consequence_stash_ambush_chance", 0, 100, 5, 10),
-                            track("consequence_stash_ambush_pda_chance", 0, 100, 5, 20),
+                            track("consequence_stash_ambush_chance", 0, 100, 5, 15),
+                            track("consequence_stash_ambush_pda_chance", 0, 100, 5, 25),
                         },
                     },
                     {
@@ -509,8 +686,8 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_stash_loot_title"),
                             desc("ui_mcm_ap_consequences_stash_loot_desc"),
                             check("consequence_stash_loot_enabled", true),
-                            track("consequence_stash_loot_chance", 0, 100, 5, 10),
-                            track("consequence_stash_loot_pda_chance", 0, 100, 5, 20),
+                            track("consequence_stash_loot_chance", 0, 100, 5, 20),
+                            track("consequence_stash_loot_pda_chance", 0, 100, 5, 25),
                         },
                     },
                     {
@@ -520,10 +697,10 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_stash_fill_title"),
                             desc("ui_mcm_ap_consequences_stash_fill_desc"),
                             check("consequence_stash_fill_enabled", true),
-                            track("consequence_stash_fill_chance", 0, 100, 5, 10),
+                            track("consequence_stash_fill_chance", 0, 100, 5, 20),
                             track("consequence_stash_fill_min_items", 1, 5, 1, 1),
                             track("consequence_stash_fill_max_items", 1, 10, 1, 3),
-                            track("consequence_stash_fill_pda_chance", 0, 100, 5, 20),
+                            track("consequence_stash_fill_pda_chance", 0, 100, 5, 25),
                         },
                     },
                     {
@@ -533,10 +710,10 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_squadkill_revenge_title"),
                             desc("ui_mcm_ap_consequences_squadkill_revenge_desc"),
                             check("consequence_squadkill_revenge_enabled", true),
-                            track("consequence_squadkill_revenge_chance", 0, 100, 5, 10),
+                            track("consequence_squadkill_revenge_chance", 0, 100, 5, 30),
                             track("consequence_squadkill_revenge_max_squads", 1, 20, 1, 2),
                             track("consequence_squadkill_revenge_max_chases", 0, 10, 1, 5),
-                            track("consequence_squadkill_revenge_pda_chance", 0, 100, 5, 20),
+                            track("consequence_squadkill_revenge_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -546,9 +723,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_squadkill_flee_title"),
                             desc("ui_mcm_ap_consequences_squadkill_flee_desc"),
                             check("consequence_squadkill_flee_enabled", true),
-                            track("consequence_squadkill_flee_chance", 0, 100, 5, 10),
+                            track("consequence_squadkill_flee_chance", 0, 100, 5, 30),
                             track("consequence_squadkill_flee_max_squads", 1, 20, 1, 2),
-                            track("consequence_squadkill_flee_pda_chance", 0, 100, 5, 20),
+                            track("consequence_squadkill_flee_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -558,9 +735,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_basekill_support_title"),
                             desc("ui_mcm_ap_consequences_basekill_support_desc"),
                             check("consequence_basekill_support_enabled", true),
-                            track("consequence_basekill_support_chance", 0, 100, 5, 10),
+                            track("consequence_basekill_support_chance", 0, 100, 5, 25),
                             track("consequence_basekill_support_max_squads", 1, 20, 1, 2),
-                            track("consequence_basekill_support_pda_chance", 0, 100, 5, 20),
+                            track("consequence_basekill_support_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -570,9 +747,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_basekill_flee_title"),
                             desc("ui_mcm_ap_consequences_basekill_flee_desc"),
                             check("consequence_basekill_flee_enabled", true),
-                            track("consequence_basekill_flee_chance", 0, 100, 5, 10),
+                            track("consequence_basekill_flee_chance", 0, 100, 5, 25),
                             track("consequence_basekill_flee_max_squads", 1, 20, 1, 2),
-                            track("consequence_basekill_flee_pda_chance", 0, 100, 5, 20),
+                            track("consequence_basekill_flee_pda_chance", 0, 100, 5, 40),
                         },
                     },
                     {
@@ -582,9 +759,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_wounded_hunt_title"),
                             desc("ui_mcm_ap_consequences_wounded_hunt_desc"),
                             check("consequence_wounded_hunt_enabled", true),
-                            track("consequence_wounded_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_wounded_hunt_chance", 0, 100, 5, 25),
                             track("consequence_wounded_hunt_max_squads", 1, 20, 1, 2),
-                            track("consequence_wounded_hunt_pda_chance", 0, 100, 5, 20),
+                            track("consequence_wounded_hunt_pda_chance", 0, 100, 5, 30),
                         },
                     },
                     {
@@ -594,9 +771,9 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_wounded_help_title"),
                             desc("ui_mcm_ap_consequences_wounded_help_desc"),
                             check("consequence_wounded_help_enabled", true),
-                            track("consequence_wounded_help_chance", 0, 100, 5, 10),
+                            track("consequence_wounded_help_chance", 0, 100, 5, 25),
                             track("consequence_wounded_help_max_squads", 1, 20, 1, 2),
-                            track("consequence_wounded_help_pda_chance", 0, 100, 5, 20),
+                            track("consequence_wounded_help_pda_chance", 0, 100, 5, 30),
                         },
                     },
                     {
@@ -606,8 +783,8 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_area_conquer_title"),
                             desc("ui_mcm_ap_consequences_area_conquer_desc"),
                             check("consequence_area_conquer_enabled", true),
-                            track("consequence_area_conquer_chance", 0, 100, 5, 10),
-                            track("consequence_area_conquer_pda_chance", 0, 100, 5, 20),
+                            track("consequence_area_conquer_chance", 0, 100, 5, 20),
+                            track("consequence_area_conquer_pda_chance", 0, 100, 5, 25),
                             check("area_conquest_enabled", true),
                             track("area_conquest_max_smarts", 10, 100, 5, 50),
                             track("area_conquest_spawn_num", 1, 5, 1, 2),
@@ -620,10 +797,175 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_harvest_hunt_title"),
                             desc("ui_mcm_ap_consequences_harvest_hunt_desc"),
                             check("consequence_harvest_hunt_enabled", true),
-                            track("consequence_harvest_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_harvest_hunt_chance", 0, 100, 5, 20),
                             track("consequence_harvest_hunt_max_squads", 1, 20, 1, 2),
                             track("consequence_harvest_hunt_max_chases", 0, 10, 1, 5),
-                            track("consequence_harvest_hunt_pda_chance", 0, 100, 5, 20),
+                            track("consequence_harvest_hunt_pda_chance", 0, 100, 5, 30),
+                        },
+                    },
+                    {
+                        id = "hunger_campfire",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_hunger_campfire_title"),
+                            desc("ui_mcm_ap_consequences_hunger_campfire_desc"),
+                            check("consequence_hunger_campfire_enabled", true),
+                            track("consequence_hunger_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_hunger_campfire_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "sleep_campfire",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_sleep_campfire_title"),
+                            desc("ui_mcm_ap_consequences_sleep_campfire_desc"),
+                            check("consequence_sleep_campfire_enabled", true),
+                            track("consequence_sleep_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_sleep_campfire_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "rest_campfire",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_rest_campfire_title"),
+                            desc("ui_mcm_ap_consequences_rest_campfire_desc"),
+                            check("consequence_rest_campfire_enabled", true),
+                            track("consequence_rest_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_rest_campfire_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "heal_base",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_heal_base_title"),
+                            desc("ui_mcm_ap_consequences_heal_base_desc"),
+                            check("consequence_heal_base_enabled", true),
+                            track("consequence_heal_base_chance", 0, 100, 5, 10),
+                            track("consequence_heal_base_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "shelter_indoor",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_shelter_indoor_title"),
+                            desc("ui_mcm_ap_consequences_shelter_indoor_desc"),
+                            check("consequence_shelter_indoor_enabled", true),
+                            track("consequence_shelter_indoor_chance", 0, 100, 5, 10),
+                            track("consequence_shelter_indoor_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "money_search",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_money_search_title"),
+                            desc("ui_mcm_ap_consequences_money_search_desc"),
+                            check("consequence_money_search_enabled", true),
+                            track("consequence_money_search_chance", 0, 100, 5, 10),
+                            track("consequence_money_search_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "money_hunt",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_money_hunt_title"),
+                            desc("ui_mcm_ap_consequences_money_hunt_desc"),
+                            check("consequence_money_hunt_enabled", true),
+                            track("consequence_money_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_money_hunt_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "supply_trader",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_supply_trader_title"),
+                            desc("ui_mcm_ap_consequences_supply_trader_desc"),
+                            check("consequence_supply_trader_enabled", true),
+                            track("consequence_supply_trader_chance", 0, 100, 5, 10),
+                            track("consequence_supply_trader_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "job_guard",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_job_guard_title"),
+                            desc("ui_mcm_ap_consequences_job_guard_desc"),
+                            check("consequence_job_guard_enabled", true),
+                            track("consequence_job_guard_chance", 0, 100, 5, 10),
+                            track("consequence_job_guard_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "job_explore",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_job_explore_title"),
+                            desc("ui_mcm_ap_consequences_job_explore_desc"),
+                            check("consequence_job_explore_enabled", true),
+                            track("consequence_job_explore_chance", 0, 100, 5, 10),
+                            track("consequence_job_explore_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "job_research",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_job_research_title"),
+                            desc("ui_mcm_ap_consequences_job_research_desc"),
+                            check("consequence_job_research_enabled", true),
+                            track("consequence_job_research_chance", 0, 100, 5, 10),
+                            track("consequence_job_research_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "job_worship",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_job_worship_title"),
+                            desc("ui_mcm_ap_consequences_job_worship_desc"),
+                            check("consequence_job_worship_enabled", true),
+                            track("consequence_job_worship_chance", 0, 100, 5, 10),
+                            track("consequence_job_worship_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "job_exercise",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_job_exercise_title"),
+                            desc("ui_mcm_ap_consequences_job_exercise_desc"),
+                            check("consequence_job_exercise_enabled", true),
+                            track("consequence_job_exercise_chance", 0, 100, 5, 10),
+                            track("consequence_job_exercise_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "social_campfire",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_social_campfire_title"),
+                            desc("ui_mcm_ap_consequences_social_campfire_desc"),
+                            check("consequence_social_campfire_enabled", true),
+                            track("consequence_social_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_social_campfire_pda_chance", 0, 100, 5, 20),
+                        },
+                    },
+                    {
+                        id = "social_base",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_social_base_title"),
+                            desc("ui_mcm_ap_consequences_social_base_desc"),
+                            check("consequence_social_base_enabled", true),
+                            track("consequence_social_base_chance", 0, 100, 5, 10),
+                            track("consequence_social_base_pda_chance", 0, 100, 5, 20),
                         },
                     },
                 },

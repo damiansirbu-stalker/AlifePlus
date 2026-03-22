@@ -35,7 +35,8 @@ Single word preferred. UPPER_SNAKE in constants.
 | Plural for variant | Same subject, different scope | AREA (one) vs AREAS (multiple) |
 | Compound + KILL | Death event | BASEKILL, ELITEKILL, SQUADKILL |
 | Compound + SPOT | Perception event | ELITESPOT |
-| Closed suffix set | Only KILL and SPOT for now | New suffixes require convention update |
+| Single word | Timer-based human need | HUNGER, SLEEP, JOB |
+| Closed suffix set | KILL and SPOT | New suffixes require convention update |
 
 ### All Naming Patterns
 
@@ -69,6 +70,9 @@ Single word preferred. UPPER_SNAKE in constants.
 | XML title (consequence) | `ui_mcm_ap_consequences_{name}_title` | `ui_mcm_ap_consequences_massacre_scavenge_title` |
 | Chase handler key | `{cause}_chase` | `squadkill_chase`, `elitekill_chase` |
 | Arrival handler key | consequence name (1:1) | `stash_loot`, `stash_fill` |
+| DTO table | `stalker_needs[squad_id]` | future: `mutant_needs[squad_id]` |
+| DTO field | `last_{short}_at` | `last_hunger_at`, `last_sleep_at` |
+| Script file (GOAP) | `ap_goap_{domain}.script` | `ap_goap_needs.script` |
 
 ---
 

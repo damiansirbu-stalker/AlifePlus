@@ -72,19 +72,44 @@ Causes and consequences are fully decoupled -- causes publish, consequences subs
 
 -
 
-5. Dual-rate event partitioning
+5. Map gravity
 
-30 maps simulate simultaneously, and without any bias over 97% of cause events would fire on maps the player never sees -- which makes the mod useless for the person actually playing.
+30 maps simulate simultaneously.
+The same causes fire and the same consequences resolve on every map.
+The rules are identical.
+The frequency is not.
 
-The engine already had the answer: setup_current_speed (alife_monster_detail_path_manager.cpp:211) checks whether the entity is on the player's level and selects m_fCurrentLevelGoingSpeed or m_fGoingSpeed accordingly (alife_movement_manager_holder.h:15-16).
-Both speeds are exposed to Lua as travel_speed() and current_level_travel_speed() (xrServer_Objects_ALife_Monsters_script4.cpp:56).
-GSC designed the engine to simulate the player's level faster than background levels, which is exactly what you want -- things happen near the player at full speed, and the rest of the world ticks along at a lower rate.
-Anomaly set both values to 3 (m_stalker.ltx:372-373), which neutralized this split entirely and made all 30 maps equivalent.
+The engine carries two speeds on every entity: m_fGoingSpeed for background levels and m_fCurrentLevelGoingSpeed for the current level (alife_movement_manager_holder.h).
+setup_current_speed (alife_monster_detail_path_manager.cpp) checks the entity's level against the loaded level and picks the appropriate value.
+Both speeds are exposed to Lua as travel_speed() and current_level_travel_speed() (xrServer_Objects_ALife_Monsters_script4.cpp).
+Entities on the current level move faster.
+The simulation is uniform -- the current level just ticks at a higher frequency.
+Anomaly configured both values to 3 (m_stalker.ltx), removing the movement speed differential.
+The scheduling differential -- per-frame versus round-robin -- was never affected by these values and still applies.
 
-AlifePlus restores this differential at the cause evaluation layer using a Bresenham ratio gate that partitions event slots between the player's map and everything else.
-On-map and off-map have separate class-isolated cooldowns so one cannot starve the other, and at the default setting of 8 the ratio is 4:1 favoring on-map.
-The slider goes from -10 (off-map only) to +10 (on-map only).
-This is not a new mechanic -- it is restoring a design decision that GSC made in the engine and Anomaly accidentally removed.
+The engine runs two update paths.
+update_switch (alife_update_manager.cpp) iterates current-level entities every render frame with a real-time budget (set_process_time).
+update_scheduled (alife_update_manager.cpp) round-robins all offline entities at a fixed count per scheduler tick (objects_per_update).
+Current level gets a time slice per frame.
+Background levels share a round-robin pool.
+When a level loads, setup_current_level (alife_graph_registry.cpp) creates a dedicated level registry with its own processing budget and update cycle.
+The switch manager (alife_switch_manager_inline.h) computes an asymmetric online/offline boundary around the loaded level with hysteresis.
+Inside: full physics, animations, combat. Outside: statistical.
+With ~30 maps, background events outnumber current-level events roughly 50:1.
+X-Ray does the exact same thing AlifePlus does: same simulation everywhere, higher frequency on the current level.
+
+AlifePlus restores this differential at the cause evaluation layer.
+Map gravity is a Bresenham ratio gate that partitions event slots between the current level and background levels.
+Both sides have separate class-isolated cooldowns so one cannot starve the other.
+The default setting of 8 yields a 4:1 admission ratio that compensates for the ~50:1 imbalance, matching the frequency differential that the engine creates through its two-path update architecture.
+The slider goes from -10 (background only) to +10 (current level only).
+Nothing changes about what happens -- only the frequency at which it happens here versus elsewhere.
+
+"I was very happy with the work done when I followed a stalker from one level to another, saw how he searched for artifacts, found them, returned to the dealer, approached him, traded, picked a new quest, went on -- too bad this did not make it into the original game."
+-- Dmitriy Iassenev, Game Developer (2008) [1]
+
+Map gravity does not change what the simulation does.
+It restores a frequency differential that GSC built into the engine and Anomaly flattened.
 
 -
 
@@ -267,10 +292,34 @@ AlifePlus implements the mechanic at the A-Life level rather than through script
 
 --
 
+NEEDS: hunger, sleep, rest, heal, shelter, money, supply, job, social
+
+When a squad transitions at a smart terrain, it evaluates nine human needs and pursues whichever is strongest.
+drive = weight * (elapsed / threshold)^2. Weights follow Maslow's hierarchy -- survival outweighs security outweighs belonging. The squared deprivation ratio adapts Hull's Drive Reduction Theory (1943): drive grows nonlinearly with deprivation, so mild discomfort is noise and critical need dominates.
+
+"It was planned that character behaviour would diversify due to introduction of requirements of food and sleep."
+-- Dmitriy Iassenev, Game Developer (2008) [1]
+
+"Now, instead of creation of an algorithm for choice of current needs and their satisfaction, a simpler model has been used, which offloaded this work to the smart terrains, responsible for change of tasks by characters, able to assign tasks like 'sleeping', which, of course, is not the same thing."
+-- Dmitriy Iassenev, Game Developer (2008) [1]
+
+AlifePlus builds the algorithm Iassenev wanted. The engine source contains the scaffolding:
+- GetSatiety() returns hardcoded 0.5, ChangeSatiety() does nothing -- hunger was planned and abandoned (base_monster.h)
+- eStateRest with Sleep, eStateEat with corpse lifecycle -- rest/eat states exist but nothing triggers them by need (state_defs.h)
+- sr_camp.script runs campfire social dynamics -- social behavior exists at smarts
+- gulag_general.script assigns campfire/rest/guard jobs -- the job system exists
+- xr_eat_medkit.script handles NPC healing -- health response exists
+The infrastructure exists. Nobody connected it. AlifePlus connects it through Hull's drive scoring -- the "algorithm for choice of current needs" that Iassenev described.
+
+All 18 consequences follow the template method pattern -- one handler factory, one config table, 18 rows.
+
+--
+
 III. Sources
 
 Developer interviews:
 [1] Dmitriy Iassenev (AI programmer, SoC/CS), Game Developer (2008) -- https://www.gamedeveloper.com/game-platforms/interview-inside-the-ai-of-i-s-t-a-l-k-e-r-i-
+[1b] Dmitriy Iassenev, AIGameDev.com (2008) -- http://aigamedev.com/open/interviews/stalker-alife/
 [2] Alexey Sytianov (game designer, SoC), Shpil Magazine -- https://stalker.fandom.com/wiki/Interview_with_Alexey_Sytianov_in_Shpil
 [3] Oles Shishkovtsov (engine programmer), ModDB -- https://www.moddb.com/features/stalker-interview
 [6] Sergiy Grygorovych (GSC founder), dev.ua (2025) -- https://dev.ua/en/news/tsytaty-hryhorovycha-1738245791
@@ -311,6 +360,9 @@ A-Life brain -- alife_monster_brain.cpp
 A-Life path manager -- alife_monster_detail_path_manager.cpp
 Graph registry -- alife_graph_registry_inline.h
 Two-speed system -- alife_movement_manager_holder.h
+Switch manager -- alife_switch_manager.cpp, alife_switch_manager_inline.h
+Level registry -- alife_level_registry.h, alife_graph_registry.cpp
+Update paths -- alife_update_manager.cpp
 Monster state machine -- ai/monsters/state_defs.h
 Monster corpse memory -- ai/monsters/monster_corpse_memory.cpp
 Rank properties -- ai/stalker/ai_stalker.cpp

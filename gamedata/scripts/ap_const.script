@@ -1,14 +1,7 @@
 --- ap_const: Shared enums and constants for AlifePlus
 
-local _VERSION = "1.1.1"
-
-function version()
-    return _VERSION
-end
-
 --- Distance thresholds (meters)
 RADIUS_CLOSE_MAX = 50
-RADIUS_NEAR_MAX = 200
 RADIUS_DISTANT_MAX = 500
 
 --- X-Ray invalid entity ID sentinel (alife_space.h:39, 0xFFFF)
@@ -17,8 +10,23 @@ INVALID_ID = 65535
 --- Hit modifier throttle (seconds)
 HIT_MODIFIER_LOCK_SEC = 1
 
+--- Rate-limit windows (hardcoded, removed from MCM)
+CAUSE_WINDOW_MAX_EVENTS = 10
+CAUSE_WINDOW_SEC = 60
+CONSEQUENCE_WINDOW_MAX_EVENTS = 5
+CONSEQUENCE_WINDOW_SEC = 60
+DISTRIBUTOR_MAX_XRAY_EVENTS = 15
+DISTRIBUTOR_WINDOW_SEC = 60
+
 --- Scripted squad TTL (os.clock seconds, 2 hours)
 SCRIPTED_SQUAD_TTL = 7200
+
+--- Stalker needs DTO field names
+NEED_FIELDS = {
+    "last_hunger_at", "last_sleep_at", "last_rest_at",
+    "last_heal_at", "last_shelter_at", "last_money_at",
+    "last_supply_at", "last_job_at", "last_social_at",
+}
 
 --- X-Ray callback names
 CALLBACK = {
@@ -58,6 +66,7 @@ CAUSE = {
     WOUNDED = "cause:wounded",
     STASH = "cause:stash",
     HARVEST = "cause:harvest",
+    NEEDS = "cause:needs",
 }
 
 --- Result codes (outcome_propagation pattern)
@@ -86,6 +95,7 @@ REASON = {
     NO_SMART          = "no_smart",
     NO_POS            = "no_pos",
     NO_STASH_NEARBY   = "no_stash_nearby",
+    DESTINATION_FULL  = "destination_full",
     -- faction / community
     WRONG_COMMUNITY   = "wrong_community",
     NO_FACTION        = "no_faction",
@@ -132,6 +142,21 @@ CONSEQUENCE = {
     WOUNDED_HELP = "consequence:wounded_help",
     AREA_CONQUER = "consequence:area_conquer",
     HARVEST_HUNT = "consequence:harvest_hunt",
+    HUNGER_CAMPFIRE = "consequence:hunger_campfire",
+    SLEEP_CAMPFIRE = "consequence:sleep_campfire",
+    REST_CAMPFIRE = "consequence:rest_campfire",
+    HEAL_BASE = "consequence:heal_base",
+    SHELTER_INDOOR = "consequence:shelter_indoor",
+    MONEY_SEARCH = "consequence:money_search",
+    MONEY_HUNT = "consequence:money_hunt",
+    SUPPLY_TRADER = "consequence:supply_trader",
+    JOB_GUARD = "consequence:job_guard",
+    JOB_EXPLORE = "consequence:job_explore",
+    JOB_RESEARCH = "consequence:job_research",
+    JOB_WORSHIP = "consequence:job_worship",
+    JOB_EXERCISE = "consequence:job_exercise",
+    SOCIAL_CAMPFIRE = "consequence:social_campfire",
+    SOCIAL_BASE = "consequence:social_base",
 }
 
 --- Action names for xtrace path (ap_debug.observe)

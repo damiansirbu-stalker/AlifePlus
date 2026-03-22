@@ -23,6 +23,8 @@ local cfg
 local conquered_smarts = {}
 local _conquered_pending = nil
 local _conquest_seq = 0
+local stalker_needs = {}
+local NEED_FIELDS = ap_const.NEED_FIELDS
 
 local function _refresh_config()
     cfg = ap_mcm and ap_mcm.cfg or {}
@@ -30,6 +32,23 @@ end
 
 local function _is_stale(id)
     return not xobject.se(id)
+end
+
+--- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
+local function unscript_squad(squad_or_id)
+    local tp = type(squad_or_id)
+    if tp ~= "number" and tp ~= "userdata" then return false end
+    local is_id = tp == "number"
+    local squad_id = is_id and squad_or_id or squad_or_id.id
+    if not scripted_squads[squad_id] then return false end
+    local squad
+    if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
+    if squad then
+        ap_debug.debug("[TRACKER] unscript_squad: squad=%d scripted_target=%s", squad_id, tostring(scripted_squads[squad_id].scripted_target))
+        xsquad.release_squad(squad)
+    end
+    scripted_squads[squad_id] = nil
+    return true
 end
 
 local function _cleanup_stale()
@@ -51,15 +70,29 @@ local function _on_save_state(m_data)
         scripted_squads = scripted_squads,
         conquered_smarts = conquered_smarts,
         conquest_seq = _conquest_seq,
+        stalker_needs = stalker_needs,
     }
-    ap_debug.debug("[TRACKER] save: killers=%d elites=%d scripted=%d conquered=%d",
-        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(conquered_smarts))
+    ap_debug.debug("[TRACKER] save: killers=%d elites=%d scripted=%d conquered=%d needs=%d",
+        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(conquered_smarts), xtable.count(stalker_needs))
 end
 
 local function _validate_elites(loaded)
     local result = {}
     for id, data in pairs(loaded) do
         if data.level and data.kills then result[id] = data end
+    end
+    return result
+end
+
+local function _validate_stalker_needs(loaded)
+    local result = {}
+    for squad_id, dto in pairs(loaded) do
+        if type(dto) ~= "table" then goto continue end
+        for i = 1, #NEED_FIELDS do
+            if not dto[NEED_FIELDS[i]] then dto[NEED_FIELDS[i]] = 0 end
+        end
+        result[squad_id] = dto
+        ::continue::
     end
     return result
 end
@@ -73,6 +106,7 @@ local function _on_load_state(m_data)
     conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
     _conquest_seq = saved.conquest_seq or 0
+    stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     local now = os_clock()
     for _, data in pairs(scripted_squads) do
         data.tracked_at = now
@@ -80,8 +114,8 @@ local function _on_load_state(m_data)
     if not saved.killers then ap_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.elites then ap_debug.warn("[TRACKER] load: missing elites, fresh init") end
     if not saved.scripted_squads then ap_debug.warn("[TRACKER] load: missing scripted_squads, fresh init") end
-    ap_debug.debug("[TRACKER] load: killers=%d elites=%d scripted=%d conquered_pending=%d",
-        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(_conquered_pending))
+    ap_debug.debug("[TRACKER] load: killers=%d elites=%d scripted=%d conquered_pending=%d needs=%d",
+        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(_conquered_pending), xtable.count(stalker_needs))
 end
 
 local function _dump_killers()
@@ -97,7 +131,7 @@ end
 --- @param killer_id number Killer entity ID
 --- @param victim_id number|nil Victim entity ID (logging only)
 --- @return number Current kill count for killer
-function register_kill(killer_id, victim_id)
+local function register_kill(killer_id, victim_id)
     if not killer_id or killer_id == 0 then return 0 end
     if killer_id == victim_id then return 0 end
     _last_victim_id = victim_id
@@ -164,13 +198,15 @@ function update_elite(id, data)
         ap_debug.warn("[TRACKER] update_elite: missing level_id for id=%d", id)
         return nil
     end
-    elites[id] = { level = level, kills = data.kills, level_id = level_id, name = name }
+    local is_stalker = data.is_stalker
+    if is_stalker == nil then is_stalker = (existing and existing.is_stalker) or false end
+    elites[id] = { level = level, kills = data.kills, level_id = level_id, name = name, is_stalker = is_stalker }
     ap_debug.debug("[TRACKER] update_elite: id=%d kills=%d level=%d name=%s", id, data.kills, level, name)
     return elites[id]
 end
 
 --- Move elite to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC)
-function unregister_elite(id)
+local function unregister_elite(id)
     if not id then return false end
     local data = elites[id]
     if not data then return false end
@@ -198,7 +234,7 @@ function get_elites_on_level(level_id)
 end
 
 --- Unregister entity from all tracking (on death or unregister)
-function unregister_entity(id)
+local function unregister_entity(id)
     if not id then return end
     local had_kills = killers[id] ~= nil
     local had_elite = unregister_elite(id)
@@ -207,6 +243,46 @@ function unregister_entity(id)
         ap_debug.debug("[TRACKER] unregister_entity: id=%d kills=%s elite=%s",
             id, tostring(had_kills), tostring(had_elite))
     end
+end
+
+-- =============================================================================
+-- STALKER NEEDS
+-- =============================================================================
+
+--- Get stalker needs DTO for squad
+--- @param squad_id number Squad server ID
+--- @return table|nil DTO with last_*_at fields, or nil if not initialized
+function get_stalker_needs(squad_id)
+    if not squad_id then return nil end
+    return stalker_needs[squad_id]
+end
+
+--- Initialize all need timestamps for squad (lazy init, called on first evaluation)
+--- @param squad_id number Squad server ID
+--- @param now number Current game-seconds
+--- @return table|nil Initialized DTO, or nil on invalid input
+function init_stalker_needs(squad_id, now)
+    if not squad_id or not now then return nil end
+    local dto = {}
+    for i = 1, #NEED_FIELDS do
+        dto[NEED_FIELDS[i]] = now
+    end
+    stalker_needs[squad_id] = dto
+    ap_debug.debug("[TRACKER] init_stalker_needs: squad=%d now=%.0f", squad_id, now)
+    return dto
+end
+
+--- Reset one need timestamp after satisfaction
+--- @param squad_id number Squad server ID
+--- @param key string DTO field name (e.g. "last_hunger_at")
+--- @param now number Current game-seconds
+--- @return boolean True if reset succeeded
+function reset_stalker_need(squad_id, key, now)
+    if not squad_id or not key or not now then return false end
+    local dto = stalker_needs[squad_id]
+    if not dto then return false end
+    dto[key] = now
+    return true
 end
 
 -- =============================================================================
@@ -281,23 +357,6 @@ function script_actor_target(squad)
     return { code = RESULT.OK_NEXT, id = squad.id, dst = "actor", dst_id = 0 }
 end
 
---- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
-function unscript_squad(squad_or_id)
-    local tp = type(squad_or_id)
-    if tp ~= "number" and tp ~= "userdata" then return false end
-    local is_id = tp == "number"
-    local squad_id = is_id and squad_or_id or squad_or_id.id
-    if not scripted_squads[squad_id] then return false end
-    local squad
-    if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
-    if squad then
-        ap_debug.debug("[TRACKER] unscript_squad: squad=%d scripted_target=%s", squad_id, tostring(scripted_squads[squad_id].scripted_target))
-        xsquad.release_squad(squad)
-    end
-    scripted_squads[squad_id] = nil
-    return true
-end
-
 --- Get scripted squad table (read-only reference, do not modify)
 --- @return table {[squad_id] = { scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args }}
 function get_scripted_ids()
@@ -362,49 +421,19 @@ end
 -- PERIODIC SYNC
 -- =============================================================================
 
-local function _evict_stale(collection, seen)
-    local checked, evicted = 0, 0
-    for id in pairs(collection) do
-        if seen[id] then goto continue end
-        seen[id] = true
-        checked = checked + 1
-        if _is_stale(id) then
-            unregister_entity(id)
-            evicted = evicted + 1
-        end
-        ::continue::
-    end
-    return checked, evicted
-end
-
 local function _periodic_sync()
     if not cfg or not cfg.alife_periodic_sync_enabled then return end
 
-    local seen = {}
-    local c1, e1 = _evict_stale(killers, seen)
-    local c2, e2 = _evict_stale(elites, seen)
+    local killed = xtable.sweep(killers, _is_stale, unregister_entity)
+    local elited = xtable.sweep(elites, _is_stale, unregister_entity)
+    local scripted = xtable.sweep(scripted_squads, _is_stale, unscript_squad)
+    local conquered = xtable.sweep(conquered_smarts, _is_stale)
+    local needs = xtable.sweep(stalker_needs, _is_stale, function(id)
+        ap_debug.debug("[TRACKER] stalker_needs_expired: squad=%d", id)
+    end)
 
-    local squad_evicted = 0
-    for squad_id in pairs(scripted_squads) do
-        if not _is_stale(squad_id) then goto sq_continue end
-        unscript_squad(squad_id)
-        squad_evicted = squad_evicted + 1
-        ::sq_continue::
-    end
-
-    local smart_evicted = 0
-    for smart_id in pairs(get_conquered_smarts()) do
-        if not _is_stale(smart_id) then goto sm_continue end
-        conquered_smarts[smart_id] = nil
-        smart_evicted = smart_evicted + 1
-        ::sm_continue::
-    end
-
-    local checked = c1 + c2
-    local evicted = e1 + e2
-
-    if evicted > 0 or squad_evicted > 0 or smart_evicted > 0 or ap_debug.enabled() then
-        ap_debug.debug("[TRACKER] periodic_sync: checked=%d evicted=%d squads_evicted=%d smarts_evicted=%d", checked, evicted, squad_evicted, smart_evicted)
+    if killed > 0 or elited > 0 or scripted > 0 or conquered > 0 or needs > 0 or ap_debug.enabled() then
+        ap_debug.debug("[TRACKER] periodic_sync: killers=%d elites=%d squads=%d smarts=%d needs=%d", killed, elited, scripted, conquered, needs)
     end
 
     ResetTimeEvent("ap_alife_tracker", "sync", cfg.alife_sync_interval)
@@ -458,10 +487,6 @@ function conquer_smart(smart_id, faction)
     conquered_smarts[smart_id] = { faction = faction, conquered_at = _conquest_seq }
     ap_debug.debug("[TRACKER] conquer_smart: smart=%d faction=%s", smart_id, faction)
     return true
-end
-
-function get_conquered_smarts()
-    return conquered_smarts
 end
 
 local function _on_game_load()

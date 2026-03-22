@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.1.1 (xlibs 1.0.5)
+Latest: 1.2.0-RC1 (xlibs 1.0.5)
 
 You are not special.
 
@@ -8,7 +8,7 @@ AlifePlus is a behavior mod that follows Roadside Picnic and the original STALKE
 GSC described their vision: "We wanted a simulation where the game world operates independently of player actions."
 I respected this and went further. In AlifePlus the simulation runs independent of the player, fair and equal for all creatures on the map, where the player is just one entity.
 
-Why use AlifePlus? What makes it special?
+Why use AlifePlus? What makes it different?
 You can decide by comparing how my mod works to any other mod, let's call it "classical".
 
 Classical:
@@ -79,6 +79,7 @@ Causes:
   Harvest - Reactive. An NPC or player picked up an artefact.
   Stash - Radiant. Squad discovers nearby stashes.
   Area - Radiant. Squad discovers nearby unguarded area.
+  Needs - Radiant. Stalker evaluates nine human needs on smart terrain transition. Strongest unmet need drives behavior.
 
 Consequences:
   Massacre: Scavenge - Nearby scavengers and predators converge on the massacre site.
@@ -97,6 +98,7 @@ Consequences:
   Wounded: Hunt - Nearby predator mutants move toward the wounded NPC or player.
   Wounded: Help - Nearby same-faction squads rush to help the wounded.
   Harvest: Hunt - Nearby outlaws pursue whoever picked up the artefact as they move.
+  Needs: 15 consequences - hunger/campfire, sleep/campfire, rest/campfire, heal/base, shelter/base, money/search, money/hunt, supply/trader, job/guard, job/explore, job/research, job/worship, job/exercise, social/campfire, social/base.
 
 FAQ:
 
@@ -115,6 +117,12 @@ Can I configure everything?
   Chances, cooldowns, thresholds, and rate limits are all adjustable.
   The defaults are tuned for a Roadside Picnic experience.
   Adjust after playing, not before.
+
+Do I need offline combat enabled?
+  No. AlifePlus never requires or prefers online simulation.
+  It works with all offline settings, including fully disabled.
+  Offline combat produces fewer combat events but the system generates
+  other events regardless, so A-Life activity continues.
 
 Known issues:
 Map markers are a debugging feature (log_level=DEBUG).
@@ -138,6 +146,9 @@ Disable or remove in MO2.
 Credits:
 Stalker_Boss - Russian translation
 
+Grokitach, DrakoMT, and SaloEater for their support.
+Demonized, Catspaw, Vintar0, RavenAscendant, xcvb, lizzardman, Aoldri, and Feel_Fried. Their work on the engine, modded exes, scripts, and tools shaped how Anomaly modding is done.
+
 Development:
 Source: https://github.com/damiansirbu-stalker/AlifePlus
 Releases: https://github.com/damiansirbu-stalker/AlifePlus/releases
@@ -147,6 +158,24 @@ The code is validated in real time by a multi-stage pipeline: luacheck, selene, 
 Full report in doc/test-report.log.
 
 Versions:
+
+  1.2.0-RC1 -- "Needs"
+    Stalkers have human needs. Nine drives scored by deprivation produce emergent daily routines.
+    A hungry stalker finds a campfire and eats. A tired one sleeps through the night. Guards patrol their base. Loners hunt anomalies for money. Scientists research. Monolith prays. All of it earned from world state, nothing scripted, nothing faked.
+    Added: 9 human needs - hunger, sleep, rest, heal, shelter, money, supply, job, social
+    Added: Hull drive scoring - Maslow-weighted deprivation model, strongest unmet need wins
+    Added: 15 need consequences - each need produces 1-4 context-dependent behaviors based on faction, smart terrain type, and available destinations
+    Added: GOAP animation scheme (xgoap_anim) - NPCs play contextual animations on arrival (eating, sleeping, guarding, researching, praying). Generic xlibs infrastructure, any system can trigger it
+    Added: destination limiter - prevents multiple squads converging on the same smart terrain
+    Added: smart terrain filters - has_campfire, has_anomaly, has_trader_job, has_mechanic_job (xlibs)
+    Added: per-need MCM controls - 9 enabled flags, 9 hour thresholds, 18 consequence sections (enabled, chance, pda_chance)
+    Added: night gate for sleep - cause only fires between 20:00 and 05:00 game time
+    Added: faction-aware destinations - heal, shelter, guard, and social consequences respect faction ownership
+    Changed: consequence chances raised from flat 10% to 15-30% based on log data (combat reactions highest, stash/area lowest)
+    Changed: PDA notification chances raised from flat 20% to 25-40% (combat reactions highest)
+    Changed: global cause lock 30s -> 15s
+    Removed: MCM sliders for cause window, consequence window, and distributor limits (never triggered in 130+ hours of user logs, hardcoded as constants)
+    Fixed: elite PDA messages now distinguish stalkers from mutants. Mutant pack leaders get their own messages instead of human-oriented ones like "runs a tight crew".
 
   1.1.1
     Fixed: dependency gate uses exact version match instead of string comparison
