@@ -157,20 +157,37 @@
         <text>%c[d_cyan]1.2.0-RC1</text>
     </string>
     <string id="ui_mcm_ap_general_desc">
-        <text>Flow control for the AlifePlus event system. Events pass through a distributor, map ratio gate, cooldown, and per-key sliding windows before firing. Causes detect patterns, consequences react. Zero cost when idle.</text>
+        <text>Event pipeline controls, in processing order. Events pass through: distributor -> going speed -> cause lock -> per-cause limit -> per-consequence limit. Each gate narrows the flow independently.</text>
+    </string>
+    <string id="ui_mcm_ap_general_distributor_max_events">
+        <text>Distributor budget (per type)</text>
+    </string>
+    <string id="ui_mcm_ap_general_distributor_max_events_desc">
+        <text>Gate 1. Max raw X-Ray callbacks per type per 60s. Smart terrain transitions (radiant) get 3x this value. Higher = more cause evaluations per minute.</text>
     </string>
     <string id="ui_mcm_ap_general_going_speed">
-        <text>Map Gravity</text>
+        <text>Going Speed</text>
     </string>
     <string id="ui_mcm_ap_general_going_speed_desc">
-        <text>X-Ray runs the current level per-frame and background levels round-robin. Same simulation, different frequency. Map gravity applies this same split to AlifePlus events. Slider sets how many out of 10 event slots go to the current level (8 = 4:1, 0 = equal, negative = background favored). On-map and off-map have separate cooldowns.</text>
+        <text>Gate 2. X-Ray runs the current level per-frame and background levels round-robin. Slider sets how many out of 10 event slots go to the current level (8 = 4:1, 0 = equal, negative = background favored). On-map and off-map have separate cooldowns.</text>
     </string>
-
     <string id="ui_mcm_ap_general_global_cause_lock_sec">
         <text>Global cause lock (sec)</text>
     </string>
     <string id="ui_mcm_ap_general_global_cause_lock_sec_desc">
-        <text>Cooldown after a cause fires. On-map and off-map have separate cooldowns, so distant events never affect your map.</text>
+        <text>Gate 3. Cooldown after a cause publishes. On-map and off-map have separate cooldowns, so distant events never block your map.</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_events">
+        <text>Cause budget (per key)</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_events_desc">
+        <text>Gate 4. Max publications per cause type per 60s. Prevents one cause from monopolizing the event bus.</text>
+    </string>
+    <string id="ui_mcm_ap_general_consequence_max_events">
+        <text>Consequence budget (per key)</text>
+    </string>
+    <string id="ui_mcm_ap_general_consequence_max_events_desc">
+        <text>Gate 5. Max activations per consequence type per 60s. Prevents one consequence from firing too often.</text>
     </string>
     <string id="ui_mcm_ap_general_destination_max">
         <text>Max destination locks</text>

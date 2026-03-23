@@ -257,7 +257,7 @@ function get_stalker_needs(squad_id)
     return stalker_needs[squad_id]
 end
 
---- Initialize all need timestamps for squad (lazy init, called on first evaluation)
+--- Initialize all need timestamps for squad (set to now, cause provokes random need)
 --- @param squad_id number Squad server ID
 --- @param now number Current game-seconds
 --- @return table|nil Initialized DTO, or nil on invalid input
@@ -268,8 +268,27 @@ function init_stalker_needs(squad_id, now)
         dto[NEED_FIELDS[i]] = now
     end
     stalker_needs[squad_id] = dto
-    ap_debug.debug("[TRACKER] init_stalker_needs: squad=%d now=%.0f", squad_id, now)
+    ap_debug.debug("[TRACKER] init_stalker_needs: squad=%d all_fields=now", squad_id)
     return dto
+end
+
+--- Force a specific need to be maximally overdue (demo/testing)
+--- Sets all fields to now, then target field to 0
+--- @param squad_id number Squad server ID
+--- @param field string DTO field to make overdue (e.g. "last_hunger_at")
+function force_stalker_need(squad_id, field)
+    if not squad_id or not field then return end
+    local now = game.get_game_time():diffSec(level.get_start_time())
+    local dto = stalker_needs[squad_id]
+    if not dto then
+        dto = {}
+        stalker_needs[squad_id] = dto
+    end
+    for i = 1, #NEED_FIELDS do
+        dto[NEED_FIELDS[i]] = now
+    end
+    dto[field] = 0
+    ap_debug.debug("[TRACKER] force_stalker_need: squad=%d field=%s", squad_id, field)
 end
 
 --- Reset one need timestamp after satisfaction

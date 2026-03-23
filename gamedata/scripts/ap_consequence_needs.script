@@ -1,5 +1,4 @@
 --- ap_consequence_needs: Config-table-driven consequences for timer-based human needs
-local time_global, math_random = time_global, math.random
 
 local CAUSE = ap_const.CAUSE
 local RESULT = ap_const.RESULT
@@ -7,56 +6,40 @@ local REASON = ap_const.REASON
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 local RADIUS_DISTANT_MAX = ap_const.RADIUS_DISTANT_MAX
-local ANIMATION_MS = 5000
 
 local cfg
 
 local CONFIGS = {
     { need = "hunger", consequence = CONSEQUENCE.HUNGER_CAMPFIRE, name = "hunger_campfire",
-        dto_field = "last_hunger_at", filter = xsmart.has_campfire, priority = 10, arrive_fn = nil,
-        animations = {"sit_ass_eat_bread", "sit_ass_eat_kolbasa", "sit_ass_drink_vodka", "sit_ass_drink_energy"} },
+        dto_field = "last_hunger_at", filter = xsmart.has_campfire, priority = 10 },
     { need = "sleep", consequence = CONSEQUENCE.SLEEP_CAMPFIRE, name = "sleep_campfire",
-        dto_field = "last_sleep_at", filter = xsmart.has_campfire, priority = 10, arrive_fn = nil,
-        animations = {"sleep", "sleep_sit"} },
+        dto_field = "last_sleep_at", filter = xsmart.has_campfire, priority = 10 },
     { need = "rest", consequence = CONSEQUENCE.REST_CAMPFIRE, name = "rest_campfire",
-        dto_field = "last_rest_at", filter = xsmart.has_campfire, priority = 10, arrive_fn = nil,
-        animations = {"sit_ass", "sit_knee", "sit", "use_pda", "smoking_sit", "drunk_sit_ass"} },
+        dto_field = "last_rest_at", filter = xsmart.has_campfire, priority = 10 },
     { need = "heal", consequence = CONSEQUENCE.HEAL_BASE, name = "heal_base",
-        dto_field = "last_heal_at", filter = xsmart.is_base, priority = 10, arrive_fn = nil,
-        animations = {"sit_ass", "sit_knee", "sit"}, faction_filter = true },
+        dto_field = "last_heal_at", filter = xsmart.is_base, priority = 10, faction_filter = true },
     { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
-        dto_field = "last_shelter_at", filter = xsmart.is_base, priority = 10, arrive_fn = nil,
-        animations = {"sit_ass", "sit_knee", "sit"}, faction_filter = true },
+        dto_field = "last_shelter_at", filter = xsmart.is_base, priority = 10, faction_filter = true },
     { need = "money", consequence = CONSEQUENCE.MONEY_SEARCH, name = "money_search",
-        dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10, arrive_fn = nil,
-        animations = {"probe_way", "probe_stand", "scaner_way", "scaner_stand"} },
+        dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10 },
     { need = "money", consequence = CONSEQUENCE.MONEY_HUNT, name = "money_hunt",
-        dto_field = "last_money_at", filter = xsmart.is_lair, priority = 20, arrive_fn = nil,
-        animations = nil },
+        dto_field = "last_money_at", filter = xsmart.is_lair, priority = 20 },
     { need = "supply", consequence = CONSEQUENCE.SUPPLY_TRADER, name = "supply_trader",
-        dto_field = "last_supply_at", filter = xsmart.has_trader_job, priority = 10, arrive_fn = nil,
-        animations = {"wait_trade", "talk_default"} },
+        dto_field = "last_supply_at", filter = xsmart.has_trader_job, priority = 10 },
     { need = "job", consequence = CONSEQUENCE.JOB_GUARD, name = "job_guard",
-        dto_field = "last_job_at", filter = xsmart.is_base, priority = 20, arrive_fn = nil,
-        animations = {"guard", "guard_chasovoy", "binocular", "wait_rac", "hide"}, faction_filter = true },
+        dto_field = "last_job_at", filter = xsmart.is_base, priority = 20, faction_filter = true },
     { need = "job", consequence = CONSEQUENCE.JOB_EXPLORE, name = "job_explore",
-        dto_field = "last_job_at", priority = 30, arrive_fn = nil,
-        animations = nil },
+        dto_field = "last_job_at", priority = 30 },
     { need = "job", consequence = CONSEQUENCE.JOB_RESEARCH, name = "job_research",
-        dto_field = "last_job_at", filter = xsmart.has_anomaly, priority = 40, arrive_fn = nil,
-        animations = {"scaner_stand", "scaner_way", "use_pda"} },
+        dto_field = "last_job_at", filter = xsmart.has_anomaly, priority = 40 },
     { need = "job", consequence = CONSEQUENCE.JOB_WORSHIP, name = "job_worship",
-        dto_field = "last_job_at", filter = nil, priority = 15, arrive_fn = nil,
-        animations = {"psy_armed", "trans_zombied"} },
+        dto_field = "last_job_at", filter = nil, priority = 15 },
     { need = "job", consequence = CONSEQUENCE.JOB_EXERCISE, name = "job_exercise",
-        dto_field = "last_job_at", filter = nil, priority = 15, arrive_fn = nil,
-        animations = {"otzhiman", "prisyad", "stay_smirno", "salut"} },
+        dto_field = "last_job_at", filter = nil, priority = 15 },
     { need = "social", consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, name = "social_campfire",
-        dto_field = "last_social_at", filter = xsmart.has_campfire, priority = 10, arrive_fn = nil,
-        animations = {"sit_ass_guitar", "sit_ass_harmonica", "talk_default", "smeh"} },
+        dto_field = "last_social_at", filter = xsmart.has_campfire, priority = 10 },
     { need = "social", consequence = CONSEQUENCE.SOCIAL_BASE, name = "social_base",
-        dto_field = "last_social_at", filter = xsmart.is_base, priority = 20, arrive_fn = nil,
-        animations = {"sit_ass_guitar", "sit_ass_harmonica", "talk_default"}, faction_filter = true },
+        dto_field = "last_social_at", filter = xsmart.is_base, priority = 20, faction_filter = true },
 }
 
 --- Build filter closure: type check + faction check + destination capacity
@@ -76,12 +59,7 @@ local function _on_arrive(squad, args)
     if not args or not args.dto_field then return end
     local now = game.get_game_time():diffSec(level.get_start_time())
     ap_alife_tracker.reset_stalker_need(squad.id, args.dto_field, now)
-    local anims = args.animations
-    if not anims then return end
-    local cmd_id = squad:commander_id()
-    local st = db.storage[cmd_id]
-    if not st then return end
-    st.x_anim = { state = anims[math_random(#anims)], expire = time_global() + ANIMATION_MS }
+    ap_debug.debug("[CONSEQUENCE.NEEDS] _on_arrive: squad=%d need=%s", squad.id, args.name or "?")
 end
 
 --- Build condition closure for consumer registration
@@ -96,7 +74,7 @@ local function _make_handler(entry)
 
     return function(event_data)
         if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT } end
-        local trace = event_data._trace or ap_debug.null_trace()
+        local trace = event_data._trace
         return ap_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
             if not xmath.chance(cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT } end
@@ -115,7 +93,7 @@ local function _make_handler(entry)
                 res = ap_alife_tracker.script_squad(squad, smart, {
                     rush = true,
                     on_arrive = entry.name,
-                    on_arrive_args = { dto_field = entry.dto_field, name = entry.name, animations = entry.animations },
+                    on_arrive_args = { dto_field = entry.dto_field, name = entry.name },
                 })
                 return res
             end)
@@ -130,14 +108,16 @@ local function _make_handler(entry)
                 return ap_debug.result_squad(squad)
             end)
 
-            local pda_chance_key = "consequence_" .. entry.name .. "_pda_chance"
-            local cmd_se = xobject.se(squad:commander_id())
-            local cmd_name = "A stalker"
-            if cmd_se then cmd_name = cmd_se:character_name() end
-            ap_utils.send_pda(cfg[pda_chance_key], "text_pda_consequence_" .. entry.name, {
-                name = cmd_name,
-                location = ap_utils.get_location_description(nil, smart.position, event_data.level_id),
-            })
+            ap_debug.observe(trace, ACTION.SEND_PDA, function()
+                local cmd_se = xobject.se(squad:commander_id())
+                local cmd_name = "A stalker"
+                if cmd_se then cmd_name = cmd_se:character_name() end
+                return ap_utils.send_pda(cfg["consequence_" .. entry.name .. "_pda_chance"],
+                    "text_pda_consequence_" .. entry.name, {
+                        name = cmd_name,
+                        location = ap_utils.get_location_description(nil, smart.position, event_data.level_id),
+                    })
+            end)
 
             return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id }
         end)

@@ -1,7 +1,8 @@
 --- ap_test: MCM test tools - stateless, called from MCM button functors
 
-local pairs = pairs
-local math_floor, math_huge = math.floor, math.huge
+local pairs, table_sort, table_remove, math_min = pairs, table.sort, table.remove, math.min
+local math_floor, math_huge, math_max, math_random = math.floor, math.huge, math.max, math.random
+local string_format, time_global, tostring = string.format, time_global, tostring
 
 local ARTEFACTS = {
     "af_medusa", "af_cristall_flower", "af_fireball",
@@ -83,6 +84,41 @@ function goto_elite()
     _tip("Teleported to elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
 end
 
+local NEEDS_ARRIVE_KEYS = {
+    hunger_campfire = true, sleep_campfire = true, rest_campfire = true,
+    heal_base = true, shelter_indoor = true, money_search = true,
+    money_hunt = true, supply_trader = true, job_guard = true,
+    job_explore = true, job_research = true, job_worship = true,
+    job_exercise = true, social_campfire = true, social_base = true,
+}
+
+--- @export console
+function goto_need()
+    ap_debug.debug("[TEST] goto_need pressed")
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local sim = alife()
+    local actor_community = db.actor:character_community()
+    local scripted = ap_alife_tracker.get_scripted_ids()
+    for squad_id, data in pairs(scripted) do
+        if not NEEDS_ARRIVE_KEYS[data.on_arrive] then goto skip end
+        local squad = sim:object(squad_id)
+        if not squad then goto skip end
+        if game_relations.is_factions_enemies(actor_community, squad:get_squad_community()) then goto skip end
+        local cmd_se = xobject.se(squad:commander_id())
+        if not cmd_se then goto skip end
+        db.actor:set_actor_position(cmd_se.position)
+        local name = cmd_se:character_name()
+        ap_debug.debug("[TEST] goto_need OK squad=%d need=%s target=%s npc=%s",
+            squad_id, data.on_arrive, data.scripted_target, name)
+        _tip("Teleported to " .. name .. " (" .. data.on_arrive .. " -> " .. data.scripted_target .. ")")
+        do return end
+        ::skip::
+    end
+    _tip("No friendly squad filling a need right now")
+    ap_debug.debug("[TEST] goto_need SKIP no_friendly_need_squad")
+end
+
 --- @export console
 function spawn_artefact()
     ap_debug.debug("[TEST] spawn_artefact pressed")
@@ -100,4 +136,140 @@ function spawn_artefact()
         ap_debug.debug("[TEST] spawn_artefact FAIL sec=%s", sec)
         _tip("Failed to spawn " .. sec)
     end
+end
+
+-- =============================================================================
+-- NEEDS DEMO: integration test - fires real needs pipeline for nearby squads
+-- Forces specific observable leisure needs (eating, exercise, guitar, sleeping),
+-- temporarily disables area/stash causes to avoid cause lock contention.
+-- Full stack: bresenham -> cause_rate -> predicate -> cause_lock -> xbus ->
+-- consumer -> consequence -> script_squad -> arrival -> PDA.
+-- Staggered by global_cause_lock_sec to avoid lock contention between fires.
+-- =============================================================================
+
+local DEMO_MAX_SQUADS = 5
+local DEMO_MIN_INTERVAL_MS = 2000
+
+local DEMO_NEEDS = {
+    { need = "hunger", field = "last_hunger_at" },
+    { need = "job",    field = "last_job_at" },
+    { need = "social", field = "last_social_at" },
+    { need = "rest",   field = "last_rest_at" },
+}
+
+local _demo_queue = {}
+local _demo_next_fire = 0
+local _demo_active = false
+local _demo_need_idx = 0
+local _demo_saved_causes = nil
+
+--- Check if online NPC is a valid demo candidate (alive stalker, not actor)
+local function _is_demo_candidate(npc_id)
+    local obj = xobject.go(npc_id)
+    if not obj then return false end
+    if not obj:alive() then return false end
+    if not IsStalker(obj) then return false end
+    if obj:id() == 0 then return false end
+    return true, obj
+end
+
+--- Find nearby online stalker squads sorted by distance
+local function _find_demo_squads(max_count)
+    local actor = db.actor
+    if not actor then return {} end
+    local actor_pos = actor:position()
+    local seen = {}
+    local candidates = {}
+    for npc_id in pairs(db.storage) do
+        local ok, obj = _is_demo_candidate(npc_id)
+        if not ok then goto skip end
+        local squad = xsquad.get_squad_by_member(npc_id)
+        if not squad then goto skip end
+        if seen[squad.id] then goto skip end
+        if not ap_data.community_stalker[squad.player_id] then goto skip end
+        seen[squad.id] = true
+        candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
+        ::skip::
+    end
+    table_sort(candidates, function(a, b) return a.dist < b.dist end)
+    local squads = {}
+    for i = 1, math_min(max_count, #candidates) do
+        squads[i] = candidates[i].squad
+    end
+    return squads
+end
+
+local function _demo_disable_competing_causes()
+    local mcm = ap_mcm.cfg
+    _demo_saved_causes = {
+        cause_area_enabled = mcm.cause_area_enabled,
+        cause_stash_enabled = mcm.cause_stash_enabled,
+        destination_max = mcm.destination_max,
+    }
+    mcm.cause_area_enabled = false
+    mcm.cause_stash_enabled = false
+    mcm.destination_max = 100
+    ap_debug.debug("[TEST] needs_demo disabled competing causes, destination_max=100")
+end
+
+local function _demo_restore_causes()
+    if not _demo_saved_causes then return end
+    local mcm = ap_mcm.cfg
+    mcm.cause_area_enabled = _demo_saved_causes.cause_area_enabled
+    mcm.cause_stash_enabled = _demo_saved_causes.cause_stash_enabled
+    mcm.destination_max = _demo_saved_causes.destination_max
+    ap_debug.debug("[TEST] needs_demo restored causes, destination_max=%d", _demo_saved_causes.destination_max)
+    _demo_saved_causes = nil
+end
+
+local function _demo_fire_next()
+    if not _demo_active then return end
+    if #_demo_queue == 0 then
+        _demo_active = false
+        _demo_restore_causes()
+        UnregisterScriptCallback("actor_on_update", _demo_fire_next)
+        _tip("Needs demo: complete")
+        ap_debug.debug("[TEST] needs_demo complete")
+        return
+    end
+    local now = time_global()
+    if now < _demo_next_fire then return end
+
+    local squad = table_remove(_demo_queue, 1)
+    _demo_need_idx = _demo_need_idx % #DEMO_NEEDS + 1
+    local demo_need = DEMO_NEEDS[_demo_need_idx]
+
+    ap_alife_tracker.force_stalker_need(squad.id, demo_need.field)
+    SendScriptCallback(ap_const.CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
+        squad, 1, squad.m_game_vertex_id, false)
+
+    local interval_ms = math_max((ap_mcm.cfg.global_cause_lock_sec + 0.5) * 1000, DEMO_MIN_INTERVAL_MS)
+    _demo_next_fire = now + interval_ms
+
+    ap_debug.debug("[TEST] needs_demo fired squad=%d faction=%s need=%s remaining=%d interval=%dms",
+        squad.id, squad.player_id, demo_need.need, #_demo_queue, math_floor(interval_ms))
+    _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
+end
+
+--- @export console
+function needs_demo()
+    if _demo_active then
+        _demo_active = false
+        _demo_queue = {}
+        _demo_restore_causes()
+        UnregisterScriptCallback("actor_on_update", _demo_fire_next)
+        _tip("Needs demo stopped")
+        ap_debug.debug("[TEST] needs_demo stopped")
+        return
+    end
+    local squads = _find_demo_squads(DEMO_MAX_SQUADS)
+    if #squads == 0 then return _tip("No stalker squads nearby") end
+    _demo_queue = squads
+    _demo_active = true
+    _demo_next_fire = 0
+    _demo_need_idx = 0
+    _demo_disable_competing_causes()
+    RegisterScriptCallback("actor_on_update", _demo_fire_next)
+    _tip(string_format("Needs demo: %d squads queued (hunger/exercise/social/sleep)", #squads))
+    ap_debug.debug("[TEST] needs_demo started squads=%d needs=hunger,job,social,sleep", #squads)
 end

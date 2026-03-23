@@ -72,7 +72,6 @@ Single word preferred. UPPER_SNAKE in constants.
 | Arrival handler key | consequence name (1:1) | `stash_loot`, `stash_fill` |
 | DTO table | `stalker_needs[squad_id]` | future: `mutant_needs[squad_id]` |
 | DTO field | `last_{short}_at` | `last_hunger_at`, `last_sleep_at` |
-| Script file (GOAP) | `ap_goap_{domain}.script` | `ap_goap_needs.script` |
 
 ---
 

@@ -23,12 +23,12 @@ AlifePlus observes A-Life simulation events, detects meaningful patterns (causes
                                v
                +-------------------------------+
                |           PRODUCER            |
-               | 1. distributor (budget/type)  |
+               | 1. distributor (DISABLED)     |
                | 2. resolve_on_map (level cmp) |
                | 3. ratio_gate (Bresenham)     |
-               | 4. class lock (on/off-map)    |
-               | 5. per-cause rate limit       |
-               | 6. predicate evaluation       |
+               | 4. per-cause rate limit       |
+               | 5. predicate evaluation       |
+               | 6. cause lock (on/off-map)    |
                +---------------+---------------+
                                |
                                v
@@ -95,7 +95,7 @@ Radiant causes evaluate on smart terrain transitions -- the natural flow of A-Li
 
 #### Radiant cause flow
 
-Each radiant cause registers for both `squad_on_enter_smart` and `squad_on_leave_smart`. Two evaluation moments per smart terrain transition.
+Each radiant cause registers for `squad_on_enter_smart`, `squad_on_leave_smart`, and `squad_on_after_game_vertex_change`. Three evaluation callbacks per squad movement cycle.
 
 ```
 Squad S transitions at smart
@@ -170,6 +170,7 @@ X-Ray Callback -> Producer -> Predicate(trace, ...args) -> { cause, ...data } | 
 | `squad_on_npc_death` | massacre, basekill, squadkill, elite, elitekill |
 | `squad_on_enter_smart` | stash, area, needs, elitespot (planned), areas (planned) |
 | `squad_on_leave_smart` | stash, area, needs, elitespot (planned), areas (planned) |
+| `squad_on_after_game_vertex_change` | stash, area, needs, elitespot (planned), areas (planned) |
 | `x_npc_medkit_use` | wounded (NPC) |
 | `actor_on_item_use` | wounded (player) |
 | `actor_on_item_take` | harvest (player) |
@@ -222,26 +223,27 @@ AP uses `observe()` wrappers (from `ap_debug`) to build hierarchical execution t
 
 ```
 dispatch() gate order:
-  1. distributor_check (callback budget per type)
+  1. distributor_check (DISABLED, analyzing removal)
   2. _resolve_on_map (level comparison)
   3. _ratio_gate (Bresenham admission, on-map vs off-map)
-  4. acquire_cause_lock (class-isolated cooldown)
-  5. per-cause rate limit (sliding window)
-  6. predicate evaluation
+  4. per-cause rate limit (sliding window)
+  5. predicate evaluation
+  6. acquire_cause_lock (class-isolated cooldown, checked after predicate returns result)
 ```
 
 ### Distributor (gate 1)
+
+**Status: DISABLED.** Commented out in `ap_producer_reactive.script:136-139` (2026-03-23). Bresenham ratio_gate is sole admission control during testing. Analyzing permanent removal -- playtest showed distributor killed 72% of events map-blind (off-map floods ate shared budget before on-map events passed). Function and MCM setting retained pending decision.
 
 Limits raw X-Ray callbacks by type. Runs first -- cheapest rejection point.
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `distributor_max_xray_events` | 10 | Max events per callback type per window |
-| `distributor_window_sec` | 60 | Window duration |
+| `distributor_max_events` (MCM) | 15 | Max events per callback type per 60s window |
 
-Radiant callbacks (enter/leave smart) get 2x budget.
+Radiant callbacks (enter/leave smart) get 3x budget (hardcoded multiplier). Window duration: `DISTRIBUTOR_WINDOW_SEC` constant (60s).
 
-### Going Speed (gate 2+3+4, Bresenham admission control + class-isolated cooldown)
+### Going Speed (gate 2+3, Bresenham admission control)
 
 X-Ray processes A-Life at two speeds: per-frame on the player's level (`current_level_going_speed`), round-robin on distant levels (`going_speed`). With ~30 maps, off-map events outnumber on-map ~50:1. Without intervention, the player's map is starved.
 
@@ -255,23 +257,28 @@ gs = 0:                 gate disabled, all pass
 
 At gs=8: for every 4 on-map causes, 1 off-map is allowed (ratio 4:1). Deterministic, self-adjusting. Counters reset to zero when their sum reaches 32768 to prevent unbounded growth.
 
-After the ratio gate, events acquire a class-isolated cooldown lock. On-map and off-map have separate lock timestamps with the same duration (`global_cause_lock_sec`). The two classes never compete.
-
 | Setting | Default | Range | What it does |
 |---------|---------|-------|--------------|
-| `going_speed` | 8 | -10 to +10 | How many out of 10 cause slots go to the favored class |
-| `global_cause_lock_sec` | 30s | 1-300 | Cooldown after a cause fires. Separate per class. |
+| `going_speed` (MCM) | 8 | -10 to +10 | How many out of 10 cause slots go to the favored class |
 
 Level extraction: `xlevel.get_level_id(first_arg)` for squad/NPC callbacks. Actor callbacks always on-map. Unknown -> gate bypassed, off-map lock used.
 
-### Per-Key Sliding Window (gate 5)
+### Per-Key Sliding Window (gate 4)
 
-Uses `xttltable.create_ttl_counter`. Counts events in time window, blocks if count >= max.
+Uses `xttltable.create_ttl_counter`. Counts events in time window, blocks if count >= max. Checked per-cause before predicate runs.
 
 | Scope | Owner | Settings | What it does |
 |-------|-------|----------|--------------|
-| Per-cause | Producer | `cause_window_max_events`, `cause_window_sec` | Budget per cause key |
-| Per-consequence | Consumer | `consequence_window_max_events`, `consequence_window_sec` | Budget per consequence key |
+| Per-cause | Producer | `cause_max_events` (MCM), `CAUSE_WINDOW_SEC` (60s constant) | Budget per cause key |
+| Per-consequence | Consumer | `consequence_max_events` (MCM), `CONSEQUENCE_WINDOW_SEC` (60s constant) | Budget per consequence key |
+
+### Cause Lock (gate 6)
+
+Class-isolated cooldown checked after a predicate returns a result with `.cause`. On-map and off-map have separate lock timestamps with the same duration. The two classes never compete.
+
+| Setting | Default | Range | What it does |
+|---------|---------|-------|--------------|
+| `global_cause_lock_sec` (MCM) | 15 | 1-300 | Cooldown after a cause publishes. Separate per class. |
 
 Additionally, `ap_alife_behavior` uses a 1s keyed lock (`HIT_MODIFIER_LOCK_SEC`) on `npc_on_before_hit` to throttle hit modifier applications. Predicates never check rate limits -- orchestrators enforce all limiting.
 
@@ -304,11 +311,11 @@ Pattern: `OUTCOME_PROPAGATION`. See `conventions.md` for full rules.
 | ELITEKILL | reactive | squad_on_npc_death | victim NPC is tracked elite (is_elite); cooldown per victim_id |
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | NPC uses medkit (xevent hook on xr_eat_medkit) or actor uses healing item; not at base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | picked up item passes IsArtefact() |
-| STASH | radiant | squad_on_enter/leave_smart | xstash.find_stashes within RADIUS_DISTANT_MAX finds a stash (no community filter, consequences filter) |
-| AREA | radiant | squad_on_enter/leave_smart | evaluating squad is community_stalker; claimable smart (empty + not base) within RADIUS_DISTANT_MAX |
-| NEEDS | radiant | squad_on_enter/leave_smart | Single predicate, Hull drive scoring (weight * (elapsed/threshold)^2, Maslow weights). community_stalker guard. Per-need enabled gate. Night gate (SLEEP). Strongest drive wins, published as CAUSE.NEEDS with `need` field in payload. |
-| ELITESPOT (planned) | radiant | squad_on_enter/leave_smart | elite NPC within RADIANT_SIGHT_RADIUS; evaluating squad has no elite member |
-| AREAS (planned) | radiant | squad_on_enter/leave_smart | evaluating squad at own-faction conquered smart; backup squad present at same smart; another own-faction conquered smart exists on same level |
+| STASH | radiant | enter/leave_smart, game_vertex_change | xstash.find_stashes within RADIUS_DISTANT_MAX finds a stash (no community filter, consequences filter) |
+| AREA | radiant | enter/leave_smart, game_vertex_change | evaluating squad is community_stalker; claimable smart (empty + not base) within RADIUS_DISTANT_MAX |
+| NEEDS | radiant | enter/leave_smart, game_vertex_change | Single predicate, Hull drive scoring (weight * (elapsed/threshold)^2, Maslow weights). community_stalker guard. Per-need enabled gate. Night gate (SLEEP). Strongest drive wins, published as CAUSE.NEEDS with `need` field in payload. |
+| ELITESPOT (planned) | radiant | enter/leave_smart, game_vertex_change | elite NPC within RADIANT_SIGHT_RADIUS; evaluating squad has no elite member |
+| AREAS (planned) | radiant | enter/leave_smart, game_vertex_change | evaluating squad at own-faction conquered smart; backup squad present at same smart; another own-faction conquered smart exists on same level |
 
 ---
 
@@ -332,7 +339,7 @@ Pattern: `OUTCOME_PROPAGATION`. See `conventions.md` for full rules.
 | STASH | stash_ambush | 20 | evaluating squad is community_ambusher | script_squad to stash's nearest smart |
 | STASH | stash_fill | 30 | evaluating squad is community_stalker | script_squad to stash's nearest smart, on_arrive: fill_stash with random items |
 | AREA | area_conquer | 20 | none (cause handles community + claimable filtering) | script_squad to target smart, conquer_smart(smart.id, squad.player_id), PDA |
-| NEEDS | 18 consequences | 10-40 | Config-table-driven (see Needs System). Each row filters on `event_data.need`. | find_smart (max_distance=500, faction_filter on base destinations), script_squad, per-consequence arrival handler: DTO reset + online-only arrive_fn + GOAP |
+| NEEDS | 15 consequences | 10-40 | Config-table-driven (see Needs System). Each row filters on `event_data.need`. | find_smart (max_distance=500, faction_filter on base destinations), script_squad, per-consequence arrival handler: DTO reset + online-only arrive_fn |
 | ELITESPOT (planned) | elitespot_flee | - | evaluating squad is enemy of elite's faction | script_squad to nearest base |
 | ELITESPOT (planned) | elitespot_follow | - | evaluating squad is ally of elite's faction | chase_start to elite's squad |
 | AREAS (planned) | areas_reinforce | - | none (cause handles all filtering) | script_squad to target smart |
@@ -381,7 +388,7 @@ Handlers re-register on every on_game_start. Keys + args in scripted_squads pers
 | harvest_chase | harvest_hunt | re-script to taker's current smart (max N re-scripts) |
 | elitekill_chase | elitekill_targeted | re-script to killer's current smart (max N re-scripts) |
 | elitespot_chase | elitespot_follow (planned) | re-script to elite's current smart (max N re-scripts) |
-| {consequence_name} | consequence_needs (18 keys, one per config row) | reset DTO timestamp, online: arrive_fn + write GOAP flag, offline: no-op |
+| {consequence_name} | consequence_needs (15 keys, one per config row) | reset DTO timestamp, online: arrive_fn, offline: no-op |
 
 Chase handlers use `chase_start` / `chase_register` from ap_utils. On each arrival, the handler re-scripts the squad to the target's new position. After max re-scripts, the squad is unscripted.
 
@@ -491,13 +498,13 @@ Per-squad game-second timestamps in ap_alife_tracker. 9 fields: `last_hunger_at`
 | `init_stalker_needs(squad_id, now)` | Sets all 9 fields to `now` |
 | `reset_stalker_need(squad_id, key, now)` | Resets one field |
 
-Time: `game.get_game_time():diffSec(level.get_start_time())`. Lazy init: first evaluation sets all to `now`, returns nil (no need fires on first encounter). Save/load with tracker. Stale squads cleaned in `_periodic_sync`.
+Time: `game.get_game_time():diffSec(level.get_start_time())`. Lazy init: first evaluation sets all to `now` and immediately provokes a random enabled need (no wasted evaluation). Save/load with tracker. Stale squads cleaned in `_periodic_sync`.
 
 ### Cause (one predicate, one cause event)
 
 Single predicate registered on `squad_on_enter_smart` + `squad_on_leave_smart` (2 registrations). Guards: `community_stalker` only, `level.present()`. Per-need enabled gate: `cause_{need}_enabled` MCM flag skips disabled needs before scoring.
 
-Lazy init: first encounter sets all 9 DTO timestamps to `now`, returns nil. On subsequent evaluations, Hull drive scoring picks the strongest unmet need: `drive = weight * (elapsed / threshold)^2`. Maslow-weighted (shelter 5.0 -> social 0.8). Night gate on SLEEP (hours >= 20 or < 5). ~6 luabind per evaluation.
+Lazy init: first encounter sets all 9 DTO timestamps to `now` and immediately provokes a random enabled need (published as CAUSE.NEEDS with `drive = weight`). On subsequent evaluations, Hull drive scoring picks the strongest unmet need: `drive = weight * (elapsed / threshold)^2`. Maslow-weighted (shelter 5.0 -> social 0.8). Night gate on SLEEP (hours >= 20 or < 5). ~6 luabind per evaluation.
 
 Winner published as CAUSE.NEEDS with payload:
 
@@ -510,9 +517,9 @@ The `need` field identifies which need won. Consequences filter on this field. T
 
 ### Consequence (template method)
 
-One file: `ap_consequence_needs.script`. All 15 consequences follow the template method pattern (GoF). One handler factory builds a closure per config row. The variable parts -- filter, arrive_fn, animations -- are pure data in each row. No per-consequence handler code, no separate files, no special cases.
+One file: `ap_consequence_needs.script`. All 15 consequences follow the template method pattern (GoF). One handler factory builds a closure per config row. The variable parts -- filter, arrive_fn -- are pure data in each row. No per-consequence handler code, no separate files, no special cases.
 
-Every needs consequence is four steps: find a smart, move the squad, do an activity on arrival, play an animation on arrival. The factory produces identical handlers. What changes per row is configuration, not code.
+Every needs consequence is three steps: find a smart, move the squad, do an activity on arrival. The factory produces identical handlers. What changes per row is configuration, not code. Animations are handled by vanilla gulag jobs at the destination (campfire_point, animpoint, walker).
 
     GATES (same for all 15):
       1. need match: event_data.need == entry.need       -> RULES_NEXT
@@ -539,16 +546,11 @@ Every needs consequence is four steps: find a smart, move the squad, do an activ
       arrive_fn(squad, args)
       consume food, loot stash, exchange items, deposit, or nil (no-op)
 
-    Step 4 -- ARRIVE: animation (online only)
-      write db.storage[npc_id].ap_need = { state = random(animations) }
-      GOAP evaluator picks it up -> action plays animation -> clears after timeout
-      nil animations = no GOAP trigger (combat planner handles)
-
     Always on arrival (online or offline):
       reset DTO timestamp (dto_field)
       send PDA (chance-gated)
 
-Steps 1-2 run in the consequence handler (fires on CAUSE.NEEDS event). Steps 3-4 run in the arrival handler (fires when squad reaches the smart). See Arrival below for the online/offline lifecycle.
+Steps 1-2 run in the consequence handler (fires on CAUSE.NEEDS event). Step 3 runs in the arrival handler (fires when squad reaches the smart). See Arrival below for the online/offline lifecycle. Animations are handled by vanilla gulag jobs at the destination smart (campfire_point, animpoint, walker).
 
 **Config row fields** (what varies per row):
 
@@ -562,7 +564,6 @@ Steps 1-2 run in the consequence handler (fires on CAUSE.NEEDS event). Steps 3-4
 | faction_filter | boolean/nil | If true, _build_filter wraps base filter with is_factions_enemies check. |
 | priority | number | Consumer dispatch order (lower = tried first) |
 | arrive_fn | function/nil | Online-only arrival activity (step 3) |
-| animations | table/nil | GOAP animation pool (step 4), nil = no animation |
 
 **`_build_filter`** composes one closure per handler invocation with three concerns:
 
@@ -580,23 +581,25 @@ All three evaluated uniformly per-smart inside `find_smart`. One filter, one ite
 
 ### Consequence table
 
-| Need | Consequence | p | Filter | Faction | Arrive fn | Animations |
-|------|------------|---|--------|---------|-----------|------------|
-| HUNGER | hunger_campfire | 10 | has_campfire | -- | consume food/drink | sit_ass_eat_bread, sit_ass_eat_kolbasa, sit_ass_drink_vodka, sit_ass_drink_energy, roast_kolbasa, roast_bred |
-| SLEEP | sleep_campfire | 10 | has_campfire | -- | -- | sleep, sleep_sit |
-| REST | rest_campfire | 10 | has_campfire | -- | consume cigarettes/alcohol | sit_ass, sit_knee, sit, use_pda, smoking_sit, drunk_sit_ass, drink_vodka_stand, smoking_stand, drunk_stand, wait |
-| HEAL | heal_base | 10 | is_base | enemies | consume medkit/bandage | sit_ass, sit_knee, sit |
-| SHELTER | shelter_indoor | 10 | is_base | enemies | -- | sit_ass, sit_knee, sit |
-| MONEY | money_search | 10 | has_anomaly | -- | -- | probe_way, probe_stand, scaner_way, scaner_stand |
-| MONEY | money_hunt | 20 | is_lair | -- | -- | (combat planner) |
-| SUPPLY | supply_trader | 10 | has_trader_job | -- | sell/buy exchange | wait_trade, talk_default |
-| JOB | job_guard | 20 | is_base | enemies | -- | guard, guard_chasovoy, binocular, wait_rac, hide |
-| JOB | job_explore | 30 | -- | -- | -- | walk, binocular, caution |
-| JOB | job_research | 40 | has_anomaly | -- | -- | scaner_stand, scaner_way, use_pda |
-| JOB | job_worship | 15 | faction condition | -- | -- | psy_armed, trans_zombied |
-| JOB | job_exercise | 15 | faction condition | -- | -- | otzhiman, prisyad, stay_smirno, salut |
-| SOCIAL | social_campfire | 10 | has_campfire | -- | -- | sit_ass_guitar, sit_ass_harmonica, talk_default, smeh |
-| SOCIAL | social_base | 20 | is_base | enemies | -- | sit_ass_guitar, sit_ass_harmonica, talk_default |
+| Need | Consequence | p | Filter | Faction | Arrive fn |
+|------|------------|---|--------|---------|-----------|
+| HUNGER | hunger_campfire | 10 | has_campfire | -- | consume food/drink |
+| SLEEP | sleep_campfire | 10 | has_campfire | -- | -- |
+| REST | rest_campfire | 10 | has_campfire | -- | consume cigarettes/alcohol |
+| HEAL | heal_base | 10 | is_base | enemies | consume medkit/bandage |
+| SHELTER | shelter_indoor | 10 | is_base | enemies | -- |
+| MONEY | money_search | 10 | has_anomaly | -- | -- |
+| MONEY | money_hunt | 20 | is_lair | -- | -- |
+| SUPPLY | supply_trader | 10 | has_trader_job | -- | sell/buy exchange |
+| JOB | job_guard | 20 | is_base | enemies | -- |
+| JOB | job_explore | 30 | -- | -- | -- |
+| JOB | job_research | 40 | has_anomaly | -- | -- |
+| JOB | job_worship | 15 | faction condition | -- | -- |
+| JOB | job_exercise | 15 | faction condition | -- | -- |
+| SOCIAL | social_campfire | 10 | has_campfire | -- | -- |
+| SOCIAL | social_base | 20 | is_base | enemies | -- |
+
+Animations at the destination are handled by vanilla gulag jobs (campfire_point, animpoint, walker). See kamp-system.md.
 
 ### Arrival (online/offline)
 
@@ -606,8 +609,6 @@ Handler fires when squad reaches destination. YANS: same rule for every NPC. Onl
 1. Always: reset DTO timestamp (dto_field)
 2. Online check: db.storage[squad:commander_id()] ~= nil
    -> Online: arrive_fn(squad, args) if defined (consume, exchange, loot, deposit)
-              write ap_need = { state = random(animations) } to db.storage
-              GOAP evaluator picks it up, action plays animation, clears after timeout
    -> Offline: no-op (no action planner, no inventory interaction)
 3. Always: send PDA (chance-gated)
 ```
@@ -616,21 +617,9 @@ Online/offline status is checked at arrival, not at trigger. A squad scripted wh
 
 | Trigger | Arrival | Result |
 |---------|---------|--------|
-| Online | Online | consume + animate + reset DTO |
+| Online | Online | arrive_fn + reset DTO |
 | Online | Offline | reset DTO only (squad still moved -- good simulation) |
-| Offline | Online | consume + animate + reset DTO (player sees NPC at campfire) |
+| Offline | Online | arrive_fn + reset DTO (player sees NPC at destination) |
 | Offline | Offline | reset DTO only (statistical) |
 
-### GOAP (ap_goap_needs.script)
-
-One scheme, one evaluator, one action. evaid 188200.
-
-Evaluator: `db.storage[npc_id].ap_need ~= nil`. Pure table read, zero cost when false.
-
-Action: reads `db.storage[npc_id].ap_need.state`, calls `state_mgr.set_state(npc, state)`. Clears flag after MCM-configurable timeout (default 5000ms). NPC returns to normal behavior.
-
-Preconditions: alive=true, enemy=false, danger=false. Blocks alife + state_mgr idle. Does NOT block combat or danger.
-
-### Animation injection
-
-At script load time. `state_lib.states.ap_heal_medkit = { ... }` + `copy_table` into `state_mgr_animation_list.animations`. Uses existing engine skeletal anims. Only needed for ap_heal_medkit and ap_heal_bandage -- all other animation states already exist in vanilla state_lib.
+Animations at the destination are handled by vanilla gulag jobs. When a squad arrives at a smart with campfires, the gulag assigns campfire_point jobs; the camp manager (sr_camp) plays eat/drink/guitar/sleep animations automatically. See `doc/library/modding/kamp-system.md`.

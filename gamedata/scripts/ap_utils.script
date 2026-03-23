@@ -158,16 +158,16 @@ local function _ensure_consequence_counter()
 end
 
 --- Check cause rate limit (true = allowed, false = blocked)
+--- @return boolean allowed, number count, number max
 function check_cause_rate_limit(name)
     local counter = _ensure_cause_counter()
     local key = get_cause_rate_key(name)
     local count = counter:count(key)
-    local max = ap_const.CAUSE_WINDOW_MAX_EVENTS
+    local max = ap_mcm.cfg.cause_max_events
     if count >= max then
-        ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
-        return false
+        return false, count, max
     end
-    return true
+    return true, count, max
 end
 
 --- Increment cause counter after publish
@@ -177,16 +177,16 @@ function increment_cause_counter(name)
 end
 
 --- Check consequence rate limit (true = allowed, false = blocked)
+--- @return boolean allowed, number count, number max
 function check_consequence_rate_limit(name)
     local counter = _ensure_consequence_counter()
     local key = get_consequence_rate_key(name)
     local count = counter:count(key)
-    local max = ap_const.CONSEQUENCE_WINDOW_MAX_EVENTS
+    local max = ap_mcm.cfg.consequence_max_events
     if count >= max then
-        ap_debug.debug("[RATE_LIMIT] %s BLOCKED count=%d max=%d", name, count, max)
-        return false
+        return false, count, max
     end
-    return true
+    return true, count, max
 end
 
 --- Increment consequence counter after success

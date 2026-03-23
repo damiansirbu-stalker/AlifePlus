@@ -11,7 +11,7 @@ local cfg
 local community_scavenger = ap_data.community_scavenger
 
 local function _handler(event_data)
-    local trace = event_data._trace or ap_debug.null_trace()
+    local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.MASSACRE_SCAVENGE, function()
         if not cfg.consequence_massacre_scavenge_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not xmath.chance(cfg.consequence_massacre_scavenge_chance) then return { code = RESULT.CHANCE_NEXT } end

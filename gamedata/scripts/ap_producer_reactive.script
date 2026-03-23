@@ -64,16 +64,19 @@ local function _ratio_gate(on_map)
     return false
 end
 
+local RADIANT_MULTIPLIER = 3
+
 local function distributor_check(callback)
     local ttl = ap_const.DISTRIBUTOR_WINDOW_SEC
     if not _limiter or _limiter._ttl ~= ttl then
         _limiter = xttltable.create_ttl_counter({ ttl = ttl })
     end
 
-    local base = ap_const.DISTRIBUTOR_MAX_XRAY_EVENTS
+    local base = ap_mcm.cfg.distributor_max_events
     local is_radiant = callback == CALLBACK.SQUAD_ON_ENTER_SMART
                     or callback == CALLBACK.SQUAD_ON_LEAVE_SMART
-    local limit = is_radiant and (base * 2) or base
+                    or callback == CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE
+    local limit = is_radiant and (base * RADIANT_MULTIPLIER) or base
 
     if _limiter:count(callback) >= limit then return false end
     _limiter:add(callback)
@@ -111,42 +114,55 @@ function unregister(name, callback)
     return false
 end
 
+--- Try to publish a cause result through the cause lock
+local function _try_publish(stats, on_map, name, result, trace)
+    if not ap_utils.acquire_cause_lock(on_map) then
+        stats:cause_lock_blocked(on_map, result.cause)
+        return
+    end
+    result._trace = trace
+    ap_utils.event_publish(result.cause, result)
+    ap_utils.increment_cause_counter(name)
+    stats:published(on_map, result.cause, name)
+end
+
 local function dispatch(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
+    local stats = ap_stats.producer()
 
-    if not distributor_check(callback_type) then
-        ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s", callback_type)
-        return
-    end
+    -- DISABLED: testing without distributor gate (2026-03-23, pipeline-tuning task 01)
+    -- Bresenham ratio_gate handles admission control. Re-enable after test or replace with map-aware version (task 02).
+    -- if not distributor_check(callback_type) then
+    --     ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s", callback_type)
+    --     return
+    -- end
 
     local first_arg = select(1, ...)
     local on_map = _resolve_on_map(callback_type, first_arg)
+    stats:received(callback_type, on_map, first_arg)
 
     if on_map ~= nil and not _ratio_gate(on_map) then
-        ap_debug.debug("[PRODUCER.REACTIVE] RATIO_BLOCKED %s on_map=%s on=%d off=%d",
-            callback_type, tostring(on_map), _on_count, _off_count)
+        stats:bresenham_blocked(on_map, ap_mcm.cfg.going_speed, _on_count, _off_count)
         return
     end
-
-    if not ap_utils.acquire_cause_lock(on_map) then
-        ap_debug.debug("[PRODUCER.REACTIVE] LOCK_BLOCKED %s on_map=%s", callback_type, tostring(on_map))
-        return
-    end
+    stats:bresenham_passed(on_map, ap_mcm.cfg.going_speed, _on_count, _off_count)
 
     local args = {...}
     for name, entry in pairs(handlers) do
-        if not ap_utils.check_cause_rate_limit(name) then
+        local allowed, count, max = ap_utils.check_cause_rate_limit(name)
+        if not allowed then
+            stats:cause_rate_blocked(name, count, max)
             goto continue
         end
+        stats:cause_rate_passed(name, count, max)
 
         local trace = ap_debug.trace()
         local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
+        stats:predicate(name, result)
 
         if result and result.cause then
-            result._trace = trace
-            ap_utils.event_publish(result.cause, result)
-            ap_utils.increment_cause_counter(name)
+            _try_publish(stats, on_map, name, result, trace)
         end
 
         ::continue::

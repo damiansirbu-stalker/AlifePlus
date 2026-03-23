@@ -9,7 +9,7 @@ local ACTION = ap_const.ACTION
 local cfg
 
 local function _handler(event_data)
-    local trace = event_data._trace or ap_debug.null_trace()
+    local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.ELITE_PROMOTE, function()
         if not cfg.consequence_elite_promote_enabled then return { code = RESULT.DISABLED_NEXT } end
 

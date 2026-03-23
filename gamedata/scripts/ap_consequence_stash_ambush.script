@@ -10,7 +10,7 @@ local cfg
 local community_ambusher = ap_data.community_ambusher
 
 local function _handler(event_data)
-    local trace = event_data._trace or ap_debug.null_trace()
+    local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.STASH_AMBUSH, function()
         if not cfg.consequence_stash_ambush_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not community_ambusher[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end

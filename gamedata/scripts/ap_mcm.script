@@ -2,11 +2,12 @@
 local type = type
 
 defaults = {
-    -- Going Speed (cause-layer differential, mirrors engine going_speed vs current_level_going_speed)
+    -- Event Pipeline (gate order: distributor -> going_speed -> cause_lock -> per-cause -> per-consequence)
+    distributor_max_events = 15,
     going_speed = 8,
-
-    -- General
     global_cause_lock_sec = 15,
+    cause_max_events = 10,
+    consequence_max_events = 5,
 
     -- Destination limiter
     destination_max = 3,
@@ -260,10 +261,13 @@ defaults = {
 
 local key_to_tab = {
     log_level = "development",
+    distributor_max_events = "general",
     going_speed = "general",
+    global_cause_lock_sec = "general",
+    cause_max_events = "general",
+    consequence_max_events = "general",
     destination_max = "general",
     destination_ttl_sec = "general",
-    global_cause_lock_sec = "general",
     alife_periodic_sync_enabled = "alife_tracker",
     alife_sync_interval = "alife_tracker",
     cause_elite_enabled = "causes/elite",
@@ -460,9 +464,11 @@ function on_mcm_load()
                 gr = {
                     slide("ui_mcm_ap_general_title"),
                     desc("ui_mcm_ap_general_desc"),
+                    track("distributor_max_events", 5, 50, 1, 15),
                     track("going_speed", -10, 10, 1, 8),
-                    { id = "div_cause", type = "line" },
                     track("global_cause_lock_sec", 1, 300, 1, 15),
+                    track("cause_max_events", 1, 100, 1, 10),
+                    track("consequence_max_events", 1, 100, 1, 5),
                     { id = "div_destination", type = "line" },
                     track("destination_max", 1, 10, 1, 3),
                     track("destination_ttl_sec", 60, 600, 30, 300),

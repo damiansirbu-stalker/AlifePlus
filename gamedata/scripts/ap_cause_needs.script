@@ -1,5 +1,6 @@
 --- ap_cause_needs: Timer-based human needs evaluation on smart terrain transitions
 
+local math_random = math.random
 local CAUSE = ap_const.CAUSE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
@@ -24,6 +25,18 @@ local NEEDS = {
     { need = "job",     field = "last_job_at",     threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled",     weight = 1.0 },
     { need = "social",  field = "last_social_at",  threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled",  weight = 0.8 },
 }
+
+--- Collect enabled needs from config
+local function _get_enabled_needs()
+    local enabled = {}
+    for i = 1, #NEEDS do
+        local need = NEEDS[i]
+        if cfg[need.enabled_key] then
+            enabled[#enabled + 1] = need
+        end
+    end
+    return enabled
+end
 
 --- Find strongest overdue drive across all needs (Hull drive reduction scoring)
 local function _find_strongest_drive(dto, now)
@@ -69,7 +82,19 @@ local function _on_smart(trace, squad, smart)
     local dto = ap_alife_tracker.get_stalker_needs(squad.id)
     if not dto then
         ap_alife_tracker.init_stalker_needs(squad.id, now)
-        return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD }
+        local enabled = _get_enabled_needs()
+        if #enabled == 0 then return { code = RESULT.DISABLED_NEXT } end
+        local winner = enabled[math_random(#enabled)]
+        return {
+            cause = CAUSE.NEEDS,
+            need = winner.need,
+            dto_field = winner.field,
+            drive = winner.weight,
+            squad_id = squad.id,
+            community = squad.player_id,
+            position = squad.position,
+            level_id = level_id,
+        }
     end
 
     local winner, best_drive = _find_strongest_drive(dto, now)
@@ -95,6 +120,9 @@ function on_game_start()
     }, _on_smart)
     ap_producer_reactive.register(NEEDS_KEY, {
         callback = CALLBACK.SQUAD_ON_LEAVE_SMART,
+    }, _on_smart)
+    ap_producer_reactive.register(NEEDS_KEY, {
+        callback = CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
     }, _on_smart)
     ap_debug.info("[CAUSE.NEEDS] Initialized")
 end

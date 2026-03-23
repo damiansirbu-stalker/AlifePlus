@@ -146,7 +146,7 @@ Disable or remove in MO2.
 Credits:
 Stalker_Boss - Russian translation
 
-Grokitach, DrakoMT, and SaloEater for their support.
+DrakoMT and SaloEater for their support.
 Demonized, Catspaw, Vintar0, RavenAscendant, xcvb, lizzardman, Aoldri, and Feel_Fried. Their work on the engine, modded exes, scripts, and tools shaped how Anomaly modding is done.
 
 Development:
@@ -157,6 +157,9 @@ Code patterns and engine usage validated against established work by reputable G
 The code is validated in real time by a multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, contract rules, cross-file dependency resolution, cyclomatic complexity analysis, crash and vulnerability pattern detection, lua54 integration testing with X-Ray engine stubs, gitleaks secret scanning.
 Full report in doc/test-report.log.
 
+License:
+MIT License. See LICENSE file.
+
 Versions:
 
   1.2.0-RC1 -- "Needs"
@@ -165,7 +168,6 @@ Versions:
     Added: 9 human needs - hunger, sleep, rest, heal, shelter, money, supply, job, social
     Added: Hull drive scoring - Maslow-weighted deprivation model, strongest unmet need wins
     Added: 15 need consequences - each need produces 1-4 context-dependent behaviors based on faction, smart terrain type, and available destinations
-    Added: GOAP animation scheme (xgoap_anim) - NPCs play contextual animations on arrival (eating, sleeping, guarding, researching, praying). Generic xlibs infrastructure, any system can trigger it
     Added: destination limiter - prevents multiple squads converging on the same smart terrain
     Added: smart terrain filters - has_campfire, has_anomaly, has_trader_job, has_mechanic_job (xlibs)
     Added: per-need MCM controls - 9 enabled flags, 9 hour thresholds, 18 consequence sections (enabled, chance, pda_chance)
