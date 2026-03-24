@@ -141,7 +141,7 @@ end
 
 -- Rate limit counters (lazy init)
 local _cause_counter = nil
-local _consequence_counter = nil
+local _consequence_limiter = nil
 
 local function _ensure_cause_counter()
     if not _cause_counter then
@@ -150,11 +150,13 @@ local function _ensure_cause_counter()
     return _cause_counter
 end
 
-local function _ensure_consequence_counter()
-    if not _consequence_counter then
-        _consequence_counter = xttltable.create_ttl_counter({ ttl = ap_const.CONSEQUENCE_WINDOW_SEC })
+local function _ensure_consequence_limiter()
+    if not _consequence_limiter then
+        local max = ap_mcm.cfg.consequence_max_events
+        local window = ap_const.CONSEQUENCE_WINDOW_SEC
+        _consequence_limiter = xttltable.create_token_bucket({ capacity = 1, rate = max / window })
     end
-    return _consequence_counter
+    return _consequence_limiter
 end
 
 --- Check cause rate limit (true = allowed, false = blocked)
@@ -176,30 +178,16 @@ function increment_cause_counter(name)
     counter:add(get_cause_rate_key(name))
 end
 
---- Check consequence rate limit (true = allowed, false = blocked)
---- @return boolean allowed, number count, number max
+--- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
 function check_consequence_rate_limit(name)
-    local counter = _ensure_consequence_counter()
-    local key = get_consequence_rate_key(name)
-    local count = counter:count(key)
-    local max = ap_mcm.cfg.consequence_max_events
-    if count >= max then
-        return false, count, max
-    end
-    return true, count, max
+    local limiter = _ensure_consequence_limiter()
+    return limiter:peek(get_consequence_rate_key(name))
 end
 
---- Increment consequence counter after success
+--- Acquire consequence token after success
 function increment_consequence_counter(name)
-    local counter = _ensure_consequence_counter()
-    counter:add(get_consequence_rate_key(name))
-end
-
---- Acquire cause lock (class-isolated: on-map and off-map have separate locks)
---- @param on_map boolean|nil true = on-map lock, false/nil = off-map lock
-function acquire_cause_lock(on_map)
-    local key = on_map and ap_const.LOCK_PREFIX.CAUSE_ON_MAP or ap_const.LOCK_PREFIX.CAUSE_OFF_MAP
-    return xtable.acquire_lock(key, ap_const.CAUSE_LOCK_SEC)
+    local limiter = _ensure_consequence_limiter()
+    limiter:acquire(get_consequence_rate_key(name))
 end
 
 --- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)

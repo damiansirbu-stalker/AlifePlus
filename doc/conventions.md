@@ -47,8 +47,6 @@ Single word preferred. UPPER_SNAKE in constants.
 | Consequence const | `CONSEQUENCE.{CAUSE}_{VERB}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
 | Consequence value | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
 | Action ID | `action:{verb}` | `action:find_targets`, `action:move_squad` |
-| Lock (global) | `lock:global:cause` | |
-| Lock (cause) | `lock:cause:{name}` | `lock:cause:massacre` |
 | Lock (consequence) | `lock:consequence:{name}` | `lock:consequence:massacre_scavenge` |
 | Lock (hit mod) | `lock:hit_modifier` | |
 | MCM cause enabled | `cause_{name}_enabled` | `cause_massacre_enabled` |

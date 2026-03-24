@@ -4,8 +4,15 @@ local next, pairs, tostring, type = next, pairs, tostring, type
 local CALLBACK = ap_const.CALLBACK
 local _handlers = {}
 local _subscribed = {}
-local _limiter = nil
+local _radiant_event_limiter = nil
+local _reactive_event_limiter = nil
 local _last_interaction_squad = {}
+
+--- Radiant callback set (built from RADIANT_CALLBACKS for O(1) lookup in dispatch)
+local _radiant_event_set = {}
+for i = 1, #ap_const.RADIANT_CALLBACKS do
+    _radiant_event_set[ap_const.RADIANT_CALLBACKS[i]] = true
+end
 
 --- Actor callbacks are always on the player's level (no level extraction needed)
 local _actor_callbacks = {
@@ -23,10 +30,10 @@ local _off_count = 0
 local function _resolve_on_map(callback_type, first_arg)
     if _actor_callbacks[callback_type] then return true, nil end
     if not first_arg then return nil, nil end
-    local ev = xlevel.get_level_id(first_arg)
-    local ac = xlevel.get_actor_level_id()
-    if not ev or not ac then return nil, ev end
-    return ev == ac, ev
+    local event_level = xlevel.get_level_id(first_arg)
+    local actor_level = xlevel.get_actor_level_id()
+    if not event_level or not actor_level then return nil, event_level end
+    return event_level == actor_level, event_level
 end
 
 --- Bresenham-derived alife_ratio gate: enforces on-map vs off-map cause ratio.
@@ -66,14 +73,25 @@ local function _alife_ratio_gate(on_map)
     return false
 end
 
-local DISTRIBUTOR_CAPACITY = 1
-local DISTRIBUTOR_RATE = 1
-
-local function distributor_check(key)
-    if not _limiter then
-        _limiter = xttltable.create_token_bucket({ capacity = DISTRIBUTOR_CAPACITY, rate = DISTRIBUTOR_RATE })
+local function _check_radiant_event_limiter()
+    if not _radiant_event_limiter then
+        _radiant_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / ap_mcm.cfg.distributor_interval_sec })
     end
-    return _limiter:acquire(key)
+    return _radiant_event_limiter:acquire("radiant")
+end
+
+local function _check_reactive_event_limiter(callback_type)
+    if not _reactive_event_limiter then
+        _reactive_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / ap_const.REACTIVE_EVENT_INTERVAL_SEC })
+    end
+    return _reactive_event_limiter:acquire(callback_type)
+end
+
+local function _check_event_limiter(callback_type)
+    if _radiant_event_set[callback_type] then
+        return _check_radiant_event_limiter(), "RADIANT"
+    end
+    return _check_reactive_event_limiter(callback_type), "REACTIVE"
 end
 
 --- Register a cause handler
@@ -109,13 +127,6 @@ end
 
 --- Try to publish a cause result
 local function _try_publish(on_map, name, result, trace, level_id)
-    -- DISABLED: testing without global cause lock (2026-03-23, pipeline-tuning task 03).
-    -- Assumption: lock may prevent parallelism across independent causes (1 publish = N-1 blocked).
-    -- if not ap_utils.acquire_cause_lock(on_map) then
-    --     ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_LOCK_BLOCKED cause=%s on_map=%s level=%s",
-    --         result.cause, tostring(on_map), tostring(level_id))
-    --     return
-    -- end
     result._trace = trace
     ap_utils.event_publish(result.cause, result)
     ap_utils.increment_cause_counter(name)
@@ -140,10 +151,10 @@ local function dispatch(callback_type, ...)
         return
     end
 
-    local dist_key = squad_id or callback_type
-    if not distributor_check(dist_key) then
-        ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s level=%s sq=%s",
-            callback_type, tostring(level_id), tostring(squad_id))
+    local event_allowed, event_class = _check_event_limiter(callback_type)
+    if not event_allowed then
+        ap_debug.debug("[PRODUCER.REACTIVE] %s_EVENT_BLOCKED %s level=%s sq=%s",
+            event_class, callback_type, tostring(level_id), tostring(squad_id))
         return
     end
 
@@ -166,14 +177,14 @@ local function dispatch(callback_type, ...)
     end
 end
 
---- Adapter: actor_on_interaction -> smart_proximity dispatch
+--- Adapter: actor_on_interaction -> actor_on_smart dispatch
 --- Extracts one resident squad per smart per tick via rotation
 local function _interaction_adapter(interaction_type, target)
     if interaction_type ~= "smarts" then return end
     if not target then return end
-    local squads = xsmart.get_smart_squads(target)
-    if not squads then return end
     local smart_id = target.id
+    local squads = xsmart.get_smart_squads(smart_id)
+    if not squads then return end
     local last_key = _last_interaction_squad[smart_id]
     local squad_id
     if last_key and squads[last_key] then
@@ -186,7 +197,7 @@ local function _interaction_adapter(interaction_type, target)
     _last_interaction_squad[smart_id] = squad_id
     local squad = xobject.se(squad_id)
     if not squad then return end
-    dispatch(CALLBACK.SMART_PROXIMITY, squad)
+    dispatch(CALLBACK.ACTOR_ON_SMART, squad)
 end
 
 local function _create_dispatcher(callback)
@@ -198,7 +209,7 @@ local _dispatchers = {}
 local function subscribe_to_callbacks()
     for callback in pairs(_handlers) do
         if _subscribed[callback] then goto continue end
-        if callback == CALLBACK.SMART_PROXIMITY then goto continue end
+        if callback == CALLBACK.ACTOR_ON_SMART then goto continue end
         local dispatcher = _create_dispatcher(callback)
         _dispatchers[callback] = dispatcher
         RegisterScriptCallback(callback, dispatcher)
@@ -209,7 +220,7 @@ local function subscribe_to_callbacks()
     if not _subscribed[CALLBACK.ACTOR_ON_INTERACTION] then
         RegisterScriptCallback(CALLBACK.ACTOR_ON_INTERACTION, _interaction_adapter)
         _subscribed[CALLBACK.ACTOR_ON_INTERACTION] = true
-        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (adapter -> %s)", CALLBACK.ACTOR_ON_INTERACTION, CALLBACK.SMART_PROXIMITY)
+        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (adapter -> %s)", CALLBACK.ACTOR_ON_INTERACTION, CALLBACK.ACTOR_ON_SMART)
     end
 end
 
@@ -220,6 +231,8 @@ function on_game_start()
     _on_count = 0
     _off_count = 0
     _last_interaction_squad = {}
+    _radiant_event_limiter = nil
+    _reactive_event_limiter = nil
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, subscribe_to_callbacks)
     ap_debug.info("[PRODUCER.REACTIVE] Initialized")
 end

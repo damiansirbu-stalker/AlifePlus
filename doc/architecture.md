@@ -25,10 +25,9 @@ AlifePlus observes A-Life simulation events, detects meaningful patterns (causes
                |           PRODUCER            |
                | 1. resolve_on_map (level cmp) |
                | 2. ratio_gate (Bresenham)     |
-               | 3. distributor (token bucket) |
+               | 3. event limiter (split R/X)  |
                | 4. per-cause rate limit       |
                | 5. predicate evaluation       |
-               | 6. cause lock (DISABLED)      |
                +---------------+---------------+
                                |
                                v
@@ -61,7 +60,7 @@ AlifePlus observes A-Life simulation events, detects meaningful patterns (causes
 | Consequence | Handler that subscribes to a cause event, executes business logic + side effects |
 | Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or `nil` |
 | Producer | Dispatches X-Ray callbacks to registered predicates, publishes results to xbus |
-| Distributor | Per-callback-type token bucket inside producer (burst protection, 1/sec per type) |
+| Event Limiter | Split token bucket pacer: radiant (global, MCM rate) + reactive (per-callback-type, 1/s) |
 | Consumer | Receives cause events from xbus, dispatches to consequences by priority |
 | xbus | Pub/sub event bus. Causes publish, consequences subscribe. Zero coupling. |
 
@@ -95,7 +94,7 @@ Radiant causes evaluate on smart terrain transitions -- the natural flow of A-Li
 
 #### Radiant cause flow
 
-Each radiant cause registers for all callbacks in `ap_const.RADIANT_CALLBACKS`: `squad_on_enter_smart`, `squad_on_leave_smart`, `squad_on_after_game_vertex_change`, and `squad_on_after_level_change`. Four evaluation callbacks per squad movement cycle. Adding a new radiant trigger = one line in `RADIANT_CALLBACKS`, zero cause edits.
+Each radiant cause registers for all callbacks in `ap_const.RADIANT_CALLBACKS`: `squad_on_enter_smart`, `squad_on_leave_smart`, and `actor_on_smart` (adapter on `actor_on_interaction`). Three evaluation callbacks. Adding a new radiant trigger = one line in `RADIANT_CALLBACKS`, zero cause edits.
 
 ```
 Squad S transitions at smart
@@ -136,7 +135,7 @@ Guard clauses at the top of every predicate and handler. Missing data returns `{
 1. X-Ray callback fires
 2. Producer: resolve on-map (compare event level to actor level)
 3. Producer: ratio gate (Bresenham admission control, blocked -> skip all, log)
-4. Producer: distributor check (token bucket, 1/sec per callback type, blocked -> skip all, log)
+4. Producer: event limiter (radiant: global token bucket 1/MCM sec; reactive: per-callback-type 1/1s; blocked -> skip all, log)
 5. Producer: for each registered predicate:
    a. Per-cause rate limit check (blocked -> skip, log THROTTLED_NEXT)
    b. Wrap predicate call in `observe()`, pass trace
@@ -169,8 +168,7 @@ X-Ray Callback -> Producer -> Predicate(trace, ...args) -> { cause, ...data } | 
 | `squad_on_npc_death` | massacre, basekill, squadkill, elite, elitekill |
 | `squad_on_enter_smart` | stash, area, needs, elitespot (planned), areas (planned) |
 | `squad_on_leave_smart` | stash, area, needs, elitespot (planned), areas (planned) |
-| `squad_on_after_game_vertex_change` | stash, area, needs, elitespot (planned), areas (planned) |
-| `squad_on_after_level_change` | stash, area, needs, elitespot (planned), areas (planned) |
+| `actor_on_smart` (adapter) | stash, area, needs, elitespot (planned), areas (planned) |
 | `x_npc_medkit_use` | wounded (NPC) |
 | `actor_on_item_use` | wounded (player) |
 | `actor_on_item_take` | harvest (player) |
@@ -224,32 +222,32 @@ AP uses `observe()` wrappers (from `ap_debug`) to build hierarchical execution t
 ```
 dispatch() gate order:
   1. _resolve_on_map (level comparison)
-  2. _alife_ratio_gate (Bresenham-derived admission, on-map vs off-map)
-  3. distributor_check (token bucket, 1/sec per callback type)
+  2. _alife_ratio_gate (Bresenham-derived admission, on-map vs off-map, SHARED)
+  3. _check_event_limiter (SPLIT: radiant global / reactive per-callback-type)
   4. per-cause rate limit (sliding window)
   5. predicate evaluation
-  6. acquire_cause_lock (DISABLED -- task 03, testing removal)
 ```
 
-### Distributor (gate 3)
+Gates 1-2 are shared across all event types (radiant and reactive). Gate 3 splits into two independent token buckets -- radiant and reactive events never compete for tokens.
 
-Token bucket rate limiter per callback type. Runs after alife_ratio gate -- only sees events that passed admission control. Uses `xttltable.create_token_bucket`: capacity=1, rate=1 token/sec per key. First event for each callback type passes immediately, subsequent events of the same type throttled to 1/sec.
+### Event Limiter (gate 3, split radiant/reactive)
 
-Burst protection, not sustained rate control. Steady-state on-map rate (~0.5/sec per type) is well under the 1/sec limit. The distributor only blocks during burst floods (game load, rapid squad transitions). 8 callback types = max 8 events/sec aggregate ceiling.
+Two separate `xttltable.create_token_bucket` instances. Radiant and reactive events use different bucket instances with different key spaces -- no token competition between them.
 
-| Callback type | Causes |
-|---------------|--------|
-| `squad_on_enter_smart` | stash, area, needs |
-| `squad_on_leave_smart` | stash, area, needs |
-| `squad_on_after_game_vertex_change` | stash, area, needs |
-| `squad_on_after_level_change` | stash, area, needs |
-| `squad_on_npc_death` | massacre, basekill, squadkill, elite, elitekill |
-| `x_npc_medkit_use` | wounded |
-| `actor_on_item_use` | wounded |
-| `actor_on_item_take` | harvest |
-| `npc_on_item_take` | harvest |
+**Radiant event limiter** (`_radiant_event_limiter`): Global token bucket, single key `"radiant"`. capacity=1 (no burst), rate=1/MCM `distributor_interval_sec` (default 3 = 1 event every 3 seconds). Paces the adapter stream (actor_on_smart 4-10/sec) and off-map enter/leave_smart. All radiant callbacks share one token pool.
 
-### A-Life Ratio (gate 2, Bresenham-derived admission control)
+**Reactive event limiter** (`_reactive_event_limiter`): Per-callback-type token bucket. capacity=1, rate=1/`REACTIVE_EVENT_INTERVAL_SEC` (hardcoded 1s). Each callback type (`squad_on_npc_death`, `x_npc_medkit_use`, etc.) gets its own key. Reactive events from different callback types don't compete.
+
+**Why split (task 02c):** A single global distributor starved 100% of reactive events (356/356 blocked in 6-min playtest). The adapter's 6.6/sec radiant stream consumed every token, leaving zero for deaths/medkit/item events.
+
+| Limiter | Scope | Key | Rate | Setting |
+|---------|-------|-----|------|---------|
+| Radiant | global | `"radiant"` | 1/3s | `distributor_interval_sec` (MCM, 1-30) |
+| Reactive | per-callback-type | callback_type string | 1/1s | `REACTIVE_EVENT_INTERVAL_SEC` (constant) |
+
+### A-Life Ratio (gate 2, Bresenham-derived admission control, shared)
+
+Shared across radiant and reactive events intentionally. The gate balances on-map vs off-map volume -- orthogonal to radiant vs reactive. Both event types contribute to the same `_on_count`/`_off_count` counters.
 
 X-Ray processes A-Life at two speeds: per-frame on the player's level (`current_level_going_speed`), round-robin on distant levels (`going_speed`). With ~30 maps, off-map events outnumber on-map ~50:1. Without intervention, the player's map is starved.
 
@@ -276,15 +274,7 @@ Uses `xttltable.create_ttl_counter`. Counts events in time window, blocks if cou
 | Scope | Owner | Settings | What it does |
 |-------|-------|----------|--------------|
 | Per-cause | Producer | `cause_max_events` (MCM), `CAUSE_WINDOW_SEC` (60s constant) | Budget per cause key |
-| Per-consequence | Consumer | `consequence_max_events` (MCM), `CONSEQUENCE_WINDOW_SEC` (60s constant) | Budget per consequence key |
-
-### Cause Lock (gate 6)
-
-**Status: DISABLED.** Commented out in `ap_producer_reactive.script` (task 03, testing removal). Causes publish independently. Distributor (gate 3) and per-cause rate limiter (gate 4) handle throttling.
-
-Previously: class-isolated cooldown checked after a predicate returns a result with `.cause`. On-map and off-map had separate lock timestamps. MCM: `global_cause_lock_sec` (default 15, range 1-300).
-
-Additionally, `ap_alife_behavior` uses a 1s keyed lock (`HIT_MODIFIER_LOCK_SEC`) on `npc_on_before_hit` to throttle hit modifier applications. Predicates never check rate limits -- orchestrators enforce all limiting.
+| Per-consequence | Consumer | `consequence_max_events` (MCM), `CONSEQUENCE_WINDOW_SEC` (60s constant) | Token bucket pacer per consequence key (capacity=1, rate=max/window). peek() pre-check, acquire() on success. |
 
 ---
 

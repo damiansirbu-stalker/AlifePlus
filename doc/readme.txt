@@ -165,6 +165,7 @@ Versions:
   1.2.0-RC1 -- "Needs"
     Stalkers have human needs. Nine drives scored by deprivation produce emergent daily routines.
     A hungry stalker finds a campfire and eats. A tired one sleeps through the night. Guards patrol their base. Loners hunt anomalies for money. Scientists research. Monolith prays. All of it earned from world state, nothing scripted, nothing faked.
+    The event pipeline was redesigned from the ground up: on-map evaluation via actor_on_interaction adapter, split radiant/reactive event limiters, consequence token bucket pacing, and cause lock removal. Idle squads are now evaluated, reactive events never starved, and all three radiant causes publish evenly.
     Added: 9 human needs - hunger, sleep, rest, heal, shelter, money, supply, job, social
     Added: Hull drive scoring - Maslow-weighted deprivation model, strongest unmet need wins
     Added: 15 need consequences - each need produces 1-4 context-dependent behaviors based on faction, smart terrain type, and available destinations
@@ -173,11 +174,22 @@ Versions:
     Added: per-need MCM controls - 9 enabled flags, 9 hour thresholds, 18 consequence sections (enabled, chance, pda_chance)
     Added: night gate for sleep - cause only fires between 20:00 and 05:00 game time
     Added: faction-aware destinations - heal, shelter, guard, and social consequences respect faction ownership
-    Changed: consequence chances raised from flat 10% to 15-30% based on log data (combat reactions highest, stash/area lowest)
-    Changed: PDA notification chances raised from flat 20% to 25-40% (combat reactions highest)
-    Changed: global cause lock 30s -> 15s
-    Removed: MCM sliders for cause window, consequence window, and distributor limits (never triggered in 130+ hours of user logs, hardcoded as constants)
-    Fixed: elite PDA messages now distinguish stalkers from mutants. Mutant pack leaders get their own messages instead of human-oriented ones like "runs a tight crew".
+    Added: actor_on_interaction adapter - idle on-map squads now evaluated via smart proximity polling (4-10/sec steady)
+    Added: split event limiters - radiant (global, MCM) and reactive (per-callback-type) operate independently
+    Added: consequence token bucket rate limiter with peek/acquire - monotone pacing per consequence key (xlibs)
+    Added: distributor_interval_sec MCM slider (1-30s, default 3)
+    Added: distributor, cause, consequence event counts as MCM settings with pipeline descriptions
+    Changed: consequence chances normalized - radiant 10%, reactive 20%, PDA 50%
+    Changed: alife_ratio renamed from going_speed, MCM slider reworded
+    Changed: MCM general tab reordered in pipeline gate order (1-5)
+    Removed: global cause lock (replaced by per-cause rate limiting)
+    Removed: ap_stats module (replaced by observe() tracing layer)
+    Removed: squad_on_after_game_vertex_change from radiant callbacks (redundant with adapter)
+    Removed: xgoap_anim GOAP idle animation scheme (vanilla gulag jobs handle animations)
+    Fixed: elite PDA messages now distinguish stalkers from mutants
+    Fixed: wounded_help faction matching - character_community(db.actor) returns "actor_stalker", stripped to match NPC community
+    Fixed: reactive event starvation - global distributor consumed all tokens, blocking 100% of death/medkit/item events
+    Fixed: cause lock was blocking 90% of predicate passes, starving needs and area causes
 
   1.1.1
     Fixed: dependency gate uses exact version match instead of string comparison

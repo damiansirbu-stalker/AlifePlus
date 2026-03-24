@@ -1,0 +1,403 @@
+--- ap_stats: Pipeline tracing and statistics
+--- Layer 1: Per-event trace lines (every gate, every event, debug only)
+--- Layer 2: 60s funnel summary (gate-shaped, debug only)
+--- Null object pattern: zero overhead when debug disabled
+local pairs, next, tostring, os_clock = pairs, next, tostring, os.clock
+local string_format = string.format
+local table_sort, table_concat = table.sort, table.concat
+
+local CALLBACK = ap_const.CALLBACK
+local RESULT = ap_const.RESULT
+local STATS_INTERVAL_SEC = 60
+
+local _CB_SHORT = {
+    [CALLBACK.SQUAD_ON_ENTER_SMART] = "enter_smart",
+    [CALLBACK.SQUAD_ON_LEAVE_SMART] = "leave_smart",
+    [CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE] = "game_vertex_change",
+    [CALLBACK.SQUAD_ON_NPC_DEATH] = "npc_death",
+    [CALLBACK.X_NPC_MEDKIT_USE] = "medkit_use",
+    [CALLBACK.ACTOR_ON_ITEM_USE] = "actor_item_use",
+    [CALLBACK.ACTOR_ON_ITEM_TAKE] = "actor_item_take",
+    [CALLBACK.NPC_ON_ITEM_TAKE] = "npc_item_take",
+}
+
+-- =============================================================================
+-- HELPERS
+-- =============================================================================
+
+local function _collect_keys(...)
+    local seen, keys = {}, {}
+    for i = 1, select("#", ...) do
+        local tbl = select(i, ...)
+        for k in pairs(tbl) do
+            if not seen[k] then seen[k] = true; keys[#keys + 1] = k end
+        end
+    end
+    table_sort(keys)
+    return keys
+end
+
+local function _cause_short(name)
+    return name:sub(7)
+end
+
+local function _cons_short(name)
+    return name:sub(13)
+end
+
+local function _format_by_cause(tbl, label)
+    if not next(tbl) then return "" end
+    local parts = {}
+    local keys = _collect_keys(tbl)
+    for i = 1, #keys do
+        local k = keys[i]
+        parts[#parts + 1] = string_format("%s:%s=%d", _cause_short(k), label, tbl[k])
+    end
+    return " | " .. table_concat(parts, " ")
+end
+
+local function _format_published(tbl)
+    if not next(tbl) then return "" end
+    local parts = {}
+    local keys = _collect_keys(tbl)
+    for i = 1, #keys do
+        local k = keys[i]
+        parts[#parts + 1] = string_format("%s=%d", _cause_short(k), tbl[k])
+    end
+    return " | " .. table_concat(parts, " ")
+end
+
+local function _format_cons_entry(entry)
+    local sub_parts = {}
+    for code, count in pairs(entry) do
+        if count > 0 then sub_parts[#sub_parts + 1] = code .. "=" .. count end
+    end
+    return #sub_parts > 0 and table_concat(sub_parts, ",") or nil
+end
+
+local function _format_consequence_breakdown(by_consequence)
+    if not next(by_consequence) then return nil end
+    local cons_parts = {}
+    local cons_keys = _collect_keys(by_consequence)
+    for i = 1, #cons_keys do
+        local formatted = _format_cons_entry(by_consequence[cons_keys[i]])
+        if formatted then
+            cons_parts[#cons_parts + 1] = _cons_short(cons_keys[i]) .. ":{" .. formatted .. "}"
+        end
+    end
+    return #cons_parts > 0 and table_concat(cons_parts, " ") or nil
+end
+
+-- =============================================================================
+-- STATS STATE
+-- =============================================================================
+
+local _producer = {}
+local _consumer = {}
+local _producer_clock = 0
+local _consumer_clock = 0
+
+-- Dispatch context (set on received, read by subsequent trace calls)
+local _ctx = {}
+-- Consumer context (set on consequence_received)
+local _cons_ctx = {}
+
+-- =============================================================================
+-- RESET
+-- =============================================================================
+
+local function _reset_producer()
+    _producer = {
+        received = 0,
+        bresenham_pass = 0, bresenham_block = 0, bresenham_skip = 0,
+        cause_rate_pass = 0, cause_rate_block = 0,
+        predicate_ok = 0, predicate_nil = 0,
+        cause_lock_pass = 0, cause_lock_block = 0,
+        received_by_cb = {},
+        cause_rate_block_by = {},
+        predicate_ok_by = {},
+        cause_lock_block_by = {},
+        published_by = {},
+    }
+    _producer_clock = os_clock()
+end
+
+local function _reset_consumer()
+    _consumer = {
+        received = 0,
+        rate_pass = 0, rate_block = 0,
+        by_result = {},
+        by_consequence = {},
+    }
+    for _, code in pairs(RESULT) do
+        _consumer.by_result[code] = 0
+    end
+    _consumer_clock = os_clock()
+end
+
+-- =============================================================================
+-- DUMP (60s summary)
+-- =============================================================================
+
+local function _dump_producer_stats()
+    local now = os_clock()
+    if now - _producer_clock < STATS_INTERVAL_SEC then return end
+    local prod = _producer
+    if prod.received == 0 then
+        _producer_clock = now
+        return
+    end
+
+    -- Received by callback
+    local cb_parts = {}
+    local cb_keys = _collect_keys(prod.received_by_cb)
+    for i = 1, #cb_keys do
+        local cb = cb_keys[i]
+        cb_parts[#cb_parts + 1] = string_format("%s=%d", _CB_SHORT[cb] or cb, prod.received_by_cb[cb])
+    end
+
+    ap_debug.debug("[PRODUCER.REACTIVE] STATS/60s")
+    ap_debug.debug("[PRODUCER.REACTIVE]   received        %4d | %s",
+        prod.received, table_concat(cb_parts, " "))
+    ap_debug.debug("[PRODUCER.REACTIVE]   bresenham       %4d -> pass=%d blocked=%d skip=%d",
+        prod.received, prod.bresenham_pass, prod.bresenham_block, prod.bresenham_skip)
+
+    local cause_rate_in = prod.cause_rate_pass + prod.cause_rate_block
+    ap_debug.debug("[PRODUCER.REACTIVE]   cause_rate      %4d -> pass=%d blocked=%d%s",
+        cause_rate_in, prod.cause_rate_pass, prod.cause_rate_block,
+        _format_by_cause(prod.cause_rate_block_by, "blk"))
+
+    local pred_in = prod.predicate_ok + prod.predicate_nil
+    ap_debug.debug("[PRODUCER.REACTIVE]   predicate       %4d -> ok=%d nil=%d%s",
+        pred_in, prod.predicate_ok, prod.predicate_nil,
+        _format_by_cause(prod.predicate_ok_by, "ok"))
+
+    local lock_in = prod.cause_lock_pass + prod.cause_lock_block
+    ap_debug.debug("[PRODUCER.REACTIVE]   cause_lock      %4d -> pass=%d blocked=%d%s",
+        lock_in, prod.cause_lock_pass, prod.cause_lock_block,
+        _format_by_cause(prod.cause_lock_block_by, "blk"))
+
+    ap_debug.debug("[PRODUCER.REACTIVE]   published       %4d%s",
+        prod.cause_lock_pass, _format_published(prod.published_by))
+
+    _reset_producer()
+end
+
+local function _dump_consumer_stats()
+    local now = os_clock()
+    if now - _consumer_clock < STATS_INTERVAL_SEC then return end
+    local cons = _consumer
+    if cons.received == 0 then
+        _consumer_clock = now
+        return
+    end
+
+    ap_debug.debug("[CONSUMER] STATS/60s")
+    ap_debug.debug("[CONSUMER]   received        %4d | consequence_rate: pass=%d blocked=%d",
+        cons.received, cons.rate_pass, cons.rate_block)
+
+    local result_parts = {}
+    for _, code in pairs(RESULT) do
+        if cons.by_result[code] and cons.by_result[code] > 0 then
+            result_parts[#result_parts + 1] = string_format("%s=%d", code, cons.by_result[code])
+        end
+    end
+    if #result_parts > 0 then
+        ap_debug.debug("[CONSUMER]   results         %s", table_concat(result_parts, " "))
+    end
+
+    local cons_parts = _format_consequence_breakdown(cons.by_consequence)
+    if cons_parts then
+        ap_debug.debug("[CONSUMER]   per_consequence  %s", cons_parts)
+    end
+
+    _reset_consumer()
+end
+
+-- =============================================================================
+-- NULL OBJECT (returned when debug disabled, zero overhead)
+-- =============================================================================
+
+local _NULL = {}
+function _NULL:received() end
+function _NULL:bresenham_passed() end
+function _NULL:bresenham_blocked() end
+function _NULL:cause_rate_passed() end
+function _NULL:cause_rate_blocked() end
+function _NULL:predicate() end
+function _NULL:cause_lock_blocked() end
+function _NULL:published() end
+function _NULL:consequence_received() end
+function _NULL:consequence_rate_passed() end
+function _NULL:consequence_rate_blocked() end
+function _NULL:consequence_result() end
+
+-- =============================================================================
+-- PRODUCER RECORDER (trace + accumulate)
+-- =============================================================================
+
+local _prod = {}
+
+function _prod:received(callback_type, on_map, first_arg)
+    local prod = _producer
+    prod.received = prod.received + 1
+    prod.received_by_cb[callback_type] = (prod.received_by_cb[callback_type] or 0) + 1
+
+    _ctx.cb = _CB_SHORT[callback_type] or callback_type
+    _ctx.on_map = on_map
+    _ctx.squad_id = first_arg and first_arg.id
+    _ctx.faction = first_arg and first_arg.player_id
+
+    ap_debug.debug("[PRODUCER.REACTIVE] RECEIVED cb=%s squad=%s faction=%s on_map=%s",
+        _ctx.cb, tostring(_ctx.squad_id), tostring(_ctx.faction), tostring(on_map))
+end
+
+function _prod:bresenham_passed(on_map, gs, on_count, off_count)
+    local prod = _producer
+    if on_map == nil then
+        prod.bresenham_skip = prod.bresenham_skip + 1
+    else
+        prod.bresenham_pass = prod.bresenham_pass + 1
+    end
+
+    ap_debug.debug("[PRODUCER.REACTIVE] GATE bresenham PASS squad=%s on_map=%s gs=%d on=%d off=%d",
+        tostring(_ctx.squad_id), tostring(on_map), gs, on_count, off_count)
+end
+
+function _prod:bresenham_blocked(on_map, gs, on_count, off_count)
+    _producer.bresenham_block = _producer.bresenham_block + 1
+
+    ap_debug.debug("[PRODUCER.REACTIVE] GATE bresenham BLOCKED squad=%s on_map=%s gs=%d on=%d off=%d",
+        tostring(_ctx.squad_id), tostring(on_map), gs, on_count, off_count)
+end
+
+function _prod:cause_rate_passed(name, count, max)
+    _producer.cause_rate_pass = _producer.cause_rate_pass + 1
+
+    ap_debug.debug("[PRODUCER.REACTIVE] GATE cause_rate_limit PASS squad=%s cause=%s count=%d/%d",
+        tostring(_ctx.squad_id), _cause_short(name), count, max)
+end
+
+function _prod:cause_rate_blocked(name, count, max)
+    local prod = _producer
+    prod.cause_rate_block = prod.cause_rate_block + 1
+    prod.cause_rate_block_by[name] = (prod.cause_rate_block_by[name] or 0) + 1
+
+    ap_debug.debug("[PRODUCER.REACTIVE] GATE cause_rate_limit BLOCKED squad=%s cause=%s count=%d/%d",
+        tostring(_ctx.squad_id), _cause_short(name), count, max)
+end
+
+function _prod:predicate(name, result)
+    local prod = _producer
+    if result and result.cause then
+        prod.predicate_ok = prod.predicate_ok + 1
+        prod.predicate_ok_by[result.cause] = (prod.predicate_ok_by[result.cause] or 0) + 1
+
+        local extra = ""
+        if result.need then extra = extra .. " need=" .. tostring(result.need) end
+        if result.drive then extra = extra .. string_format(" drive=%.2f", result.drive) end
+        if result.stash_id then extra = extra .. " stash_id=" .. tostring(result.stash_id) end
+        if result.total_deaths then extra = extra .. " deaths=" .. tostring(result.total_deaths) end
+        if result.faction then extra = extra .. " faction=" .. tostring(result.faction) end
+        ap_debug.debug("[PRODUCER.REACTIVE] PREDICATE squad=%s cause=%s result=ok%s",
+            tostring(_ctx.squad_id), _cause_short(result.cause), extra)
+    else
+        prod.predicate_nil = prod.predicate_nil + 1
+
+        ap_debug.debug("[PRODUCER.REACTIVE] PREDICATE squad=%s cause=%s result=nil",
+            tostring(_ctx.squad_id), _cause_short(name))
+    end
+end
+
+function _prod:cause_lock_blocked(on_map, cause)
+    local prod = _producer
+    prod.cause_lock_block = prod.cause_lock_block + 1
+    prod.cause_lock_block_by[cause] = (prod.cause_lock_block_by[cause] or 0) + 1
+
+    ap_debug.debug("[PRODUCER.REACTIVE] GATE cause_lock BLOCKED squad=%s on_map=%s cause=%s",
+        tostring(_ctx.squad_id), tostring(on_map), _cause_short(cause))
+end
+
+function _prod:published(on_map, cause, name)
+    local prod = _producer
+    prod.cause_lock_pass = prod.cause_lock_pass + 1
+    prod.published_by[cause] = (prod.published_by[cause] or 0) + 1
+
+    ap_debug.debug("[PRODUCER.REACTIVE] PUBLISHED squad=%s on_map=%s cause=%s handler=%s",
+        tostring(_ctx.squad_id), tostring(on_map), _cause_short(cause), _cause_short(name))
+end
+
+-- =============================================================================
+-- CONSUMER RECORDER (trace + accumulate)
+-- =============================================================================
+
+local _cons = {}
+
+function _cons:consequence_received(event_type, event_data)
+    _consumer.received = _consumer.received + 1
+
+    _cons_ctx.squad_id = event_data and (event_data.squad_id or event_data.id)
+    _cons_ctx.cause = event_type
+
+    local extra = ""
+    if event_data then
+        if event_data.need then extra = extra .. " need=" .. event_data.need end
+        if event_data.faction then extra = extra .. " faction=" .. tostring(event_data.faction) end
+    end
+
+    ap_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s%s",
+        _cause_short(event_type), tostring(_cons_ctx.squad_id), extra)
+end
+
+function _cons:consequence_rate_passed(name, count, max)
+    _consumer.rate_pass = _consumer.rate_pass + 1
+
+    ap_debug.debug("[CONSUMER] GATE consequence_rate_limit PASS squad=%s consequence=%s count=%d/%d",
+        tostring(_cons_ctx.squad_id), _cons_short(name), count, max)
+end
+
+function _cons:consequence_rate_blocked(name, count, max)
+    _consumer.rate_block = _consumer.rate_block + 1
+
+    ap_debug.debug("[CONSUMER] GATE consequence_rate_limit BLOCKED squad=%s consequence=%s count=%d/%d",
+        tostring(_cons_ctx.squad_id), _cons_short(name), count, max)
+end
+
+function _cons:consequence_result(name, code)
+    if not code then return end
+    local cons = _consumer
+    if cons.by_result[code] ~= nil then
+        cons.by_result[code] = cons.by_result[code] + 1
+    end
+    if not cons.by_consequence[name] then
+        cons.by_consequence[name] = {}
+    end
+    cons.by_consequence[name][code] = (cons.by_consequence[name][code] or 0) + 1
+
+    ap_debug.debug("[CONSUMER] RESULT squad=%s consequence=%s code=%s",
+        tostring(_cons_ctx.squad_id), _cons_short(name), code)
+end
+
+-- =============================================================================
+-- PUBLIC API
+-- =============================================================================
+
+--- Get producer stats recorder (null object when debug off)
+function producer()
+    if not ap_debug.enabled() then return _NULL end
+    _dump_producer_stats()
+    return _prod
+end
+
+--- Get consumer stats recorder (null object when debug off)
+function consumer()
+    if not ap_debug.enabled() then return _NULL end
+    _dump_consumer_stats()
+    return _cons
+end
+
+--- Reset all stats on new game/load
+function on_game_start()
+    _reset_producer()
+    _reset_consumer()
+end
