@@ -296,47 +296,58 @@ Pattern: `OUTCOME_PROPAGATION`. See `conventions.md` for full rules.
 
 ## Causes
 
-| Cause | Type | Callbacks | Trigger |
-|-------|------|-----------|---------|
-| MASSACRE | reactive | squad_on_npc_death | stalker victim; squad at smart (not base); death count at that smart >= threshold within decay window |
-| SQUADKILL | reactive | squad_on_npc_death | squad:npc_count() <= 1 (last member dying); not at base |
-| BASEKILL | reactive | squad_on_npc_death | stalker victim; squad at base; death count at base >= threshold within decay window; smart has faction |
-| ELITE | reactive | squad_on_npc_death | killer NPC's projected_kill_count reaches new elite level (level > current_level) |
-| ELITEKILL | reactive | squad_on_npc_death | victim NPC is tracked elite (is_elite); cooldown per victim_id |
-| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | NPC uses medkit (xevent hook on xr_eat_medkit) or actor uses healing item; not at base |
-| HARVEST | reactive | actor_on_item_take, npc_on_item_take | picked up item passes IsArtefact() |
-| STASH | radiant | RADIANT_CALLBACKS | xstash.find_stashes within RADIUS_DISTANT_MAX finds a stash (no community filter, consequences filter) |
-| AREA | radiant | RADIANT_CALLBACKS | evaluating squad is community_stalker; claimable smart (empty + not base) within RADIUS_DISTANT_MAX |
-| NEEDS | radiant | RADIANT_CALLBACKS | Single predicate, Hull drive scoring (weight * (elapsed/threshold)^2, Maslow weights). community_stalker guard. Per-need enabled gate. Night gate (SLEEP). Strongest drive wins, published as CAUSE.NEEDS with `need` field in payload. |
-| ELITESPOT (planned) | radiant | RADIANT_CALLBACKS | elite NPC within RADIANT_SIGHT_RADIUS; evaluating squad has no elite member |
-| AREAS (planned) | radiant | RADIANT_CALLBACKS | evaluating squad at own-faction conquered smart; backup squad present at same smart; another own-faction conquered smart exists on same level |
+| Cause | Type | Callbacks | Conditions |
+|-------|------|-----------|------------|
+| **MASSACRE** | reactive | squad_on_npc_death | - IsStalker(victim) <br> - squad at smart, not is_base <br> - kill_count(smart) >= massacre_threshold within decay window |
+| **SQUADKILL** | reactive | squad_on_npc_death | - squad:npc_count() <= 1 (last member dying) <br> - not is_base |
+| **BASEKILL** | reactive | squad_on_npc_death | - IsStalker(victim) <br> - squad at is_base smart <br> - kill_count(smart) >= basekill_threshold within decay window <br> - get_smart_faction(smart) ~= "none" |
+| **ELITE** | reactive | squad_on_npc_death | - killer_id exists <br> - projected_kill_count(killer) crosses new elite level (level > current) |
+| **ELITEKILL** | reactive | squad_on_npc_death | - is_elite(victim_id) <br> - per-victim_id cooldown not active |
+| **WOUNDED** | reactive | x_npc_medkit_use, actor_on_item_use | - event subject exists (NPC medkit or actor healing item) <br> - not is_base |
+| **HARVEST** | reactive | actor_on_item_take, npc_on_item_take | - IsArtefact(item) |
+| **STASH** | radiant | RADIANT_CALLBACKS | - xstash.find_stashes(pos, RADIUS_DISTANT_MAX) returns stash <br> - no community filter (consequences filter) |
+| **AREA** | radiant | RADIANT_CALLBACKS | - squad is community_stalker <br> - find_smart: is_smart_empty + not is_base within RADIUS_DISTANT_MAX |
+| **NEEDS** | radiant | RADIANT_CALLBACKS | - squad is community_stalker <br> - level.present() <br> - per-need cause_{need}_enabled MCM gate <br> - drive = weight * (elapsed / threshold)^2 <br> - SLEEP: night gate (hours >= 20 or < 5) <br> - strongest drive wins, published with need field |
 
 ---
 
 ## Consequences
 
-| Cause | Consequence | p | Conditions | Effect |
-|-------|-------------|---|------------|--------|
-| MASSACRE | massacre_scavenge | 10 | community_scavenger squads within 50-500m | find_squads_observed(community_scavenger), script_squad to massacre smart |
-| MASSACRE | massacre_investigate | 20 | victim's faction squads within 50-500m | find_squads_observed(event_data.faction), script_squad to massacre smart |
-| SQUADKILL | squadkill_revenge | 15 | victim_faction is community_stalker; killer exists (squad or actor) | find_squads_observed(victim_faction, 50-500m), chase_start to killer_squad or actor |
-| SQUADKILL | squadkill_flee | 25 | victim_faction is community_stalker; victim_faction base on level | find_squads_observed(victim_faction, 50-500m), script_squad to nearest victim_faction base |
-| BASEKILL | basekill_support | 15 | base's factions squads within 50-500m | find_squads_observed(event_data.factions), script_squad to base smart |
-| BASEKILL | basekill_flee | 25 | another base_faction base on level (exclude attacked base); base_factions squads within 0-50m | find_squads_observed(event_data.factions, 0-50m), script_squad to distant base |
-| WOUNDED | wounded_hunt | 15 | community_predator squads within 50-500m; nearest smart to wounded position exists | find_squads_observed(community_predator), script_squad to wounded NPC's nearest smart |
-| WOUNDED | wounded_help | 25 | wounded NPC's faction resolved (xcreature.community or character_community); same-faction squads within 50-500m; nearest smart exists | find_squads_observed(wounded_faction), script_squad to wounded NPC's nearest smart |
-| ELITE | elite_promote | 15 | killer_id exists; if new elite, max_elites cap not reached | update_elite(killer_id), marker "Elite L{level}: {name}", PDA |
-| ELITEKILL | elitekill_bounty | 0 | none | calculate reward (base * elite_level +/-10%, capped), give_money to killer (db.actor or xobject.go), PDA |
-| ELITEKILL | elitekill_targeted | 10 | killer_id exists; other elites on same level (get_elites_on_level, exclude victim + killer); trimmed to max_squads | chase_start hunters to killer_squad or actor |
-| HARVEST | harvest_hunt | 15 | community_harvest squads within 50-500m; taker resolves (actor or squad) | find_squads_observed(community_harvest), chase_start to taker_squad or actor |
-| STASH | stash_loot | 10 | evaluating squad is community_stalker | script_squad to stash's nearest smart, on_arrive: loot_stash_to_npc |
-| STASH | stash_ambush | 20 | evaluating squad is community_ambusher | script_squad to stash's nearest smart |
-| STASH | stash_fill | 30 | evaluating squad is community_stalker | script_squad to stash's nearest smart, on_arrive: fill_stash with random items |
-| AREA | area_conquer | 20 | none (cause handles community + claimable filtering) | script_squad to target smart, conquer_smart(smart.id, squad.player_id), PDA |
-| NEEDS | 15 consequences | 10-40 | Config-table-driven (see Needs System). Each row filters on `event_data.need`. | find_smart (max_distance=500, faction_filter on base destinations), script_squad, per-consequence arrival handler: DTO reset + online-only arrive_fn |
-| ELITESPOT (planned) | elitespot_flee | - | evaluating squad is enemy of elite's faction | script_squad to nearest base |
-| ELITESPOT (planned) | elitespot_follow | - | evaluating squad is ally of elite's faction | chase_start to elite's squad |
-| AREAS (planned) | areas_reinforce | - | none (cause handles all filtering) | script_squad to target smart |
+All consequences share: enabled MCM gate -> chance MCM gate -> per-consequence rate limit (consumer) -> PDA (chance-gated). Listed conditions are after these shared gates.
+
+| Cause | Consequence | Prio | Conditions | Effect |
+|-------|-------------|------|------------|--------|
+| MASSACRE | **massacre_scavenge** | 10 | - find_squads_observed(community_scavenger, 50-500m) | - script_squad to massacre smart |
+| MASSACRE | **massacre_investigate** | 20 | - find_squads_observed(event_data.faction, 50-500m) | - script_squad to massacre smart |
+| SQUADKILL | **squadkill_revenge** | 15 | - victim_faction is community_stalker <br> - killer resolves (killer_squad or db.actor) <br> - find_squads_observed(victim_faction, 50-500m) | - chase_start to killer <br> _Chase: re-scripts to killer's current smart on each arrival. Max chase_max_rescripts, then unscript._ |
+| SQUADKILL | **squadkill_flee** | 25 | - victim_faction is community_stalker <br> - find_nearest_base(victim_faction, level_id) <br> - find_squads_observed(victim_faction, 50-500m) | - script_squad to nearest base |
+| BASEKILL | **basekill_support** | 15 | - find_squads_observed(event_data.factions, 50-500m) | - script_squad to attacked base smart |
+| BASEKILL | **basekill_flee** | 25 | - find_nearest_base(base_factions, level_id, exclude=attacked) <br> - find_squads_observed(event_data.factions, 0-50m) | - script_squad to distant base |
+| ELITE | **elite_promote** | 15 | - killer_id exists <br> - max_elites cap not reached (or existing elite upgrades) | - update_elite(killer_id) <br> - map marker |
+| ELITEKILL | **elitekill_bounty** | 0 | - (always fires) | - reward = base_bounty * elite_level +/-10%, capped <br> - give_money to killer |
+| ELITEKILL | **elitekill_targeted** | 10 | - killer_id exists <br> - get_elites_on_level(level_id), exclude victim + killer <br> - trimmed to max_squads | - chase_start hunters to killer <br> _Chase: same re-script pattern as squadkill_revenge._ |
+| WOUNDED | **wounded_hunt** | 15 | - find_squads_observed(community_predator, 50-500m) <br> - find_smart nearest to wounded position | - script_squad to wounded NPC's nearest smart |
+| WOUNDED | **wounded_help** | 25 | - resolve wounded faction (xcreature.community or get_actor_true_community) <br> - find_squads_observed(wounded_faction, 50-500m) <br> - find_smart nearest to wounded position | - script_squad to wounded NPC's nearest smart |
+| HARVEST | **harvest_hunt** | 15 | - find_squads_observed(community_harvest, 50-500m) <br> - taker resolves (actor or squad) | - chase_start to taker <br> _Chase: same re-script pattern._ |
+| STASH | **stash_loot** | 10 | - squad is community_stalker | - script_squad to stash nearest smart <br> - on_arrive: loot stash to NPC inventory |
+| STASH | **stash_ambush** | 20 | - squad is community_ambusher | - script_squad to stash nearest smart |
+| STASH | **stash_fill** | 30 | - squad is community_stalker | - script_squad to stash nearest smart <br> - on_arrive: fill_stash with random items |
+| AREA | **area_conquer** | 20 | - (cause handles community + claimable filtering) | - script_squad to target smart <br> - conquer_smart on arrival |
+| NEEDS | **hunger_campfire** | 10 | - need == HUNGER <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart <br> - on_arrive (online): consume 1 food/drink <br> _Sections: bread, breadold, kolbasa, conserva, vodka, energy_drink_ |
+| NEEDS | **sleep_campfire** | 10 | - need == SLEEP (night gate in cause: hours >= 20 or < 5) <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart |
+| NEEDS | **rest_campfire** | 10 | - need == REST <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart <br> - on_arrive (online): consume 1 cigarette/alcohol <br> _Sections: cigarettes, cigarettes_lucky, cigarettes_russian, vodka, vodka2, beer_ |
+| NEEDS | **heal_base** | 10 | - need == HEAL <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base <br> - on_arrive (online): consume 1 medkit/bandage <br> _Sections: medkit, medkit_army, medkit_scientic, bandage_ |
+| NEEDS | **shelter_indoor** | 10 | - need == SHELTER <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
+| NEEDS | **money_search** | 10 | - need == MONEY <br> - find_smart: has_anomaly + check_destination, max 500m | - script_squad to anomaly zone |
+| NEEDS | **money_hunt** | 20 | - need == MONEY <br> - find_smart: is_lair + check_destination, max 500m | - script_squad to lair |
+| NEEDS | **supply_trader** | 10 | - need == SUPPLY <br> - find_smart: has_trader_job + check_destination, max 500m | - script_squad to trader smart <br> - on_arrive (online): exchange 1 artefact for 1 supply (ammo/medkit) <br> _Supply: medkit, ammo_9x18_fmj, ammo_9x19_fmj, ammo_5.45x39_fmj, ammo_5.56x45_fmj, ammo_7.62x39_fmj, ammo_12x70_buck_ |
+| NEEDS | **job_guard** | 20 | - need == JOB <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
+| NEEDS | **job_explore** | 30 | - need == JOB <br> - find_smart: check_destination only, max 500m | - script_squad to smart |
+| NEEDS | **job_research** | 40 | - need == JOB <br> - find_smart: has_anomaly + check_destination, max 500m | - script_squad to anomaly zone |
+| NEEDS | **job_worship** | 15 | - need == JOB <br> - find_smart: is_base + has_factions({monolith, greh, zombied}) + check_destination, max 500m | - script_squad to faction base |
+| NEEDS | **job_exercise** | 15 | - need == JOB <br> - find_smart: is_base + has_factions({army, dolg}) + check_destination, max 500m | - script_squad to faction base |
+| NEEDS | **social_campfire** | 10 | - need == SOCIAL <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire <br> - on_arrive (online): consume 1 cigarette/vodka <br> _Sections: cigarettes, cigarettes_lucky, cigarettes_russian, vodka_ |
+| NEEDS | **social_base** | 20 | - need == SOCIAL <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
 
 ---
 

@@ -192,6 +192,10 @@ Versions:
     Fixed: wounded_help faction matching - character_community(db.actor) returns "actor_stalker", stripped to match NPC community
     Fixed: reactive event starvation - global distributor consumed all tokens, blocking 100% of death/medkit/item events
     Fixed: cause lock was blocking 90% of predicate passes, starving needs and area causes
+    Added: 8 arrival actions (was 5) - job/guard consumes cigarettes, job/exercise consumes drinks, social/base consumes cigarettes/drinks
+    Added: expanded item sections - hunger (+3), rest (+1), heal (+3), social (+3), trade (+12 including AP ammo and grenades)
+    Fixed: supply_trader exchange - reward only given when NPC trades an artefact (was giving free items)
+    Changed: use xconst sentinels instead of ap_const for engine IDs
 
   1.1.1
     Fixed: dependency gate uses exact version match instead of string comparison
