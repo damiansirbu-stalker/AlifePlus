@@ -55,6 +55,8 @@ Details of the system can be found inside architecture.md, but in a nutshell:
 - because of the design, events, causes and consequences interact in a nondeterministic manner, leading to emergent gameplay
 
 Performance impact is none. The attached screenshot shows zero performance hit with 1000x load, measured for almost 8 hours continuously. That being 2 months old code, latest is even more efficient.
+Instead of overriding the engine's job planner -- which reassigns NPCs every tick and silently discards forced states -- AlifePlus operates at the simulation layer: route the squad to the correct smart terrain based on evaluated need, and the engine's gulag system produces the correct behavior by design.
+
 Since I rely on the engine's heavy lifting and flow from the existing system, the performance hit is almost zero and everything is cohesive.
 
 Nothing is faked and every reaction is earned from world state. Every creature, item or object involved was already there, living its own A-Life, and AlifePlus just extends what it is already doing.
