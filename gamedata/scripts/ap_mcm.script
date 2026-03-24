@@ -2,10 +2,8 @@
 local type = type
 
 defaults = {
-    -- Event Pipeline (gate order: distributor -> going_speed -> cause_lock -> per-cause -> per-consequence)
-    distributor_max_events = 15,
-    going_speed = 8,
-    global_cause_lock_sec = 15,
+    -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
+    alife_ratio = 8,
     cause_max_events = 10,
     consequence_max_events = 5,
 
@@ -261,9 +259,7 @@ defaults = {
 
 local key_to_tab = {
     log_level = "development",
-    distributor_max_events = "general",
-    going_speed = "general",
-    global_cause_lock_sec = "general",
+    alife_ratio = "general",
     cause_max_events = "general",
     consequence_max_events = "general",
     destination_max = "general",
@@ -464,9 +460,7 @@ function on_mcm_load()
                 gr = {
                     slide("ui_mcm_ap_general_title"),
                     desc("ui_mcm_ap_general_desc"),
-                    track("distributor_max_events", 5, 50, 1, 15),
-                    track("going_speed", -10, 10, 1, 8),
-                    track("global_cause_lock_sec", 1, 300, 1, 15),
+                    track("alife_ratio", -10, 10, 1, 8),
                     track("cause_max_events", 1, 100, 1, 10),
                     track("consequence_max_events", 1, 100, 1, 5),
                     { id = "div_destination", type = "line" },
@@ -593,15 +587,15 @@ function on_mcm_load()
                             check("cause_job_enabled", true),
                             check("cause_social_enabled", true),
                             { id = "div_thresholds", type = "line" },
-                            track("cause_hunger_threshold", 1, 72, 1, 8),
-                            track("cause_sleep_threshold", 1, 72, 1, 16),
-                            track("cause_rest_threshold", 1, 72, 1, 4),
-                            track("cause_heal_threshold", 1, 72, 1, 12),
-                            track("cause_shelter_threshold", 1, 72, 1, 24),
-                            track("cause_money_threshold", 1, 72, 1, 24),
-                            track("cause_supply_threshold", 1, 72, 1, 48),
-                            track("cause_job_threshold", 1, 72, 1, 18),
-                            track("cause_social_threshold", 1, 72, 1, 36),
+                            track("cause_hunger_threshold", 0.1, 48, 0.1, 8),
+                            track("cause_sleep_threshold", 0.1, 48, 0.1, 16),
+                            track("cause_rest_threshold", 0.1, 48, 0.1, 4),
+                            track("cause_heal_threshold", 0.1, 48, 0.1, 12),
+                            track("cause_shelter_threshold", 0.1, 48, 0.1, 24),
+                            track("cause_money_threshold", 0.1, 48, 0.1, 24),
+                            track("cause_supply_threshold", 0.1, 48, 0.1, 48),
+                            track("cause_job_threshold", 0.1, 48, 0.1, 18),
+                            track("cause_social_threshold", 0.1, 48, 0.1, 36),
                         },
                     },
                 },

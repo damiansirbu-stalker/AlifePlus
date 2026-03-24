@@ -23,12 +23,12 @@ AlifePlus observes A-Life simulation events, detects meaningful patterns (causes
                                v
                +-------------------------------+
                |           PRODUCER            |
-               | 1. distributor (DISABLED)     |
-               | 2. resolve_on_map (level cmp) |
-               | 3. ratio_gate (Bresenham)     |
+               | 1. resolve_on_map (level cmp) |
+               | 2. ratio_gate (Bresenham)     |
+               | 3. distributor (token bucket) |
                | 4. per-cause rate limit       |
                | 5. predicate evaluation       |
-               | 6. cause lock (on/off-map)    |
+               | 6. cause lock (DISABLED)      |
                +---------------+---------------+
                                |
                                v
@@ -61,7 +61,7 @@ AlifePlus observes A-Life simulation events, detects meaningful patterns (causes
 | Consequence | Handler that subscribes to a cause event, executes business logic + side effects |
 | Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or `nil` |
 | Producer | Dispatches X-Ray callbacks to registered predicates, publishes results to xbus |
-| Distributor | Per-callback-type rate limiter inside producer (radiant gets 2x budget) |
+| Distributor | Per-callback-type token bucket inside producer (burst protection, 1/sec per type) |
 | Consumer | Receives cause events from xbus, dispatches to consequences by priority |
 | xbus | Pub/sub event bus. Causes publish, consequences subscribe. Zero coupling. |
 
@@ -95,7 +95,7 @@ Radiant causes evaluate on smart terrain transitions -- the natural flow of A-Li
 
 #### Radiant cause flow
 
-Each radiant cause registers for `squad_on_enter_smart`, `squad_on_leave_smart`, and `squad_on_after_game_vertex_change`. Three evaluation callbacks per squad movement cycle.
+Each radiant cause registers for all callbacks in `ap_const.RADIANT_CALLBACKS`: `squad_on_enter_smart`, `squad_on_leave_smart`, `squad_on_after_game_vertex_change`, and `squad_on_after_level_change`. Four evaluation callbacks per squad movement cycle. Adding a new radiant trigger = one line in `RADIANT_CALLBACKS`, zero cause edits.
 
 ```
 Squad S transitions at smart
@@ -134,26 +134,25 @@ Guard clauses at the top of every predicate and handler. Missing data returns `{
 ## Event Flow
 
 1. X-Ray callback fires
-2. Producer: distributor check (per-callback budget, blocked -> skip all, log)
-3. Producer: resolve on-map (compare event level to actor level)
-4. Producer: ratio gate (Bresenham admission control, blocked -> skip all, log)
-5. Producer: class lock (on-map or off-map cooldown, blocked -> skip all, log)
-6. Producer: for each registered predicate:
+2. Producer: resolve on-map (compare event level to actor level)
+3. Producer: ratio gate (Bresenham admission control, blocked -> skip all, log)
+4. Producer: distributor check (token bucket, 1/sec per callback type, blocked -> skip all, log)
+5. Producer: for each registered predicate:
    a. Per-cause rate limit check (blocked -> skip, log THROTTLED_NEXT)
    b. Wrap predicate call in `observe()`, pass trace
    c. Predicate does filtering, returns `{ cause, ...data }` or nil
    d. If nil -> skip, log RULES_NEXT
    e. Increment rate limit counter
    f. Publish to xbus with trace attached
-7. Consumer receives event from xbus
-8. Consumer: for each consequence (by priority):
+6. Consumer receives event from xbus
+7. Consumer: for each consequence (by priority):
    a. Per-consequence rate limit check (blocked -> skip, log THROTTLED_NEXT)
    b. Call handler with event_data (trace available via event_data._trace)
    c. Consequence runs logic (enabled, chance, business logic)
    d. Consequence returns result code
    e. If success, increment rate limit counter
    f. If OK_STOP or ERROR_STOP, stop chain
-9. Side effects execute inside consequences (movement, PDA, markers)
+8. Side effects execute inside consequences (movement, PDA, markers)
 
 ---
 
@@ -171,6 +170,7 @@ X-Ray Callback -> Producer -> Predicate(trace, ...args) -> { cause, ...data } | 
 | `squad_on_enter_smart` | stash, area, needs, elitespot (planned), areas (planned) |
 | `squad_on_leave_smart` | stash, area, needs, elitespot (planned), areas (planned) |
 | `squad_on_after_game_vertex_change` | stash, area, needs, elitespot (planned), areas (planned) |
+| `squad_on_after_level_change` | stash, area, needs, elitespot (planned), areas (planned) |
 | `x_npc_medkit_use` | wounded (NPC) |
 | `actor_on_item_use` | wounded (player) |
 | `actor_on_item_take` | harvest (player) |
@@ -223,43 +223,49 @@ AP uses `observe()` wrappers (from `ap_debug`) to build hierarchical execution t
 
 ```
 dispatch() gate order:
-  1. distributor_check (DISABLED, analyzing removal)
-  2. _resolve_on_map (level comparison)
-  3. _ratio_gate (Bresenham admission, on-map vs off-map)
+  1. _resolve_on_map (level comparison)
+  2. _alife_ratio_gate (Bresenham-derived admission, on-map vs off-map)
+  3. distributor_check (token bucket, 1/sec per callback type)
   4. per-cause rate limit (sliding window)
   5. predicate evaluation
-  6. acquire_cause_lock (class-isolated cooldown, checked after predicate returns result)
+  6. acquire_cause_lock (DISABLED -- task 03, testing removal)
 ```
 
-### Distributor (gate 1)
+### Distributor (gate 3)
 
-**Status: DISABLED.** Commented out in `ap_producer_reactive.script:136-139` (2026-03-23). Bresenham ratio_gate is sole admission control during testing. Analyzing permanent removal -- playtest showed distributor killed 72% of events map-blind (off-map floods ate shared budget before on-map events passed). Function and MCM setting retained pending decision.
+Token bucket rate limiter per callback type. Runs after alife_ratio gate -- only sees events that passed admission control. Uses `xttltable.create_token_bucket`: capacity=1, rate=1 token/sec per key. First event for each callback type passes immediately, subsequent events of the same type throttled to 1/sec.
 
-Limits raw X-Ray callbacks by type. Runs first -- cheapest rejection point.
+Burst protection, not sustained rate control. Steady-state on-map rate (~0.5/sec per type) is well under the 1/sec limit. The distributor only blocks during burst floods (game load, rapid squad transitions). 8 callback types = max 8 events/sec aggregate ceiling.
 
-| Setting | Default | What it does |
-|---------|---------|--------------|
-| `distributor_max_events` (MCM) | 15 | Max events per callback type per 60s window |
+| Callback type | Causes |
+|---------------|--------|
+| `squad_on_enter_smart` | stash, area, needs |
+| `squad_on_leave_smart` | stash, area, needs |
+| `squad_on_after_game_vertex_change` | stash, area, needs |
+| `squad_on_after_level_change` | stash, area, needs |
+| `squad_on_npc_death` | massacre, basekill, squadkill, elite, elitekill |
+| `x_npc_medkit_use` | wounded |
+| `actor_on_item_use` | wounded |
+| `actor_on_item_take` | harvest |
+| `npc_on_item_take` | harvest |
 
-Radiant callbacks (enter/leave smart) get 3x budget (hardcoded multiplier). Window duration: `DISTRIBUTOR_WINDOW_SEC` constant (60s).
-
-### Going Speed (gate 2+3, Bresenham admission control)
+### A-Life Ratio (gate 2, Bresenham-derived admission control)
 
 X-Ray processes A-Life at two speeds: per-frame on the player's level (`current_level_going_speed`), round-robin on distant levels (`going_speed`). With ~30 maps, off-map events outnumber on-map ~50:1. Without intervention, the player's map is starved.
 
-AlifePlus enforces a configurable ratio using **Bresenham-derived admission control**. The core technique is the same integer cross-multiplication that Bresenham's line algorithm uses to decide pixel steps without floating-point division. Two counters (`_on_count`, `_off_count`) are the X and Y axes; the gs weight is the slope. The throttled class passes only when its count satisfies:
+AlifePlus enforces a configurable ratio using **Bresenham-derived admission control** (`_alife_ratio_gate`). The core technique is the same integer cross-multiplication that Bresenham's line algorithm uses to decide pixel steps without floating-point division. Two counters (`_on_count`, `_off_count`) are the X and Y axes; the alife_ratio weight is the slope. The throttled class passes only when its count satisfies:
 
 ```
-gs > 0 (favor on-map):  _off_count * gs <= (10 - gs) * _on_count
-gs < 0 (favor off-map): _on_count * |gs| <= (10 - |gs|) * _off_count
-gs = 0:                 gate disabled, all pass
+alife_ratio > 0 (favor on-map):  _off_count * r <= (10 - r) * _on_count
+alife_ratio < 0 (favor off-map): _on_count * |r| <= (10 - |r|) * _off_count
+alife_ratio = 0:                 gate disabled, all pass
 ```
 
-At gs=8: for every 4 on-map causes, 1 off-map is allowed (ratio 4:1). Deterministic, self-adjusting. Counters reset to zero when their sum reaches 32768 to prevent unbounded growth.
+At alife_ratio=8: for every 4 on-map causes, 1 off-map is allowed (ratio 4:1). Deterministic, self-adjusting. Counters reset to zero when their sum reaches 32768 to prevent unbounded growth.
 
 | Setting | Default | Range | What it does |
 |---------|---------|-------|--------------|
-| `going_speed` (MCM) | 8 | -10 to +10 | How many out of 10 cause slots go to the favored class |
+| `alife_ratio` (MCM) | 8 | -10 to +10 | How many out of 10 cause slots go to the favored class |
 
 Level extraction: `xlevel.get_level_id(first_arg)` for squad/NPC callbacks. Actor callbacks always on-map. Unknown -> gate bypassed, off-map lock used.
 
@@ -274,11 +280,9 @@ Uses `xttltable.create_ttl_counter`. Counts events in time window, blocks if cou
 
 ### Cause Lock (gate 6)
 
-Class-isolated cooldown checked after a predicate returns a result with `.cause`. On-map and off-map have separate lock timestamps with the same duration. The two classes never compete.
+**Status: DISABLED.** Commented out in `ap_producer_reactive.script` (task 03, testing removal). Causes publish independently. Distributor (gate 3) and per-cause rate limiter (gate 4) handle throttling.
 
-| Setting | Default | Range | What it does |
-|---------|---------|-------|--------------|
-| `global_cause_lock_sec` (MCM) | 15 | 1-300 | Cooldown after a cause publishes. Separate per class. |
+Previously: class-isolated cooldown checked after a predicate returns a result with `.cause`. On-map and off-map had separate lock timestamps. MCM: `global_cause_lock_sec` (default 15, range 1-300).
 
 Additionally, `ap_alife_behavior` uses a 1s keyed lock (`HIT_MODIFIER_LOCK_SEC`) on `npc_on_before_hit` to throttle hit modifier applications. Predicates never check rate limits -- orchestrators enforce all limiting.
 
@@ -311,11 +315,11 @@ Pattern: `OUTCOME_PROPAGATION`. See `conventions.md` for full rules.
 | ELITEKILL | reactive | squad_on_npc_death | victim NPC is tracked elite (is_elite); cooldown per victim_id |
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | NPC uses medkit (xevent hook on xr_eat_medkit) or actor uses healing item; not at base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | picked up item passes IsArtefact() |
-| STASH | radiant | enter/leave_smart, game_vertex_change | xstash.find_stashes within RADIUS_DISTANT_MAX finds a stash (no community filter, consequences filter) |
-| AREA | radiant | enter/leave_smart, game_vertex_change | evaluating squad is community_stalker; claimable smart (empty + not base) within RADIUS_DISTANT_MAX |
-| NEEDS | radiant | enter/leave_smart, game_vertex_change | Single predicate, Hull drive scoring (weight * (elapsed/threshold)^2, Maslow weights). community_stalker guard. Per-need enabled gate. Night gate (SLEEP). Strongest drive wins, published as CAUSE.NEEDS with `need` field in payload. |
-| ELITESPOT (planned) | radiant | enter/leave_smart, game_vertex_change | elite NPC within RADIANT_SIGHT_RADIUS; evaluating squad has no elite member |
-| AREAS (planned) | radiant | enter/leave_smart, game_vertex_change | evaluating squad at own-faction conquered smart; backup squad present at same smart; another own-faction conquered smart exists on same level |
+| STASH | radiant | RADIANT_CALLBACKS | xstash.find_stashes within RADIUS_DISTANT_MAX finds a stash (no community filter, consequences filter) |
+| AREA | radiant | RADIANT_CALLBACKS | evaluating squad is community_stalker; claimable smart (empty + not base) within RADIUS_DISTANT_MAX |
+| NEEDS | radiant | RADIANT_CALLBACKS | Single predicate, Hull drive scoring (weight * (elapsed/threshold)^2, Maslow weights). community_stalker guard. Per-need enabled gate. Night gate (SLEEP). Strongest drive wins, published as CAUSE.NEEDS with `need` field in payload. |
+| ELITESPOT (planned) | radiant | RADIANT_CALLBACKS | elite NPC within RADIANT_SIGHT_RADIUS; evaluating squad has no elite member |
+| AREAS (planned) | radiant | RADIANT_CALLBACKS | evaluating squad at own-faction conquered smart; backup squad present at same smart; another own-faction conquered smart exists on same level |
 
 ---
 
@@ -502,7 +506,7 @@ Time: `game.get_game_time():diffSec(level.get_start_time())`. Lazy init: first e
 
 ### Cause (one predicate, one cause event)
 
-Single predicate registered on `squad_on_enter_smart` + `squad_on_leave_smart` (2 registrations). Guards: `community_stalker` only, `level.present()`. Per-need enabled gate: `cause_{need}_enabled` MCM flag skips disabled needs before scoring.
+Single predicate registered on all `RADIANT_CALLBACKS`. Guards: `community_stalker` only, `level.present()`. Per-need enabled gate: `cause_{need}_enabled` MCM flag skips disabled needs before scoring.
 
 Lazy init: first encounter sets all 9 DTO timestamps to `now` and immediately provokes a random enabled need (published as CAUSE.NEEDS with `drive = weight`). On subsequent evaluations, Hull drive scoring picks the strongest unmet need: `drive = weight * (elapsed / threshold)^2`. Maslow-weighted (shelter 5.0 -> social 0.8). Night gate on SLEEP (hours >= 20 or < 5). ~6 luabind per evaluation.
 

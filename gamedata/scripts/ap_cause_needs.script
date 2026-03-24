@@ -1,8 +1,7 @@
 --- ap_cause_needs: Timer-based human needs evaluation on smart terrain transitions
 
-local math_random = math.random
+local math_random, math_max, math_floor = math.random, math.max, math.floor
 local CAUSE = ap_const.CAUSE
-local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
@@ -25,18 +24,6 @@ local NEEDS = {
     { need = "job",     field = "last_job_at",     threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled",     weight = 1.0 },
     { need = "social",  field = "last_social_at",  threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled",  weight = 0.8 },
 }
-
---- Collect enabled needs from config
-local function _get_enabled_needs()
-    local enabled = {}
-    for i = 1, #NEEDS do
-        local need = NEEDS[i]
-        if cfg[need.enabled_key] then
-            enabled[#enabled + 1] = need
-        end
-    end
-    return enabled
-end
 
 --- Find strongest overdue drive across all needs (Hull drive reduction scoring)
 local function _find_strongest_drive(dto, now)
@@ -69,10 +56,10 @@ local function _find_strongest_drive(dto, now)
 end
 
 --- Evaluate needs for squad at smart terrain transition
-local function _on_smart(trace, squad, smart)
+local function _on_smart(trace, squad)
     if not cfg.cause_needs_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not squad or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-    if not _community_stalker[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if not _community_stalker[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad.player_id } end
 
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
@@ -81,20 +68,14 @@ local function _on_smart(trace, squad, smart)
 
     local dto = ap_alife_tracker.get_stalker_needs(squad.id)
     if not dto then
-        ap_alife_tracker.init_stalker_needs(squad.id, now)
-        local enabled = _get_enabled_needs()
-        if #enabled == 0 then return { code = RESULT.DISABLED_NEXT } end
-        local winner = enabled[math_random(#enabled)]
-        return {
-            cause = CAUSE.NEEDS,
-            need = winner.need,
-            dto_field = winner.field,
-            drive = winner.weight,
-            squad_id = squad.id,
-            community = squad.player_id,
-            position = squad.position,
-            level_id = level_id,
-        }
+        dto = ap_alife_tracker.init_stalker_needs(squad.id, now)
+        for i = 1, #NEEDS do
+            local need = NEEDS[i]
+            if not cfg[need.enabled_key] then goto init_next end
+            local scatter = math_floor(cfg[need.threshold_key] * HOURS_TO_SECONDS * 2)
+            dto[need.field] = math_max(0, now - math_random(0, scatter))
+            ::init_next::
+        end
     end
 
     local winner, best_drive = _find_strongest_drive(dto, now)
@@ -115,14 +96,9 @@ end
 function on_game_start()
     cfg = ap_mcm.cfg
     _community_stalker = ap_data.community_stalker
-    ap_producer_reactive.register(NEEDS_KEY, {
-        callback = CALLBACK.SQUAD_ON_ENTER_SMART,
-    }, _on_smart)
-    ap_producer_reactive.register(NEEDS_KEY, {
-        callback = CALLBACK.SQUAD_ON_LEAVE_SMART,
-    }, _on_smart)
-    ap_producer_reactive.register(NEEDS_KEY, {
-        callback = CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
-    }, _on_smart)
+    local radiant = ap_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_producer_reactive.register(NEEDS_KEY, { callback = radiant[i] }, _on_smart)
+    end
     ap_debug.info("[CAUSE.NEEDS] Initialized")
 end

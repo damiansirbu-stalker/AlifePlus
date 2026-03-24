@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.2.0-RC1 (xlibs 1.0.5)
+Latest: 1.2.0-RC1 (xlibs 1.2.0)
 
 You are not special.
 

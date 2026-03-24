@@ -1,7 +1,6 @@
 --- ap_cause_area: Squad near empty smart terrain (stalker factions only)
 
 local CAUSE = ap_const.CAUSE
-local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
@@ -13,12 +12,12 @@ local function _is_claimable(smart)
     return xsmart.is_smart_empty(smart) and not xsmart.is_base(smart)
 end
 
-local function _on_smart(trace, squad, smart)
+local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not squad or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
 
     if not community_stalker[squad:get_squad_community()] then
-        return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY }
+        return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad:get_squad_community() }
     end
 
     local level_id = xlevel.get_level_id(squad)
@@ -40,14 +39,9 @@ end
 
 function on_game_start()
     cfg = ap_mcm.cfg
-    ap_producer_reactive.register(CAUSE.AREA, {
-        callback = CALLBACK.SQUAD_ON_ENTER_SMART,
-    }, _on_smart)
-    ap_producer_reactive.register(CAUSE.AREA, {
-        callback = CALLBACK.SQUAD_ON_LEAVE_SMART,
-    }, _on_smart)
-    ap_producer_reactive.register(CAUSE.AREA, {
-        callback = CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
-    }, _on_smart)
+    local radiant = ap_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_producer_reactive.register(CAUSE.AREA, { callback = radiant[i] }, _on_smart)
+    end
     ap_debug.info("[CAUSE.AREA] Initialized")
 end

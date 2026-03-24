@@ -7,11 +7,11 @@ RADIUS_DISTANT_MAX = 500
 --- X-Ray invalid entity ID sentinel (alife_space.h:39, 0xFFFF)
 INVALID_ID = 65535
 
---- Hit modifier throttle (seconds)
+--- Lock durations (seconds)
 HIT_MODIFIER_LOCK_SEC = 1
+CAUSE_LOCK_SEC = 15
 
 --- Rate-limit window durations (uniform 60s, counts configurable in MCM)
-DISTRIBUTOR_WINDOW_SEC = 60
 CAUSE_WINDOW_SEC = 60
 CONSEQUENCE_WINDOW_SEC = 60
 
@@ -32,10 +32,14 @@ CALLBACK = {
     SQUAD_ON_ENTER_SMART = "squad_on_enter_smart",
     SQUAD_ON_LEAVE_SMART = "squad_on_leave_smart",
     SQUAD_ON_AFTER_GAME_VERTEX_CHANGE = "squad_on_after_game_vertex_change",
+    SQUAD_ON_AFTER_LEVEL_CHANGE = "squad_on_after_level_change",
     X_NPC_MEDKIT_USE = "x_npc_medkit_use",
     ACTOR_ON_ITEM_USE = "actor_on_item_use",
     ACTOR_ON_ITEM_TAKE = "actor_on_item_take",
     NPC_ON_ITEM_TAKE = "npc_on_item_take",
+    ACTOR_ON_INTERACTION = "actor_on_interaction",
+    -- Internal (adapter-generated, not engine callbacks)
+    SMART_PROXIMITY = "smart_proximity",
     -- Lifecycle
     ACTOR_ON_FIRST_UPDATE = "actor_on_first_update",
     SAVE_STATE = "save_state",
@@ -51,6 +55,13 @@ LOCK_PREFIX = {
     CAUSE_ON_MAP = "lock:cause:on_map",
     CAUSE_OFF_MAP = "lock:cause:off_map",
     HIT_MODIFIER = "lock:hit_modifier",
+}
+
+--- Radiant cause callbacks (all radiant causes register on these)
+RADIANT_CALLBACKS = {
+    CALLBACK.SQUAD_ON_ENTER_SMART,
+    CALLBACK.SQUAD_ON_LEAVE_SMART,
+    CALLBACK.SMART_PROXIMITY,
 }
 
 --- Cause event names

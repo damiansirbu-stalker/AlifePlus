@@ -199,7 +199,7 @@ end
 --- @param on_map boolean|nil true = on-map lock, false/nil = off-map lock
 function acquire_cause_lock(on_map)
     local key = on_map and ap_const.LOCK_PREFIX.CAUSE_ON_MAP or ap_const.LOCK_PREFIX.CAUSE_OFF_MAP
-    return xtable.acquire_lock(key, ap_mcm.cfg.global_cause_lock_sec)
+    return xtable.acquire_lock(key, ap_const.CAUSE_LOCK_SEC)
 end
 
 --- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)

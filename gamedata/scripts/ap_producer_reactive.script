@@ -1,10 +1,11 @@
 --- ap_producer_reactive: Dispatches cause predicates on engine callbacks
-local next, pairs, tostring = next, pairs, tostring
+local next, pairs, tostring, type = next, pairs, tostring, type
 
 local CALLBACK = ap_const.CALLBACK
 local _handlers = {}
 local _subscribed = {}
 local _limiter = nil
+local _last_interaction_squad = {}
 
 --- Actor callbacks are always on the player's level (no level extraction needed)
 local _actor_callbacks = {
@@ -17,27 +18,28 @@ local _on_count = 0
 local _off_count = 0
 
 --- Resolve whether an event is on the player's current map
---- @return boolean|nil true = on-map, false = off-map, nil = unknown
+--- @return boolean|nil on_map (true = on-map, false = off-map, nil = unknown)
+--- @return number|nil level_id (event's level, nil for actor callbacks or unknown)
 local function _resolve_on_map(callback_type, first_arg)
-    if _actor_callbacks[callback_type] then return true end
-    if not first_arg then return nil end
+    if _actor_callbacks[callback_type] then return true, nil end
+    if not first_arg then return nil, nil end
     local ev = xlevel.get_level_id(first_arg)
     local ac = xlevel.get_actor_level_id()
-    if not ev or not ac then return nil end
-    return ev == ac
+    if not ev or not ac then return nil, ev end
+    return ev == ac, ev
 end
 
---- Weighted fair share gate: enforces on-map vs off-map cause ratio.
---- gs > 0: on-map favored, off-map throttled. gs < 0: inverse. gs = 0: disabled.
---- Formula: throttled_count * |gs| <= (10 - |gs|) * favored_count
+--- Bresenham-derived alife_ratio gate: enforces on-map vs off-map cause ratio.
+--- alife_ratio > 0: on-map favored, off-map throttled. < 0: inverse. 0: disabled.
+--- Formula: throttled_count * |alife_ratio| <= (10 - |alife_ratio|) * favored_count
 --- @param on_map boolean true = on-map, false = off-map
 --- @return boolean true = allowed, false = blocked
-local function _ratio_gate(on_map)
+local function _alife_ratio_gate(on_map)
     if _on_count + _off_count >= 32768 then
         _on_count = 0
         _off_count = 0
     end
-    local gs = ap_mcm.cfg.going_speed
+    local gs = ap_mcm.cfg.alife_ratio
     if gs == 0 then return true end
 
     if gs > 0 then
@@ -64,23 +66,14 @@ local function _ratio_gate(on_map)
     return false
 end
 
-local RADIANT_MULTIPLIER = 3
+local DISTRIBUTOR_CAPACITY = 1
+local DISTRIBUTOR_RATE = 1
 
-local function distributor_check(callback)
-    local ttl = ap_const.DISTRIBUTOR_WINDOW_SEC
-    if not _limiter or _limiter._ttl ~= ttl then
-        _limiter = xttltable.create_ttl_counter({ ttl = ttl })
+local function distributor_check(key)
+    if not _limiter then
+        _limiter = xttltable.create_token_bucket({ capacity = DISTRIBUTOR_CAPACITY, rate = DISTRIBUTOR_RATE })
     end
-
-    local base = ap_mcm.cfg.distributor_max_events
-    local is_radiant = callback == CALLBACK.SQUAD_ON_ENTER_SMART
-                    or callback == CALLBACK.SQUAD_ON_LEAVE_SMART
-                    or callback == CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE
-    local limit = is_radiant and (base * RADIANT_MULTIPLIER) or base
-
-    if _limiter:count(callback) >= limit then return false end
-    _limiter:add(callback)
-    return true
+    return _limiter:acquire(key)
 end
 
 --- Register a cause handler
@@ -114,59 +107,86 @@ function unregister(name, callback)
     return false
 end
 
---- Try to publish a cause result through the cause lock
-local function _try_publish(stats, on_map, name, result, trace)
-    if not ap_utils.acquire_cause_lock(on_map) then
-        stats:cause_lock_blocked(on_map, result.cause)
-        return
-    end
+--- Try to publish a cause result
+local function _try_publish(on_map, name, result, trace, level_id)
+    -- DISABLED: testing without global cause lock (2026-03-23, pipeline-tuning task 03).
+    -- Assumption: lock may prevent parallelism across independent causes (1 publish = N-1 blocked).
+    -- if not ap_utils.acquire_cause_lock(on_map) then
+    --     ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_LOCK_BLOCKED cause=%s on_map=%s level=%s",
+    --         result.cause, tostring(on_map), tostring(level_id))
+    --     return
+    -- end
     result._trace = trace
     ap_utils.event_publish(result.cause, result)
     ap_utils.increment_cause_counter(name)
-    stats:published(on_map, result.cause, name)
+    ap_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
+        result.cause, tostring(result.squad_id), tostring(on_map), tostring(level_id))
 end
 
 local function dispatch(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
-    local stats = ap_stats.producer()
-
-    -- DISABLED: testing without distributor gate (2026-03-23, pipeline-tuning task 01)
-    -- Bresenham ratio_gate handles admission control. Re-enable after test or replace with map-aware version (task 02).
-    -- if not distributor_check(callback_type) then
-    --     ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s", callback_type)
-    --     return
-    -- end
 
     local first_arg = select(1, ...)
-    local on_map = _resolve_on_map(callback_type, first_arg)
-    stats:received(callback_type, on_map, first_arg)
+    local on_map, level_id = _resolve_on_map(callback_type, first_arg)
+    local squad_id
+    if not _actor_callbacks[callback_type] and type(first_arg) == "userdata" then
+        squad_id = first_arg.id
+    end
 
-    if on_map ~= nil and not _ratio_gate(on_map) then
-        stats:bresenham_blocked(on_map, ap_mcm.cfg.going_speed, _on_count, _off_count)
+    if on_map ~= nil and not _alife_ratio_gate(on_map) then
+        ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
+            tostring(on_map), ap_mcm.cfg.alife_ratio, _on_count, _off_count, tostring(level_id), tostring(squad_id))
         return
     end
-    stats:bresenham_passed(on_map, ap_mcm.cfg.going_speed, _on_count, _off_count)
+
+    local dist_key = squad_id or callback_type
+    if not distributor_check(dist_key) then
+        ap_debug.debug("[PRODUCER.REACTIVE] DISTRIBUTOR_BLOCKED %s level=%s sq=%s",
+            callback_type, tostring(level_id), tostring(squad_id))
+        return
+    end
 
     local args = {...}
     for name, entry in pairs(handlers) do
         local allowed, count, max = ap_utils.check_cause_rate_limit(name)
         if not allowed then
-            stats:cause_rate_blocked(name, count, max)
+            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, tostring(level_id), tostring(squad_id))
             goto continue
         end
-        stats:cause_rate_passed(name, count, max)
 
         local trace = ap_debug.trace()
         local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
-        stats:predicate(name, result)
 
         if result and result.cause then
-            _try_publish(stats, on_map, name, result, trace)
+            _try_publish(on_map, name, result, trace, level_id)
         end
 
         ::continue::
     end
+end
+
+--- Adapter: actor_on_interaction -> smart_proximity dispatch
+--- Extracts one resident squad per smart per tick via rotation
+local function _interaction_adapter(interaction_type, target)
+    if interaction_type ~= "smarts" then return end
+    if not target then return end
+    local squads = xsmart.get_smart_squads(target)
+    if not squads then return end
+    local smart_id = target.id
+    local last_key = _last_interaction_squad[smart_id]
+    local squad_id
+    if last_key and squads[last_key] then
+        squad_id = next(squads, last_key)
+    end
+    if not squad_id then
+        squad_id = next(squads)
+    end
+    if not squad_id then return end
+    _last_interaction_squad[smart_id] = squad_id
+    local squad = xobject.se(squad_id)
+    if not squad then return end
+    dispatch(CALLBACK.SMART_PROXIMITY, squad)
 end
 
 local function _create_dispatcher(callback)
@@ -178,12 +198,18 @@ local _dispatchers = {}
 local function subscribe_to_callbacks()
     for callback in pairs(_handlers) do
         if _subscribed[callback] then goto continue end
+        if callback == CALLBACK.SMART_PROXIMITY then goto continue end
         local dispatcher = _create_dispatcher(callback)
         _dispatchers[callback] = dispatcher
         RegisterScriptCallback(callback, dispatcher)
         _subscribed[callback] = true
         ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s", callback)
         ::continue::
+    end
+    if not _subscribed[CALLBACK.ACTOR_ON_INTERACTION] then
+        RegisterScriptCallback(CALLBACK.ACTOR_ON_INTERACTION, _interaction_adapter)
+        _subscribed[CALLBACK.ACTOR_ON_INTERACTION] = true
+        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (adapter -> %s)", CALLBACK.ACTOR_ON_INTERACTION, CALLBACK.SMART_PROXIMITY)
     end
 end
 
@@ -193,6 +219,7 @@ function on_game_start()
     _subscribed = {}
     _on_count = 0
     _off_count = 0
+    _last_interaction_squad = {}
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, subscribe_to_callbacks)
     ap_debug.info("[PRODUCER.REACTIVE] Initialized")
 end

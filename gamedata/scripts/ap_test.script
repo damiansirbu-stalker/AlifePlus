@@ -142,9 +142,9 @@ end
 -- NEEDS DEMO: integration test - fires real needs pipeline for nearby squads
 -- Forces specific observable leisure needs (eating, exercise, guitar, sleeping),
 -- temporarily disables area/stash causes to avoid cause lock contention.
--- Full stack: bresenham -> cause_rate -> predicate -> cause_lock -> xbus ->
+-- Full stack: alife_ratio -> distributor -> cause_rate -> predicate -> xbus ->
 -- consumer -> consequence -> script_squad -> arrival -> PDA.
--- Staggered by global_cause_lock_sec to avoid lock contention between fires.
+-- Staggered by CAUSE_LOCK_SEC to avoid contention between fires.
 -- =============================================================================
 
 local DEMO_MAX_SQUADS = 5
@@ -243,7 +243,7 @@ local function _demo_fire_next()
     SendScriptCallback(ap_const.CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
         squad, 1, squad.m_game_vertex_id, false)
 
-    local interval_ms = math_max((ap_mcm.cfg.global_cause_lock_sec + 0.5) * 1000, DEMO_MIN_INTERVAL_MS)
+    local interval_ms = math_max((ap_const.CAUSE_LOCK_SEC + 0.5) * 1000, DEMO_MIN_INTERVAL_MS)
     _demo_next_fire = now + interval_ms
 
     ap_debug.debug("[TEST] needs_demo fired squad=%d faction=%s need=%s remaining=%d interval=%dms",

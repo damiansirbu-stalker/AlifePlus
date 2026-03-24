@@ -73,7 +73,7 @@ local function _make_handler(entry)
     local chance_key = "consequence_" .. entry.name .. "_chance"
 
     return function(event_data)
-        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT } end
+        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = "need_mismatch" } end
         local trace = event_data._trace
         return ap_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
@@ -119,7 +119,7 @@ local function _make_handler(entry)
                     })
             end)
 
-            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id }
+            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, level_id = event_data.level_id }
         end)
     end
 end
