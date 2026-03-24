@@ -11,8 +11,7 @@ local cfg
 
 local function _get_faction(npc_id, is_player)
     if is_player then
-        local actor = db.actor
-        return actor and character_community(actor) or nil
+        return get_actor_true_community()
     end
     return xcreature.community(npc_id)
 end
