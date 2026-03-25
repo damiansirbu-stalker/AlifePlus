@@ -1,5 +1,6 @@
 --- ap_mcm: MCM menu definition with defaults, config reader, and UI builder
 local type = type
+local RegisterScriptCallback = RegisterScriptCallback
 
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
@@ -425,9 +426,15 @@ local path_builder = function(key)
     return tab and ("ap/" .. tab .. "/" .. key) or nil
 end
 get_config = xmcm.create_getter("ap", defaults, path_builder)
-cfg = setmetatable({}, { __index = function(_, k)
-    return get_config(k)
-end })
+cfg = {}
+
+function load_config()
+    for k in pairs(defaults) do
+        cfg[k] = get_config(k)
+    end
+end
+
+load_config()
 
 local function slide(txt)
     return {
@@ -989,4 +996,9 @@ function on_mcm_load()
             },
         },
     }
+end
+
+function on_game_start()
+    load_config()
+    RegisterScriptCallback("on_option_change", load_config)
 end
