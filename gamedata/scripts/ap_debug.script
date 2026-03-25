@@ -102,8 +102,9 @@ end
 --- Log all MCM settings at session start (runs once on first update)
 local function _dump_settings()
     local parts = {}
+    local mcm = ap_mcm.cfg
     for key, _ in pairs(ap_mcm.defaults) do
-        parts[#parts+1] = key .. "=" .. tostring(ap_mcm.cfg[key])
+        parts[#parts+1] = key .. "=" .. tostring(mcm[key])
     end
     table_sort(parts)
     log.debug("[MCM] %s", table_concat(parts, " "))

@@ -1,630 +1,508 @@
 # AlifePlus Architecture
 
-Event-driven emergent gameplay system for STALKER Anomaly.
+Behavior mod for STALKER Anomaly. Observes A-Life events, detects patterns (causes), triggers squad behaviors (consequences). Built on xlibs.
 
-See `conventions.md` for naming rules, standard patterns, MCM settings, and logging format.
-
----
-
-## Overview
-
-AlifePlus observes A-Life simulation events, detects meaningful patterns (causes), and triggers reactive behaviors (consequences). Built entirely on xlibs abstractions.
-
-```
-  ENGINE CALLBACKS                 xevent HOOKS
-  +-----------------------+        +------------------------+
-  | squad_on_npc_death    |        | xr_eat_medkit hook     |
-  | squad_on_enter_smart  |        |   -> x_npc_medkit_use  |
-  | squad_on_leave_smart  |        +------------+-----------+
-  +-----------+-----------+                     |
-              |                                 |
-              +----------------+----------------+
-                               |
-                               v
-               +-------------------------------+
-               |           PRODUCER            |
-               | 1. resolve_on_map (level cmp) |
-               | 2. ratio_gate (Bresenham)     |
-               | 3. event limiter (split R/X)  |
-               | 4. per-cause rate limit       |
-               | 5. predicate evaluation       |
-               +---------------+---------------+
-                               |
-                               v
-               +-----------------------------+
-               |            xbus             |
-               | cause:massacre, cause:stash |
-               | cause:needs, cause:wounded  |
-               +--------------+--------------+
-                              |
-                              v
-               +-----------------------------+
-               |          CONSUMER           |
-               | - priority dispatch         |
-               | - OK_STOP/ERROR_STOP stops  |
-               +--------------+--------------+
-                              |
-              +---------------+---------------+
-              v               v               v
-        [scavenge]    [investigate]     [revenge]
-            p=10           p=20            p=15
-```
+See `conventions.md` for naming rules, result codes, MCM settings, logging format.
 
 ---
 
-## Core Concepts
+## Glossary
 
 | Term | Definition |
 |------|------------|
 | Cause | Engine callback + world-state predicate -> meaningful situation or nil |
-| Consequence | Handler that subscribes to a cause event, executes business logic + side effects |
-| Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or `nil` |
+| Consequence | Handler subscribed to a cause event; executes business logic + side effects |
+| Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or nil |
 | Producer | Dispatches X-Ray callbacks to registered predicates, publishes results to xbus |
-| Event Limiter | Split token bucket pacer: radiant (global, MCM rate) + reactive (per-callback-type, 1/s) |
 | Consumer | Receives cause events from xbus, dispatches to consequences by priority |
-| xbus | Pub/sub event bus. Causes publish, consequences subscribe. Zero coupling. |
+| xbus | Pub/sub event bus (xlibs). Causes publish, consequences subscribe |
 
 ---
 
-## Design Principles
+## System Context
 
-### 1. YANS (you are not special)
+AP runs inside the X-Ray Monolith engine, hosted by the Anomaly mod framework. It does not patch engine code or modify files on disk. All integration is through runtime callbacks, Lua globals, and xlibs wrappers.
 
-Nothing is player-centric. Same rules apply to player and NPCs. What happens to player happens to NPCs.
-
-### 2. Zero Performance Impact
-
-Even 1 frame dropped out of 60 is unacceptable. No god loops, no heavy iterations.
-
-### 3. Event-Driven
-
-Zero cost when idle. Callbacks trigger work only when events occur.
-
-### 4. Radiant Evaluation, Not God Loop
-
-Radiant causes evaluate on smart terrain transitions -- the natural flow of A-Life. The simulation itself determines when and how often evaluation happens.
-
-| God Loop       | Radiant Evaluation        |
-|----------------|---------------------------|
-| System checks all smarts every 300s | Squad evaluates on smart terrain transition |
-| System searches for squads to respond | The evaluating squad acts directly |
-| Centralized, omniscient, gamey | Distributed, local, organic |
-| O(n) cost per interval | O(1) cost per event |
-| Fixed frequency regardless of activity | Self-regulating: follows natural A-Life flow |
-
-#### Radiant cause flow
-
-Each radiant cause registers for all callbacks in `ap_const.RADIANT_CALLBACKS`: `squad_on_enter_smart`, `squad_on_leave_smart`, and `actor_on_smart` (adapter on `actor_on_interaction`). Three evaluation callbacks. Adding a new radiant trigger = one line in `RADIANT_CALLBACKS`, zero cause edits.
-
-```
-Squad S transitions at smart
-  -> Cause predicate: evaluate surroundings
-  -> Publishes: { cause, squad_id = S, target = T, position, level_id }
-  -> Consequences compete (priority + OK_STOP)
-  -> Winner directs S to T
-```
-
-The cause does not know which callback fired. `smart` is the evaluation point. The triggering squad is the sensor AND the actor.
-
-One evaluation -> one actor. Multiple actors from multiple independent transitions.
-
-#### Reactive vs radiant
-
-Both are event-driven -- no timers. The difference is what they react to, who the responder is, and where community filtering happens.
-
-**Radiant causes** fire on smart terrain transitions. The triggering squad IS the responder -- the cause sends it, the consequence directs it. Community eligibility is the cause's responsibility: if the cause publishes, the consequence will script that squad. No find_squads_observed.
-
-**Reactive causes** fire on specific world events (death, medkit use, item pickup). The event describes what happened, not who should respond. Consequences use find_squads_observed to locate responders, passing their own community/faction filters. The cause may filter the event subject (massacre: victim must be stalker) but never the responders.
-
-### 5. Decoupled
-
-Causes publish to xbus. Consequences subscribe to xbus. Neither references the other.
-
-### 6. xlibs First
-
-All side effects through xlibs wrappers, never raw X-Ray APIs.
-
-### 7. Fail Fast
-
-Guard clauses at the top of every predicate and handler. Missing data returns `{ code = RESULT.RULES_NEXT, reason = REASON.X }` immediately. Result codes propagate to consumer and get logged. No silent swallowing, no fallback state.
+| System | What AP uses | Interface |
+|--------|-------------|-----------|
+| X-Ray callbacks | squad_on_npc_death, enter/leave_smart, actor_on_interaction, npc_on_before_hit, actor_on_item_use/take, npc_on_item_take, save/load_state, on_game_load, actor_on_first_update | RegisterScriptCallback |
+| X-Ray A-Life | alife(), alife_object, alife_release_id, alife_create_item | Engine globals |
+| X-Ray game state | db.storage, db.actor, level.present(), level.get_start_time(), level.get_time_hours(), game.get_game_time() | Engine globals |
+| Anomaly simulation | Squad targeting via scripted_target, rush_to_target | sim_squad_scripted (via xsquad) |
+| Anomaly smart_terrain | faction_controlled, respawn_params, default_faction, try_respawn | Runtime table mutation (via xsmart) |
+| Anomaly scripts | xr_reach_task (run+danger behavior), xr_eat_medkit (NPC medkit hook) | xevent.hook, direct reference |
+| Anomaly game_relations | is_factions_enemies | Direct call |
+| MCM (ui_mcm) | Settings UI, user configuration | xmcm.create_getter |
+| Save system | m_data table in save_state/load_state callbacks | Anomaly serialization |
+| xlibs | xbus, xsmart, xsquad, xcreature, xlevel, xlog, xpda, xmath, xtable, xttltable, xevent, xmcm, xinspect | Lua require (version-gated by _ap_deps) |
 
 ---
 
-## Event Flow
+## Files
 
-1. X-Ray callback fires
-2. Producer: resolve on-map (compare event level to actor level)
-3. Producer: ratio gate (Bresenham admission control, blocked -> skip all, log)
-4. Producer: event limiter (radiant: global token bucket 1/MCM sec; reactive: per-callback-type 1/1s; blocked -> skip all, log)
-5. Producer: for each registered predicate:
-   a. Per-cause rate limit check (blocked -> skip, log THROTTLED_NEXT)
-   b. Wrap predicate call in `observe()`, pass trace
-   c. Predicate does filtering, returns `{ cause, ...data }` or nil
-   d. If nil -> skip, log RULES_NEXT
-   e. Increment rate limit counter
-   f. Publish to xbus with trace attached
-6. Consumer receives event from xbus
-7. Consumer: for each consequence (by priority):
-   a. Per-consequence rate limit check (blocked -> skip, log THROTTLED_NEXT)
-   b. Call handler with event_data (trace available via event_data._trace)
-   c. Consequence runs logic (enabled, chance, business logic)
-   d. Consequence returns result code
-   e. If success, increment rate limit counter
-   f. If OK_STOP or ERROR_STOP, stop chain
-8. Side effects execute inside consequences (movement, PDA, markers)
+| File | Responsibility |
+|------|---------------|
+| _ap_deps | Dependency gate: assert xlibs installed and version-compatible |
+| ap_const | Enums: CAUSE, CONSEQUENCE, RESULT, REASON, ACTION, CALLBACK, NEEDS_SECTIONS |
+| ap_data | Community sets, faction lists, grenades, item data |
+| ap_mcm | MCM defaults, getter, loader, UI builder |
+| ap_debug | Logger, observe() tracing, result helpers |
+| ap_producer_reactive | Unified producer: callback dispatch, gates, predicate eval, xbus publish |
+| ap_consumer | Priority dispatch: xbus subscribe, consequence chain, rate limit |
+| ap_alife_tracker | State manager: killers, elites, scripted_squads, conquered_smarts, stalker_needs |
+| ap_alife_behavior | Elite combat buffs: grenades, AP ammo, rank boost (npc_on_before_hit) |
+| ap_utils | Event wrappers, PDA, destination limiter, chase API, find helpers |
+| ap_cause_* | Cause predicates (one file per cause group) |
+| ap_consequence_* | Consequence handlers (one file per cause; needs = config table) |
+| ap_messages | PDA message templates |
+| ap_test | In-game debug commands: force needs, spawn squads, trigger causes |
 
 ---
 
-## Cause Patterns
+## Lifecycle
 
-### Unified Cause Producer
+AP initializes in four phases. Each phase has a strict precondition -- the engine guarantees the previous phase completed before the next begins.
 
-```
-X-Ray Callback -> Producer -> Predicate(trace, ...args) -> { cause, ...data } | nil -> xbus
-```
+### Phase 0 -- Module load
 
-| Source Callback | Causes |
-|-----------------|--------|
-| `squad_on_npc_death` | massacre, basekill, squadkill, elite, elitekill |
-| `squad_on_enter_smart` | stash, area, needs, elitespot (planned), areas (planned) |
-| `squad_on_leave_smart` | stash, area, needs, elitespot (planned), areas (planned) |
-| `actor_on_smart` (adapter) | stash, area, needs, elitespot (planned), areas (planned) |
-| `x_npc_medkit_use` | wounded (NPC) |
-| `actor_on_item_use` | wounded (player) |
-| `actor_on_item_take` | harvest (player) |
-| `npc_on_item_take` | harvest (NPC) |
+Lua require resolves all script files. Module-level code runs: engine globals cached to locals, constant tables built, xlibs API references captured. No game state exists yet.
 
-**Predicate signature:** `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`
+### Phase 1 -- on_game_start
 
-**Producer responsibilities:**
-- Subscribe to X-Ray callbacks
-- Create trace, wrap predicate in observe()
-- If predicate returns data with `.cause`, publish to xbus
-- Increment rate counter
+The engine calls on_game_start() on every script file. Execution order across files is undefined, but all operations within this phase are independent of each other:
 
-**Predicate responsibilities:**
-- Return `{ cause = CAUSE.X, ...payload }` or `nil`
-- No inner observe() - producer already wraps
-- No event_publish() - producer handles publishing
-- No trace creation - producer provides trace
+- **_ap_deps** asserts xlibs installed and version == 1.2.0. Hard crash on mismatch.
+- **ap_mcm** loads config from MCM defaults, registers on_option_change.
+- **ap_debug** sets log level from MCM, registers on_option_change.
+- **ap_alife_tracker** creates elite_dead TTL table, registers save_state/load_state/on_game_load/squad_on_npc_death, creates arrival check timer (30s) and optional periodic_sync timer.
+- **ap_alife_behavior** registers npc_on_before_hit.
+- **ap_utils** registers actor_on_first_update for marker cleanup.
+- **ap_producer_reactive** resets dispatch state. Registers actor_on_first_update -> subscribe_to_callbacks. Does NOT subscribe to engine callbacks yet.
+- **ap_consumer** registers actor_on_first_update -> _subscribe. Does NOT subscribe to xbus yet.
+- **All ap_cause_*** register predicates with the producer via register().
+- **All ap_consequence_*** register handlers with the consumer via register(). Register arrival handlers with tracker where needed.
 
-### Synthetic Callbacks
+After Phase 1: all predicates and handlers are registered, but no engine callbacks or xbus subscriptions are active.
 
-Some causes need events the engine doesn't provide natively. `xevent` hooks intercept game functions and emit synthetic callbacks with `x_` prefix (e.g., `xr_eat_medkit.consume_medkit` -> `x_npc_medkit_use` for NPC wounded). Why not `actor_on_hit_callback`? It fires 50+/sec during continuous damage. Item use fires ~0.6/min.
+### Phase 2 -- actor_on_first_update
+
+Fires once the game world exists and the actor is loaded.
+
+- **Producer** subscribes to RegisterScriptCallback for each unique callback type, plus actor_on_interaction for the radiant adapter.
+- **Consumer** calls xbus.subscribe for each cause event type.
+- **ap_debug** dumps current MCM settings to log.
+- **ap_utils** clears ephemeral squad markers from previous session.
+
+### Phase 3 -- on_game_load
+
+Fires after the engine rebuilds all game objects from the save file (after STATE_Read). Runtime smart terrain mutations were lost during STATE_Read. The tracker re-applies conquered smart mutations from _conquered_pending (two-phase restore).
 
 ---
 
-## Tracker (ap_alife_tracker)
+## Pipeline
 
-Central state manager for all persistent AP data. Owns:
-
-| Data | API | Persistence |
-|------|-----|-------------|
-| Kill counts per NPC | `projected_kill_count()` | save/load |
-| Elite registry (id -> level, kills, name, level_id) | `update_elite()`, `get_elite()`, `get_elite_level()`, `get_elites_on_level()`, `is_elite()`, `compute_level()` | save/load |
-| Scripted squads (movement ownership) | `script_squad()`, `script_actor_target()` | save/load |
-| Conquered smarts | `conquer_smart()` | save/load (two-phase) |
-| Stalker needs (per-squad timestamps) | `get_stalker_needs()`, `init_stalker_needs()`, `reset_stalker_need()` | save/load |
-| Arrival handlers | `register_arrival_handler()` | re-registered on_game_start |
-
-**Registration order matters:** tracker registers its squad_on_npc_death handler on `on_game_start`. Producer registers on `actor_on_first_update` (later). Tracker always processes kills first. Causes read tracker data synchronously -- `projected_kill_count()` includes the current death before `register_kill()` commits it.
+```
+ENGINE CALLBACKS                 xevent HOOKS
+  squad_on_npc_death               xr_eat_medkit hook
+  squad_on_enter_smart               -> x_npc_medkit_use
+  squad_on_leave_smart
+  actor_on_interaction (adapter)
+         |                                |
+         +----------------+---------------+
+                          |
+                          v
+         PRODUCER (ap_producer_reactive)
+           1. Level classification
+           2. Bresenham ratio gate
+           3. Event pacer (split radiant/reactive)
+           4. Cause budget (sliding window)
+           5. Predicate evaluation -> xbus.publish
+                          |
+                          v
+         CONSUMER (ap_consumer)
+           1. Consequence budget (token bucket)
+           2. Condition pre-filter
+           3. Handler execution -> result code
+           4. Chain control (OK_STOP/ERROR_STOP breaks)
+                          |
+              +-----------+-----------+
+              v           v           v
+         [scavenge]  [investigate]  [revenge]
+            p=10        p=20         p=15
+```
 
 ---
 
 ## Tracing
 
-AP uses `observe()` wrappers (from `ap_debug`) to build hierarchical execution traces. Each trace has a monotonic `tid` -- grep `tid=N` to follow a full chain. Producer creates the trace for cause predicates; consumer passes it through via `event_data._trace`. Predicates and handlers extend the trace by calling `observe(trace, ACTION.X, fn)`. When `log_level < DEBUG`, observe() is a straight pass-through with zero overhead.
+OTel-inspired hierarchical tracing via observe() (ap_debug). Each trace carries:
+
+- **tid** -- Monotonic trace ID. Grep `tid=N` in alifeplus.log to follow a full cause->consequence chain across all log lines.
+- **path** -- Slash-separated span hierarchy (e.g. `CAUSE.NEEDS/ACTION.FIND_DESTINATION/ACTION.MOVE_SQUAD`). Each observe(trace, op_name, fn) pushes a segment, times execution, logs result with path + timing, then pops.
+
+Log format: `[OP_LABEL] [tid=N path=A/B] code:reason key=val [Xms]`
+
+Producer creates the root trace for cause predicates. Consumer passes it through to consequences via event_data._trace. Predicates and handlers extend the hierarchy by calling observe(trace, ACTION.X, fn).
+
+When log_level < DEBUG: observe() is a straight pass-through -- fn(trace, ...) called directly, no logging, no timing. _null_trace and _null_timer are null-object singletons with no-op methods. Overhead: one table lookup + one no-op call per observe() invocation.
 
 ---
 
-## Rate Limiting
+## Design Principles
 
-```
-dispatch() gate order:
-  1. _resolve_on_map (level comparison)
-  2. _alife_ratio_gate (Bresenham-derived admission, on-map vs off-map, SHARED)
-  3. _check_event_limiter (SPLIT: radiant global / reactive per-callback-type)
-  4. per-cause rate limit (sliding window)
-  5. predicate evaluation
-```
+- **YANS (You Are Not Special).** Same rules for player and NPCs.
+- **Low idle cost.** Event-driven pipeline. Two timers: arrival check (30s) and periodic cleanup.
+- **Decoupled.** Causes publish to xbus. Consequences subscribe. Neither references the other. All engine/Anomaly access through xlibs wrappers where one exists.
+- **Fail fast.** Guard clauses return result codes. No silent swallowing.
 
-Gates 1-2 are shared across all event types (radiant and reactive). Gate 3 splits into two independent token buckets -- radiant and reactive events never compete for tokens.
+### Radiant evaluation
 
-### Event Limiter (gate 3, split radiant/reactive)
+Radiant causes evaluate on A-Life state changes: squad arrivals and departures at smart terrains, and player proximity to occupied smarts. The evaluation trigger is decoupled from what is evaluated -- the callbacks carry a squad reference that becomes both the sensor (what observes the world) and the actor (what responds). One evaluation, one actor, from one independent event.
 
-Two separate `xttltable.create_token_bucket` instances. Radiant and reactive events use different bucket instances with different key spaces -- no token competition between them.
+The engine processes A-Life at two speeds. Off-map: distant levels via round-robin (going_speed). enter/leave_smart fire at a steady, moderate rate across ~30 maps -- a monotone stream, spread thin. On-map: the player's level at frame rate (current_level_going_speed). enter/leave_smart fire only when squads physically transition between smarts -- bursty but infrequent (a few per minute on an active level). actor_on_smart (adapter from actor_on_interaction) provides evaluation density where the player is, compensating for the sparse on-map transition rate.
 
-**Radiant event limiter** (`_radiant_event_limiter`): Global token bucket, single key `"radiant"`. capacity=1 (no burst), rate=1/MCM `distributor_interval_sec` (default 3 = 1 event every 3 seconds). Paces the adapter stream (actor_on_smart 4-10/sec) and off-map enter/leave_smart. All radiant callbacks share one token pool.
+This replaces the god-loop pattern (centralized system scanning all smarts every N seconds). O(1) per event, frequency tracks natural A-Life activity.
 
-**Reactive event limiter** (`_reactive_event_limiter`): Per-callback-type token bucket. capacity=1, rate=1/`REACTIVE_EVENT_INTERVAL_SEC` (hardcoded 1s). Each callback type (`squad_on_npc_death`, `x_npc_medkit_use`, etc.) gets its own key. Reactive events from different callback types don't compete.
+### Radiant vs reactive
 
-**Why split (task 02c):** A single global distributor starved 100% of reactive events (356/356 blocked in 6-min playtest). The adapter's 6.6/sec radiant stream consumed every token, leaving zero for deaths/medkit/item events.
+| | Radiant | Reactive |
+|-|---------|----------|
+| Trigger | A-Life state change (smart transition, player proximity) | World event (death, medkit use, item pickup) |
+| Callbacks | RADIANT_CALLBACKS (enter/leave/actor_on_smart) | Per-event (squad_on_npc_death, etc.) |
+| Responder | Triggering squad IS the actor | Consequences find responders via find_squads_observed |
+| Community filter | Cause's responsibility | Consequence's responsibility |
 
-| Limiter | Scope | Key | Rate | Setting |
-|---------|-------|-----|------|---------|
-| Radiant | global | `"radiant"` | 1/3s | `distributor_interval_sec` (MCM, 1-30) |
-| Reactive | per-callback-type | callback_type string | 1/1s | `REACTIVE_EVENT_INTERVAL_SEC` (constant) |
+**Synthetic callbacks.** Engine lacks some needed events. xevent hooks intercept game functions and emit synthetic callbacks with x_ prefix (e.g. xr_eat_medkit.consume_medkit -> x_npc_medkit_use). actor_on_hit_callback fires 50+/sec during damage; item use fires ~0.6/min.
 
-### A-Life Ratio (gate 2, Bresenham-derived admission control, shared)
+### Invariants
 
-Shared across radiant and reactive events intentionally. The gate balances on-map vs off-map volume -- orthogonal to radiant vs reactive. Both event types contribute to the same `_on_count`/`_off_count` counters.
+These rules are not obvious from reading any single file. Violating them causes subtle bugs.
 
-X-Ray processes A-Life at two speeds: per-frame on the player's level (`current_level_going_speed`), round-robin on distant levels (`going_speed`). With ~30 maps, off-map events outnumber on-map ~50:1. Without intervention, the player's map is starved.
+1. **Serialization boundary.** m_data accepts only primitives and tables of primitives. Functions, userdata, and metatables are silently dropped on save. Arrival handler keys are strings stored in scripted_squads; handler functions are registered separately in _arrival_handlers and re-created every load.
 
-AlifePlus enforces a configurable ratio using **Bresenham-derived admission control** (`_alife_ratio_gate`). The core technique is the same integer cross-multiplication that Bresenham's line algorithm uses to decide pixel steps without floating-point division. Two counters (`_on_count`, `_off_count`) are the X and Y axes; the alife_ratio weight is the slope. The throttled class passes only when its count satisfies:
+2. **Result code contract.** Every consequence handler returns a table with a .code field from RESULT. The consumer checks .code to decide chain propagation. A missing or malformed return is an error.
 
-```
-alife_ratio > 0 (favor on-map):  _off_count * r <= (10 - r) * _on_count
-alife_ratio < 0 (favor off-map): _on_count * |r| <= (10 - |r|) * _off_count
-alife_ratio = 0:                 gate disabled, all pass
-```
+3. **Scripted bypass.** scripted_target overrides SIMBOARD:get_squad_target(). The engine's target_precondition (faction compatibility check) is NOT evaluated for scripted squads. AP must enforce faction safety itself -- this is why _build_filter has the faction_enemy concern.
 
-At alife_ratio=8: for every 4 on-map causes, 1 off-map is allowed (ratio 4:1). Deterministic, self-adjusting. Counters reset to zero when their sum reaches 32768 to prevent unbounded growth.
+4. **Mutation volatility.** Runtime smart terrain mutations (faction_controlled, respawn_params, faction) are rebuilt from LTX on every load. Any system that mutates these at runtime must implement its own save/restore. Currently only conquered_smarts does this (two-phase).
 
-| Setting | Default | Range | What it does |
-|---------|---------|-------|--------------|
-| `alife_ratio` (MCM) | 8 | -10 to +10 | How many out of 10 cause slots go to the favored class |
+---
 
-Level extraction: `xlevel.get_level_id(first_arg)` for squad/NPC callbacks. Actor callbacks always on-map. Unknown -> gate bypassed, off-map lock used.
+## Pipeline Gates
 
-### Per-Key Sliding Window (gate 4)
+Ordered gates in dispatch(). Every event passes through gates 1-3 before any predicate runs. Gates 4-5 are per-key.
 
-Uses `xttltable.create_ttl_counter`. Counts events in time window, blocks if count >= max. Checked per-cause before predicate runs.
+| # | Name | Type | Scope | Setting |
+|---|------|------|-------|---------|
+| 1 | Level classification | Level-ID comparison | per-event | -- (classifies on/off-map) |
+| 2 | On/off-map ratio | Bresenham integer admission | shared | `alife_ratio` MCM (-10..+10, default 8) |
+| 3a | Radiant pacer | Token bucket, single key "radiant" | global | `distributor_interval_sec` MCM (default 3) |
+| 3b | Reactive pacer | Token bucket, per-callback-type key | per-type | `REACTIVE_EVENT_INTERVAL_SEC` (1s constant) |
+| 4 | Cause budget | TTL counter, sliding window 60s | per-cause | `cause_max_events` MCM |
+| 5 | Consequence budget | Token bucket, peek then acquire on success | per-consequence | `consequence_max_events` MCM, 60s window |
 
-| Scope | Owner | Settings | What it does |
-|-------|-------|----------|--------------|
-| Per-cause | Producer | `cause_max_events` (MCM), `CAUSE_WINDOW_SEC` (60s constant) | Budget per cause key |
-| Per-consequence | Consumer | `consequence_max_events` (MCM), `CONSEQUENCE_WINDOW_SEC` (60s constant) | Token bucket pacer per consequence key (capacity=1, rate=max/window). peek() pre-check, acquire() on success. |
+**Gate 2 (Bresenham).** Off-map events outnumber on-map ~50:1 across 30 maps. The gate uses Bresenham-derived integer cross-multiplication to enforce a configurable on:off ratio without floating-point division. At ratio=8: ~4:1 on:off. Formula: `throttled_count * |r| <= (10 - |r|) * favored_count`. Counters reset at 32768.
+
+**Gate 3 (split).** Two separate xttltable.create_token_bucket instances with independent key spaces. Radiant and reactive events never compete for tokens. Without this split, the adapter's ~6.6/sec radiant stream starves 100% of reactive events (measured: 356/356 blocked in 6-min playtest).
+
+### Cooldowns and Lifecycle TTLs
+
+| Name | Type | Scope | Duration | Location |
+|------|------|-------|----------|----------|
+| Destination limiter | TTL counter | per-smart-id | MCM: destination_max, destination_ttl_sec | ap_utils |
+| Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_alife_behavior |
+| Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_alife_behavior |
+| AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_alife_behavior |
+| Scripted squad TTL | os.clock timestamp | per-squad | 7200s (SCRIPTED_SQUAD_TTL) | ap_alife_tracker |
+| Elite dead grace | xttltable TTL table | per-entity | 3600s (DEAD_GRACE_SEC) | ap_alife_tracker |
+| Elitekill victim cooldown | create_cooldown | per-victim | MCM: elitekill_cooldown_sec | ap_cause_elitekill |
 
 ---
 
 ## Result Codes
 
-Pattern: `OUTCOME_PROPAGATION`. See `conventions.md` for full rules.
+Result codes follow the OUTCOME_PROPAGATION naming pattern (see conventions.md). The name encodes both outcome and chain behavior.
 
-| Code | Meaning | Chain |
-|------|---------|-------|
-| OK_STOP | Success (exclusive) | stops |
-| OK_NEXT | Success (non-exclusive) | continues |
-| RULES_NEXT | Conditions not met | continues |
-| CHANCE_NEXT | Chance roll failed | continues |
-| DISABLED_NEXT | Enabled gate off | continues |
-| THROTTLED_NEXT | Rate limited | continues |
-| ERROR_STOP | Handler failure | stops |
+Two codes halt the consequence chain: **OK_STOP** (success, exclusive -- one consequence claimed the event) and **ERROR_STOP** (failure, abort). Everything else carries a _NEXT suffix and propagates, letting lower-priority consequences try: **RULES_NEXT** (conditions unmet), **CHANCE_NEXT** (roll failed), **DISABLED_NEXT** (MCM gate off), **THROTTLED_NEXT** (rate limited).
+
+**OK_NEXT** is non-exclusive success -- rare, used for side effects that don't preclude other handlers (e.g. elitekill_bounty at p=0 pays the killer, then elitekill_targeted at p=10 sends hunters).
+
+The consumer dispatches consequences by priority (lower = first) and breaks on any _STOP code.
 
 ---
 
 ## Causes
 
-| Cause | Type | Callbacks | Conditions |
-|-------|------|-----------|------------|
-| **MASSACRE** | reactive | squad_on_npc_death | - IsStalker(victim) <br> - squad at smart, not is_base <br> - kill_count(smart) >= massacre_threshold within decay window |
-| **SQUADKILL** | reactive | squad_on_npc_death | - squad:npc_count() <= 1 (last member dying) <br> - not is_base |
-| **BASEKILL** | reactive | squad_on_npc_death | - IsStalker(victim) <br> - squad at is_base smart <br> - kill_count(smart) >= basekill_threshold within decay window <br> - get_smart_faction(smart) ~= "none" |
-| **ELITE** | reactive | squad_on_npc_death | - killer_id exists <br> - projected_kill_count(killer) crosses new elite level (level > current) |
-| **ELITEKILL** | reactive | squad_on_npc_death | - is_elite(victim_id) <br> - per-victim_id cooldown not active |
-| **WOUNDED** | reactive | x_npc_medkit_use, actor_on_item_use | - event subject exists (NPC medkit or actor healing item) <br> - not is_base |
-| **HARVEST** | reactive | actor_on_item_take, npc_on_item_take | - IsArtefact(item) |
-| **STASH** | radiant | RADIANT_CALLBACKS | - xstash.find_stashes(pos, RADIUS_DISTANT_MAX) returns stash <br> - no community filter (consequences filter) |
-| **AREA** | radiant | RADIANT_CALLBACKS | - squad is community_stalker <br> - find_smart: is_smart_empty + not is_base within RADIUS_DISTANT_MAX |
-| **NEEDS** | radiant | RADIANT_CALLBACKS | - squad is community_stalker <br> - level.present() <br> - per-need cause_{need}_enabled MCM gate <br> - drive = weight * (elapsed / threshold)^2 <br> - SLEEP: night gate (hours >= 20 or < 5) <br> - strongest drive wins, published with need field |
+| Cause | Type | Callback(s) | Conditions |
+|-------|------|-------------|------------|
+| MASSACRE | reactive | squad_on_npc_death | IsStalker(victim), at smart, not is_base, kill_count >= threshold |
+| SQUADKILL | reactive | squad_on_npc_death | npc_count <= 1 (last member), not is_base |
+| BASEKILL | reactive | squad_on_npc_death | IsStalker(victim), at is_base, kill_count >= threshold, smart has faction |
+| ELITE | reactive | squad_on_npc_death | killer_id exists, projected_kill_count crosses new elite level |
+| ELITEKILL | reactive | squad_on_npc_death | is_elite(victim_id), per-victim cooldown not active |
+| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject exists, not is_base |
+| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item) |
+| STASH | radiant | RADIANT_CALLBACKS | stash within RADIUS_DISTANT_MAX |
+| AREA | radiant | RADIANT_CALLBACKS | community_stalker, empty smart, not is_base |
+| NEEDS | radiant | RADIANT_CALLBACKS | community_stalker, level.present(), Hull drive scoring (see Needs) |
+
+### Predicate contract
+
+Signature: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`
+
+**Producer responsibilities** (ap_producer_reactive):
+- Subscribe to X-Ray callbacks via RegisterScriptCallback
+- Create root trace, wrap each predicate call in observe()
+- If predicate returns a table with .cause, attach trace as ._trace and publish to xbus
+- Increment cause rate counter after publish
+
+**Predicate responsibilities** (ap_cause_*.script):
+- Return { cause = CAUSE.X, ...payload } on match, or nil on no-match
+- No inner observe() -- producer already wraps the call
+- No event_publish() -- producer handles publishing
+- No trace creation -- producer provides the trace as first argument
+- No rate counter manipulation -- producer increments after publish
+
+---
+
+## Consequence Patterns
+
+Consequences share a common gate sequence (enabled MCM -> chance MCM -> per-consequence rate limit -> business logic -> PDA) but diverge into distinct architectural patterns:
+
+**Respond-to-event.** Reactive consequences find nearby squads matching faction criteria and script them toward the event location. The event provides "where" and "what happened"; the consequence finds "who" and decides "how." Used by: massacre (scavenge, investigate), basekill (support), wounded (hunt, help).
+
+**Chase.** A pursuit loop built on the arrival handler system. chase_start scripts chasers toward the target's current position. On arrival, the chase handler re-evaluates: target alive? Same level? Not co-located? Under max_chases? If all pass, re-script to target's new position. If any fail, unscript. Player targets use engine-native pursuit (script_actor_target) with no chase loop -- the engine handles following. Used by: squadkill_revenge, elitekill_targeted, harvest_hunt.
+
+**Flee-to-safety.** Find nearest friendly base on the same level, script squad there. Inverse of respond-to-event -- move away from danger, not toward it. Used by: squadkill_flee, basekill_flee.
+
+**State mutation.** No squad movement. Update tracker state, create markers, give rewards. Used by: elite_promote (update_elite + marker), elitekill_bounty (give_money).
+
+**Stash interaction.** Script to stash's nearest smart. On-arrive handler manipulates stash inventory via alife operations (loot or fill). stash_ambush is passive (no arrival handler -- squad just occupies the smart). Used by: stash_loot, stash_fill, stash_ambush.
+
+**Area conquest.** Script to empty claimable smart. Mutates respawn parameters immediately on consequence fire, not on arrival (see Runtime Smart Mutation). Used by: area_conquer.
+
+**Needs template.** Config-table-driven. 15 rows in CONFIGS, same _make_handler(entry) factory. The triggering squad IS the responder (radiant pattern). Find destination smart by composed filter, script the squad, on-arrive consume items or trade (online only) or do nothing (gulag jobs handle behavior). All 15 follow identical code path; variation is pure data in config rows (filter, faction, section_key). The engine's gulag system assigns animations by smart type -- AP never touches the job planner.
 
 ---
 
 ## Consequences
 
-All consequences share: enabled MCM gate -> chance MCM gate -> per-consequence rate limit (consumer) -> PDA (chance-gated). Listed conditions are after these shared gates.
+| Cause | Consequence | p | Pattern | Effect |
+|-------|-------------|---|---------|--------|
+| MASSACRE | massacre_scavenge | 10 | respond | find_squads(scavenger, 50-500m) -> script to massacre smart |
+| MASSACRE | massacre_investigate | 20 | respond | find_squads(event faction, 50-500m) -> script to massacre smart |
+| SQUADKILL | squadkill_revenge | 15 | chase | find_squads(victim faction, 50-500m) -> chase killer |
+| SQUADKILL | squadkill_flee | 25 | flee | find_squads(victim faction, 50-500m) -> script to nearest base |
+| BASEKILL | basekill_support | 15 | respond | find_squads(base factions, 50-500m) -> script to attacked base |
+| BASEKILL | basekill_flee | 25 | flee | find_squads(base factions, 0-50m) -> script to distant base |
+| ELITE | elite_promote | 15 | state | update_elite, map marker |
+| ELITEKILL | elitekill_bounty | 0 | state | give_money (base * level +/-10%, capped) |
+| ELITEKILL | elitekill_targeted | 10 | chase | get_elites_on_level -> chase killer with elite hunters |
+| WOUNDED | wounded_hunt | 15 | respond | find_squads(predator, 50-500m) -> script to wounded's smart |
+| WOUNDED | wounded_help | 25 | respond | find_squads(wounded faction, 50-500m) -> script to wounded's smart |
+| HARVEST | harvest_hunt | 15 | chase | find_squads(harvest, 50-500m) -> chase artefact taker |
+| STASH | stash_loot | 10 | stash | community_stalker -> script to stash, on_arrive: loot to NPC |
+| STASH | stash_ambush | 20 | stash | community_ambusher -> script to stash smart (passive) |
+| STASH | stash_fill | 30 | stash | community_stalker -> script to stash, on_arrive: fill stash |
+| AREA | area_conquer | 20 | conquest | script to empty smart, conquer immediately |
+| NEEDS | hunger_campfire | 10 | needs | has_campfire -> consume HUNGER |
+| NEEDS | sleep_campfire | 10 | needs | has_campfire |
+| NEEDS | rest_campfire | 10 | needs | has_campfire -> consume REST |
+| NEEDS | heal_base | 10 | needs | is_base + faction_filter -> consume HEAL |
+| NEEDS | shelter_indoor | 10 | needs | is_base + faction_filter |
+| NEEDS | money_search | 10 | needs | has_anomaly |
+| NEEDS | money_hunt | 20 | needs | is_lair |
+| NEEDS | supply_trader | 10 | needs | has_trader_job -> trade exchange |
+| NEEDS | job_guard | 20 | needs | is_base + faction_filter -> consume GUARD |
+| NEEDS | job_explore | 30 | needs | -- |
+| NEEDS | job_research | 40 | needs | has_anomaly |
+| NEEDS | job_worship | 15 | needs | is_base + monolith/greh/zombied |
+| NEEDS | job_exercise | 15 | needs | is_base + army/dolg -> consume EXERCISE |
+| NEEDS | social_campfire | 10 | needs | has_campfire -> consume SOCIAL |
+| NEEDS | social_base | 20 | needs | is_base + faction_filter -> consume SOCIAL |
 
-| Cause | Consequence | Prio | Conditions | Effect |
-|-------|-------------|------|------------|--------|
-| MASSACRE | **massacre_scavenge** | 10 | - find_squads_observed(community_scavenger, 50-500m) | - script_squad to massacre smart |
-| MASSACRE | **massacre_investigate** | 20 | - find_squads_observed(event_data.faction, 50-500m) | - script_squad to massacre smart |
-| SQUADKILL | **squadkill_revenge** | 15 | - victim_faction is community_stalker <br> - killer resolves (killer_squad or db.actor) <br> - find_squads_observed(victim_faction, 50-500m) | - chase_start to killer <br> _Chase: re-scripts to killer's current smart on each arrival. Max chase_max_rescripts, then unscript._ |
-| SQUADKILL | **squadkill_flee** | 25 | - victim_faction is community_stalker <br> - find_nearest_base(victim_faction, level_id) <br> - find_squads_observed(victim_faction, 50-500m) | - script_squad to nearest base |
-| BASEKILL | **basekill_support** | 15 | - find_squads_observed(event_data.factions, 50-500m) | - script_squad to attacked base smart |
-| BASEKILL | **basekill_flee** | 25 | - find_nearest_base(base_factions, level_id, exclude=attacked) <br> - find_squads_observed(event_data.factions, 0-50m) | - script_squad to distant base |
-| ELITE | **elite_promote** | 15 | - killer_id exists <br> - max_elites cap not reached (or existing elite upgrades) | - update_elite(killer_id) <br> - map marker |
-| ELITEKILL | **elitekill_bounty** | 0 | - (always fires) | - reward = base_bounty * elite_level +/-10%, capped <br> - give_money to killer |
-| ELITEKILL | **elitekill_targeted** | 10 | - killer_id exists <br> - get_elites_on_level(level_id), exclude victim + killer <br> - trimmed to max_squads | - chase_start hunters to killer <br> _Chase: same re-script pattern as squadkill_revenge._ |
-| WOUNDED | **wounded_hunt** | 15 | - find_squads_observed(community_predator, 50-500m) <br> - find_smart nearest to wounded position | - script_squad to wounded NPC's nearest smart |
-| WOUNDED | **wounded_help** | 25 | - resolve wounded faction (xcreature.community or get_actor_true_community) <br> - find_squads_observed(wounded_faction, 50-500m) <br> - find_smart nearest to wounded position | - script_squad to wounded NPC's nearest smart |
-| HARVEST | **harvest_hunt** | 15 | - find_squads_observed(community_harvest, 50-500m) <br> - taker resolves (actor or squad) | - chase_start to taker <br> _Chase: same re-script pattern._ |
-| STASH | **stash_loot** | 10 | - squad is community_stalker | - script_squad to stash nearest smart <br> - on_arrive: loot stash to NPC inventory |
-| STASH | **stash_ambush** | 20 | - squad is community_ambusher | - script_squad to stash nearest smart |
-| STASH | **stash_fill** | 30 | - squad is community_stalker | - script_squad to stash nearest smart <br> - on_arrive: fill_stash with random items |
-| AREA | **area_conquer** | 20 | - (cause handles community + claimable filtering) | - script_squad to target smart <br> - conquer_smart on arrival |
-| NEEDS | **hunger_campfire** | 10 | - need == HUNGER <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart <br> - on_arrive (online): consume 1 food/drink <br> _Sections: bread, breadold, kolbasa, conserva, vodka, energy_drink_ |
-| NEEDS | **sleep_campfire** | 10 | - need == SLEEP (night gate in cause: hours >= 20 or < 5) <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart |
-| NEEDS | **rest_campfire** | 10 | - need == REST <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire smart <br> - on_arrive (online): consume 1 cigarette/alcohol <br> _Sections: cigarettes, cigarettes_lucky, cigarettes_russian, vodka, vodka2, beer_ |
-| NEEDS | **heal_base** | 10 | - need == HEAL <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base <br> - on_arrive (online): consume 1 medkit/bandage <br> _Sections: medkit, medkit_army, medkit_scientic, bandage_ |
-| NEEDS | **shelter_indoor** | 10 | - need == SHELTER <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
-| NEEDS | **money_search** | 10 | - need == MONEY <br> - find_smart: has_anomaly + check_destination, max 500m | - script_squad to anomaly zone |
-| NEEDS | **money_hunt** | 20 | - need == MONEY <br> - find_smart: is_lair + check_destination, max 500m | - script_squad to lair |
-| NEEDS | **supply_trader** | 10 | - need == SUPPLY <br> - find_smart: has_trader_job + check_destination, max 500m | - script_squad to trader smart <br> - on_arrive (online): exchange 1 artefact for 1 supply (ammo/medkit) <br> _Supply: medkit, ammo_9x18_fmj, ammo_9x19_fmj, ammo_5.45x39_fmj, ammo_5.56x45_fmj, ammo_7.62x39_fmj, ammo_12x70_buck_ |
-| NEEDS | **job_guard** | 20 | - need == JOB <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
-| NEEDS | **job_explore** | 30 | - need == JOB <br> - find_smart: check_destination only, max 500m | - script_squad to smart |
-| NEEDS | **job_research** | 40 | - need == JOB <br> - find_smart: has_anomaly + check_destination, max 500m | - script_squad to anomaly zone |
-| NEEDS | **job_worship** | 15 | - need == JOB <br> - find_smart: is_base + has_factions({monolith, greh, zombied}) + check_destination, max 500m | - script_squad to faction base |
-| NEEDS | **job_exercise** | 15 | - need == JOB <br> - find_smart: is_base + has_factions({army, dolg}) + check_destination, max 500m | - script_squad to faction base |
-| NEEDS | **social_campfire** | 10 | - need == SOCIAL <br> - find_smart: has_campfire + check_destination, max 500m | - script_squad to campfire <br> - on_arrive (online): consume 1 cigarette/vodka <br> _Sections: cigarettes, cigarettes_lucky, cigarettes_russian, vodka_ |
-| NEEDS | **social_base** | 20 | - need == SOCIAL <br> - find_smart: is_base + not is_factions_enemies + check_destination, max 500m | - script_squad to base |
+### Needs implementation
+
+All 15 NEEDS rows live in ap_consequence_needs.script. Config table CONFIGS, _make_handler(entry) builds the closure. Template: need match -> enabled -> chance -> resolve squad -> _build_filter -> find_smart(max 500m) -> script_squad(rush) -> mark_destination -> OK_STOP.
+
+**faction_filter** = is_factions_enemies(community, smart_faction) -- prevents scripting to hostile bases. Named factions (monolith/greh/zombied, army/dolg) use has_factions(smart, faction_list).
+
+**consume KEY** = _consume(go, NEEDS_SECTIONS[KEY]) via npc:object per section, release first match via alife_release_id. **trade exchange** = _arrive_trade(go) -- scan inventory for af_* artefact, release it, create random supply item. **--** = passive (gulag jobs handle behavior at destination). Section lists in ap_const.NEEDS_SECTIONS (7 keys).
+
+### _build_filter
+
+Composes one closure per handler invocation. 4 concerns, all evaluated per-smart inside find_smart (one filter, one pass, nearest match returned):
+
+1. **Type filter** (entry.filter): has_campfire, is_base, has_anomaly, is_lair, has_trader_job, or nil
+2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -- worship, exercise
+3. **Faction enemy** (entry.faction_filter): is_factions_enemies(community, smart_faction) -- prevents AP from scripting a squad to a hostile base (scripted_target bypasses the engine's target_precondition check)
+4. **Destination capacity** (check_destination): TTL counter, max N squads per smart within TTL window (MCM: destination_max, destination_ttl_sec)
+
+### Arrival dispatch
+
+_on_arrive(squad, args) fires when the squad reaches its destination smart. Online/offline checked at arrival, not at trigger -- a squad scripted while online may arrive offline or vice versa.
+
+```
+1. Always: reset DTO timestamp (args.dto_field)
+2. Online check: db.storage[squad:commander_id()].object
+   Online  -> _dispatch_arrive(go, args):
+              args.section_key -> _consume(go, NEEDS_SECTIONS[key])
+              args.arrive_fn == "trade" -> _arrive_trade(go)
+   Offline -> no-op (no game_object, no inventory)
+```
+
+DTO always resets (the need was addressed -- the squad traveled). Consume only fires online (inventory operations require a game_object). Animations at destination are handled by vanilla gulag jobs (campfire_point, animpoint, walker). AP does NOT touch the job planner.
 
 ---
 
-## Squad Lifecycle
+## Needs: Drive Scoring
 
-Consequences move squads via `scripted_target`. Without lifecycle management, squads get permanently scripted and drain the Zone of free-roaming squads.
+Single predicate on RADIANT_CALLBACKS. Guards: community_stalker, level.present().
 
-`scripted_target` persists across save/load (src: `sim_squad_scripted.script` STATE_Write:940 / STATE_Read:984).
+Nine needs, Maslow-weighted from SHELTER (5.0) down to SOCIAL (0.8). Hull drive formula: `drive = weight * (elapsed / threshold)^2`. Quadratic: a need at 2x its threshold scores 4x its base weight. The highest drive wins.
 
-### Scripted Squads
+Each need has an MCM-configurable enabled gate (cause_{need}_enabled) and threshold (HUNGER 8h, SLEEP 16h, REST 4h, SHELTER 24h, HEAL 12h, SUPPLY 48h, MONEY 24h, JOB 18h, SOCIAL 36h). SLEEP has an additional night gate (game hours >= 20 or < 5). Disabled needs are skipped before scoring.
 
-`scripted_squads` table in ap_alife_tracker is the ownership registry. Every squad AP moves is tracked here.
+Lazy init: first evaluation for a squad scatters all 9 DTO timestamps randomly across 0..2*threshold. Roughly half will already be overdue, producing a drive on the first check. Subsequent evaluations use Hull scoring normally.
+
+### DTO (stalker_needs in ap_alife_tracker)
+
+Per-squad game-second timestamps. 9 fields: last_{need}_at. Time source: game.get_game_time():diffSec(level.get_start_time()). API: get/init/reset via ap_alife_tracker. Stale squads cleaned in periodic_sync.
+
+---
+
+## Tracker (ap_alife_tracker)
+
+Central state manager for all persistent AP data.
+
+### Data tables
+
+| Table | Key | Content | Persistence |
+|-------|-----|---------|-------------|
+| killers | entity_id | kill count | save/load |
+| elites | entity_id | { level, kills, level_id, name, is_stalker } | save/load |
+| elite_dead | entity_id | same as elites (xttltable, 3600s grace after death) | transient |
+| scripted_squads | squad_id | { scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args } | save/load |
+| conquered_smarts | smart_id | { faction, conquered_at } | save/load (two-phase) |
+| stalker_needs | squad_id | { last_hunger_at ... last_social_at } | save/load |
+
+### Scripted squads
 
 ```
-Consequence -> ap_alife_tracker -> xsquad
-
-script_squad(squad, smart, opts)  -> register in scripted_squads -> control_squad (set scripted_target + rush_to_target)
-script_actor_target(squad)        -> register as "actor" target  -> target_actor (rush, no arrival detection)
-unscript_squad(squad_id)          -> remove from scripted_squads -> release_squad (clear scripted_target + rush_to_target)
+script_squad(squad, smart, opts) -> cleanup_stale -> validate -> release if re-script -> control_squad -> register
+script_actor_target(squad)       -> register as "actor" -> target_actor (rush, no arrival detection)
+unscript_squad(squad_or_id)      -> remove from table -> release_squad (clear scripted_target)
 ```
 
-`scripted_target` bypasses `SIMBOARD:get_squad_target()` -- the squad enters `specific_update` (direct A->B) instead of `generic_update` (simulation re-evaluation with detours and gulag reassignment). `rush_to_target` sets `move.run` + `anim.danger` on online NPCs via `xr_reach_task` (src: `xr_reach_task.script:300-313`), so they sprint instead of walk. All consequences pass `rush = true`.
+scripted_target bypasses SIMBOARD:get_squad_target() -- the squad enters specific_update (direct A->B) instead of generic_update (simulation re-evaluation with gulag reassignment). rush_to_target sets run+danger via xr_reach_task (src: xr_reach_task.script:300-313). scripted_target persists across save/load natively (src: sim_squad_scripted.script STATE_Write:940 / STATE_Read:984).
 
-### Entry Lifecycle
+TTL: 7200s (SCRIPTED_SQUAD_TTL). Stale entries (entity gone or TTL expired) cleaned before every write.
 
-Each entry has a TTL of 7200s (`SCRIPTED_SQUAD_TTL`). Stale entries (squad gone or TTL expired) are cleaned before every write. Entries carry an optional `on_arrive` handler key (string, serializable) and `on_arrive_args` (table, serializable). Functions are NOT stored -- they're re-registered on game_start via `register_arrival_handler`.
+### Arrival detection
 
-### Arrival Detection
+_check_arrivals runs every 30s (CreateTimeEvent). For each scripted_squad with target_smart_id: xsmart.is_arrived(squad, smart). If arrived: dispatch on_arrive handler by key, then unscript. Actor targets have no arrival detection -- engine handles pursuit natively.
 
-`_check_arrivals` polls every 30s. Smart targets: check `xsmart.is_arrived`, dispatch handler if present, then unscript. Actor targets have no arrival detection (engine handles pursuit natively).
+### On-arrive handler registry
 
-### On-Arrive Handler Registry
+_arrival_handlers: { [key] = function(squad, args) }. Consequences call register_arrival_handler(key, fn) during on_game_start. Keys and args in scripted_squads persist across save/load (serializable strings/tables). Functions are transient -- re-registered every load.
 
-`_arrival_handlers` is a table of `{ [key] = function(squad, args) }`. Consequences call `register_arrival_handler(key, fn)` during on_game_start. The handler key is stored in `scripted_squads[id].on_arrive` (a string). On arrival, the tracker looks up the function by key and calls it with the stored args.
-
-Handlers re-register on every on_game_start. Keys + args in scripted_squads persist across save/load. Functions don't persist -- they're re-registered.
-
-| Handler Key | Registered By | On Arrival |
+| Handler key | Registered by | On arrival |
 |-------------|---------------|------------|
-| stash_loot | stash_loot | loot_stash_to_npc, PDA with item names |
-| stash_fill | stash_fill | fill_stash with random items |
-| squadkill_chase | squadkill_revenge | re-script to killer's current smart (max N re-scripts) |
-| harvest_chase | harvest_hunt | re-script to taker's current smart (max N re-scripts) |
-| elitekill_chase | elitekill_targeted | re-script to killer's current smart (max N re-scripts) |
-| elitespot_chase | elitespot_follow (planned) | re-script to elite's current smart (max N re-scripts) |
-| {consequence_name} | consequence_needs (15 keys, one per config row) | reset DTO timestamp, online: arrive_fn, offline: no-op |
+| stash_loot | stash_loot | loot stash to NPC inventory |
+| stash_fill | stash_fill | fill stash with random items |
+| revenge_chase | squadkill_revenge | re-script to killer's current smart |
+| harvest_chase | harvest_hunt | re-script to taker's current smart |
+| elitekill_chase | elitekill_targeted | re-script to killer's current smart |
+| {15 need keys} | consequence_needs | reset DTO, online: _dispatch_arrive |
 
-Chase handlers use `chase_start` / `chase_register` from ap_utils. On each arrival, the handler re-scripts the squad to the target's new position. After max re-scripts, the squad is unscripted.
+### Save/load
 
-### Cleanup
-
-| Function | Trigger | Scope |
-|----------|---------|-------|
-| `_cleanup_stale` | Before every write to scripted_squads | Remove entries where squad entity is gone or TTL expired |
-| `_process_arrival` | Every 30s | Arrival detection + handler dispatch only |
-| `_periodic_sync` | Every 600s (MCM-togglable) | GC all entity tables (elites, kills, conquered_smarts, scripted_squads, stalker_needs) |
-
-### Save/Load
-
-- **Save:** scripted_squads persisted (all values are strings, numbers, tables -- serializable)
-- **Load:** scripted_squads restored, `tracked_at` reset to `os.clock()` for all entries
-- **No release-all on load.** Squads stay scripted. Handler functions re-registered on on_game_start.
+All tables persisted to m_data.ap_alife_tracker. On load: tracked_at reset to os.clock(). Squads stay scripted. Handler functions re-registered on on_game_start. Conquered smarts use two-phase restore (see Runtime Smart Mutation).
 
 ---
 
-## A-Life Behavior (ap_alife_behavior)
+## Chase API (ap_utils)
 
-Runtime combat modifiers for elite NPCs. Hooks into `npc_on_before_hit`. 10-level elite system: `level = min(10, floor(kills / elite_kills_per_level))`.
+Standardized pursuit for NPC and player targets.
 
-### Elite Buffs
+**chase_register(opts).** Arrival handler. On each arrival: target alive? Same level? Not co-located? Under max_chases? If all pass, re-script to target's current smart. Exceeds max -> unscript. Target gone -> PDA "lost".
 
-Applied on hit via `_on_before_hit`. Gated by `acquire_lock` (1s throttle). All buffs scale by elite level.
+**chase_start(trace, chasers, target, pda_data, opts).** Initial script. target=nil -> script_actor_target (player, engine-native pursuit, no chase loop). target=squad -> script_squad with on_arrive chase handler (re-script loop).
 
-| Buff | Mechanism | Scaling | MCM Toggle |
-|------|-----------|---------|------------|
-| Grenades | `xobject.create_item` on hit if none in inventory | count = level | `elite_grenade_restock_enabled` |
-| AP ammo | Best k_ap ammo for equipped weapon | boxes = ceil(level / 2) | `elite_ap_ammo_enabled` |
-| Rank boost | `go:set_character_rank(threshold)` | 10-level threshold table | `rank_boost_enabled` |
-
-### Rank Threshold Table
-
-| Level | Engine Rank | Engine Label |
-|-------|-------------|-------------|
-| 1-2 | 10000 | experienced |
-| 3-4 | 20000 | professional |
-| 5-6 | 25000 | veteran |
-| 7-8 | 35000 | master |
-| 9-10 | 50000 | legend |
-
-Rank boost is one-way (never reduces). Engine benefits: 20% tighter dispersion at high rank, fewer weapon jams.
-
-AP ammo detection is weapon-pack agnostic: picks the highest `k_ap` ammo for the equipped weapon, cached per weapon section.
+Used by: squadkill_revenge, elitekill_targeted, harvest_hunt.
 
 ---
 
-## Conquered Area
+## Runtime Smart Mutation
 
-Persistent area ownership via respawn mutation. When a squad conquers a smart, `faction_controlled` and `respawn_params` are set at runtime, making the engine's `try_respawn` spawn the conqueror's faction.
+The engine reads smart terrain configuration from LTX at load time: faction_controlled, respawn_params, default_faction. These tables determine which factions spawn at which smarts. AP mutates these runtime tables to change territory ownership dynamically, without modifying any files on disk.
 
 ### Flow
 
-Three layers: xsmart (stateless primitives), ap_alife_tracker (lifecycle + persistence), consequence (trigger).
-
 ```
-CONSEQUENCE                    AP_ALIFE_TRACKER                 XSMART
-area_conquer ->               conquer_smart(smart_id, fac) ->  set_faction_controlled(smart, fac, n)
-                                 conquered_smarts[id] = {         smart.faction_controlled = ALL_FC
-                                   faction, conquered_at          smart.respawn_params[fc_*] = entries
-                                 }                                smart.faction = fac
-```
-
-### Runtime Mutation (xsmart)
-
-`set_faction_controlled(smart, faction, spawn_num)` mirrors engine `read_params` (smart_terrain.script:246-267). Injects `faction_controlled` entries for all 12 factions (any faction taking the smart gets matching respawns), preserves engine's `already_spawned` counts, and sets `smart.faction` to conqueror. Original non-fc entries become dormant (fc check at try_respawn blocks them).
-
-`clear_faction_controlled(smart)` removes all 12 entries and reverts `smart.faction` to `smart.default_faction`.
-
-### FIFO Eviction
-
-`conquered_smarts` tracks all active conquests. When count reaches `area_conquest_max_smarts` (MCM, default 50), the entry with the lowest `conquered_at` is evicted. Uses a monotonic sequence counter (`_conquest_seq`) instead of wall clock -- survives save/load without timestamp normalization.
-
-Re-conquest by same faction refreshes the sequence number (LRU behavior). Re-conquest by different faction overwrites the entry without eviction (count stays the same).
-
-### Save/Load (Two-Phase)
-
-```
-1. save_state:     conquered_smarts + _conquest_seq persisted
-2. load_state:     _conquered_pending = saved data, _conquest_seq restored
-                   conquered_smarts = {} (cleared for fresh session)
-3. STATE_Read:     engine rebuilds smart data from ltx (our mutations lost)
-4. on_game_load:   iterate _conquered_pending, re-apply set_faction_controlled
-                   entities exist, mutations applied before first update tick
-5. periodic_sync:  stale smart IDs (entity destroyed) removed from table
+area_conquer consequence
+  -> ap_alife_tracker.conquer_smart(smart_id, faction)
+    -> xsmart.set_faction_controlled(smart, faction, spawn_num)
+       smart.faction_controlled = entries for all 12 factions
+       smart.respawn_params = fc_* entries (conqueror's squads)
+       smart.faction = conqueror
 ```
 
-### ZCP Compatibility
+set_faction_controlled mirrors the engine's own read_params (src: smart_terrain.script:246-267). It injects faction_controlled entries for all 12 factions, preserves the engine's already_spawned counts, and sets smart.faction. The engine's try_respawn then spawns the conqueror's faction using standard logic. clear_faction_controlled reverts all mutations and restores smart.faction to smart.default_faction.
 
-ZCP's `try_respawn` (line 1672) uses identical `faction_controlled` check as vanilla. Only adds population factor gates. Runtime mutations to `faction_controlled` / `respawn_params` are fully compatible.
+ZCP compatible -- ZCP's try_respawn (src: line 1672) uses the identical faction_controlled check as vanilla.
+
+### FIFO eviction
+
+Max area_conquest_max_smarts (MCM, default 50). When full, the oldest conquered_at entry is evicted and its mutations cleared. Uses a monotonic sequence counter (_conquest_seq), not wall clock -- survives save/load without timestamp normalization. Same-faction re-conquest refreshes the sequence (LRU behavior). Different-faction overwrites the entry without eviction.
+
+### Two-phase save/load
+
+Smart terrain runtime tables are rebuilt from LTX on every load -- mutations are lost at STATE_Read. AP uses a two-phase restore:
+
+1. **save_state** -- conquered_smarts + _conquest_seq persisted to m_data
+2. **load_state** -- _conquered_pending = saved data, conquered_smarts = {} (cleared)
+3. **STATE_Read** -- engine rebuilds smart data from LTX (mutations gone)
+4. **on_game_load** -- re-apply set_faction_controlled from _conquered_pending (entities exist now)
+5. **periodic_sync** -- remove stale smart IDs (entity destroyed)
 
 ---
 
-## Needs System
+## Runtime Combat Modifiers (ap_alife_behavior)
 
-Timer-based human needs on the cause/consequence framework. One cause predicate evaluates 9 needs via Hull drive scoring. The winning need publishes as CAUSE.NEEDS with the need type in the payload. 15 consequences register for CAUSE.NEEDS, each filtering on its need type. Each consequence finds a destination smart via `find_smart` + filter, moves the squad, and fires a per-consequence arrival function.
+Intercepts npc_on_before_hit to apply combat buffs based on tracker kill data. Gated by acquire_lock (1s throttle per call).
 
-### DTO (stalker_needs)
+Level formula: `min(10, floor(kills / elite_kills_per_level))`
 
-Per-squad game-second timestamps in ap_alife_tracker. 9 fields: `last_hunger_at` through `last_social_at`.
+| Buff | Mechanism | Scaling | MCM |
+|------|-----------|---------|-----|
+| Grenades | create_item if none in inventory | count = level | elite_grenade_restock_enabled |
+| AP ammo | Best k_ap ammo for equipped weapon | boxes = ceil(level/2) | elite_ap_ammo_enabled |
+| Rank boost | set_character_rank(threshold) | threshold table | rank_boost_enabled |
 
-| API | Purpose |
-|-----|---------|
-| `get_stalker_needs(squad_id)` | Returns DTO or nil |
-| `init_stalker_needs(squad_id, now)` | Sets all 9 fields to `now` |
-| `reset_stalker_need(squad_id, key, now)` | Resets one field |
+Rank thresholds: L1-2=10000, L3-4=20000, L5-6=25000, L7-8=35000, L9-10=50000. One-way (never reduces). AP ammo: weapon-pack agnostic, cached per weapon section.
 
-Time: `game.get_game_time():diffSec(level.get_start_time())`. Lazy init: first evaluation sets all to `now` and immediately provokes a random enabled need (no wasted evaluation). Save/load with tracker. Stale squads cleaned in `_periodic_sync`.
+---
 
-### Cause (one predicate, one cause event)
+## Extension Points
 
-Single predicate registered on all `RADIANT_CALLBACKS`. Guards: `community_stalker` only, `level.present()`. Per-need enabled gate: `cause_{need}_enabled` MCM flag skips disabled needs before scoring.
+### Adding a cause
 
-Lazy init: first encounter sets all 9 DTO timestamps to `now` and immediately provokes a random enabled need (published as CAUSE.NEEDS with `drive = weight`). On subsequent evaluations, Hull drive scoring picks the strongest unmet need: `drive = weight * (elapsed / threshold)^2`. Maslow-weighted (shelter 5.0 -> social 0.8). Night gate on SLEEP (hours >= 20 or < 5). ~6 luabind per evaluation.
+1. Add CAUSE.X to ap_const.CAUSE
+2. Create ap_cause_x.script with a predicate following the predicate contract
+3. In on_game_start, register: ap_producer_reactive.register(CAUSE.X, { callback = CALLBACK.Y }, predicate_fn)
+4. For radiant causes: register once per entry in ap_const.RADIANT_CALLBACKS
 
-Winner published as CAUSE.NEEDS with payload:
+### Adding a consequence
 
-```
-{ cause = CAUSE.NEEDS, need = "hunger", dto_field = "last_hunger_at",
-  squad_id, community, position, level_id, drive }
-```
+1. Add CONSEQUENCE.X to ap_const.CONSEQUENCE
+2. Create ap_consequence_x.script with a handler returning result codes
+3. In on_game_start, register: ap_consumer.register(CONSEQUENCE.X, { event = CAUSE.Y, priority = N }, handler_fn)
+4. Standard gate order in handler: enabled MCM -> chance MCM -> business logic. Return OK_STOP to claim exclusively, _NEXT to let others try.
+5. If arrival behavior needed: ap_alife_tracker.register_arrival_handler(key, fn) in on_game_start
 
-The `need` field identifies which need won. Consequences filter on this field. The `dto_field` tells the arrival handler which timestamp to reset. The `drive` is the winning score (informational, for logging/debug).
+### Adding a radiant callback
 
-### Consequence (template method)
+Add the callback string to ap_const.RADIANT_CALLBACKS. All radiant causes automatically register on it via their on_game_start loop. Zero cause file edits.
 
-One file: `ap_consequence_needs.script`. All 15 consequences follow the template method pattern (GoF). One handler factory builds a closure per config row. The variable parts -- filter, arrive_fn -- are pure data in each row. No per-consequence handler code, no separate files, no special cases.
-
-Every needs consequence is three steps: find a smart, move the squad, do an activity on arrival. The factory produces identical handlers. What changes per row is configuration, not code. Animations are handled by vanilla gulag jobs at the destination (campfire_point, animpoint, walker).
-
-    GATES (same for all 15):
-      1. need match: event_data.need == entry.need       -> RULES_NEXT
-      2. enabled gate: cfg[consequence_{name}_enabled]    -> DISABLED_NEXT
-      3. chance gate: cfg[consequence_{name}_chance]      -> CHANCE_NEXT
-      4. resolve squad: xobject.se(event_data.squad_id)  -> RULES_NEXT
-
-    Step 1 -- FIND destination
-      _build_filter(entry, community) -> single filter closure combining:
-        a. type filter: entry.filter(smart) -- has_campfire, is_base, etc.
-        b. faction filter: is_factions_enemies (4 rows with faction_filter=true)
-        c. destination capacity: check_destination(smart.id)
-      find_smart(pos, { filter, level_id, max_distance }) -> nearest matching smart.
-      All three concerns evaluated per-smart during iteration. If nearest match is
-      full (destination limiter), find_smart skips it and returns next-nearest.
-      -> RULES_NEXT if nil
-
-    Step 2 -- MOVE squad
-      script_squad(squad, smart, { rush = true, on_arrive, on_arrive_args })
-      mark_destination(smart.id)
-      -> OK_STOP
-
-    Step 3 -- ARRIVE: activity (online only)
-      arrive_fn(squad, args)
-      consume food, loot stash, exchange items, deposit, or nil (no-op)
-
-    Always on arrival (online or offline):
-      reset DTO timestamp (dto_field)
-      send PDA (chance-gated)
-
-Steps 1-2 run in the consequence handler (fires on CAUSE.NEEDS event). Step 3 runs in the arrival handler (fires when squad reaches the smart). See Arrival below for the online/offline lifecycle. Animations are handled by vanilla gulag jobs at the destination smart (campfire_point, animpoint, walker).
-
-**Config row fields** (what varies per row):
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| need | string | Need match gate: "hunger", "money", etc. |
-| consequence | CONSEQUENCE | Enum value for trace + rate limiting |
-| name | string | Key for MCM, arrival handler, PDA, markers |
-| dto_field | string | Which DTO timestamp to reset on arrival |
-| filter | function/nil | Boolean predicate per smart (e.g. has_campfire, is_base). Passed to find_smart. |
-| faction_filter | boolean/nil | If true, _build_filter wraps base filter with is_factions_enemies check. |
-| priority | number | Consumer dispatch order (lower = tried first) |
-| arrive_fn | function/nil | Online-only arrival activity (step 3) |
-
-**`_build_filter`** composes one closure per handler invocation with three concerns:
-
-1. **Type filter** (`entry.filter`): boolean predicate per smart from config row
-   - `is_base`, `is_lair`: O(1), 0 luabind (smart.props table read, global scope)
-   - `has_campfire`: O(1), 1 luabind (smart:name() -> db.campfire_table_by_smart_names, online scope)
-   - `has_anomaly`: O(k), 1+2k luabind (k = online anomaly zones 5-15, online scope)
-   - `has_trader_job`: O(1) cached / O(jobs) first call, 0 luabind (online scope)
-2. **Faction filter** (`entry.faction_filter`): `is_factions_enemies(community, get_smart_faction(smart))`. O(1) extra. Applied on 4 rows (heal_base, shelter_indoor, job_guard, social_base). Needed because `script_squad` sets `scripted_target` which bypasses the engine's `target_precondition` -- without this, AP could send a loner to a Monolith base for healing.
-3. **Destination capacity** (`check_destination`): xttltable TTL counter. Sliding window: max N squads per smart within TTL seconds (MCM: destination_max=3, destination_ttl_sec=300). If nearest match is full, find_smart skips it and returns next-nearest.
-
-All three evaluated uniformly per-smart inside `find_smart`. One filter, one iteration, one result. `find_smart` returns the nearest smart that passes all three checks. Standard Anomaly pattern (SIMBOARD.smarts_by_names iteration).
-
-15 MCM sections, one per consequence (enabled, chance, pda_chance).
-
-### Consequence table
-
-| Need | Consequence | p | Filter | Faction | Arrive fn |
-|------|------------|---|--------|---------|-----------|
-| HUNGER | hunger_campfire | 10 | has_campfire | -- | consume food/drink |
-| SLEEP | sleep_campfire | 10 | has_campfire | -- | -- |
-| REST | rest_campfire | 10 | has_campfire | -- | consume cigarettes/alcohol |
-| HEAL | heal_base | 10 | is_base | enemies | consume medkit/bandage |
-| SHELTER | shelter_indoor | 10 | is_base | enemies | -- |
-| MONEY | money_search | 10 | has_anomaly | -- | -- |
-| MONEY | money_hunt | 20 | is_lair | -- | -- |
-| SUPPLY | supply_trader | 10 | has_trader_job | -- | sell/buy exchange |
-| JOB | job_guard | 20 | is_base | enemies | -- |
-| JOB | job_explore | 30 | -- | -- | -- |
-| JOB | job_research | 40 | has_anomaly | -- | -- |
-| JOB | job_worship | 15 | faction condition | -- | -- |
-| JOB | job_exercise | 15 | faction condition | -- | -- |
-| SOCIAL | social_campfire | 10 | has_campfire | -- | -- |
-| SOCIAL | social_base | 20 | is_base | enemies | -- |
-
-Animations at the destination are handled by vanilla gulag jobs (campfire_point, animpoint, walker). See kamp-system.md.
-
-### Arrival (online/offline)
-
-Handler fires when squad reaches destination. YANS: same rule for every NPC. Online means the action planner exists and the NPC can physically perform actions. Offline means the NPC is statistical. No special treatment either way.
-
-```
-1. Always: reset DTO timestamp (dto_field)
-2. Online check: db.storage[squad:commander_id()] ~= nil
-   -> Online: arrive_fn(squad, args) if defined (consume, exchange, loot, deposit)
-   -> Offline: no-op (no action planner, no inventory interaction)
-3. Always: send PDA (chance-gated)
-```
-
-Online/offline status is checked at arrival, not at trigger. A squad scripted while online may arrive offline (player left level) or vice versa. This is correct: the arrival handler captures the NPC's actual state when the action should happen.
-
-| Trigger | Arrival | Result |
-|---------|---------|--------|
-| Online | Online | arrive_fn + reset DTO |
-| Online | Offline | reset DTO only (squad still moved -- good simulation) |
-| Offline | Online | arrive_fn + reset DTO (player sees NPC at destination) |
-| Offline | Offline | reset DTO only (statistical) |
-
-Animations at the destination are handled by vanilla gulag jobs. When a squad arrives at a smart with campfires, the gulag assigns campfire_point jobs; the camp manager (sr_camp) plays eat/drink/guitar/sleep animations automatically. See `doc/library/modding/kamp-system.md`.
+Choose callbacks with measured sustained frequency under 15 events/second (ideally ~10/minute). The radiant token bucket has capacity=1 -- high-frequency callbacks (actor_on_hit at 50+/sec, actor_on_update at 60/sec) will be dropped immediately with no benefit. The three current callbacks have complementary profiles: enter/leave_smart provide steady off-map coverage and sparse on-map transitions; actor_on_smart (adapter) fills the on-map gap with proximity-based evaluation density. A good radiant callback represents a meaningful A-Life state change, not a per-frame update.

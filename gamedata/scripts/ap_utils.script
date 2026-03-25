@@ -4,6 +4,7 @@ local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
 local ACTION = ap_const.ACTION
 local RESULT = ap_const.RESULT
+local cfg = ap_mcm.cfg
 
 -- PDA sender cache: ephemeral list of online stalkers with valid name+icon.
 -- Rebuilt lazily when empty (online set changes on level transitions).
@@ -153,7 +154,7 @@ end
 
 local function _ensure_consequence_limiter()
     if not _consequence_limiter then
-        local max = ap_mcm.cfg.consequence_max_events
+        local max = cfg.consequence_max_events
         local window = ap_const.CONSEQUENCE_WINDOW_SEC
         _consequence_limiter = xttltable.create_token_bucket({ capacity = 1, rate = max / window })
     end
@@ -166,7 +167,7 @@ function check_cause_rate_limit(name)
     local counter = _ensure_cause_counter()
     local key = get_cause_rate_key(name)
     local count = counter:count(key)
-    local max = ap_mcm.cfg.cause_max_events
+    local max = cfg.cause_max_events
     if count >= max then
         return false, count, max
     end
@@ -225,7 +226,7 @@ local _destinations = nil
 
 local function _ensure_destinations()
     if not _destinations then
-        _destinations = xttltable.create_ttl_counter({ ttl = ap_mcm.cfg.destination_ttl_sec })
+        _destinations = xttltable.create_ttl_counter({ ttl = cfg.destination_ttl_sec })
     end
     return _destinations
 end
@@ -233,7 +234,7 @@ end
 --- Check if destination smart has capacity for more squads
 function check_destination(smart_id)
     if not smart_id then return true end
-    return _ensure_destinations():count(smart_id) < ap_mcm.cfg.destination_max
+    return _ensure_destinations():count(smart_id) < cfg.destination_max
 end
 
 --- Record a squad being sent to destination smart

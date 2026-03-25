@@ -4,7 +4,7 @@ local CAUSE = ap_const.CAUSE
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
-local cfg
+local cfg = ap_mcm.cfg
 
 local function _on_smart(trace, squad)
     if not cfg.cause_stash_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -33,7 +33,6 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     local radiant = ap_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_producer_reactive.register(CAUSE.STASH, { callback = radiant[i] }, _on_smart)

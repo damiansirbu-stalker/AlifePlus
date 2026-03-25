@@ -3,6 +3,7 @@ local next, pairs, tostring, type = next, pairs, tostring, type
 local RegisterScriptCallback = RegisterScriptCallback
 
 local CALLBACK = ap_const.CALLBACK
+local cfg = ap_mcm.cfg
 local _handlers = {}
 local _subscribed = {}
 local _radiant_event_limiter = nil
@@ -47,7 +48,7 @@ local function _alife_ratio_gate(on_map)
         _on_count = 0
         _off_count = 0
     end
-    local gs = ap_mcm.cfg.alife_ratio
+    local gs = cfg.alife_ratio
     if gs == 0 then return true end
 
     if gs > 0 then
@@ -76,7 +77,7 @@ end
 
 local function _check_radiant_event_limiter()
     if not _radiant_event_limiter then
-        _radiant_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / ap_mcm.cfg.distributor_interval_sec })
+        _radiant_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / cfg.distributor_interval_sec })
     end
     return _radiant_event_limiter:acquire("radiant")
 end
@@ -135,9 +136,15 @@ local function _try_publish(on_map, name, result, trace, level_id)
         result.cause, tostring(result.squad_id), tostring(on_map), tostring(level_id))
 end
 
+local function _radiant_exhausted(callback_type)
+    return _radiant_event_set[callback_type] and _radiant_event_limiter
+        and not _radiant_event_limiter:peek("radiant")
+end
+
 local function dispatch(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
+    if _radiant_exhausted(callback_type) then return end
 
     local first_arg = select(1, ...)
     local on_map, level_id = _resolve_on_map(callback_type, first_arg)
@@ -148,7 +155,7 @@ local function dispatch(callback_type, ...)
 
     if on_map ~= nil and not _alife_ratio_gate(on_map) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
-            tostring(on_map), ap_mcm.cfg.alife_ratio, _on_count, _off_count, tostring(level_id), tostring(squad_id))
+            tostring(on_map), cfg.alife_ratio, _on_count, _off_count, tostring(level_id), tostring(squad_id))
         return
     end
 

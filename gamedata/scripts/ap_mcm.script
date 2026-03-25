@@ -1,13 +1,12 @@
 --- ap_mcm: MCM menu definition with defaults, config reader, and UI builder
-local type = type
-local RegisterScriptCallback = RegisterScriptCallback
+local type, RegisterScriptCallback = type, RegisterScriptCallback
 
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
     distributor_interval_sec = 3,
     cause_max_events = 10,
-    consequence_max_events = 5,
+    consequence_max_events = 2,
 
     -- Destination limiter
     destination_max = 3,
@@ -425,16 +424,7 @@ local path_builder = function(key)
     local tab = key_to_tab[key]
     return tab and ("ap/" .. tab .. "/" .. key) or nil
 end
-get_config = xmcm.create_getter("ap", defaults, path_builder)
-cfg = {}
-
-function load_config()
-    for k in pairs(defaults) do
-        cfg[k] = get_config(k)
-    end
-end
-
-load_config()
+cfg, get_config, load_config = xmcm.create_config("ap", defaults, path_builder)
 
 local function slide(txt)
     return {
@@ -472,7 +462,7 @@ function on_mcm_load()
                     track("alife_ratio", -10, 10, 1, 8),
                     track("distributor_interval_sec", 1, 30, 1, 3),
                     track("cause_max_events", 1, 100, 1, 10),
-                    track("consequence_max_events", 1, 100, 1, 5),
+                    track("consequence_max_events", 1, 100, 1, 2),
                     { id = "div_destination", type = "line" },
                     track("destination_max", 1, 10, 1, 3),
                     track("destination_ttl_sec", 60, 600, 30, 300),

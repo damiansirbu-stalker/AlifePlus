@@ -6,7 +6,7 @@ local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 
-local cfg
+local cfg = ap_mcm.cfg
 local community_ambusher = ap_data.community_ambusher
 
 local function _handler(event_data)
@@ -45,7 +45,6 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     ap_consumer.register(CONSEQUENCE.STASH_AMBUSH, {
         event = CAUSE.STASH,
         priority = 20,

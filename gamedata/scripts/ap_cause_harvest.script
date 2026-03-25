@@ -4,7 +4,7 @@ local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
-local cfg
+local cfg = ap_mcm.cfg
 
 local function _evaluate(_trace, item, npc)
     if not cfg.cause_harvest_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -50,7 +50,6 @@ local function _on_npc_take(trace, npc, item)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     ap_producer_reactive.register(CAUSE.HARVEST, {
         callback = CALLBACK.ACTOR_ON_ITEM_TAKE,
     }, _on_actor_take)

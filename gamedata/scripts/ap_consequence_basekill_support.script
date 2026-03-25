@@ -8,7 +8,7 @@ local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 
-local cfg
+local cfg = ap_mcm.cfg
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -55,7 +55,6 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     ap_consumer.register(CONSEQUENCE.BASEKILL_SUPPORT, {
         event = CAUSE.BASEKILL,
         priority = 15,

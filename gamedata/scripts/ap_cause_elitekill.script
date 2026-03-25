@@ -6,7 +6,7 @@ local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 local time_global = time_global
 
-local cfg
+local cfg = ap_mcm.cfg
 local _cooldown
 
 local function _on_death(trace, squad, npc, killer)
@@ -39,7 +39,6 @@ local function _on_death(trace, squad, npc, killer)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     _cooldown = ap_utils.create_cooldown(60000)
     ap_producer_reactive.register(CAUSE.ELITEKILL, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH,

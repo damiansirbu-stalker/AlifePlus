@@ -8,7 +8,7 @@ local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 
-local cfg
+local cfg = ap_mcm.cfg
 local community_stalker = ap_data.community_stalker
 
 local function _pick_random_items(count)
@@ -65,7 +65,6 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     ap_alife_tracker.register_arrival_handler("stash_fill", _on_arrive)
     ap_consumer.register(CONSEQUENCE.STASH_FILL, {
         event = CAUSE.STASH,

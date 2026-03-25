@@ -4,7 +4,7 @@ local CAUSE = ap_const.CAUSE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
-local cfg
+local cfg = ap_mcm.cfg
 
 local function _on_death(trace, squad, se_victim, se_killer)
     if not cfg.cause_elite_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -37,7 +37,6 @@ local function _on_death(trace, squad, se_victim, se_killer)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     ap_producer_reactive.register(CAUSE.ELITE, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH,
     }, _on_death)

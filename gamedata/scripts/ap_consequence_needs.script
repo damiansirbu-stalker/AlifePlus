@@ -12,7 +12,7 @@ local RADIUS_DISTANT_MAX = ap_const.RADIUS_DISTANT_MAX
 local NEEDS_SECTIONS = ap_const.NEEDS_SECTIONS
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 
-local cfg
+local cfg = ap_mcm.cfg
 
 --- Try each section via npc:object, release first match
 local function _consume(go, sections)
@@ -186,7 +186,6 @@ local function _make_handler(entry)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
         ap_alife_tracker.register_arrival_handler(entry.name, _on_arrive)

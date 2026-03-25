@@ -20,16 +20,12 @@ local scripted_squads = {}
 local _arrival_handlers = {}
 local _last_victim_id
 local elite_dead
-local cfg
+local cfg = ap_mcm.cfg
 local conquered_smarts = {}
 local _conquered_pending = nil
 local _conquest_seq = 0
 local stalker_needs = {}
 local NEED_FIELDS = ap_const.NEED_FIELDS
-
-local function _refresh_config()
-    cfg = ap_mcm and ap_mcm.cfg or {}
-end
 
 local function _is_stale(id)
     return not xobject.se(id)
@@ -550,11 +546,8 @@ local function _on_squad_npc_death(squad, npc, killer)
 end
 
 function on_game_start()
-    _refresh_config()
-
     elite_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
 
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _refresh_config)
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)

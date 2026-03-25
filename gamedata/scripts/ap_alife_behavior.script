@@ -4,7 +4,7 @@ local ipairs, os_clock = ipairs, os.clock
 local math_ceil, RegisterScriptCallback = math.ceil, RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
 
-local cfg
+local cfg = ap_mcm.cfg
 local _grenade_restock_times = {}
 local _ap_ammo_restock_times = {}
 
@@ -135,7 +135,6 @@ local function _on_before_hit(npc, shit, bone_id, flags)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_before_hit)
     ap_debug.info("[BEHAVIOR] Initialized")
 end

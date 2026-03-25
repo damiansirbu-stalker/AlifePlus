@@ -7,7 +7,7 @@ local REASON = ap_const.REASON
 -- Declare custom callback (must be before on_game_start)
 AddScriptCallback("x_npc_medkit_use")
 
-local cfg
+local cfg = ap_mcm.cfg
 
 local HEALING_ITEMS = {
     bandage = true,
@@ -73,8 +73,6 @@ local function _setup_hooks()
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
-
     _setup_hooks()
 
     ap_producer_reactive.register(CAUSE.WOUNDED, {

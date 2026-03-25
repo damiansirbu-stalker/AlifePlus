@@ -8,7 +8,7 @@ local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 
-local cfg
+local cfg = ap_mcm.cfg
 
 local chase_opts = {
     handler_key = "elitekill_chase",
@@ -85,7 +85,6 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    cfg = ap_mcm.cfg
     chase_opts.cfg = cfg
     ap_utils.chase_register(chase_opts)
     ap_consumer.register(CONSEQUENCE.ELITEKILL_TARGETED, {
