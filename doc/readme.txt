@@ -37,33 +37,29 @@ Another example:
 - A chimaera smells the blood and kills him
 - Now the chimaera is an elite and becomes a real problem in the area
 - Stalkers or the player kill that chimaera
-- If the player kills it, he gets rewarded. If an NPC kills it, the NPC may become a legend... and the cycle continues
+- If the player kills it, he collects a bounty. If an NPC kills it, the NPC may become an elite... and the cycle continues
 
-AlifePlus was built as a framework from the X-Ray engine source code and modding references.
-Every callback the system uses was extracted from the engine's C++ source, documented with full API signatures, and measured in real time.
+AlifePlus was built from the X-Ray engine C++ source, every function extracted, documented with full API and measured in real time.
 Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts.
-All engine work is extracted into xlibs, a shared library focused on doing things right, according to original source code.
+All engine work is extracted into xlibs: source-inspected APIs for squad search, smart terrain filters, event bus, chase lifecycle, PDA dispatch, and safe server object resolution.
 
 Details of the system can be found inside architecture.md, but in a nutshell:
-- purely reactive architecture
+- event-driven reactive architecture, zero cost when idle
 - nothing is scripted, nothing is iterated, forced or hijacked
-- nothing is spawned out of thin air
+- no fake spawns, no teleporting, no entity creation
 - original xray events are intercepted, evaluated and aggregated into "causes"
 - causes can be reactive, a direct reaction to an event
-- causes can also be radiant, where the NPC evaluates its surroundings and acts on them
-- causes are decoupled from, and lead to consequences - actual behavior
-- because of the design, events, causes and consequences interact in a nondeterministic manner, leading to emergent gameplay
+- causes can also be radiant, where the NPC autonomously evaluates its surroundings
+- causes are decoupled from, and lead to consequences
+- causes and consequences chain nondeterministically, leading to emergent gameplay
 
-Performance impact is none. The attached screenshot shows zero performance hit with 1000x load, measured for almost 8 hours continuously. That being 2 months old code, latest is even more efficient.
-Instead of overriding the engine's job planner -- which reassigns NPCs every tick and silently discards forced states -- AlifePlus operates at the simulation layer: route the squad to the correct smart terrain based on evaluated need, and the engine's gulag system produces the correct behavior by design.
-
-Since I rely on the engine's heavy lifting and flow from the existing system, the performance hit is almost zero and everything is cohesive.
+Zero performance impact. The attached screenshot shows zero performance hit with 1000x load, measured for almost 8 hours continuously. Event-driven: zero cost when nothing happens.
+Instead of overriding the engine's job planner, AlifePlus operates at the simulation layer: route the squad to the correct smart terrain based on evaluated need, and the engine's gulag system produces the correct behavior by design.
 
 Nothing is faked and every reaction is earned from world state. Every creature, item or object involved was already there, living its own A-Life, and AlifePlus just extends what it is already doing.
 The system works with original xray events, moves real entities across real distances, and unfolds consequences without forcing, spawning, or teleporting
 
-Each major release contains a set of behaviors following a clear direction and game design.
-For the first release I focused on increasing the risk/reward for all entities in the world and creating a heightened sense of danger.
+Every feature traces back to GSC's original A-Life vision or documented developer intent. The full design rationale with engine source evidence and developer quotes is in manifesto.md.
 
 Every cause and consequence is individually toggleable through MCM.
 Chances, cooldowns, thresholds, and rate limits are all configurable.
@@ -71,36 +67,62 @@ Log level goes from silent to full tracing and pathing, performance timing, and 
 
 Features:
 
-Causes:
-  Massacre - Reactive. Deaths pile up at a smart terrain.
-  SquadKill - Reactive. A squad has been wiped out.
-  BaseKill - Reactive. Deaths pile up at a faction base.
-  Elite - Reactive. NPC accumulated enough kills to level up. 10 levels, each requiring more kills.
-  EliteKill - Reactive. An elite has died.
-  Wounded - Reactive. An NPC or player used a healing item.
-  Harvest - Reactive. An NPC or player picked up an artefact.
-  Stash - Radiant. Squad discovers nearby stashes.
-  Area - Radiant. Squad discovers nearby unguarded area.
-  Needs - Radiant. Stalker evaluates nine human needs on smart terrain transition. Strongest unmet need drives behavior.
+10 causes, 31 consequences. Causes detect patterns in the world. Consequences act on them.
+They chain -- a consequence creates the conditions for the next cause.
+Reactive causes fire on world events: a death, a medkit used, an artefact picked up.
+Radiant causes fire when a squad evaluates its surroundings on smart terrain transition.
 
-Consequences:
-  Massacre: Scavenge - Nearby scavengers and predators converge on the massacre site.
-  Massacre: Investigate - Victims' faction sends nearby squads to investigate.
-  SquadKill: Revenge - Same-faction squads pursue the killer as it moves.
-  SquadKill: Flee - Nearby squads of the victim's faction flee to the nearest base.
-  BaseKill: Support - Nearby friendly squads rush to reinforce the base under attack.
-  BaseKill: Flee - Squads at the base evacuate to the nearest faction base.
-  Elite: Promote - Registers the NPC as elite. Rank boost, grenades, and AP ammo scale with level.
-  EliteKill: Bounty - Killer receives rubles scaled by the elite's level.
-  EliteKill: Targeted - Other elites on the same level pursue the killer as it moves.
-  Stash: Loot - Discovering stalker squad moves to loot the stash.
-  Stash: Ambush - Discovering outlaw squad camps at the stash. The stash is bait.
-  Stash: Fill - Discovering stalker squad moves to hide supplies in the stash.
-  Area: Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.
-  Wounded: Hunt - Nearby predator mutants move toward the wounded NPC or player.
-  Wounded: Help - Nearby same-faction squads rush to help the wounded.
-  Harvest: Hunt - Nearby outlaws pursue whoever picked up the artefact as they move.
-  Needs: 15 consequences - hunger/campfire, sleep/campfire, rest/campfire, heal/base, shelter/base, money/search, money/hunt, supply/trader, job/guard, job/explore, job/research, job/worship, job/exercise, social/campfire, social/base.
+Massacre (reactive)
+  Scavenge - Nearby scavengers and predators converge on the massacre site.
+  Investigate - Victims' faction sends nearby squads to investigate.
+
+SquadKill (reactive)
+  Revenge - Same-faction squads pursue the killer as it moves.
+  Flee - Nearby squads of the victim's faction fall back to the nearest base.
+
+BaseKill (reactive)
+  Support - Nearby friendly squads rush to reinforce the base under attack.
+  Flee - Squads at the base evacuate to the nearest friendly position.
+
+Elite (reactive)
+  Promote - NPC accumulated enough kills to level up. 10 levels, each requiring more kills.
+  Rank boost, grenades, and AP ammo scale with level.
+
+EliteKill (reactive)
+  Bounty - Killer receives rubles scaled by the elite's level.
+  Targeted - Other elites on the same tier hunt the killer across the map.
+
+Wounded (reactive)
+  Hunt - Predator mutants sense weakness and close in.
+  Help - Nearby same-faction squads rush to help the wounded.
+
+Harvest (reactive)
+  Hunt - Nearby outlaws pursue whoever picked up the artefact as it moves.
+
+Stash (radiant)
+  Loot - Discovering stalker squad walks to the stash and loots it.
+  Ambush - Discovering outlaw squad camps at the stash. The stash is bait.
+  Fill - Discovering stalker squad walks to the stash and hides supplies inside.
+
+Area (radiant)
+  Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.
+
+Needs (radiant)
+  Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation.
+  The strongest unmet need wins.
+
+  Hunger - Finds a campfire. Eats what he is carrying -- bread, sausage, canned goods.
+  Sleep - Waits for nightfall. Finds a campfire. Sleeps through the night.
+  Rest - Finds a campfire. Smokes a cigarette, has a drink.
+  Heal - Returns to a friendly base. Uses a medkit, bandage, or stimpack.
+  Shelter - Returns to a friendly base when exposed too long.
+  Money - Searches anomaly fields for artefacts, or hunts mutant lairs.
+  Supply - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.
+  Job - Guards their base. Explores the Zone. Researches anomalies.
+        Monolith and Greh worship. Military and Duty drill.
+  Social - Finds a campfire or returns to base. Shares cigarettes and drinks.
+
+  NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying. A supply run costs an artefact and returns ammunition -- including AP rounds and grenades. If the NPC has nothing to consume, the need is still addressed -- he walked there and the drive resets.
 
 FAQ:
 
@@ -133,7 +155,7 @@ They lack persistence and do not update on entity death, despawn, or level trans
 Requirements:
 Anomaly 1.5.3
 Modded exes
-xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
+xlibs 1.2.0 (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 MCM
 
 Install (MO2):
@@ -147,9 +169,6 @@ Disable or remove in MO2.
 
 Credits:
 Stalker_Boss - Russian translation
-
-DrakoMT and SaloEater for their support.
-Demonized, Catspaw, Vintar0, RavenAscendant, xcvb, lizzardman, Aoldri, and Feel_Fried. Their work on the engine, modded exes, scripts, and tools shaped how Anomaly modding is done.
 
 Development:
 Source: https://github.com/damiansirbu-stalker/AlifePlus
@@ -165,53 +184,25 @@ MIT License. See LICENSE file.
 Versions:
 
   1.2.0-RC1 -- "Needs"
-    Stalkers have human needs. Nine drives scored by deprivation produce emergent daily routines.
-    A hungry stalker finds a campfire and eats. A tired one sleeps through the night. Guards patrol their base. Loners hunt anomalies for money. Scientists research. Monolith prays. All of it earned from world state, nothing scripted, nothing faked.
-    The event pipeline was redesigned from the ground up: on-map evaluation via actor_on_interaction adapter, split radiant/reactive event limiters, consequence token bucket pacing, and cause lock removal. Idle squads are now evaluated, reactive events never starved, and all three radiant causes publish evenly.
-    Added: 9 human needs - hunger, sleep, rest, heal, shelter, money, supply, job, social
-    Added: Hull drive scoring - Maslow-weighted deprivation model, strongest unmet need wins
-    Added: 15 need consequences - each need produces 1-4 context-dependent behaviors based on faction, smart terrain type, and available destinations
-    Added: destination limiter - prevents multiple squads converging on the same smart terrain
-    Added: smart terrain filters - has_campfire, has_anomaly, has_trader_job, has_mechanic_job (xlibs)
-    Added: per-need MCM controls - 9 enabled flags, 9 hour thresholds, 18 consequence sections (enabled, chance, pda_chance)
-    Added: night gate for sleep - cause only fires between 20:00 and 05:00 game time
-    Added: faction-aware destinations - heal, shelter, guard, and social consequences respect faction ownership
-    Added: actor_on_interaction adapter - idle on-map squads now evaluated via smart proximity polling (4-10/sec steady)
-    Added: split event limiters - radiant (global, MCM) and reactive (per-callback-type) operate independently
-    Added: consequence token bucket rate limiter with peek/acquire - monotone pacing per consequence key (xlibs)
-    Added: distributor_interval_sec MCM slider (1-30s, default 3)
-    Added: distributor, cause, consequence event counts as MCM settings with pipeline descriptions
-    Changed: consequence chances normalized - radiant 10%, reactive 20%, PDA 50%
-    Changed: alife_ratio renamed from going_speed, MCM slider reworded
-    Changed: MCM general tab reordered in pipeline gate order (1-5)
-    Removed: global cause lock (replaced by per-cause rate limiting)
-    Removed: ap_stats module (replaced by observe() tracing layer)
-    Removed: squad_on_after_game_vertex_change from radiant callbacks (redundant with adapter)
-    Removed: xgoap_anim GOAP idle animation scheme (vanilla gulag jobs handle animations)
+    Stalkers have human needs. Nine Maslow-Hull drives produce emergent daily routines.
+    A hungry stalker finds a campfire and eats. A tired one sleeps through the night. Guards patrol their base. Loners hunt anomalies for money. Scientists research. Monolith prays. Nothing scripted, nothing faked.
+    Needs: 9 drives, 15 consequences, per-need MCM (enabled, threshold, chance), night gate for sleep, faction-aware destinations, destination limiter. 8 arrival actions where NPCs consume real items from inventory (food, cigarettes, drinks, medkits) or trade artefacts for AP ammo, grenades, and supplies.
+    Pipeline: split radiant/reactive event limiters, consequence token bucket, actor_on_interaction adapter for idle on-map squads. Reactive events (deaths, medkits, artefact pickups) no longer starved by radiant evaluation. Player-observed events increase significantly.
+    Removed: global cause lock, ap_stats, xgoap_anim (vanilla gulag handles animations)
+    Fixed: reactive event starvation (100% of death/medkit/item events blocked)
+    Fixed: cause lock blocking 90% of predicate passes, starving needs and area causes
+    Fixed: wounded_help faction matching (actor_stalker prefix stripping)
     Fixed: elite PDA messages now distinguish stalkers from mutants
-    Fixed: wounded_help faction matching - character_community(db.actor) returns "actor_stalker", stripped to match NPC community
-    Fixed: reactive event starvation - global distributor consumed all tokens, blocking 100% of death/medkit/item events
-    Fixed: cause lock was blocking 90% of predicate passes, starving needs and area causes
-    Added: 8 arrival actions (was 5) - job/guard consumes cigarettes, job/exercise consumes drinks, social/base consumes cigarettes/drinks
-    Added: expanded item sections - hunger (+3), rest (+1), heal (+3), social (+3), trade (+12 including AP ammo and grenades)
-    Fixed: supply_trader exchange - reward only given when NPC trades an artefact (was giving free items)
-    Changed: use xconst sentinels instead of ap_const for engine IDs
+    Fixed: supply_trader exchange giving free items (now requires artefact)
+    MCM: full reset button in General tab (resets all AlifePlus settings across every tab and sub-tab)
+    MCM: cleaned up labels and descriptions (units moved to tooltip, gate numbers corrected)
 
   1.1.1
     Fixed: dependency gate uses exact version match instead of string comparison
 
   1.1.0
     10-level elite system replaces binary elite/legend. Going Speed balances simulation across maps.
-    Added: Going Speed - X-Ray's two-rate A-Life split applied to incoming events. Bresenham ratio gate + class-isolated cooldowns. MCM slider (-10 to +10, default 8).
-    Changed: elite system reworked from binary elite/legend to 10 levels (community requested)
-    Changed: naming conventions standardized across causes, consequences, and MCM
-    Changed: MCM General tab reorganized (distributor/cause/consequence sections, clearer labels)
-    Changed: test tools moved from MCM buttons to console (ap_test)
-    Added: AP ammo restock for elites, best ammo for their weapon (cooldown-gated)
-    Added: engine rank boost by elite level (up to 20% accuracy at max rank)
-    Added: result codes standardization (OK_STOP, OK_NEXT, RULES_NEXT, etc.)
-    Removed: damage dealt/taken multipliers for elites (community requested)
-    Changed: AP ammo restock uses box_size for correct round count per box
+    Elite: 10 levels, AP ammo restock (best k_ap for weapon), engine rank boost (up to 20% accuracy), grenade restock. Going Speed: Bresenham ratio gate for on/off-map event distribution, MCM slider (-10 to +10).
     Fixed: elitekill_targeted never firing (bounty was stopping the chain)
     Fixed: PDA message tone, elite buff performance
 

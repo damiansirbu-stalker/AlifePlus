@@ -8,10 +8,6 @@ defaults = {
     cause_max_events = 10,
     consequence_max_events = 2,
 
-    -- Destination limiter
-    destination_max = 3,
-    destination_ttl_sec = 300,
-
     -- A-Life Tracker
     alife_periodic_sync_enabled = false,
     alife_sync_interval = 600,
@@ -264,8 +260,6 @@ local key_to_tab = {
     distributor_interval_sec = "general",
     cause_max_events = "general",
     consequence_max_events = "general",
-    destination_max = "general",
-    destination_ttl_sec = "general",
     alife_periodic_sync_enabled = "alife_tracker",
     alife_sync_interval = "alife_tracker",
     cause_elite_enabled = "causes/elite",
@@ -418,6 +412,7 @@ local key_to_tab = {
     consequence_social_base_enabled = "consequences/social_base",
     consequence_social_base_chance = "consequences/social_base",
     consequence_social_base_pda_chance = "consequences/social_base",
+    btn_reset_all = "general",
 }
 
 local path_builder = function(key)
@@ -449,6 +444,19 @@ local function list(key, def, content)
     return { id = key, type = "list", val = 0, def = def, content = content }
 end
 
+function btn_reset_all(mcm_ui)
+    local config = axr_main.config
+    for k, v in pairs(defaults) do
+        local path = path_builder(k)
+        if path then
+            config:w_value("mcm", path, v)
+        end
+    end
+    config:save()
+    load_config()
+    mcm_ui:On_Discard()
+end
+
 function on_mcm_load()
     return {
         id = "ap",
@@ -463,9 +471,9 @@ function on_mcm_load()
                     track("distributor_interval_sec", 1, 30, 1, 3),
                     track("cause_max_events", 1, 100, 1, 10),
                     track("consequence_max_events", 1, 100, 1, 2),
-                    { id = "div_destination", type = "line" },
-                    track("destination_max", 1, 10, 1, 3),
-                    track("destination_ttl_sec", 60, 600, 30, 300),
+                    { id = "div_reset", type = "line" },
+                    { id = "hdr_reset", type = "desc", text = "ui_mcm_ap_hdr_reset", clr = {255, 200, 200, 200} },
+                    { id = "btn_reset_all", type = "button", functor_ui = { btn_reset_all } },
                     { id = "div_version", type = "line" },
                     { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
                 },
@@ -991,4 +999,5 @@ end
 function on_game_start()
     load_config()
     RegisterScriptCallback("on_option_change", load_config)
+    RegisterScriptCallback("mcm_option_restore_default", load_config)
 end

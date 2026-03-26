@@ -226,7 +226,7 @@ local _destinations = nil
 
 local function _ensure_destinations()
     if not _destinations then
-        _destinations = xttltable.create_ttl_counter({ ttl = cfg.destination_ttl_sec })
+        _destinations = xttltable.create_ttl_counter({ ttl = ap_const.DESTINATION_LOCK_TTL_SEC })
     end
     return _destinations
 end
@@ -234,7 +234,7 @@ end
 --- Check if destination smart has capacity for more squads
 function check_destination(smart_id)
     if not smart_id then return true end
-    return _ensure_destinations():count(smart_id) < cfg.destination_max
+    return _ensure_destinations():count(smart_id) < ap_const.DESTINATION_LOCK_MAX
 end
 
 --- Record a squad being sent to destination smart

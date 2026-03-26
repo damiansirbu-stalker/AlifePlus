@@ -209,7 +209,7 @@ Ordered gates in dispatch(). Every event passes through gates 1-3 before any pre
 
 | Name | Type | Scope | Duration | Location |
 |------|------|-------|----------|----------|
-| Destination limiter | TTL counter | per-smart-id | MCM: destination_max, destination_ttl_sec | ap_utils |
+| Destination limiter | TTL counter | per-smart-id | ap_const: DESTINATION_LOCK_MAX, DESTINATION_LOCK_TTL_SEC | ap_utils |
 | Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_alife_behavior |
 | Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_alife_behavior |
 | AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_alife_behavior |
@@ -336,7 +336,7 @@ Composes one closure per handler invocation. 4 concerns, all evaluated per-smart
 1. **Type filter** (entry.filter): has_campfire, is_base, has_anomaly, is_lair, has_trader_job, or nil
 2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -- worship, exercise
 3. **Faction enemy** (entry.faction_filter): is_factions_enemies(community, smart_faction) -- prevents AP from scripting a squad to a hostile base (scripted_target bypasses the engine's target_precondition check)
-4. **Destination capacity** (check_destination): TTL counter, max N squads per smart within TTL window (MCM: destination_max, destination_ttl_sec)
+4. **Destination capacity** (check_destination): TTL counter, max N squads per smart within TTL window (ap_const: DESTINATION_LOCK_MAX, DESTINATION_LOCK_TTL_SEC)
 
 ### Arrival dispatch
 
