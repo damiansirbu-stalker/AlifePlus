@@ -103,6 +103,7 @@ end
 
 --- Dispatch arrive action (online only): consume sections or trade exchange
 local function _dispatch_arrive(go, args)
+    if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then return end
     if args.section_key then
         local sections = NEEDS_SECTIONS[args.section_key]
         if sections then _consume(go, sections) end
