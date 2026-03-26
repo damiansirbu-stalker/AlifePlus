@@ -428,6 +428,7 @@ local key_to_tab = {
     consequence_social_base_chance = "consequences/social_base",
     consequence_social_base_pda_chance = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
+    btn_reset_all = "general",
 }
 
 local path_builder = function(key)
@@ -435,6 +436,21 @@ local path_builder = function(key)
     return tab and ("ap/" .. tab .. "/" .. key) or nil
 end
 cfg, get_config, load_config = xmcm.create_config("ap", defaults, path_builder)
+
+function btn_reset_all()
+    local config = axr_main.config
+    for k, v in pairs(defaults) do
+        local path = path_builder(k)
+        if path then
+            config:w_value("mcm", path, v)
+        end
+    end
+    config:save()
+    load_config()
+    if db.actor then
+        news_manager.send_tip(db.actor, "AlifePlus: all settings restored to defaults.", nil, nil, 5000)
+    end
+end
 
 local function slide(txt)
     return {
@@ -473,6 +489,8 @@ function on_mcm_load()
                     track("distributor_interval_sec", 1, 30, 1),
                     track("cause_max_events", 1, 100, 1),
                     track("consequence_max_events", 1, 100, 1),
+                    { id = "div_reset", type = "line" },
+                    { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
                     { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
                 },
