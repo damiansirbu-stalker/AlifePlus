@@ -183,20 +183,19 @@ Not obvious from any single file. Violations cause subtle bugs.
 
 ## Pipeline Gates
 
-Ordered gates in dispatch(). Gates 1-3 run before any predicate. Gates 4-5 are per-key.
+Ordered gates in dispatch(). Gates 1-2 run before any predicate. Gates 3-4 are per-key.
 
 | # | Name | Type | Scope | Setting |
 |---|------|------|-------|---------|
-| 1 | Level classification | Level-ID comparison | per-event | -(classifies on/off-map) |
-| 2 | On/off-map ratio | Bresenham integer admission | shared | `alife_ratio` MCM (-10..+10, default 8) |
-| 3a | Radiant pacer | Token bucket, single key "radiant" | global | `distributor_interval_sec` MCM (default 3) |
-| 3b | Reactive pacer | Token bucket, per-callback-type key | per-type | `REACTIVE_EVENT_INTERVAL_SEC` (1s constant) |
-| 4 | Cause budget | TTL counter, sliding window 60s | per-cause | `cause_max_events` MCM |
-| 5 | Consequence budget | Token bucket, peek then acquire on success | per-consequence | `consequence_max_events` MCM, 60s window |
+| 1 | On/off-map ratio | Bresenham integer admission, level-ID comparison | shared | `alife_ratio` MCM (-10..+10, default 8) |
+| 2a | Radiant pacer | Token bucket, single key "radiant" | global | `distributor_interval_sec` MCM (default 5) |
+| 2b | Reactive pacer | Token bucket, per-callback-type key | per-type | `REACTIVE_EVENT_INTERVAL_SEC` (1s constant) |
+| 3 | Cause budget | TTL counter, sliding window 60s | per-cause | `cause_max_events` MCM |
+| 4 | Consequence budget | Token bucket, peek then acquire on success | per-consequence | `consequence_max_events` MCM, 60s window |
 
-**Gate 2 (Bresenham).** Off-map outnumbers on-map ~50:1. Integer cross-multiplication for on:off ratio. At ratio=8: ~4:1 on:off. Formula: `throttled_count * |r| <= (10 - |r|) * favored_count`. Reset at 32768.
+**Gate 1 (Bresenham).** Off-map outnumbers on-map ~50:1. Integer cross-multiplication for on:off ratio. At ratio=8: ~4:1 on:off. Formula: `throttled_count * |r| <= (10 - |r|) * favored_count`. Reset at 32768.
 
-**Gate 3 (split).** Two xttltable.create_token_bucket instances, independent key spaces. Radiant and reactive never compete for tokens. Without the split, the adapter's ~6.6/sec radiant stream starves 100% of reactive events (measured: 356/356 blocked in 6-min playtest).
+**Gate 2 (split).** Two xttltable.create_token_bucket instances, independent key spaces. Radiant and reactive never compete for tokens. Without the split, the adapter's ~6.6/sec radiant stream starves 100% of reactive events (measured: 356/356 blocked in 6-min playtest).
 
 ### Cooldowns and lifecycle TTLs
 

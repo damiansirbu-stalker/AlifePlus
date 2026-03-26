@@ -11,12 +11,13 @@ local _cooldown
 
 local function _on_death(trace, squad, npc, killer)
     if not cfg.cause_elitekill_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if xsquad.is_unscriptable_squad(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE } end
 
     local victim_id = ap_utils.get_entity_id(npc)
     local killer_id = ap_utils.get_entity_id(killer)
     if not victim_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
 
-    if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = "not_elite" } end
+    if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ELITE } end
 
     local now = time_global()
     local key = "elitekill_" .. victim_id

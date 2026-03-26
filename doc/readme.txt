@@ -139,9 +139,9 @@ Disable or remove in MO2.
 FAQ:
 
 How do I make events occur faster or slower?
-    Calmer world: raise A-Life Distributor to 8-10, lower Budget per Consequence to 1.
-    Busier world: lower A-Life Distributor to 2-3, raise Budget per Consequence to 4.
-	Gung-Ho: lower A-Life Distributor to min, Budget per Cause and per Consequence to max, raise consequence chances to 50+, lower PDA chances to 10. Good luck!
+    Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1.
+    Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4.
+	Gung-Ho: lower A-Life Interval to 1, raise Cause Budget and per Consequence to max, raise consequence chances to 50+, lower PDA chances to 10. Good luck!
 
 Does it work with GAMMA?
   Built and tested with GAMMA, also tested partially with Zona and EFP.
@@ -167,7 +167,7 @@ Do I need offline combat enabled?
 
 Known Issues:
 Map markers are a debugging feature (log_level=DEBUG). They lack persistence and do not update on entity death, despawn, or level transition.
-PDA system still needs some love, messages and their sources are not what they could be yet
+PDA system still needs some work, messages and their sources are not what they could be yet
 
 Development:
 Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.
@@ -191,7 +191,6 @@ Versions:
     Fixed: wounded_help faction matching (actor_stalker prefix stripping)
     Fixed: PDA messages now distinguish stalkers from mutants
     Fixed: supply_trader exchange giving free items (now requires artefact)
-    MCM: full reset button in General tab (resets all AlifePlus settings across every tab and sub-tab)
     MCM: cleaned up labels and descriptions (units moved to tooltip, gate numbers corrected)
     Perf: observability (debug/trace/observe) function-swap - zero per-call overhead at WARN level
 
@@ -214,7 +213,6 @@ Versions:
   1.0.0
     First release. Event-driven emergent A-Life system.
     10 causes, 17 consequences. Full MCM configuration.
-    Added: reactive causes (massacre, squadkill, basekill, elite, legend,
-           legendkill, wounded, harvest)
+    Added: reactive causes (massacre, squadkill, basekill, elite, legend, legendkill, wounded, harvest)
     Added: radiant causes (stash, area)
     Added: chase API, area conquest, hit modifiers, rank boost

@@ -11,6 +11,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
 
     local killer_id = ap_utils.get_entity_id(se_killer)
     if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+    if xsquad.is_unscriptable_squad(xsquad.get_squad_by_member(killer_id)) then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE } end
 
     local victim_id = ap_utils.get_entity_id(se_victim)
     local kills = ap_alife_tracker.projected_kill_count(killer_id, victim_id)
@@ -22,7 +23,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
 
     local current_level = ap_alife_tracker.get_elite_level(killer_id)
     if level <= current_level then
-        return { code = RESULT.RULES_NEXT, reason = "same_level",
+        return { code = RESULT.RULES_NEXT, reason = REASON.NO_PROMOTION,
             killer_id = killer_id, kills = kills, level = level }
     end
 

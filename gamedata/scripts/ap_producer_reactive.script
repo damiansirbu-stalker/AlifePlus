@@ -141,6 +141,31 @@ local function _radiant_exhausted(callback_type)
         and not _radiant_event_limiter:peek("radiant")
 end
 
+local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
+    local args = {...}
+    for name, entry in pairs(handlers) do
+        if squad_id and ap_alife_tracker.get_scripted_ids()[squad_id] then
+            ap_debug.debug("[PRODUCER.REACTIVE] SCRIPTED_BREAK squad=%d before=%s", squad_id, name)
+            break
+        end
+
+        local allowed, count, max = ap_utils.check_cause_rate_limit(name)
+        if not allowed then
+            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, tostring(level_id), tostring(squad_id))
+            goto continue
+        end
+
+        local trace = ap_debug.trace()
+        local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
+
+        if result and result.cause then
+            _try_publish(on_map, name, result, trace, level_id)
+        end
+
+        ::continue::
+    end
+end
+
 local function dispatch(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
@@ -166,23 +191,7 @@ local function dispatch(callback_type, ...)
         return
     end
 
-    local args = {...}
-    for name, entry in pairs(handlers) do
-        local allowed, count, max = ap_utils.check_cause_rate_limit(name)
-        if not allowed then
-            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, tostring(level_id), tostring(squad_id))
-            goto continue
-        end
-
-        local trace = ap_debug.trace()
-        local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
-
-        if result and result.cause then
-            _try_publish(on_map, name, result, trace, level_id)
-        end
-
-        ::continue::
-    end
+    _eval_handlers(handlers, on_map, level_id, squad_id, ...)
 end
 
 --- Adapter: actor_on_interaction -> actor_on_smart dispatch

@@ -59,6 +59,7 @@ end
 local function _on_smart(trace, squad)
     if not cfg.cause_needs_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if xsquad.is_unscriptable_squad(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE } end
     if not _community_stalker[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad.player_id } end
 
     local level_id = xlevel.get_level_id(squad)

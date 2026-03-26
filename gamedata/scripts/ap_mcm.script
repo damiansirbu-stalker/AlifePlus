@@ -158,7 +158,7 @@ defaults = {
 
     -- Consequence: Area Conquer
     consequence_area_conquer_enabled = true,
-    consequence_area_conquer_chance = 10,
+    consequence_area_conquer_chance = 20,
     consequence_area_conquer_pda_chance = 50,
 
     -- Consequence: Harvest Hunt
@@ -170,85 +170,85 @@ defaults = {
 
     -- Consequence: Hunger Campfire
     consequence_hunger_campfire_enabled = true,
-    consequence_hunger_campfire_chance = 10,
+    consequence_hunger_campfire_chance = 20,
     consequence_hunger_campfire_pda_chance = 50,
     consequence_hunger_campfire_arrive_action_enabled = true,
 
     -- Consequence: Sleep Campfire
     consequence_sleep_campfire_enabled = true,
-    consequence_sleep_campfire_chance = 10,
+    consequence_sleep_campfire_chance = 20,
     consequence_sleep_campfire_pda_chance = 50,
 
     -- Consequence: Rest Campfire
     consequence_rest_campfire_enabled = true,
-    consequence_rest_campfire_chance = 10,
+    consequence_rest_campfire_chance = 20,
     consequence_rest_campfire_pda_chance = 50,
     consequence_rest_campfire_arrive_action_enabled = true,
 
     -- Consequence: Heal Base
     consequence_heal_base_enabled = true,
-    consequence_heal_base_chance = 10,
+    consequence_heal_base_chance = 20,
     consequence_heal_base_pda_chance = 50,
     consequence_heal_base_arrive_action_enabled = true,
 
     -- Consequence: Shelter Indoor
     consequence_shelter_indoor_enabled = true,
-    consequence_shelter_indoor_chance = 10,
+    consequence_shelter_indoor_chance = 20,
     consequence_shelter_indoor_pda_chance = 50,
 
     -- Consequence: Money Search
     consequence_money_search_enabled = true,
-    consequence_money_search_chance = 10,
+    consequence_money_search_chance = 20,
     consequence_money_search_pda_chance = 50,
 
     -- Consequence: Money Hunt
     consequence_money_hunt_enabled = true,
-    consequence_money_hunt_chance = 10,
+    consequence_money_hunt_chance = 20,
     consequence_money_hunt_pda_chance = 50,
 
     -- Consequence: Supply Trader
     consequence_supply_trader_enabled = true,
-    consequence_supply_trader_chance = 10,
+    consequence_supply_trader_chance = 20,
     consequence_supply_trader_pda_chance = 50,
     consequence_supply_trader_arrive_action_enabled = true,
 
     -- Consequence: Job Guard
     consequence_job_guard_enabled = true,
-    consequence_job_guard_chance = 10,
+    consequence_job_guard_chance = 20,
     consequence_job_guard_pda_chance = 50,
     consequence_job_guard_arrive_action_enabled = true,
 
     -- Consequence: Job Explore
     consequence_job_explore_enabled = true,
-    consequence_job_explore_chance = 10,
+    consequence_job_explore_chance = 20,
     consequence_job_explore_pda_chance = 50,
 
     -- Consequence: Job Research
     consequence_job_research_enabled = true,
-    consequence_job_research_chance = 10,
+    consequence_job_research_chance = 20,
     consequence_job_research_pda_chance = 50,
 
     -- Consequence: Social Campfire
     consequence_social_campfire_enabled = true,
-    consequence_social_campfire_chance = 10,
+    consequence_social_campfire_chance = 20,
     consequence_social_campfire_pda_chance = 50,
     consequence_social_campfire_arrive_action_enabled = true,
 
 
     -- Consequence: Job Worship
     consequence_job_worship_enabled = true,
-    consequence_job_worship_chance = 10,
+    consequence_job_worship_chance = 20,
     consequence_job_worship_pda_chance = 50,
 
     -- Consequence: Job Exercise
     consequence_job_exercise_enabled = true,
-    consequence_job_exercise_chance = 10,
+    consequence_job_exercise_chance = 20,
     consequence_job_exercise_pda_chance = 50,
     consequence_job_exercise_arrive_action_enabled = true,
 
     -- Consequence: Social Base
     consequence_social_base_enabled = true,
-    consequence_social_base_chance = 10,
+    consequence_social_base_chance = 20,
     consequence_social_base_pda_chance = 50,
     consequence_social_base_arrive_action_enabled = true,
 
@@ -428,7 +428,6 @@ local key_to_tab = {
     consequence_social_base_chance = "consequences/social_base",
     consequence_social_base_pda_chance = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
-    btn_reset_all = "general",
 }
 
 local path_builder = function(key)
@@ -460,19 +459,6 @@ local function list(key, def, content)
     return { id = key, type = "list", val = 0, def = def, content = content }
 end
 
-function btn_reset_all(mcm_ui)
-    local config = axr_main.config
-    for k, v in pairs(defaults) do
-        local path = path_builder(k)
-        if path then
-            config:w_value("mcm", path, v)
-        end
-    end
-    config:save()
-    load_config()
-    mcm_ui:On_Discard()
-end
-
 function on_mcm_load()
     return {
         id = "ap",
@@ -487,9 +473,6 @@ function on_mcm_load()
                     track("distributor_interval_sec", 1, 30, 1, 5),
                     track("cause_max_events", 1, 100, 1, 10),
                     track("consequence_max_events", 1, 100, 1, 2),
-                    { id = "div_reset", type = "line" },
-                    { id = "hdr_reset", type = "desc", text = "ui_mcm_ap_hdr_reset", clr = {255, 200, 200, 200} },
-                    { id = "btn_reset_all", type = "button", functor_ui = { btn_reset_all } },
                     { id = "div_version", type = "line" },
                     { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
                 },
@@ -807,7 +790,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_area_conquer_title"),
                             desc("ui_mcm_ap_consequences_area_conquer_desc"),
                             check("consequence_area_conquer_enabled", true),
-                            track("consequence_area_conquer_chance", 0, 100, 5, 10),
+                            track("consequence_area_conquer_chance", 0, 100, 5, 20),
                             track("consequence_area_conquer_pda_chance", 0, 100, 5, 50),
                             check("area_conquest_enabled", true),
                             track("area_conquest_max_smarts", 10, 100, 5, 50),
@@ -835,7 +818,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_hunger_campfire_desc"),
                             check("consequence_hunger_campfire_enabled", true),
                             check("consequence_hunger_campfire_arrive_action_enabled", true),
-                            track("consequence_hunger_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_hunger_campfire_chance", 0, 100, 5, 20),
                             track("consequence_hunger_campfire_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -846,7 +829,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_sleep_campfire_title"),
                             desc("ui_mcm_ap_consequences_sleep_campfire_desc"),
                             check("consequence_sleep_campfire_enabled", true),
-                            track("consequence_sleep_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_sleep_campfire_chance", 0, 100, 5, 20),
                             track("consequence_sleep_campfire_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -858,7 +841,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_rest_campfire_desc"),
                             check("consequence_rest_campfire_enabled", true),
                             check("consequence_rest_campfire_arrive_action_enabled", true),
-                            track("consequence_rest_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_rest_campfire_chance", 0, 100, 5, 20),
                             track("consequence_rest_campfire_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -870,7 +853,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_heal_base_desc"),
                             check("consequence_heal_base_enabled", true),
                             check("consequence_heal_base_arrive_action_enabled", true),
-                            track("consequence_heal_base_chance", 0, 100, 5, 10),
+                            track("consequence_heal_base_chance", 0, 100, 5, 20),
                             track("consequence_heal_base_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -881,7 +864,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_shelter_indoor_title"),
                             desc("ui_mcm_ap_consequences_shelter_indoor_desc"),
                             check("consequence_shelter_indoor_enabled", true),
-                            track("consequence_shelter_indoor_chance", 0, 100, 5, 10),
+                            track("consequence_shelter_indoor_chance", 0, 100, 5, 20),
                             track("consequence_shelter_indoor_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -892,7 +875,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_money_search_title"),
                             desc("ui_mcm_ap_consequences_money_search_desc"),
                             check("consequence_money_search_enabled", true),
-                            track("consequence_money_search_chance", 0, 100, 5, 10),
+                            track("consequence_money_search_chance", 0, 100, 5, 20),
                             track("consequence_money_search_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -903,7 +886,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_money_hunt_title"),
                             desc("ui_mcm_ap_consequences_money_hunt_desc"),
                             check("consequence_money_hunt_enabled", true),
-                            track("consequence_money_hunt_chance", 0, 100, 5, 10),
+                            track("consequence_money_hunt_chance", 0, 100, 5, 20),
                             track("consequence_money_hunt_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -915,7 +898,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_supply_trader_desc"),
                             check("consequence_supply_trader_enabled", true),
                             check("consequence_supply_trader_arrive_action_enabled", true),
-                            track("consequence_supply_trader_chance", 0, 100, 5, 10),
+                            track("consequence_supply_trader_chance", 0, 100, 5, 20),
                             track("consequence_supply_trader_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -927,7 +910,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_job_guard_desc"),
                             check("consequence_job_guard_enabled", true),
                             check("consequence_job_guard_arrive_action_enabled", true),
-                            track("consequence_job_guard_chance", 0, 100, 5, 10),
+                            track("consequence_job_guard_chance", 0, 100, 5, 20),
                             track("consequence_job_guard_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -938,7 +921,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_job_explore_title"),
                             desc("ui_mcm_ap_consequences_job_explore_desc"),
                             check("consequence_job_explore_enabled", true),
-                            track("consequence_job_explore_chance", 0, 100, 5, 10),
+                            track("consequence_job_explore_chance", 0, 100, 5, 20),
                             track("consequence_job_explore_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -949,7 +932,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_job_research_title"),
                             desc("ui_mcm_ap_consequences_job_research_desc"),
                             check("consequence_job_research_enabled", true),
-                            track("consequence_job_research_chance", 0, 100, 5, 10),
+                            track("consequence_job_research_chance", 0, 100, 5, 20),
                             track("consequence_job_research_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -960,7 +943,7 @@ function on_mcm_load()
                             slide("ui_mcm_ap_consequences_job_worship_title"),
                             desc("ui_mcm_ap_consequences_job_worship_desc"),
                             check("consequence_job_worship_enabled", true),
-                            track("consequence_job_worship_chance", 0, 100, 5, 10),
+                            track("consequence_job_worship_chance", 0, 100, 5, 20),
                             track("consequence_job_worship_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -972,7 +955,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_job_exercise_desc"),
                             check("consequence_job_exercise_enabled", true),
                             check("consequence_job_exercise_arrive_action_enabled", true),
-                            track("consequence_job_exercise_chance", 0, 100, 5, 10),
+                            track("consequence_job_exercise_chance", 0, 100, 5, 20),
                             track("consequence_job_exercise_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -984,7 +967,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_social_campfire_desc"),
                             check("consequence_social_campfire_enabled", true),
                             check("consequence_social_campfire_arrive_action_enabled", true),
-                            track("consequence_social_campfire_chance", 0, 100, 5, 10),
+                            track("consequence_social_campfire_chance", 0, 100, 5, 20),
                             track("consequence_social_campfire_pda_chance", 0, 100, 5, 50),
                         },
                     },
@@ -996,7 +979,7 @@ function on_mcm_load()
                             desc("ui_mcm_ap_consequences_social_base_desc"),
                             check("consequence_social_base_enabled", true),
                             check("consequence_social_base_arrive_action_enabled", true),
-                            track("consequence_social_base_chance", 0, 100, 5, 10),
+                            track("consequence_social_base_chance", 0, 100, 5, 20),
                             track("consequence_social_base_pda_chance", 0, 100, 5, 50),
                         },
                     },
