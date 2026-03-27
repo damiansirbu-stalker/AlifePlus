@@ -346,7 +346,9 @@ function script_squad(squad, smart, opts)
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
     }
-    ap_debug.debug("[TRACKER] script_squad: squad=%d -> %s", squad.id, name)
+    if ap_debug.enabled() then
+        ap_debug.debug("[TRACKER] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
+    end
     _log_proximity("script_time", squad, smart, scripted_squads[squad.id])
     return { code = RESULT.OK_NEXT, id = squad.id, dst = name, dst_id = smart.id }
 end
@@ -417,6 +419,8 @@ local function _process_arrival(squad_id)
         unscript_squad(squad)
         return
     end
+    ap_debug.debug("[TRACKER] _process_arrival: squad=%d handler=%s target=%s",
+        squad_id, key, tostring(data.scripted_target))
     handler(squad, data.on_arrive_args)
     if scripted_squads[squad_id] ~= data then return end
     unscript_squad(squad)

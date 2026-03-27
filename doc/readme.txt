@@ -1,62 +1,65 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-1.2.0-RC1 (requires xlibs 1.2.0)
+Latest: 1.2.0-RC2 (requires xlibs 1.2.1)
 GitHub: https://github.com/damiansirbu-stalker/AlifePlus
-architecture.md - technical reference, manifesto.md - design philosophy with GSC engine source citations and developer quotes, doc/test-report.log - validation report
 
 ! Please use the RESET button in MCM when updating to a new version !
 
 You are not special.
 
-AlifePlus is a behavior mod that follows Roadside Picnic and the original STALKER, not "warfare" or "action" alternatives.
+AlifePlus is a behavior mod inspired by Roadside Picnic and the original STALKER vision. GSC wanted a simulation where the game world operates independently of player actions.
+I respected that and took it further, in AlifePlus the simulation is fair and equal for all creatures on the map, and the player is just one entity.
 
-GSC described their vision: "We wanted a simulation where the game world operates independently of player actions."
-I respected this and went further. In AlifePlus the simulation runs independent of the player, fair and equal for all creatures on the map, where the player is just one entity.
-
-Why use AlifePlus? What makes it different?
-You can decide by comparing how this mod works to any other mod, let's call it "classical".
+Why use AlifePlus? You can decide by comparing how this mod works to any other mod.
 
 Classical:
-- scan the entire game world on a timer, entity by entity and smart by smart (O(n) per tick, ticking every frame)
-- pick squads and override their simulation with scripted behavior like a permanent hijack, overwriting important variables used by the engine or other mods
-- run heavy loops with API calls that can cause ghosting, leaking, or save corruption 
-- add behaviors like trading without a cohesive economy, moving around just for show, perform behaviors the engine already handles, or that dedicated mods do better 
-- the world feels more alive because things move around, but the movement has no meaning and the performance cost adds up
+Most A-Life mods scan the entire game world on a timer, entity by entity and smart by smart. O(n) per tick, ticking every frame.
+They pick squads and override their simulation with scripted behavior like a permanent hijack, overwriting important variables used by the engine or other mods.
+Heavy loops with API calls cause ghosting, leaking, or save corruption.
+Behaviors like trading have no cohesive economy. Movement is just for show, performing things the engine already handles or that dedicated mods do better.
+The world feels more alive because things move around, but the movement has no meaning and the performance cost adds up.
 
 AlifePlus:
-- engine events are intercepted as they fire. The system reacts when something happens, not on a timer
-- squads are extended, not hijacked. No overwriting engine variables. The engine's own job system produces the correct behavior
-- all engine interaction goes through xlibs, a shared library reverse-engineered from X-Ray Monolith C++ source covering squad and smart terrain APIs, event bus, synthetic callbacks, crash-safe object resolution, microsecond profiling. Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts. Code patterns validated against Demonized, Vintar0, RavenAscendant, xcvb
-- rate-limited event pipeline with token budgets, designed to avoid ghosting and save corruption caused by squad hijacking and engine API spam
-- events chain into causes, causes dispatch consequences, consequences become new causes. Emergent gameplay that nobody scripted
-- causes are either reactive (triggered by combat, wounds, deaths) or radiant (triggered by movement and location). Both are event-driven, neither is looped or polled
-- economy uses real inventory items, needs drive real decisions, nothing is faked. The performance cost is near zero
+Engine events are intercepted as they fire. The system reacts when something happens, not on a timer.
+Squads are extended, not hijacked. The engine's own job system produces the correct behavior without overwriting its variables.
+
+All engine interaction goes through xlibs, a shared library reverse-engineered from X-Ray Monolith C++ source covering squad and smart terrain APIs, event bus, synthetic callbacks, crash-safe object resolution, and microsecond profiling.
+Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts.
+Code patterns validated against Demonized, Vintar0, RavenAscendant, xcvb.
+
+Rate-limited event pipeline with token budgets, designed to avoid ghosting and save corruption caused by squad hijacking and engine API spam.
+
+Events chain into causes, causes dispatch consequences, and consequences become new causes. Emergent gameplay that nobody scripted.
+Causes are either reactive (triggered by combat, wounds, deaths) or radiant (triggered by movement and location), all event-driven.
+
+The economy uses real inventory items and needs drive real decisions. Performance cost is near zero.
 
 Example scenario:
-- A stalker reaches a location. AlifePlus intercepts that event
-- He spots a stash ("stash" cause) and decides to loot it ("loot" consequence), not knowing if anything is inside
-- He walks the whole distance to the stash but gets ambushed by another stalker who saw it first and decided to rob people ("ambush" consequence)
-- The player was heading to that stash and sees the fight, so he snipes both of them
-- This mass killing ("massacre" cause) draws scavengers to the bodies ("scavenge" consequence) and the victims' faction sends squads to investigate ("investigate" consequence)
-- On the way there, the scavengers get killed by loners who were out hunting ("job" consequence)
-- Those loners are now tired ("needs" cause) and head back to base to smoke a cigarette and tell the story ("social" consequence)
-- None of this was scripted. The player walked into something already in motion
+A stalker reaches a location. AlifePlus intercepts that event.
+He spots a stash ("stash" cause) and decides to loot it ("loot" consequence), not knowing if anything is inside.
+He walks the whole distance to the stash but gets ambushed by another stalker who saw it first and decided to rob people ("ambush" consequence).
+The player was heading to that stash and sees the fight, so he snipes both of them.
+This mass killing ("massacre" cause) draws scavengers to the bodies ("scavenge" consequence) and the victims' faction sends squads to investigate ("investigate" consequence).
+On the way there, the scavengers get killed by loners who were out hunting ("job" consequence).
+Those loners are now tired ("needs" cause) and head back to base to smoke a cigarette and tell the story ("social" consequence).
+None of this was scripted. The player walked into something already in motion.
 
 Another example:
-- An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence)
-- On the road he fights creatures and gains enough kills to become an elite ("elite promote" consequence)
-- Now stronger but wounded, he bleeds ("wounded" cause) and a chimaera senses weakness and chases him down ("wounded hunt" consequence)
-- The chimaera kills him and gains enough kills to become an elite itself ("elite promote" consequence), a real problem in the area
-- If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs)
-- The cycle continues, the Zone does not care
+An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).
+On the road he fights creatures and gains enough kills to become an elite ("elite promote" consequence).
+Now stronger but wounded, he bleeds ("wounded" cause) and a chimaera senses weakness and chases him down ("wounded hunt" consequence).
+The chimaera kills him and gains enough kills to become an elite itself ("elite promote" consequence), a real problem in the area.
+If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs).
+The cycle continues, the Zone does not care.
 
+The mod was designed performance-first, load tested with my own testing framework (1000x load) and profiled with anomaly-devtools v1.3.0. The performance impact is almost inexistent as seen in the screenshots.
+The entire pipeline is instrumented with OTel-style tracing, structured logging with rotation, and microsecond profiling from the engine's own timer, so every operation is measurable.
 
-The mod was designed performance-first. Load tested with my own testing framework (1000x load) and profiled with anomaly-devtools v1.3.0. The performance impact is almost inexistent as seen in the screenshots.
-The entire pipeline is instrumented with OTel-style tracing, structured logging with rotation, and microsecond profiling from the engine's own timer. Every operation is measurable.
-AlifePlus operates above the action planner, at the simulation layer. It routes squads to the correct smart terrain through SIMBOARD. The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination. The engine already knows how to make guards patrol, sleepers sleep, collectors collect. AlifePlus provides the intent, the engine provides the behavior.
+AlifePlus operates above the action planner at the simulation layer, routing squads to the correct smart terrain through SIMBOARD.
+The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination. It already knows how to make guards patrol, sleepers sleep, collectors collect. AlifePlus provides the intent, the engine provides the behavior.
 
 [BENCHMARKS: two screenshots side by side]
 
-Every cause and consequence is a module you can enable or disable through MCM. Inside each module, every rule and behavior is individually configurable: chances, cooldowns, thresholds, rate limits, and budgets.
+Each cause and consequence is a module you can enable or disable through MCM, and within each module you can tune chances, cooldowns, thresholds, rate limits, and budgets individually.
 Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
 
 Features: causes and consequences that aggregate into hundreds of combinations
@@ -157,7 +160,9 @@ PDA system still needs some work, messages and their sources are not what they c
 
 Development:
 Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.
-Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns, contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards), lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.
+Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns,
+contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards),
+lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.
 Full report in doc/test-report.log.
 
 Credits:
@@ -165,36 +170,34 @@ Stalker_Boss - Russian translation
 
 Versions:
 
-  1.2.0-RC1 - "Needs"
+  1.2.0-RC2
+    Added: structured arrival logging for needs consequences (destination, action, items)
+    Added: squad section name in script_squad log for NPC traceability
+    Fixed: unnecessary luabind call in script_squad debug log when debug disabled
 
+  1.2.0-RC1 - "Needs"
     Needs:
       - 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
       - 15 new consequences with per-need MCM controls (enable, threshold, chance, action)
       - Night gate, faction-aware destination filter, destination limiter
       - 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
       - Needs persisted per-squad in save data
-
     Event pipeline:
       - Radiant/reactive split with independent token buckets
       - Consequence token bucket replaces global cause lock
       - Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
-
     PDA:
       - 168 message variants across 40 categories, stalker/mutant distinction
-
     MCM:
       - Reset button, retuned default chances, cleaned up labels
       - Russian translation (Stalker_Boss)
-
     Performance:
       - MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
-
     Fixes:
       - Reactive event starvation (cause lock starving needs and area causes)
       - wounded_help faction matching (actor_stalker prefix)
       - PDA messages now distinguish stalkers from mutants
       - supply_trader exchange giving free items (now requires artefact)
-
     Docs:
       - manifesto.md with GSC vision, engine source proof, developer quotes
 

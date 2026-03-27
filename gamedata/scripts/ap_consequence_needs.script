@@ -14,35 +14,42 @@ local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 
 local cfg = ap_mcm.cfg
 
---- Try each section via npc:object, release first match
+--- Try each section via npc:object, release first match. Returns consumed section or nil.
 local function _consume(go, sections)
     for i = 1, #sections do
         local item = go:object(sections[i])
-        if item then alife_release_id(item:id()) return end
+        if item then alife_release_id(item:id()) return sections[i] end
     end
+    return nil
 end
 
---- Find first artefact in inventory, return its id or nil
+--- Find first artefact in inventory, return its id and section or nil
 local function _find_artefact(go)
-    local sell_id = nil
+    local sell_id, sell_sec = nil, nil
     go:iterate_inventory(function(_owner, item)
         if not sell_id then
             local sec = item:section()
-            if sec and string_sub(sec, 1, 3) == "af_" then sell_id = item:id() end
+            if sec and string_sub(sec, 1, 3) == "af_" then
+                sell_id = item:id()
+                sell_sec = sec
+            end
         end
     end, go)
-    return sell_id
+    return sell_id, sell_sec
 end
 
---- Release artefact, create one random supply item
+--- Release artefact, create one random supply item. Returns sold_section, bought_section or nil.
 local function _arrive_trade(go)
-    local sell_id = _find_artefact(go)
-    if not sell_id then return end
+    local sell_id, sell_sec = _find_artefact(go)
+    if not sell_id then return nil, nil end
     alife_release_id(sell_id)
     local se = xobject.se(go:id())
     if se and se.m_level_vertex_id ~= INVALID_LEVEL_VERTEX_ID then
-        alife_create_item(NEEDS_SECTIONS.TRADE_BUY[math_random(#NEEDS_SECTIONS.TRADE_BUY)], se)
+        local buy_sec = NEEDS_SECTIONS.TRADE_BUY[math_random(#NEEDS_SECTIONS.TRADE_BUY)]
+        alife_create_item(buy_sec, se)
+        return sell_sec, buy_sec
     end
+    return sell_sec, nil
 end
 
 local CONFIGS = {
@@ -101,26 +108,47 @@ local function _build_filter(entry, community)
     end
 end
 
---- Dispatch arrive action (online only): consume sections or trade exchange
-local function _dispatch_arrive(go, args)
-    if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then return end
+--- Dispatch arrive action (online only): consume sections or trade exchange.
+--- Wraps item operations in observe for structured tracing. Returns action string.
+local function _dispatch_arrive(trace, go, args)
+    if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then
+        return "disabled"
+    end
     if args.section_key then
         local sections = NEEDS_SECTIONS[args.section_key]
-        if sections then _consume(go, sections) end
+        if sections then
+            ap_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+                local consumed = _consume(go, sections)
+                return { code = consumed and "ok" or "none", consumed = consumed }
+            end)
+            return "consume"
+        end
     elseif args.arrive_fn == "trade" then
-        _arrive_trade(go)
+        ap_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+            local sold, bought = _arrive_trade(go)
+            return { code = sold and "ok" or "no_artefact", sold = sold, bought = bought }
+        end)
+        return "trade"
     end
+    return "passive"
 end
 
 --- Reset need timestamp and run arrive action on arrival at destination
 local function _on_arrive(squad, args)
     if not args or not args.dto_field then return end
-    local now = game.get_game_time():diffSec(level.get_start_time())
-    ap_alife_tracker.reset_stalker_need(squad.id, args.dto_field, now)
-    local cmd_id = squad:commander_id()
-    local st = db.storage[cmd_id]
-    if st and st.object then _dispatch_arrive(st.object, args) end
-    ap_debug.debug("[CONSEQUENCE.NEEDS] _on_arrive: squad=%d need=%s", squad.id, args.name or "?")
+    ap_debug.observe(nil, ACTION.COMPLETE_NEEDS, function(trace)
+        local now = game.get_game_time():diffSec(level.get_start_time())
+        ap_alife_tracker.reset_stalker_need(squad.id, args.dto_field, now)
+        local cmd_id = squad:commander_id()
+        local st = db.storage[cmd_id]
+        local online = st and st.object ~= nil
+        local action = "offline"
+        if online then
+            action = _dispatch_arrive(trace, st.object, args)
+        end
+        return { code = "ok", squad = squad.id, need = args.name,
+            dst = args.dst_name, online = online, action = action }
+    end)
 end
 
 --- Build condition closure for consumer registration
@@ -155,7 +183,8 @@ local function _make_handler(entry)
                     rush = true,
                     on_arrive = entry.name,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
-                        section_key = entry.section_key, arrive_fn = entry.arrive_fn },
+                        section_key = entry.section_key, arrive_fn = entry.arrive_fn,
+                        dst_name = smart:name() },
                 })
                 return res
             end)
