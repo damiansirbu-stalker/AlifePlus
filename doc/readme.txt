@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.2.0-RC2 (requires xlibs 1.2.1)
+Latest: 1.2.0 (requires xlibs >= 1.2.2)
 GitHub: https://github.com/damiansirbu-stalker/AlifePlus
 
 ! Please use the RESET button in MCM when updating to a new version !
@@ -119,7 +119,7 @@ Needs (radiant)
 Requirements:
 Anomaly 1.5.3
 Modded exes
-xlibs 1.2.0 (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
+xlibs 1.2.2 (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 MCM
 
 Install (MO2):
@@ -170,9 +170,19 @@ Stalker_Boss - Russian translation
 
 Versions:
 
-  1.2.0-RC2
+  1.2.0
+    Added: capacity-aware smart terrain routing -- all consequence paths check real population before sending squads (xlibs)
+    Added: on-arrival redirect -- online squads at full smarts complete their handler then walk to nearest available smart
+    Added: stash loot blacklist -- NPCs skip stashes containing toolkits, repair kits, craft tools, or workshop kits (MCM toggle)
+    Added: radiant squad guard -- script_squad and script_actor_target reject unscriptable and externally-scripted squads (xlibs)
     Added: structured arrival logging for needs consequences (destination, action, items)
     Added: squad section name in script_squad log for NPC traceability
+    Changed: territory conquest extracted to own module with independent save/load and migration
+    Changed: semver dependency gate -- patch bumps in xlibs no longer require AP releases (xlibs)
+    Changed: game time calculations use cached helper instead of raw engine calls (xlibs)
+    Fixed: destination capacity only covered needs consequences, all other paths bypassed it
+    Fixed: Dead City barman (Aslan) not protected by unscriptable guard due to typo (xlibs)
+    Fixed: artefact drop/pickup exploit triggering infinite harvest_hunt chasers (per-section 2h cooldown)
     Fixed: unnecessary luabind call in script_squad debug log when debug disabled
 
   1.2.0-RC1 - "Needs"

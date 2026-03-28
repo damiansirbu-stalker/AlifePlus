@@ -65,7 +65,7 @@ local function _on_smart(trace, squad)
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
 
-    local now = game.get_game_time():diffSec(level.get_start_time())
+    local now = xtime.game_sec()
 
     local dto = ap_alife_tracker.get_stalker_needs(squad.id)
     if not dto then

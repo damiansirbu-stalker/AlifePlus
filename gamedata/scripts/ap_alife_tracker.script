@@ -1,7 +1,7 @@
 --- ap_alife_tracker: Tracks killers/elites/scripted_squads, lifecycle management
 
 local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
-local os_clock, table_concat, math_huge = os.clock, table.concat, math.huge
+local os_clock, table_concat = os.clock, table.concat
 local math_min, math_floor = math.min, math.floor
 local ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback = ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
@@ -18,17 +18,30 @@ local killers = {}
 local elites = {}
 local scripted_squads = {}
 local _arrival_handlers = {}
+local _destination_counts = {}
 local _last_victim_id
 local elite_dead
 local cfg = ap_mcm.cfg
-local conquered_smarts = {}
-local _conquered_pending = nil
-local _conquest_seq = 0
 local stalker_needs = {}
 local NEED_FIELDS = ap_const.NEED_FIELDS
 
 local function _is_stale(id)
     return not xobject.se(id)
+end
+
+local function _dec_destination(smart_id)
+    if not smart_id then return end
+    _destination_counts[smart_id] = (_destination_counts[smart_id] or 1) - 1
+    if _destination_counts[smart_id] <= 0 then _destination_counts[smart_id] = nil end
+end
+
+local function _rebuild_destinations()
+    _destination_counts = {}
+    for _, data in pairs(scripted_squads) do
+        if data.target_smart_id then
+            _destination_counts[data.target_smart_id] = (_destination_counts[data.target_smart_id] or 0) + 1
+        end
+    end
 end
 
 --- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
@@ -44,6 +57,7 @@ local function unscript_squad(squad_or_id)
         ap_debug.debug("[TRACKER] unscript_squad: squad=%d scripted_target=%s", squad_id, tostring(scripted_squads[squad_id].scripted_target))
         xsquad.release_squad(squad)
     end
+    _dec_destination(scripted_squads[squad_id].target_smart_id)
     scripted_squads[squad_id] = nil
     return true
 end
@@ -65,12 +79,10 @@ local function _on_save_state(m_data)
         killers = killers,
         elites = elites,
         scripted_squads = scripted_squads,
-        conquered_smarts = conquered_smarts,
-        conquest_seq = _conquest_seq,
         stalker_needs = stalker_needs,
     }
-    ap_debug.debug("[TRACKER] save: killers=%d elites=%d scripted=%d conquered=%d needs=%d",
-        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(conquered_smarts), xtable.count(stalker_needs))
+    ap_debug.debug("[TRACKER] save: killers=%d elites=%d scripted=%d needs=%d",
+        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(stalker_needs))
 end
 
 local function _validate_elites(loaded)
@@ -100,19 +112,17 @@ local function _on_load_state(m_data)
     killers = saved.killers or {}
     elites = _validate_elites(saved.elites or {})
     scripted_squads = saved.scripted_squads or {}
-    conquered_smarts = {}
-    _conquered_pending = saved.conquered_smarts or {}
-    _conquest_seq = saved.conquest_seq or 0
     stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     local now = os_clock()
     for _, data in pairs(scripted_squads) do
         data.tracked_at = now
     end
+    _rebuild_destinations()
     if not saved.killers then ap_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.elites then ap_debug.warn("[TRACKER] load: missing elites, fresh init") end
     if not saved.scripted_squads then ap_debug.warn("[TRACKER] load: missing scripted_squads, fresh init") end
-    ap_debug.debug("[TRACKER] load: killers=%d elites=%d scripted=%d conquered_pending=%d needs=%d",
-        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(_conquered_pending), xtable.count(stalker_needs))
+    ap_debug.debug("[TRACKER] load: killers=%d elites=%d scripted=%d needs=%d",
+        xtable.count(killers), xtable.count(elites), xtable.count(scripted_squads), xtable.count(stalker_needs))
 end
 
 local function _dump_killers()
@@ -275,7 +285,7 @@ end
 --- @param field string DTO field to make overdue (e.g. "last_hunger_at")
 function force_stalker_need(squad_id, field)
     if not squad_id or not field then return end
-    local now = game.get_game_time():diffSec(level.get_start_time())
+    local now = xtime.game_sec()
     local dto = stalker_needs[squad_id]
     if not dto then
         dto = {}
@@ -331,9 +341,16 @@ function script_squad(squad, smart, opts)
         ap_debug.warn("[TRACKER] script_squad: squad=%d invalid smart name", squad.id)
         return { code = RESULT.RULES_NEXT, reason = REASON.INVALID_SMART, id = squad.id }
     end
+    if xsquad.is_unscriptable_squad(squad) then
+        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, id = squad.id }
+    end
+    if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
+        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
+    end
     if scripted_squads[squad.id] then
         ap_debug.debug("[TRACKER] script_squad: squad=%d already scripted (target=%s), releasing first",
             squad.id, scripted_squads[squad.id].scripted_target)
+        _dec_destination(scripted_squads[squad.id].target_smart_id)
         xsquad.release_squad(squad)
     end
     if not xsquad.control_squad(squad, smart, opts.rush) then
@@ -346,6 +363,7 @@ function script_squad(squad, smart, opts)
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
     }
+    _destination_counts[smart.id] = (_destination_counts[smart.id] or 0) + 1
     if ap_debug.enabled() then
         ap_debug.debug("[TRACKER] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
     end
@@ -358,9 +376,16 @@ end
 function script_actor_target(squad)
     if not squad then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
     _cleanup_stale()
+    if xsquad.is_unscriptable_squad(squad) then
+        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, id = squad.id }
+    end
+    if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
+        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
+    end
     if scripted_squads[squad.id] then
         ap_debug.debug("[TRACKER] script_actor_target: squad=%d already scripted (target=%s), releasing first",
             squad.id, scripted_squads[squad.id].scripted_target)
+        _dec_destination(scripted_squads[squad.id].target_smart_id)
         xsquad.release_squad(squad)
     end
     if not xsquad.target_actor(squad, true) then
@@ -381,12 +406,45 @@ function get_scripted_ids()
     return scripted_squads
 end
 
+--- Get count of AP-scripted squads in transit to a smart terrain
+--- @param smart_id number Smart terrain server entity ID
+--- @return number Count of in-transit squads
+function get_destination_count(smart_id)
+    return _destination_counts[smart_id] or 0
+end
+
 --- Register an arrival handler by key (called from consequence on_game_start)
 --- @param key string Handler key (must match on_arrive_key passed to script_squad)
 --- @param fn function Handler function(squad, args)
 function register_arrival_handler(key, fn)
     _arrival_handlers[key] = fn
     ap_debug.debug("[TRACKER] register_arrival_handler: key=%s", key)
+end
+
+--- Handle arrival at full smart: fire handler, redirect to alternative smart
+--- @return boolean True if handled (caller should return), false for normal flow
+local function _try_arrival_redirect(squad_id, squad, smart, data)
+    local cmd_id = squad:commander_id()
+    local is_online = cmd_id and db.storage[cmd_id] and db.storage[cmd_id].object ~= nil
+    if not is_online or xsmart.has_capacity(smart) then return false end
+    local key = data.on_arrive
+    local handler = key and _arrival_handlers[key]
+    if handler then
+        handler(squad, data.on_arrive_args)
+        if scripted_squads[squad_id] ~= data then return true end
+    end
+    local alt = ap_utils.find_smart(smart.position, {
+        level_id = xlevel.get_level_id(smart),
+        max_distance = ap_const.RADIUS_DISTANT_MAX,
+    })
+    if alt then
+        unscript_squad(squad)
+        script_squad(squad, alt, {})
+        ap_debug.debug("[TRACKER] arrival_redirect: squad=%d full=%s -> alt=%d", squad_id, tostring(data.scripted_target), alt.id)
+        return true
+    end
+    unscript_squad(squad)
+    return true
 end
 
 local function _process_arrival(squad_id)
@@ -408,6 +466,7 @@ local function _process_arrival(squad_id)
         squad_id, tostring(arrived), tostring(data.scripted_target))
     _log_proximity("proximity", squad, smart, data)
     if not arrived then return end
+    if _try_arrival_redirect(squad_id, squad, smart, data) then return end
     local key = data.on_arrive
     if not key then
         unscript_squad(squad)
@@ -447,7 +506,7 @@ local function _periodic_sync()
     local killed = xtable.sweep(killers, _is_stale, unregister_entity)
     local elited = xtable.sweep(elites, _is_stale, unregister_entity)
     local scripted = xtable.sweep(scripted_squads, _is_stale, unscript_squad)
-    local conquered = xtable.sweep(conquered_smarts, _is_stale)
+    local conquered = ap_conquest.sweep_stale()
     local needs = xtable.sweep(stalker_needs, _is_stale, function(id)
         ap_debug.debug("[TRACKER] stalker_needs_expired: squad=%d", id)
     end)
@@ -457,75 +516,6 @@ local function _periodic_sync()
     end
 
     ResetTimeEvent("ap_alife_tracker", "sync", cfg.alife_sync_interval)
-end
-
--- =============================================================================
--- CONQUERED AREA
--- =============================================================================
-
-local function _find_oldest_conquered()
-    local oldest_id, oldest_at = nil, math_huge
-    for id, data in pairs(conquered_smarts) do
-        if data.conquered_at < oldest_at then
-            oldest_id, oldest_at = id, data.conquered_at
-        end
-    end
-    return oldest_id
-end
-
-local function _evict_oldest()
-    local oldest_id = _find_oldest_conquered()
-    if not oldest_id then return end
-    local smart = xobject.se(oldest_id)
-    if smart then xsmart.clear_faction_controlled(smart) end
-    conquered_smarts[oldest_id] = nil
-    ap_debug.debug("[TRACKER] evict_oldest: smart=%d", oldest_id)
-end
-
-function conquer_smart(smart_id, faction)
-    if not smart_id or not faction then return false end
-    if not cfg or not cfg.area_conquest_enabled then return false end
-    local smart = xobject.se(smart_id)
-    if not smart then return false end
-    local existing = conquered_smarts[smart_id]
-    if existing and existing.faction == faction then
-        _conquest_seq = _conquest_seq + 1
-        existing.conquered_at = _conquest_seq
-        ap_debug.debug("[TRACKER] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
-        return true
-    end
-    if not existing then
-        local max_smarts = cfg.area_conquest_max_smarts
-        if xtable.count(conquered_smarts) >= max_smarts then
-            _evict_oldest()
-        end
-    end
-    if not xsmart.set_faction_controlled(smart, faction, cfg.area_conquest_spawn_num) then
-        return false
-    end
-    _conquest_seq = _conquest_seq + 1
-    conquered_smarts[smart_id] = { faction = faction, conquered_at = _conquest_seq }
-    ap_debug.debug("[TRACKER] conquer_smart: smart=%d faction=%s", smart_id, faction)
-    return true
-end
-
-local function _on_game_load()
-    if not _conquered_pending then return end
-    if not cfg or not cfg.area_conquest_enabled then
-        _conquered_pending = nil
-        return
-    end
-    local count = 0
-    for smart_id, data in pairs(_conquered_pending) do
-        local smart = xobject.se(smart_id)
-        if not smart or not data.faction then goto continue end
-        if not xsmart.set_faction_controlled(smart, data.faction, cfg.area_conquest_spawn_num) then goto continue end
-        conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or 0 }
-        count = count + 1
-        ::continue::
-    end
-    _conquered_pending = nil
-    ap_debug.debug("[TRACKER] on_game_load: restored %d conquered smarts", count)
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
@@ -554,7 +544,6 @@ function on_game_start()
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
-    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
 
     CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)

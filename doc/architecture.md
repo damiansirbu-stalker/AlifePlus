@@ -47,9 +47,10 @@ No engine patches, no disk writes. Runtime callbacks, Lua globals, xlibs wrapper
 | ap_debug | Logger, observe() tracing, result helpers |
 | ap_producer_reactive | Unified producer: callback dispatch, gates, predicate eval, xbus publish |
 | ap_consumer | Priority dispatch: xbus subscribe, consequence chain, rate limit |
-| ap_alife_tracker | State manager: killers, elites, scripted_squads, conquered_smarts, stalker_needs |
+| ap_alife_tracker | State manager: killers, elites, scripted_squads, stalker_needs |
+| ap_conquest | Territory conquest: conquered_smarts, faction_controlled mutation, FIFO eviction |
 | ap_alife_behavior | Elite combat buffs: grenades, AP ammo, rank boost (npc_on_before_hit) |
-| ap_utils | Event wrappers, PDA, destination limiter, chase API, find helpers |
+| ap_utils | Event wrappers, PDA, capacity-aware find_smart, chase API, find helpers |
 | ap_cause_* | Cause predicates (one file per cause group) |
 | ap_consequence_* | Consequence handlers (one file per cause; needs = config table) |
 | ap_messages | PDA message templates |
@@ -175,7 +176,7 @@ Not obvious from any single file. Violations cause subtle bugs.
 
 2. **Result code contract.** Every consequence returns { code = RESULT.X }. Consumer checks .code for chain propagation. Missing or malformed return = error.
 
-3. **Scripted bypass.** scripted_target overrides SIMBOARD:get_squad_target(). Engine target_precondition (faction check) is NOT evaluated for scripted squads. AP enforces faction safety in _build_filter.
+3. **Scripted bypass.** scripted_target overrides SIMBOARD:get_squad_target(). Engine target_precondition (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in _build_filter and capacity safety in ap_utils.find_smart (unified capacity filter using real SIMBOARD population + in-transit count from _destination_counts).
 
 4. **Mutation volatility.** Runtime smart terrain mutations (faction_controlled, respawn_params, faction) rebuilt from LTX on every load. Anything that mutates these must save/restore independently. Only conquered_smarts does this (two-phase).
 
@@ -201,7 +202,7 @@ Ordered gates in dispatch(). Gates 1-2 run before any predicate. Gates 3-4 are p
 
 | Name | Type | Scope | Duration | Location |
 |------|------|-------|----------|----------|
-| Destination limiter | TTL counter | per-smart-id | ap_const: DESTINATION_LOCK_MAX, DESTINATION_LOCK_TTL_SEC | ap_utils |
+| Destination capacity | Reverse index (_destination_counts) | per-smart-id | Real-time: SIMBOARD.smarts[id].squads + in-transit count | ap_alife_tracker, ap_utils.find_smart |
 | Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_alife_behavior |
 | Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_alife_behavior |
 | AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_alife_behavior |
@@ -254,7 +255,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA.
 - **state** -no movement. Update tracker, markers, rewards. Used by: elite_promote, elitekill_bounty.
 - **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Used by: stash_loot, stash_fill, stash_ambush.
 - **conquest** -script to empty smart, conquer immediately on fire, not on arrival. Used by: area_conquer.
-- **needs** -config-driven (15 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m) -> script(rush) -> mark_destination -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
+- **needs** -config-driven (15 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
 
 ---
 
@@ -296,12 +297,13 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA.
 
 ### _build_filter
 
-One closure per handler call. 4 concerns evaluated per-smart in find_smart (single pass, nearest match):
+One closure per handler call. 3 concerns evaluated per-smart in _build_filter (single pass, nearest match):
 
 1. **Type filter** (entry.filter): has_campfire, is_base, has_anomaly, is_lair, has_trader_job, nil
 2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -worship, exercise
 3. **Faction enemy** (entry.faction_filter): is_factions_enemies(community, smart_faction) -scripted_target bypasses engine target_precondition
-4. **Destination capacity** (check_destination): TTL counter per smart (DESTINATION_LOCK_MAX, DESTINATION_LOCK_TTL_SEC)
+
+Capacity filtering is handled by ap_utils.find_smart (unified, covers all consequence paths).
 
 ### Arrival dispatch
 
@@ -354,7 +356,7 @@ Lazy init: first eval scatters 9 DTO timestamps across 0..2*threshold. Roughly h
 | elites | entity_id | { level, kills, level_id, name, is_stalker } | save/load |
 | elite_dead | entity_id | same as elites (xttltable, 3600s grace after death) | transient |
 | scripted_squads | squad_id | { scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args } | save/load |
-| conquered_smarts | smart_id | { faction, conquered_at } | save/load (two-phase) |
+| conquered_smarts | smart_id | { faction, conquered_at } | save/load (two-phase, in ap_conquest) |
 | stalker_needs | squad_id | { last_hunger_at ... last_social_at } | save/load |
 
 ### Scripted squads
@@ -423,6 +425,7 @@ area_conquer consequence
 - `try_respawn` then spawns conqueror's faction via standard logic
 - `clear_faction_controlled` reverts all mutations, restores `default_faction`
 - ZCP compatible -ZCP `try_respawn` uses the same `faction_controlled` check as vanilla
+- Owned by `ap_conquest.script` (extracted from ap_alife_tracker). Own save/load callbacks, migrates from old `m_data.ap_alife_tracker` location.
 
 ### FIFO eviction
 

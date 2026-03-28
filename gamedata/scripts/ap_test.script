@@ -204,12 +204,10 @@ local function _demo_disable_competing_causes()
     _demo_saved_causes = {
         cause_area_enabled = mcm.cause_area_enabled,
         cause_stash_enabled = mcm.cause_stash_enabled,
-        destination_lock_max = ap_const.DESTINATION_LOCK_MAX,
     }
     mcm.cause_area_enabled = false
     mcm.cause_stash_enabled = false
-    ap_const.DESTINATION_LOCK_MAX = 100
-    ap_debug.debug("[TEST] needs_demo disabled competing causes, DESTINATION_LOCK_MAX=100")
+    ap_debug.debug("[TEST] needs_demo disabled competing causes")
 end
 
 local function _demo_restore_causes()
@@ -217,8 +215,7 @@ local function _demo_restore_causes()
     local mcm = ap_mcm.cfg
     mcm.cause_area_enabled = _demo_saved_causes.cause_area_enabled
     mcm.cause_stash_enabled = _demo_saved_causes.cause_stash_enabled
-    ap_const.DESTINATION_LOCK_MAX = _demo_saved_causes.destination_lock_max
-    ap_debug.debug("[TEST] needs_demo restored causes, DESTINATION_LOCK_MAX=%d", _demo_saved_causes.destination_lock_max)
+    ap_debug.debug("[TEST] needs_demo restored causes")
     _demo_saved_causes = nil
 end
 

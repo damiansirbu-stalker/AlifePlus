@@ -218,31 +218,6 @@ function create_cooldown(expire_ms)
     }
 end
 
--- =============================================================================
--- DESTINATION LIMITER
--- =============================================================================
-
-local _destinations = nil
-
-local function _ensure_destinations()
-    if not _destinations then
-        _destinations = xttltable.create_ttl_counter({ ttl = ap_const.DESTINATION_LOCK_TTL_SEC })
-    end
-    return _destinations
-end
-
---- Check if destination smart has capacity for more squads
-function check_destination(smart_id)
-    if not smart_id then return true end
-    return _ensure_destinations():count(smart_id) < ap_const.DESTINATION_LOCK_MAX
-end
-
---- Record a squad being sent to destination smart
-function mark_destination(smart_id)
-    if not smart_id then return end
-    _ensure_destinations():add(smart_id)
-end
-
 local function _serialize_factions(factions)
     if not factions then return "any" end
     if type(factions) == "string" then return factions end
@@ -289,15 +264,28 @@ function find_squads_observed(trace, position, opts)
     return squads
 end
 
+--- Find nearest smart, excluding full smart terrains (capacity-aware)
+--- @param pos vector Origin position
+--- @param opts table Options (forwarded to xsmart.find_smart with capacity filter injected)
+--- @return table|nil Smart server object or nil
+function find_smart(pos, opts)
+    local original_filter = opts.filter
+    opts.filter = function(smart)
+        if original_filter and not original_filter(smart) then return false end
+        return xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id))
+    end
+    return xsmart.find_smart(pos, opts)
+end
+
 --- Find nearest smart with FIND_DESTINATION observe wrapper. Returns smart or nil.
 --- @param trace table Trace from event_data._trace
 --- @param position vector Origin position
---- @param opts table Options (forwarded to xsmart.find_smart)
+--- @param opts table Options (forwarded to ap_utils.find_smart)
 --- @return table|nil Smart server object or nil
 function find_smart_observed(trace, position, opts)
     local smart
     ap_debug.observe(trace, ACTION.FIND_DESTINATION, function()
-        smart = xsmart.find_smart(position, opts)
+        smart = find_smart(position, opts)
         if not smart then return { code = "empty" } end
         return { code = "ok", id = smart.id }
     end)
@@ -347,7 +335,7 @@ function chase_register(opts)
             return
         end
         ap_debug.observe(nil, ACTION.CHASE_TARGET, function()
-            local smart = xsmart.find_smart(target_squad.position, {
+            local smart = find_smart(target_squad.position, {
                 level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
             })
             if not smart then return { code = "no_smart" } end

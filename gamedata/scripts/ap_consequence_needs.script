@@ -95,7 +95,7 @@ local CONFIGS = {
         section_key = "SOCIAL" },
 }
 
---- Build filter closure: type check + faction list check + faction enemy check + destination capacity
+--- Build filter closure: type check + faction list check + faction enemy check
 local function _build_filter(entry, community)
     return function(smart)
         if entry.filter and not entry.filter(smart) then return false end
@@ -104,7 +104,7 @@ local function _build_filter(entry, community)
             local fac = xsmart.get_smart_faction(smart)
             if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
         end
-        return ap_utils.check_destination(smart.id)
+        return true
     end
 end
 
@@ -137,7 +137,7 @@ end
 local function _on_arrive(squad, args)
     if not args or not args.dto_field then return end
     ap_debug.observe(nil, ACTION.COMPLETE_NEEDS, function(trace)
-        local now = game.get_game_time():diffSec(level.get_start_time())
+        local now = xtime.game_sec()
         ap_alife_tracker.reset_stalker_need(squad.id, args.dto_field, now)
         local cmd_id = squad:commander_id()
         local st = db.storage[cmd_id]
@@ -191,8 +191,6 @@ local function _make_handler(entry)
             if res.code ~= RESULT.OK_NEXT then
                 return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
             end
-
-            ap_utils.mark_destination(smart.id)
 
             ap_debug.observe(trace, ACTION.ADD_MARKER, function()
                 ap_utils.mark(squad, entry.name)

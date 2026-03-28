@@ -11,10 +11,33 @@ local ACTION = ap_const.ACTION
 local cfg = ap_mcm.cfg
 local community_stalker = ap_data.community_stalker
 
+local LOOT_PROTECT_SET = {
+    ["toolkit_1"] = true, ["toolkit_2"] = true, ["toolkit_3"] = true,
+    ["toolkit_p"] = true, ["toolkit_s"] = true, ["toolkit_r5"] = true, ["toolkit_r7"] = true,
+    ["light_repair_kit"] = true, ["medium_repair_kit"] = true, ["heavy_repair_kit"] = true,
+    ["exo_repair_kit"] = true, ["helmet_repair_kit"] = true,
+    ["itm_gunsmith_toolkit"] = true, ["itm_outfit_toolkit"] = true,
+    ["itm_drugkit"] = true, ["itm_ammokit"] = true,
+    ["itm_basickit"] = true, ["itm_advancedkit"] = true, ["itm_expertkit"] = true,
+}
+
+local function _is_protected_stash(stash_id)
+    local items = xstash.get_stash_items(stash_id)
+    if not items then return false end
+    for i = 1, #items do
+        if LOOT_PROTECT_SET[items[i]] then return true end
+    end
+    return false
+end
+
 local function _on_arrive(squad, args)
     local stash_id = args.stash_id
     if xstash.is_stash_looted(stash_id) then
         ap_debug.debug("[CONSEQUENCE.STASH_LOOT] _on_arrive: squad=%d stash=%d already looted, skipping", squad.id, stash_id)
+        return
+    end
+    if cfg.consequence_stash_loot_protect_toolkits and _is_protected_stash(stash_id) then
+        ap_debug.debug("[CONSEQUENCE.STASH_LOOT] _on_arrive: squad=%d stash=%d protected items, skipping", squad.id, stash_id)
         return
     end
     ap_debug.observe(nil, ACTION.COMPLETE_STASH_LOOT, function(trace)

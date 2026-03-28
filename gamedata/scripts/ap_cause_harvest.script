@@ -5,6 +5,9 @@ local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
 local cfg = ap_mcm.cfg
+local os_clock = os.clock
+
+local _pickup_at = {}
 
 local function _evaluate(_trace, item, npc)
     if not cfg.cause_harvest_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -12,6 +15,11 @@ local function _evaluate(_trace, item, npc)
 
     local section = item:section()
     if not IsArtefact(item) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ARTEFACT, section = section } end
+
+    local now = os_clock()
+    if _pickup_at[section] and now - _pickup_at[section] < ap_const.HARVEST_COOLDOWN_SEC then
+        return { code = RESULT.THROTTLED_NEXT }
+    end
 
     local taker_is_player = npc == nil
 
@@ -29,6 +37,8 @@ local function _evaluate(_trace, item, npc)
         level_id = xlevel.get_level_id(squad)
     end
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    _pickup_at[section] = now
 
     return {
         cause = CAUSE.HARVEST,
