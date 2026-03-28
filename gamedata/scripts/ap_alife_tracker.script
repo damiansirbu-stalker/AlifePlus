@@ -25,10 +25,6 @@ local cfg = ap_mcm.cfg
 local stalker_needs = {}
 local NEED_FIELDS = ap_const.NEED_FIELDS
 
-local function _is_stale(id)
-    return not xobject.se(id)
-end
-
 local function _dec_destination(smart_id)
     if not smart_id then return end
     _destination_counts[smart_id] = (_destination_counts[smart_id] or 1) - 1
@@ -246,6 +242,12 @@ local function unregister_entity(id)
         ap_debug.debug("[TRACKER] unregister_entity: id=%d kills=%s elite=%s",
             id, tostring(had_kills), tostring(had_elite))
     end
+end
+
+--- Unregister squad from all squad-keyed tracking (on last NPC death)
+local function _unregister_squad(squad_id)
+    if not squad_id then return end
+    stalker_needs[squad_id] = nil
 end
 
 -- =============================================================================
@@ -498,28 +500,6 @@ local function _check_arrivals()
     end
 end
 
--- =============================================================================
--- PERIODIC SYNC
--- =============================================================================
-
-local function _periodic_sync()
-    if not cfg or not cfg.alife_periodic_sync_enabled then return end
-
-    local killed = xtable.sweep(killers, _is_stale, unregister_entity)
-    local elited = xtable.sweep(elites, _is_stale, unregister_entity)
-    local scripted = xtable.sweep(scripted_squads, _is_stale, unscript_squad)
-    local conquered = ap_conquest.sweep_stale()
-    local needs = xtable.sweep(stalker_needs, _is_stale, function(id)
-        ap_debug.debug("[TRACKER] stalker_needs_expired: squad=%d", id)
-    end)
-
-    if killed > 0 or elited > 0 or scripted > 0 or conquered > 0 or needs > 0 or ap_debug.enabled() then
-        ap_debug.debug("[TRACKER] periodic_sync: killers=%d elites=%d squads=%d smarts=%d needs=%d", killed, elited, scripted, conquered, needs)
-    end
-
-    ResetTimeEvent("ap_alife_tracker", "sync", cfg.alife_sync_interval)
-end
-
 local function _on_squad_npc_death(squad, npc, killer)
     return ap_debug.observe(nil, "tracker:death", function()
         local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
@@ -529,6 +509,9 @@ local function _on_squad_npc_death(squad, npc, killer)
         end
         if victim_id then
             unregister_entity(victim_id)
+        end
+        if squad and squad:npc_count() <= 1 then
+            _unregister_squad(squad.id)
         end
         return { code = "ok", killer_id = killer_id, victim_id = victim_id }
     end)
@@ -542,11 +525,6 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
 
     CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)
-
-    if cfg and cfg.alife_periodic_sync_enabled then
-        CreateTimeEvent("ap_alife_tracker", "sync", cfg.alife_sync_interval, _periodic_sync)
-        ap_debug.debug("[TRACKER] periodic_sync_enabled: interval=%ds", cfg.alife_sync_interval)
-    end
 
     ap_debug.info("[TRACKER] Initialized")
 end

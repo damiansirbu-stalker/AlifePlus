@@ -199,7 +199,8 @@ Rules:
 | `PRODUCER.REACTIVE` | Producer dispatch |
 | `DISPATCH` | Event publish (ap_utils) |
 | `CONSUMER` | Cause consumer routing |
-| `BEHAVIOR` | Elite buffs (ap_alife_behavior) |
+| `OBJECT_MUTATOR` | Runtime combat modifiers (ap_object_mutator) |
+| `SMART_MUTATOR` | Territory conquest (ap_smart_mutator) |
 | `TEST` | MCM test tools (ap_test) |
 
 ### Tracing

@@ -174,6 +174,7 @@ Versions:
     Configurability:
       Added: per-consequence walk/rush, tactical defaults rush, routine defaults walk (MCM on/off)
       Added: stash protection, NPCs skip stashes with essential items (MCM on/off)
+      Added: area conquest faction mutation toggle, disable to keep squad movement without faction changes (MCM on/off)
       Added: base guard for stash, loot/fill/ambush skip when squad already at base
       Changed: revenge and elite hunters skip kills that don't affect faction relations
     Smart terrain routing:

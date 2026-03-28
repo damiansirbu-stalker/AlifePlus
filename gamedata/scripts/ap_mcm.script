@@ -8,10 +8,6 @@ defaults = {
     cause_max_events = 10,
     consequence_max_events = 2,
 
-    -- A-Life Tracker
-    alife_periodic_sync_enabled = false,
-    alife_sync_interval = 600,
-
     -- Cause: Elite
     cause_elite_enabled = true,
     elite_kills_per_level = 2,
@@ -286,6 +282,7 @@ defaults = {
     area_conquest_enabled = true,
     area_conquest_max_smarts = 50,
     area_conquest_spawn_num = 2,
+    area_conquest_mutate_smart = true,
 
     -- Development
     log_level = "WARN",
@@ -298,8 +295,6 @@ local key_to_tab = {
     distributor_interval_sec = "general",
     cause_max_events = "general",
     consequence_max_events = "general",
-    alife_periodic_sync_enabled = "alife_tracker",
-    alife_sync_interval = "alife_tracker",
     cause_elite_enabled = "causes/elite",
     elite_kills_per_level = "causes/elite",
     cause_elitekill_enabled = "causes/elitekill",
@@ -414,6 +409,7 @@ local key_to_tab = {
     area_conquest_enabled = "consequences/area_conquer",
     area_conquest_max_smarts = "consequences/area_conquer",
     area_conquest_spawn_num = "consequences/area_conquer",
+    area_conquest_mutate_smart = "consequences/area_conquer",
     consequence_harvest_hunt_enabled = "consequences/harvest_hunt",
     consequence_harvest_hunt_rush = "consequences/harvest_hunt",
     consequence_harvest_hunt_chance = "consequences/harvest_hunt",
@@ -553,16 +549,6 @@ function on_mcm_load()
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
                     { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
-                },
-            },
-            {
-                id = "alife_tracker",
-                sh = true,
-                gr = {
-                    slide("ui_mcm_ap_alife_tracker_title"),
-                    desc("ui_mcm_ap_alife_tracker_desc"),
-                    check("alife_periodic_sync_enabled"),
-                    track("alife_sync_interval", 300, 1800, 60),
                 },
             },
             {
@@ -887,6 +873,7 @@ function on_mcm_load()
                             check("area_conquest_enabled"),
                             track("area_conquest_max_smarts", 10, 100, 5),
                             track("area_conquest_spawn_num", 1, 5, 1),
+                            check("area_conquest_mutate_smart"),
                         },
                     },
                     {

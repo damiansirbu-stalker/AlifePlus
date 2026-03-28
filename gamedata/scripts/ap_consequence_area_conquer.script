@@ -30,7 +30,7 @@ local function _handler(event_data)
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
 
-        ap_conquest.conquer_smart(smart.id, squad.player_id)
+        ap_smart_mutator.conquer_smart(smart.id, squad.player_id)
 
         ap_debug.observe(trace, ACTION.ADD_MARKER, function()
             ap_utils.mark(squad.id, "Conquering area")

@@ -48,8 +48,8 @@ No engine patches, no disk writes. Runtime callbacks, Lua globals, xlibs wrapper
 | ap_producer_reactive | Unified producer: callback dispatch, gates, predicate eval, xbus publish |
 | ap_consumer | Priority dispatch: xbus subscribe, consequence chain, rate limit |
 | ap_alife_tracker | State manager: killers, elites, scripted_squads, stalker_needs |
-| ap_conquest | Territory conquest: conquered_smarts, faction_controlled mutation, FIFO eviction |
-| ap_alife_behavior | Elite combat buffs: grenades, AP ammo, rank boost (npc_on_before_hit) |
+| ap_smart_mutator | Territory conquest: conquered_smarts, faction_controlled mutation, FIFO eviction |
+| ap_object_mutator | Runtime combat modifiers: grenades, AP ammo, rank boost (npc_on_before_hit) |
 | ap_utils | Event wrappers, PDA, capacity-aware find_smart, chase API, find helpers |
 | ap_cause_* | Cause predicates (one file per cause group) |
 | ap_consequence_* | Consequence handlers (one file per cause; needs = config table) |
@@ -73,7 +73,7 @@ Engine calls on_game_start() per script. File order undefined; operations indepe
 - **_ap_deps** asserts xlibs is_compatible(1.2.2). Hard crash on mismatch.
 - **ap_mcm** loads config from defaults, registers on_option_change.
 - **ap_alife_tracker** creates elite_dead TTL table, registers save_state/load_state/on_game_load/squad_on_npc_death, starts arrival timer (30s) and optional periodic_sync.
-- **ap_alife_behavior** registers npc_on_before_hit.
+- **ap_object_mutator** registers npc_on_before_hit.
 - **ap_producer_reactive** resets dispatch state, registers actor_on_first_update. Does NOT subscribe to callbacks yet.
 - **ap_consumer** registers actor_on_first_update. Does NOT subscribe to xbus yet.
 - **ap_cause_*** register predicates with producer via register().
@@ -208,9 +208,9 @@ Ordered gates in dispatch(). Gates 1-2 run before any predicate. Gates 3-4 are p
 | Name | Type | Scope | Duration | Location |
 |------|------|-------|----------|----------|
 | Destination capacity | Reverse index (_destination_counts) | per-smart-id | Real-time: SIMBOARD.smarts[id].squads + in-transit count | ap_alife_tracker, ap_utils.find_smart |
-| Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_alife_behavior |
-| Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_alife_behavior |
-| AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_alife_behavior |
+| Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_object_mutator |
+| Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_object_mutator |
+| AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_object_mutator |
 | Scripted squad TTL | xtime.game_sec() timestamp | per-squad | 7200 game-seconds (SCRIPTED_SQUAD_TTL) | ap_alife_tracker |
 | Elite dead grace | xttltable TTL table | per-entity | 3600s (DEAD_GRACE_SEC) | ap_alife_tracker |
 | Elitekill victim cooldown | create_cooldown | per-victim | MCM: elitekill_cooldown_sec | ap_cause_elitekill |
@@ -361,7 +361,7 @@ Lazy init: first eval scatters 9 DTO timestamps across 0..2*threshold. Roughly h
 | elites | entity_id | { level, kills, level_id, name, is_stalker } | save/load |
 | elite_dead | entity_id | same as elites (xttltable, 3600s grace after death) | transient |
 | scripted_squads | squad_id | { scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args } | save/load |
-| conquered_smarts | smart_id | { faction, conquered_at } | save/load (two-phase, in ap_conquest) |
+| conquered_smarts | smart_id | { faction, conquered_at } | save/load (two-phase, in ap_smart_mutator) |
 | stalker_needs | squad_id | { last_hunger_at ... last_social_at } | save/load |
 
 ### Scripted squads
@@ -398,7 +398,7 @@ _check_arrivals runs every 30s (CreateTimeEvent). For each scripted_squad with t
 
 ### Save/load
 
-Tracker tables persisted to m_data.ap_alife_tracker (conquest separately in m_data.ap_conquest). On load: tracked_at persists as game-time (survives save/load). Squads stay scripted. Handler functions re-registered on on_game_start. Conquered smarts use two-phase restore (see Runtime Smart Mutation).
+Tracker tables persisted to m_data.ap_alife_tracker (conquest separately in m_data.ap_smart_mutator). On load: tracked_at persists as game-time (survives save/load). Squads stay scripted. Handler functions re-registered on on_game_start. Conquered smarts use two-phase restore (see Runtime Smart Mutation).
 
 ---
 
@@ -430,7 +430,7 @@ area_conquer consequence
 - `try_respawn` then spawns conqueror's faction via standard logic
 - `clear_faction_controlled` reverts all mutations, restores `default_faction`
 - ZCP compatible -ZCP `try_respawn` uses the same `faction_controlled` check as vanilla
-- Owned by `ap_conquest.script` (extracted from ap_alife_tracker). Own save/load callbacks, migrates from old `m_data.ap_alife_tracker` location.
+- Owned by `ap_smart_mutator.script` (extracted from ap_alife_tracker). Own save/load callbacks.
 
 ### FIFO eviction
 
@@ -452,7 +452,7 @@ Mutations lost at STATE_Read (engine rebuilds from LTX). Two-phase restore:
 
 ---
 
-## Runtime Combat Modifiers (ap_alife_behavior)
+## Runtime Combat Modifiers (ap_object_mutator)
 
 npc_on_before_hit -> combat buffs from tracker kill data. Gated by acquire_lock (1s).
 

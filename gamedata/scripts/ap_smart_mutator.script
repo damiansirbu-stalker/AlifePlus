@@ -1,4 +1,4 @@
---- ap_conquest: Territory conquest tracking and faction-controlled smart management
+--- ap_smart_mutator: Territory conquest tracking and faction-controlled smart management
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 local math_huge = math.huge
@@ -25,19 +25,20 @@ local function _evict_oldest()
     local smart = xobject.se(oldest_id)
     if smart then xsmart.clear_faction_controlled(smart) end
     conquered_smarts[oldest_id] = nil
-    ap_debug.debug("[TRACKER] evict_oldest: smart=%d", oldest_id)
+    ap_debug.debug("[SMART_MUTATOR] evict_oldest: smart=%d", oldest_id)
 end
 
 function conquer_smart(smart_id, faction)
     if not smart_id or not faction then return false end
     if not cfg or not cfg.area_conquest_enabled then return false end
+    if not cfg.area_conquest_mutate_smart then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
     local existing = conquered_smarts[smart_id]
     if existing and existing.faction == faction then
         _conquest_seq = _conquest_seq + 1
         existing.conquered_at = _conquest_seq
-        ap_debug.debug("[TRACKER] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
+        ap_debug.debug("[SMART_MUTATOR] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
         return true
     end
     if not existing then
@@ -50,33 +51,19 @@ function conquer_smart(smart_id, faction)
     end
     _conquest_seq = _conquest_seq + 1
     conquered_smarts[smart_id] = { faction = faction, conquered_at = _conquest_seq }
-    ap_debug.debug("[TRACKER] conquer_smart: smart=%d faction=%s", smart_id, faction)
+    ap_debug.debug("[SMART_MUTATOR] conquer_smart: smart=%d faction=%s", smart_id, faction)
     return true
 end
 
---- Sweep stale conquered smarts (called by ap_alife_tracker periodic_sync)
-function sweep_stale()
-    return xtable.sweep(conquered_smarts, function(id) return not xobject.se(id) end)
-end
-
---- Get conquered smarts count for debug logging
-function count()
-    return xtable.count(conquered_smarts)
-end
-
 local function _on_save_state(m_data)
-    m_data.ap_conquest = {
+    m_data.ap_smart_mutator = {
         conquered_smarts = conquered_smarts,
         conquest_seq = _conquest_seq,
     }
 end
 
 local function _on_load_state(m_data)
-    local saved = m_data.ap_conquest
-    if not saved then
-        local old = m_data.ap_alife_tracker
-        saved = old and { conquered_smarts = old.conquered_smarts, conquest_seq = old.conquest_seq } or {}
-    end
+    local saved = m_data.ap_smart_mutator or {}
     conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
     _conquest_seq = saved.conquest_seq or 0
@@ -98,12 +85,12 @@ local function _on_game_load()
         ::continue::
     end
     _conquered_pending = nil
-    ap_debug.debug("[TRACKER] on_game_load: restored %d conquered smarts", restored)
+    ap_debug.debug("[SMART_MUTATOR] on_game_load: restored %d conquered smarts", restored)
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
-    ap_debug.info("[TRACKER] Initialized")
+    ap_debug.info("[SMART_MUTATOR] Initialized")
 end
