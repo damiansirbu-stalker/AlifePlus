@@ -25,7 +25,7 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, { rush = true })
+            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_area_conquer_rush })
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end

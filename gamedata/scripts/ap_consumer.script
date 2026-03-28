@@ -27,7 +27,7 @@ function register(name, config, handler)
         _registry[event] = {}
     end
 
-    _registry[event][#_registry[event]+1] = {
+    local entry = {
         name = name,
         priority = config.priority or 50,
         condition = config.condition,
@@ -35,7 +35,18 @@ function register(name, config, handler)
         label = name,
     }
 
-    table_sort(_registry[event], _priority_compare)
+    local entries = _registry[event]
+    for i = 1, #entries do
+        if entries[i].name == name then
+            entries[i] = entry
+            table_sort(entries, _priority_compare)
+            ap_debug.info("[CONSUMER] registered: %s event=%s priority=%d (replaced)", name, event, config.priority or 50)
+            return true
+        end
+    end
+
+    entries[#entries + 1] = entry
+    table_sort(entries, _priority_compare)
     ap_debug.info("[CONSUMER] registered: %s event=%s priority=%d", name, event, config.priority or 50)
     return true
 end
@@ -50,7 +61,7 @@ local function _process(event_type, event_data)
     if not consequences then return end
 
     ap_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s",
-        event_type, tostring(event_data.squad_id or event_data.id), tostring(event_data.level_id))
+        event_type, event_data.squad_id or event_data.id, event_data.level_id)
 
     for _, entry in ipairs(consequences) do
         if not ap_utils.check_consequence_rate_limit(entry.name) then

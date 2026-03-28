@@ -65,7 +65,8 @@ local CONFIGS = {
         dto_field = "last_heal_at", filter = xsmart.is_base, priority = 10, faction_filter = true,
         section_key = "HEAL" },
     { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
-        dto_field = "last_shelter_at", filter = xsmart.is_base, priority = 10, faction_filter = true },
+        dto_field = "last_shelter_at", filter = xsmart.is_base, priority = 10, faction_filter = true,
+        },
     { need = "money", consequence = CONSEQUENCE.MONEY_SEARCH, name = "money_search",
         dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10 },
     { need = "money", consequence = CONSEQUENCE.MONEY_HUNT, name = "money_hunt",
@@ -170,7 +171,6 @@ local function _make_handler(entry)
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
-
             local filter = _build_filter(entry, event_data.community)
             local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
 
@@ -180,7 +180,7 @@ local function _make_handler(entry)
             local res
             ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
                 res = ap_alife_tracker.script_squad(squad, smart, {
-                    rush = true,
+                    rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.name,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
                         section_key = entry.section_key, arrive_fn = entry.arrive_fn,

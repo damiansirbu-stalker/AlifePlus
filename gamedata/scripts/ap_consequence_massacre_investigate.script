@@ -33,7 +33,7 @@ local function _handler(event_data)
         local last_reason
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_alife_tracker.script_squad(squad, smart, { rush = true })
+                local res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_massacre_investigate_rush })
                 if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })

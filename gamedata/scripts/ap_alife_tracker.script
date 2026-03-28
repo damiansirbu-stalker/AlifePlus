@@ -1,7 +1,7 @@
 --- ap_alife_tracker: Tracks killers/elites/scripted_squads, lifecycle management
 
 local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
-local os_clock, table_concat = os.clock, table.concat
+local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback = ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
@@ -54,7 +54,7 @@ local function unscript_squad(squad_or_id)
     local squad
     if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
     if squad then
-        ap_debug.debug("[TRACKER] unscript_squad: squad=%d scripted_target=%s", squad_id, tostring(scripted_squads[squad_id].scripted_target))
+        ap_debug.debug("[TRACKER] unscript_squad: squad=%d scripted_target=%s", squad_id, scripted_squads[squad_id].scripted_target)
         xsquad.release_squad(squad)
     end
     _dec_destination(scripted_squads[squad_id].target_smart_id)
@@ -63,7 +63,7 @@ local function unscript_squad(squad_or_id)
 end
 
 local function _cleanup_stale()
-    local now = os_clock()
+    local now = xtime.game_sec()
     for squad_id, data in pairs(scripted_squads) do
         local squad = xobject.se(squad_id)
         local expired = (now - (data.tracked_at or 0)) > SCRIPTED_SQUAD_TTL
@@ -113,10 +113,6 @@ local function _on_load_state(m_data)
     elites = _validate_elites(saved.elites or {})
     scripted_squads = saved.scripted_squads or {}
     stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
-    local now = os_clock()
-    for _, data in pairs(scripted_squads) do
-        data.tracked_at = now
-    end
     _rebuild_destinations()
     if not saved.killers then ap_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.elites then ap_debug.warn("[TRACKER] load: missing elites, fresh init") end
@@ -192,7 +188,7 @@ end
 
 --- Update elite status (computes level from kills, upserts entry)
 --- @param id number Entity ID
---- @param data table { kills, name, level_id }
+--- @param data table { kills, name, level_id, is_stalker }
 --- @return table|nil Updated elite data, or nil on invalid input
 function update_elite(id, data)
     if not id or not data or not data.kills then return nil end
@@ -341,8 +337,10 @@ function script_squad(squad, smart, opts)
         ap_debug.warn("[TRACKER] script_squad: squad=%d invalid smart name", squad.id)
         return { code = RESULT.RULES_NEXT, reason = REASON.INVALID_SMART, id = squad.id }
     end
-    if xsquad.is_unscriptable_squad(squad) then
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, id = squad.id }
+    local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
+    if unscriptable then
+        ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s in script_squad", squad.id, unscriptable_reason or "unknown")
+        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, id = squad.id }
     end
     if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
         return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
@@ -359,7 +357,7 @@ function script_squad(squad, smart, opts)
     scripted_squads[squad.id] = {
         scripted_target = name,
         target_smart_id = smart.id,
-        tracked_at = os_clock(),
+        tracked_at = xtime.game_sec(),
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
     }
@@ -376,8 +374,10 @@ end
 function script_actor_target(squad)
     if not squad then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
     _cleanup_stale()
-    if xsquad.is_unscriptable_squad(squad) then
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, id = squad.id }
+    local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
+    if unscriptable then
+        ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s in script_actor_target", squad.id, unscriptable_reason or "unknown")
+        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, id = squad.id }
     end
     if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
         return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
@@ -394,7 +394,7 @@ function script_actor_target(squad)
     scripted_squads[squad.id] = {
         scripted_target = "actor",
         target_actor_id = 0,
-        tracked_at = os_clock(),
+        tracked_at = xtime.game_sec(),
     }
     ap_debug.debug("[TRACKER] script_actor_target: squad=%d -> actor", squad.id)
     return { code = RESULT.OK_NEXT, id = squad.id, dst = "actor", dst_id = 0 }
@@ -440,7 +440,9 @@ local function _try_arrival_redirect(squad_id, squad, smart, data)
     if alt then
         unscript_squad(squad)
         script_squad(squad, alt, {})
-        ap_debug.debug("[TRACKER] arrival_redirect: squad=%d full=%s -> alt=%d", squad_id, tostring(data.scripted_target), alt.id)
+        if ap_debug.enabled() then
+            ap_debug.debug("[TRACKER] arrival_redirect: squad=%d full=%s -> alt=%d", squad_id, data.scripted_target, alt.id)
+        end
         return true
     end
     unscript_squad(squad)
@@ -463,7 +465,7 @@ local function _process_arrival(squad_id)
     end
     local arrived = xsmart.is_arrived(squad, smart)
     ap_debug.debug("[TRACKER] check_arrival: squad=%d arrived=%s target=%s",
-        squad_id, tostring(arrived), tostring(data.scripted_target))
+        squad_id, arrived, data.scripted_target)
     _log_proximity("proximity", squad, smart, data)
     if not arrived then return end
     if _try_arrival_redirect(squad_id, squad, smart, data) then return end
@@ -479,7 +481,7 @@ local function _process_arrival(squad_id)
         return
     end
     ap_debug.debug("[TRACKER] _process_arrival: squad=%d handler=%s target=%s",
-        squad_id, key, tostring(data.scripted_target))
+        squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     if scripted_squads[squad_id] ~= data then return end
     unscript_squad(squad)
@@ -519,23 +521,16 @@ local function _periodic_sync()
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
-    return ap_debug.observe(nil, "tracker:death", function(trace)
+    return ap_debug.observe(nil, "tracker:death", function()
         local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
         local killer_id = ap_utils.get_entity_id(killer)
         if killer_id and xcreature.is_npc(killer_id) then
-            ap_debug.observe(trace, "tracker:register_kill", function()
-                register_kill(killer_id, victim_id)
-                return { code = "ok", reason = "id=" .. killer_id }
-            end)
+            register_kill(killer_id, victim_id)
         end
         if victim_id then
-            ap_debug.observe(trace, "tracker:unregister", function()
-                unregister_entity(victim_id)
-                return { code = "ok", reason = "id=" .. victim_id }
-            end)
+            unregister_entity(victim_id)
         end
-
-        return { code = "ok" }
+        return { code = "ok", killer_id = killer_id, victim_id = victim_id }
     end)
 end
 

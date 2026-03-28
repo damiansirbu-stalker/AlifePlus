@@ -10,7 +10,6 @@ local cfg = ap_mcm.cfg
 local function on_squad_npc_death(trace, squad, npc, killer)
     if not cfg.cause_squadkill_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_SQUAD } end
-    if xsquad.is_unscriptable_squad(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE } end
 
     -- Check if squad is wiped (count includes dying NPC, so <= 1 means last one)
     if squad:npc_count() > 1 then return { code = RESULT.RULES_NEXT, reason = REASON.SQUAD_ALIVE } end
@@ -37,7 +36,7 @@ local function on_squad_npc_death(trace, squad, npc, killer)
         killer_squad_id = killer_squad_id,
         victim_faction = victim_faction,
         position = npc and npc.position,
-        level_id = xlevel.get_level_id(npc),
+        level_id = npc and xlevel.get_level_id(npc),
     }
 end
 

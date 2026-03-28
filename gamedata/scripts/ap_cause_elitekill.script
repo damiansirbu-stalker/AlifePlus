@@ -9,15 +9,23 @@ local time_global = time_global
 local cfg = ap_mcm.cfg
 local _cooldown
 
+local function _killer_unscriptable(killer_id)
+    if not killer_id or killer_id == 0 then return false end
+    local squad = xsquad.get_squad_by_member(killer_id)
+    if not squad then return false end
+    return xsquad.is_unscriptable_squad(squad)
+end
+
 local function _on_death(trace, squad, npc, killer)
     if not cfg.cause_elitekill_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if xsquad.is_unscriptable_squad(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE } end
 
     local victim_id = ap_utils.get_entity_id(npc)
-    local killer_id = ap_utils.get_entity_id(killer)
     if not victim_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
-
     if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ELITE } end
+
+    local killer_id = ap_utils.get_entity_id(killer)
+    local unscriptable, unscriptable_reason = _killer_unscriptable(killer_id)
+    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
 
     local now = time_global()
     local key = "elitekill_" .. victim_id

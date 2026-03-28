@@ -19,20 +19,35 @@ local chase_opts = {
     pda_lost = "text_pda_consequence_elitekill_targeted_lost",
     pda_found = "text_pda_consequence_elitekill_targeted_found",
     marker = "Hunting killer",
+    rush_key = "consequence_elitekill_targeted_rush",
 }
 
-local function _find_hunters(trace, level_id, victim_id, killer_id)
+local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendly)
     local hunters
     ap_debug.observe(trace, ACTION.FIND_TARGETS, function()
         hunters = {}
+        local skipped = 0
         local elites = ap_alife_tracker.get_elites_on_level(level_id)
         for id in pairs(elites) do
-            if id ~= victim_id and id ~= killer_id then
-                local squad = xsquad.get_squad_by_member(id)
-                if squad then hunters[#hunters + 1] = squad end
+            if id == victim_id or id == killer_id then goto continue end
+            local squad = xsquad.get_squad_by_member(id)
+            if not squad then goto continue end
+            local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
+            if unscriptable then
+                ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s", id, unscriptable_reason or "unknown")
+                skipped = skipped + 1
+                goto continue
             end
+            if skip_friendly then
+                local comm = squad.get_squad_community and squad:get_squad_community()
+                if not comm or not game_relations.is_factions_enemies(comm, "actor_stalker") then goto continue end
+            end
+            hunters[#hunters + 1] = squad
+            ::continue::
         end
-        return ap_debug.result_squads(hunters)
+        local res = ap_debug.result_squads(hunters)
+        res.skipped_unscriptable = skipped
+        return res
     end)
     return hunters
 end
@@ -56,7 +71,7 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        local hunters = _find_hunters(trace, level_id, event_data.id, killer_id)
+        local hunters = _find_hunters(trace, level_id, event_data.id, killer_id, is_player_kill)
         if #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 
         local max_hunters = cfg.consequence_elitekill_targeted_max_squads

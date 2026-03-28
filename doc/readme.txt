@@ -171,45 +171,60 @@ Stalker_Boss - Russian translation
 Versions:
 
   1.2.0
-    Added: capacity-aware smart terrain routing -- all consequence paths check real population before sending squads (xlibs)
-    Added: on-arrival redirect -- online squads at full smarts complete their handler then walk to nearest available smart
-    Added: stash loot blacklist -- NPCs skip stashes containing toolkits, repair kits, craft tools, or workshop kits (MCM toggle)
-    Added: radiant squad guard -- script_squad and script_actor_target reject unscriptable and externally-scripted squads (xlibs)
-    Added: structured arrival logging for needs consequences (destination, action, items)
-    Added: squad section name in script_squad log for NPC traceability
-    Changed: territory conquest extracted to own module with independent save/load and migration
-    Changed: semver dependency gate -- patch bumps in xlibs no longer require AP releases (xlibs)
-    Changed: game time calculations use cached helper instead of raw engine calls (xlibs)
-    Fixed: destination capacity only covered needs consequences, all other paths bypassed it
-    Fixed: Dead City barman (Aslan) not protected by unscriptable guard due to typo (xlibs)
-    Fixed: artefact drop/pickup exploit triggering infinite harvest_hunt chasers (per-section 2h cooldown)
-    Fixed: unnecessary luabind call in script_squad debug log when debug disabled
+    Configurability:
+      Added: per-consequence walk/rush, tactical defaults rush, routine defaults walk (MCM on/off)
+      Added: stash protection, NPCs skip stashes with essential items (MCM on/off)
+      Added: base guard for stash, loot/fill/ambush skip when squad already at base
+      Changed: revenge and elite hunters skip kills that don't affect faction relations
+    Smart terrain routing:
+      Added: capacity-aware routing, all paths check real population + in-transit count
+      Added: on-arrival redirect, squads at full smarts complete handler then relocate
+      Changed: territory conquest extracted to own module with independent save/load
+    NPC protection:
+      Added: unscriptable guard at cause, consequence, and tracker levels
+      Added: is_externally_scripted check (Warfare, condlist, random patrol compatibility)
+      Fixed: Aslan (Dead City barman) not in unscriptable list due to typo (xlibs)
+    Performance:
+      Changed: debug overhead eliminated when off, simplified internals
+    Compatibility:
+      Changed: semver dependency gate, xlibs patch bumps no longer cascade AP releases
+      Changed: squad TTL uses game time instead of wall clock, survives sleep acceleration
+    Observability:
+      Added: structured arrival logging for needs consequences (destination, action, items)
+      Added: diagnostic logging for smart search and squad filtering in debug mode
+    Fixed:
+      Fixed: elite kill PDA always using mutant template (is_stalker not persisted)
+      Fixed: duplicate consequence handlers accumulating across save/load cycles
+      Fixed: destination capacity only covered needs, all other paths bypassed it
+      Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (per-section cooldown)
+    Removed:
+      Removed: dead enum values
 
   1.2.0-RC1 - "Needs"
     Needs:
-      - 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
-      - 15 new consequences with per-need MCM controls (enable, threshold, chance, action)
-      - Night gate, faction-aware destination filter, destination limiter
-      - 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
-      - Needs persisted per-squad in save data
+      Added: 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
+      Added: 15 new consequences with per-need MCM controls (enable, threshold, chance, action)
+      Added: Night gate, faction-aware destination filter, destination limiter
+      Added: 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
+      Added: Needs persisted per-squad in save data
     Event pipeline:
-      - Radiant/reactive split with independent token buckets
-      - Consequence token bucket replaces global cause lock
-      - Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
+      Added: Radiant/reactive split with independent token buckets
+      Added: Consequence token bucket replaces global cause lock
+      Added: Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
     PDA:
-      - 168 message variants across 40 categories, stalker/mutant distinction
+      Added: 168 message variants across 40 categories, stalker/mutant distinction
     MCM:
-      - Reset button, retuned default chances, cleaned up labels
-      - Russian translation (Stalker_Boss)
+      Added: Reset button, retuned default chances, cleaned up labels
+      Added: Russian translation (Stalker_Boss)
     Performance:
-      - MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
-    Fixes:
-      - Reactive event starvation (cause lock starving needs and area causes)
-      - wounded_help faction matching (actor_stalker prefix)
-      - PDA messages now distinguish stalkers from mutants
-      - supply_trader exchange giving free items (now requires artefact)
+      Changed: MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
     Docs:
-      - manifesto.md with GSC vision, engine source proof, developer quotes
+      Added: manifesto.md with GSC vision, engine source proof, developer quotes
+    Fixed:
+      Fixed: Reactive event starvation (cause lock starving needs and area causes)
+      Fixed: wounded_help faction matching (actor_stalker prefix)
+      Fixed: PDA messages now distinguish stalkers from mutants
+      Fixed: supply_trader exchange giving free items (now requires artefact)
 
   1.1.1
     Fixed: dependency gate uses exact version match instead of string comparison

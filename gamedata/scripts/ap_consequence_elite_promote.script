@@ -29,7 +29,7 @@ local function _handler(event_data)
         local updated
         ap_debug.observe(trace, ACTION.UPDATE_ELITE, function()
             updated = ap_alife_tracker.update_elite(killer_id, {
-                kills = kills, name = name, level_id = level_id,
+                kills = kills, name = name, level_id = level_id, is_stalker = event_data.is_stalker,
             })
             if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
             return { code = "ok", id = killer_id, level = level }

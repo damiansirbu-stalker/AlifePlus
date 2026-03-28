@@ -133,7 +133,7 @@ local function _try_publish(on_map, name, result, trace, level_id)
     ap_utils.event_publish(result.cause, result)
     ap_utils.increment_cause_counter(name)
     ap_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
-        result.cause, tostring(result.squad_id), tostring(on_map), tostring(level_id))
+        result.cause, result.squad_id, on_map, level_id)
 end
 
 local function _radiant_exhausted(callback_type)
@@ -151,7 +151,7 @@ local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
 
         local allowed, count, max = ap_utils.check_cause_rate_limit(name)
         if not allowed then
-            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, tostring(level_id), tostring(squad_id))
+            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, level_id, squad_id)
             goto continue
         end
 
@@ -175,19 +175,20 @@ local function dispatch(callback_type, ...)
     local on_map, level_id = _resolve_on_map(callback_type, first_arg)
     local squad_id
     if not _actor_callbacks[callback_type] and type(first_arg) == "userdata" then
-        squad_id = first_arg.id
+        local id = first_arg.id
+        if type(id) == "number" then squad_id = id end
     end
 
     if on_map ~= nil and not _alife_ratio_gate(on_map) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
-            tostring(on_map), cfg.alife_ratio, _on_count, _off_count, tostring(level_id), tostring(squad_id))
+            on_map, cfg.alife_ratio, _on_count, _off_count, level_id, squad_id)
         return
     end
 
     local event_allowed, event_class = _check_event_limiter(callback_type)
     if not event_allowed then
         ap_debug.debug("[PRODUCER.REACTIVE] %s_EVENT_BLOCKED %s level=%s sq=%s",
-            event_class, callback_type, tostring(level_id), tostring(squad_id))
+            event_class, callback_type, level_id, squad_id)
         return
     end
 

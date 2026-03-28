@@ -16,6 +16,7 @@ local chase_opts = {
     pda_lost = "text_pda_consequence_squadkill_revenge_lost",
     pda_found = "text_pda_consequence_squadkill_revenge_found",
     marker = "Chasing",
+    rush_key = "consequence_squadkill_revenge_rush",
 }
 
 local function _handler(event_data)
@@ -33,6 +34,9 @@ local function _handler(event_data)
 
         if not killer_squad_id and not is_player_kill then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
         if not position or not victim_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if is_player_kill and not game_relations.is_factions_enemies(victim_faction, "actor_stalker") then
+            return { code = RESULT.RULES_NEXT, reason = "friendly_faction" }
+        end
 
         local avengers = ap_utils.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },

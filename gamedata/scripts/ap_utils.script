@@ -232,13 +232,14 @@ end
 --- @return table Array of squad server objects
 function find_squads(pos, opts)
     opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
-    local result = xsquad.find_squads(pos, opts)
+    local result, skipped_unscriptable = xsquad.find_squads(pos, opts)
     if ap_debug.enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)
             .. " lv=" .. tostring(opts.level_id or "any")
             .. " dist=" .. tostring(opts.min_distance or 0) .. "-" .. tostring(opts.max_distance)
             .. " excl_smart=" .. tostring(opts.exclude_at_smart_id or "none")
             .. " excl_ids=" .. (opts.exclude_ids and tostring(next(opts.exclude_ids) and "yes" or "none") or "none")
+            .. (skipped_unscriptable > 0 and " skipped_unscriptable=" .. skipped_unscriptable or "")
         if #result == 0 then
             ap_debug.debug("[DISPATCH.FIND_SQUADS] count=0 | %s", params)
         else
@@ -270,11 +271,32 @@ end
 --- @return table|nil Smart server object or nil
 function find_smart(pos, opts)
     local original_filter = opts.filter
-    opts.filter = function(smart)
-        if original_filter and not original_filter(smart) then return false end
-        return xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id))
+    if not ap_debug.enabled() then
+        opts.filter = function(smart)
+            if original_filter and not original_filter(smart) then return false end
+            return xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id))
+        end
+        return xsmart.find_smart(pos, opts)
     end
-    return xsmart.find_smart(pos, opts)
+    local checked, rejected_filter, rejected_capacity = 0, 0, 0
+    opts.filter = function(smart)
+        checked = checked + 1
+        if original_filter and not original_filter(smart) then
+            rejected_filter = rejected_filter + 1
+            return false
+        end
+        if not xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id)) then
+            rejected_capacity = rejected_capacity + 1
+            return false
+        end
+        return true
+    end
+    local result = xsmart.find_smart(pos, opts)
+    if not result then
+        ap_debug.debug("[DISPATCH.FIND_SMART] no_smart checked=%d rejected_filter=%d rejected_capacity=%d level=%s",
+            checked, rejected_filter, rejected_capacity, opts.level_id)
+    end
+    return result
 end
 
 --- Find nearest smart with FIND_DESTINATION observe wrapper. Returns smart or nil.
@@ -344,7 +366,7 @@ function chase_register(opts)
                 return { code = "co_located", id = squad.id, chase = chase_count }
             end
             local res = ap_alife_tracker.script_squad(squad, smart, {
-                rush = true,
+                rush = cfg[opts.rush_key],
                 on_arrive = opts.handler_key,
                 on_arrive_args = {
                     target_squad_id = target_squad_id, chase_count = chase_count,
@@ -392,7 +414,7 @@ function chase_start(trace, chasers, target, pda_data, opts)
                 res = ap_alife_tracker.script_actor_target(chaser)
             else
                 res = ap_alife_tracker.script_squad(chaser, smart, {
-                    rush = true,
+                    rush = cfg[opts.rush_key],
                     on_arrive = opts.handler_key,
                     on_arrive_args = { target_squad_id = target.id },
                 })

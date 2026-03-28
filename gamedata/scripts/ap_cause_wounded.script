@@ -25,10 +25,15 @@ local function on_npc_medkit_use(trace, npc, medkit, kind)
     if not npc or not npc:alive() then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_OR_DEAD } end
 
     local squad = xsquad.get_squad_by_member(npc:id())
-    if squad and xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+    if squad then
+        local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
+        if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
+        if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+    end
 
     local se_npc = xobject.se(npc:id())
-    local level_id = se_npc and xlevel.get_level_id(se_npc) or xlevel.get_actor_level_id()
+    if not se_npc then return { code = RESULT.RULES_NEXT, reason = "no_se" } end
+    local level_id = xlevel.get_level_id(se_npc)
 
     return {
         cause = CAUSE.WOUNDED,

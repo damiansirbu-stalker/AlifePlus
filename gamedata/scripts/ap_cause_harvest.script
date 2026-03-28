@@ -33,6 +33,8 @@ local function _evaluate(_trace, item, npc)
         position = npc:position()
         local squad = xsquad.get_squad_by_member(npc:id())
         if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
+        if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
         taker_squad_id = squad.id
         level_id = xlevel.get_level_id(squad)
     end

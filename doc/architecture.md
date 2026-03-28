@@ -32,7 +32,7 @@ No engine patches, no disk writes. Runtime callbacks, Lua globals, xlibs wrapper
 | Anomaly smart_terrain | faction_controlled, respawn_params, default_faction, try_respawn | Runtime table mutation (via xsmart) |
 | Anomaly scripts | xr_reach_task (run+danger), xr_eat_medkit (NPC medkit hook) | xevent.hook, direct reference |
 | Save system | m_data table in save_state/load_state callbacks | Anomaly serialization |
-| xlibs | xbus, xsmart, xsquad, xcreature, xlevel, xlog, xpda, xmath, xtable, xttltable, xevent, xmcm, xinspect | Lua require (version-gated by _ap_deps) |
+| xlibs | xbus, xsmart, xsquad, xcreature, xlevel, xlog, xpda, xmath, xtable, xttltable, xevent, xmcm, xinspect, xtime, xobject, xconst, xstash | Lua require (version-gated by _ap_deps) |
 
 ---
 
@@ -70,7 +70,7 @@ Lua require resolves all script files. Module-level code runs: engine globals ca
 
 Engine calls on_game_start() per script. File order undefined; operations independent:
 
-- **_ap_deps** asserts xlibs version == 1.2.0. Hard crash on mismatch.
+- **_ap_deps** asserts xlibs is_compatible(1.2.2). Hard crash on mismatch.
 - **ap_mcm** loads config from defaults, registers on_option_change.
 - **ap_alife_tracker** creates elite_dead TTL table, registers save_state/load_state/on_game_load/squad_on_npc_death, starts arrival timer (30s) and optional periodic_sync.
 - **ap_alife_behavior** registers npc_on_before_hit.
@@ -180,6 +180,11 @@ Not obvious from any single file. Violations cause subtle bugs.
 
 4. **Mutation volatility.** Runtime smart terrain mutations (faction_controlled, respawn_params, faction) rebuilt from LTX on every load. Anything that mutates these must save/restore independently. Only conquered_smarts does this (two-phase).
 
+5. **Unscriptable guard contract.** Named NPCs, traders, quest givers, task givers, and companions must never be scripted, moved, or modified by AP. Three layers enforce this:
+   - **Cause level:** radiant causes (needs, stash, area) guard the triggering squad (it IS the responder). Reactive causes guard the entity AP would act on: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
+   - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true`. _find_hunters (elitekill_targeted) checks per hunter.
+   - **Tracker level:** script_squad and script_actor_target reject unscriptable + externally_scripted squads as defense-in-depth. Returns UNSCRIPTABLE_BYPASSED (WARN level) if reached -- indicates upstream filter gap.
+
 ---
 
 ## Pipeline Gates
@@ -206,7 +211,7 @@ Ordered gates in dispatch(). Gates 1-2 run before any predicate. Gates 3-4 are p
 | Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_alife_behavior |
 | Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_alife_behavior |
 | AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_alife_behavior |
-| Scripted squad TTL | os.clock timestamp | per-squad | 7200s (SCRIPTED_SQUAD_TTL) | ap_alife_tracker |
+| Scripted squad TTL | xtime.game_sec() timestamp | per-squad | 7200 game-seconds (SCRIPTED_SQUAD_TTL) | ap_alife_tracker |
 | Elite dead grace | xttltable TTL table | per-entity | 3600s (DEAD_GRACE_SEC) | ap_alife_tracker |
 | Elitekill victim cooldown | create_cooldown | per-victim | MCM: elitekill_cooldown_sec | ap_cause_elitekill |
 
@@ -229,13 +234,13 @@ Stop codes: **OK_STOP** (success, exclusive), **ERROR_STOP** (failure, abort). P
 | MASSACRE | reactive | squad_on_npc_death | IsStalker(victim), at smart, not is_base, kill_count >= threshold |
 | SQUADKILL | reactive | squad_on_npc_death | npc_count <= 1 (last member), not is_base |
 | BASEKILL | reactive | squad_on_npc_death | IsStalker(victim), at is_base, kill_count >= threshold, smart has faction |
-| ELITE | reactive | squad_on_npc_death | killer_id exists, projected_kill_count crosses new elite level |
-| ELITEKILL | reactive | squad_on_npc_death | is_elite(victim_id), per-victim cooldown not active |
-| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject exists, not is_base |
-| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item) |
-| STASH | radiant | RADIANT_CALLBACKS | stash within RADIUS_DISTANT_MAX |
-| AREA | radiant | RADIANT_CALLBACKS | community_stalker, empty smart, not is_base |
-| NEEDS | radiant | RADIANT_CALLBACKS | community_stalker, level.present(), Hull drive scoring (see Needs) |
+| ELITE | reactive | squad_on_npc_death | killer not unscriptable, killer_id exists, projected_kill_count crosses new elite level |
+| ELITEKILL | reactive | squad_on_npc_death | is_elite(victim_id), killer not unscriptable, per-victim cooldown not active |
+| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not unscriptable, subject exists, not is_base |
+| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not unscriptable |
+| STASH | radiant | RADIANT_CALLBACKS | not unscriptable, stash within RADIUS_DISTANT_MAX |
+| AREA | radiant | RADIANT_CALLBACKS | not unscriptable, community_stalker, empty smart, not is_base |
+| NEEDS | radiant | RADIANT_CALLBACKS | not unscriptable, community_stalker, level.present(), Hull drive scoring (see Needs) |
 
 ### Predicate contract
 
@@ -247,15 +252,15 @@ Producer wraps each call in observe(), attaches ._trace, publishes to xbus, incr
 
 ## Consequence Patterns
 
-Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA.
+Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. Rush mode (max-speed movement) is per-consequence MCM toggle (`consequence_{name}_rush`, default true for tactical/outward, false for routine needs).
 
 - **respond** -find nearby faction squads (50-500m), script toward event location. Used by: massacre_scavenge, massacre_investigate, basekill_support, wounded_hunt, wounded_help.
 - **chase** -arrival-based pursuit loop. Each arrival re-evaluates: alive? same level? not co-located? under max_chases? Pass -> re-script to target's current position. Fail -> unscript. Player targets use script_actor_target (engine-native, no loop). Used by: squadkill_revenge, elitekill_targeted, harvest_hunt.
 - **flee** -script to nearest friendly base, same level. Used by: squadkill_flee, basekill_flee.
 - **state** -no movement. Update tracker, markers, rewards. Used by: elite_promote, elitekill_bounty.
-- **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Used by: stash_loot, stash_fill, stash_ambush.
+- **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Base guard: squads at a base skip all stash consequences (won't leave base to chase stashes). Used by: stash_loot, stash_fill, stash_ambush.
 - **conquest** -script to empty smart, conquer immediately on fire, not on arrival. Used by: area_conquer.
-- **needs** -config-driven (15 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
+- **needs** -config-driven (15 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
 
 ---
 
@@ -370,7 +375,7 @@ unscript_squad(squad_or_id)      -> remove from table -> release_squad (clear sc
 - `scripted_target` bypasses `SIMBOARD:get_squad_target()` -squad enters `specific_update` (direct A->B) instead of `generic_update` (simulation re-evaluation)
 - `rush_to_target` sets run+danger behavior (via `xr_reach_task`)
 - `scripted_target` persists across save/load natively (`sim_squad_scripted` STATE_Write/STATE_Read)
-- TTL: 7200s (`SCRIPTED_SQUAD_TTL`). Stale entries (entity gone or expired) cleaned before every write
+- TTL: 7200 game-seconds (`SCRIPTED_SQUAD_TTL`). Stale entries (entity gone or expired) cleaned before every write
 
 ### Arrival detection
 
@@ -393,7 +398,7 @@ _check_arrivals runs every 30s (CreateTimeEvent). For each scripted_squad with t
 
 ### Save/load
 
-All tables persisted to m_data.ap_alife_tracker. On load: tracked_at reset to os.clock(). Squads stay scripted. Handler functions re-registered on on_game_start. Conquered smarts use two-phase restore (see Runtime Smart Mutation).
+Tracker tables persisted to m_data.ap_alife_tracker (conquest separately in m_data.ap_conquest). On load: tracked_at persists as game-time (survives save/load). Squads stay scripted. Handler functions re-registered on on_game_start. Conquered smarts use two-phase restore (see Runtime Smart Mutation).
 
 ---
 

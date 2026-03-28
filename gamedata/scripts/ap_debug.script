@@ -1,7 +1,6 @@
 --- ap_debug: Shared logger + tracing/timing for AlifePlus
---- Function-swap pattern: debug/trace/observe are swapped at level-change time (on_game_start, on_option_change).
 --- When log_level < DEBUG, debug() is a no-op, trace() returns _null_trace, observe() is a bare passthrough.
---- Zero per-call enabled() checks on hot paths. Inspired by CDEV profiler wrap/unwrap pattern.
+--- Each function checks enabled() inline. Overhead per call ~150ns, negligible vs luabind/string costs.
 local pairs, type, tostring, table_sort, table_concat = pairs, type, tostring, table.sort, table.concat
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
@@ -32,17 +31,17 @@ function err(fmt, ...)
     log.error(fmt, ...)
 end
 
---- debug: on/off paths
-local function _debug_on(fmt, ...) log.debug(fmt, ...) end
-local function _debug_off() return end
+--- debug: no-op when log_level < DEBUG
+function debug(fmt, ...)
+    if not enabled() then return end
+    log.debug(fmt, ...)
+end
 
-debug = _debug_off
-
---- trace: on/off paths
-local function _trace_on() return xtrace.new() end
-local function _trace_off() return _null_trace end
-
-trace = _trace_off
+--- trace: returns null trace when log_level < DEBUG
+function trace()
+    if not enabled() then return _null_trace end
+    return xtrace.new()
+end
 
 local function _serialize_scalars(result)
     if type(result) ~= "table" then return "" end
@@ -58,8 +57,9 @@ local function _serialize_scalars(result)
     return " " .. table_concat(parts, " ")
 end
 
---- observe: on path (full tracing + timing + scalar serializer)
-local function _observe_on(tr, op_name, fn, ...)
+--- observe: passthrough when log_level < DEBUG, full tracing + timing otherwise
+function observe(tr, op_name, fn, ...)
+    if not enabled() then return fn(tr, ...) end
     if not tr then tr = xtrace.new() end
     local seg = tr:push(op_name)
     local tmr = xprofiler.new():start()
@@ -74,13 +74,6 @@ local function _observe_on(tr, op_name, fn, ...)
     return result
 end
 
---- observe: off path (passthrough to fn)
-local function _observe_off(tr, op_name, fn, ...)
-    return fn(tr, ...)
-end
-
-observe = _observe_off
-
 local function _collect_ids(squads)
     local ids = {}
     for i = 1, #squads do ids[i] = squads[i].id end
@@ -89,6 +82,7 @@ end
 
 --- Build observe result for multi-squad operations (MOVE_SQUAD, ADD_MARKER, consequence returns)
 function result_squads(squads, extra)
+    if not enabled() then return extra or { code = "ok" } end
     local res = { code = "ok", count = #squads, ids = _collect_ids(squads) }
     if extra then for k, v in pairs(extra) do res[k] = v end end
     return res
@@ -96,6 +90,7 @@ end
 
 --- Build observe result for single-squad operations
 function result_squad(squad, extra)
+    if not enabled() then return extra or { code = "ok" } end
     local res = { code = "ok", id = squad and squad.id }
     if extra then for k, v in pairs(extra) do res[k] = v end end
     return res
@@ -112,24 +107,14 @@ local function _dump_settings()
     log.debug("[MCM] %s", table_concat(parts, " "))
 end
 
---- Swap debug/trace/observe function pointers based on current log level
-local function _swap(level_name)
-    log.set_level(level_name)
-    if log.get_level() >= 5 then
-        debug, trace, observe = _debug_on, _trace_on, _observe_on
-    else
-        debug, trace, observe = _debug_off, _trace_off, _observe_off
-    end
-end
-
 local function _on_option_change()
     local level = ap_mcm and ap_mcm.get_config and ap_mcm.get_config("log_level") or "WARN"
-    _swap(level)
+    log.set_level(level)
 end
 
 function on_game_start()
     local level = ap_mcm and ap_mcm.get_config and ap_mcm.get_config("log_level") or "WARN"
-    _swap(level)
+    log.set_level(level)
 
     RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _dump_settings)
