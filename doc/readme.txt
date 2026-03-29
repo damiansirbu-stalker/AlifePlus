@@ -106,12 +106,12 @@ Needs (radiant)
   Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
   Sleep - Waits for nightfall. Finds a campfire. Sleeps through the night.
   Rest - Finds a campfire. Smokes a cigarette, has a drink.
-  Heal - Returns to a friendly base. Uses a medkit, bandage, or stimpack.
-  Shelter - Returns to a friendly base when exposed too long.
+  Heal - Finds a safe location. Uses a medkit, bandage, or stimpack.
+  Shelter - Finds a safe location when exposed too long.
   Money - Searches anomaly fields for artefacts, or hunts mutant lairs.
   Supply - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.
-  Job - Guards their base. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship. Military and Duty drill.
-  Social - Finds a campfire or returns to base. Shares cigarettes and drinks.
+  Job - Guards outposts and checkpoints. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship at remote sites. Military and Duty drill at forward positions.
+  Social - Finds a campfire or a safe location. Shares cigarettes and drinks.
 
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying. 
   A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.
@@ -178,34 +178,37 @@ Usage and License:
 Versions:
 
   1.2.0
-    Configurability:
-      Added: per-consequence walk/rush, tactical defaults rush, routine defaults walk (MCM on/off)
-      Added: stash protection, NPCs skip stashes with essential items (MCM on/off)
-      Added: area conquest faction mutation toggle, disable to keep squad movement without faction changes (MCM on/off)
-      Added: base guard for stash, loot/fill/ambush skip when squad already at base
-      Changed: revenge and elite hunters skip kills that don't affect faction relations
-    Smart terrain routing:
-      Added: capacity-aware routing, all paths check real population + in-transit count
-      Added: on-arrival redirect, squads at full smarts complete handler then relocate
-      Changed: territory conquest extracted to own module with independent save/load
     NPC protection:
-      Added: unscriptable guard at cause, consequence, and tracker levels
-      Added: is_externally_scripted check (Warfare, condlist, random patrol compatibility)
-      Fixed: Aslan (Dead City barman) not in unscriptable list due to typo (xlibs)
+      Fixed: named NPCs, traders, quest givers, and guards can no longer be moved or interrupted by AlifePlus
+      Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped entirely
+      Fixed: Aslan (Dead City barman) and Yantar bunker guards missing from protected list
+    Gameplay:
+      Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)
+      Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)
+      Added: area conquest mutation toggle - disable to keep squad movement without changing smart terrain faction (MCM on/off)
+      Added: base guard for stash consequences - squads at base won't leave to chase stashes
+      Changed: revenge and elite hunters skip friendly factions
+      Changed: area conquest only targets enemy or unclaimed territory
+      Changed: default consequence chances raised from 22% to 50% for needs and reactive consequences (random chance will probably disappear soon)
+    Smart terrain routing:
+      Added: capacity-aware routing - all paths check real population + in-transit squads before sending more
+      Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base
+      Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases
+      Fixed: destination capacity only covered needs, all other consequences bypassed it
+    Stability:
+      Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration
+      Changed: territory conquest extracted to own module with independent save/load
+      Changed: semver dependency gate - xlibs patch updates no longer require AP updates
+      Fixed: elite kill PDA always showing mutant template instead of stalker
+      Fixed: consequence handlers duplicating across save/load cycles
+      Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (cooldown added)
     Performance:
-      Changed: debug overhead eliminated when off, simplified internals
-    Compatibility:
-      Changed: semver dependency gate, xlibs patch bumps no longer cascade AP releases
-      Changed: squad TTL uses game time instead of wall clock, survives sleep acceleration
+      Changed: debug/trace overhead eliminated when log level below DEBUG
     Observability:
-      Added: structured arrival logging for needs consequences (destination, action, items)
-      Added: diagnostic logging for smart search and squad filtering in debug mode
-    Fixed:
-      Fixed: elite kill PDA always using mutant template (is_stalker not persisted)
-      Fixed: duplicate consequence handlers accumulating across save/load cycles
-      Fixed: destination capacity only covered needs, all other paths bypassed it
-      Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (per-section cooldown)
+      Added: structured arrival logging with destination, action, and item details
+      Added: diagnostic logging for smart search and squad filtering
     Removed:
+      Removed: periodic sync (redundant with new cleanup on squad wipe)
       Removed: dead enum values
 
   1.2.0-RC1 - "Needs"

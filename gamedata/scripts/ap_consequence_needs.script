@@ -52,6 +52,8 @@ local function _arrive_trade(go)
     return sell_sec, nil
 end
 
+local function _is_not_base(smart) return not xsmart.is_base(smart) end
+
 local CONFIGS = {
     { need = "hunger", consequence = CONSEQUENCE.HUNGER_CAMPFIRE, name = "hunger_campfire",
         dto_field = "last_hunger_at", filter = xsmart.has_campfire, priority = 10,
@@ -62,10 +64,10 @@ local CONFIGS = {
         dto_field = "last_rest_at", filter = xsmart.has_campfire, priority = 10,
         section_key = "REST" },
     { need = "heal", consequence = CONSEQUENCE.HEAL_BASE, name = "heal_base",
-        dto_field = "last_heal_at", filter = xsmart.is_base, priority = 10, faction_filter = true,
+        dto_field = "last_heal_at", priority = 10, faction_filter = true,
         section_key = "HEAL" },
     { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
-        dto_field = "last_shelter_at", filter = xsmart.is_base, priority = 10, faction_filter = true,
+        dto_field = "last_shelter_at", priority = 10, faction_filter = true,
         },
     { need = "money", consequence = CONSEQUENCE.MONEY_SEARCH, name = "money_search",
         dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10 },
@@ -75,24 +77,24 @@ local CONFIGS = {
         dto_field = "last_supply_at", filter = xsmart.has_trader_job, priority = 10,
         arrive_fn = "trade" },
     { need = "job", consequence = CONSEQUENCE.JOB_GUARD, name = "job_guard",
-        dto_field = "last_job_at", filter = xsmart.is_base, priority = 20, faction_filter = true,
+        dto_field = "last_job_at", filter = _is_not_base, priority = 20, faction_filter = true,
         section_key = "GUARD" },
     { need = "job", consequence = CONSEQUENCE.JOB_EXPLORE, name = "job_explore",
         dto_field = "last_job_at", priority = 30 },
     { need = "job", consequence = CONSEQUENCE.JOB_RESEARCH, name = "job_research",
         dto_field = "last_job_at", filter = xsmart.has_anomaly, priority = 40 },
     { need = "job", consequence = CONSEQUENCE.JOB_WORSHIP, name = "job_worship",
-        dto_field = "last_job_at", filter = xsmart.is_base, priority = 15,
+        dto_field = "last_job_at", filter = _is_not_base, priority = 15,
         faction_list = { monolith = true, greh = true, zombied = true } },
     { need = "job", consequence = CONSEQUENCE.JOB_EXERCISE, name = "job_exercise",
-        dto_field = "last_job_at", filter = xsmart.is_base, priority = 15,
+        dto_field = "last_job_at", filter = _is_not_base, priority = 15,
         faction_list = { army = true, dolg = true },
         section_key = "EXERCISE" },
     { need = "social", consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, name = "social_campfire",
         dto_field = "last_social_at", filter = xsmart.has_campfire, priority = 10,
         section_key = "SOCIAL" },
     { need = "social", consequence = CONSEQUENCE.SOCIAL_BASE, name = "social_base",
-        dto_field = "last_social_at", filter = xsmart.is_base, priority = 20, faction_filter = true,
+        dto_field = "last_social_at", priority = 20, faction_filter = true,
         section_key = "SOCIAL" },
 }
 

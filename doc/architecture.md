@@ -183,6 +183,7 @@ Not obvious from any single file. Violations cause subtle bugs.
 5. **Unscriptable guard contract.** Named NPCs, traders, quest givers, task givers, and companions must never be scripted, moved, or modified by AP. Three layers enforce this:
    - **Cause level:** radiant causes (needs, stash, area) guard the triggering squad (it IS the responder). Reactive causes guard the entity AP would act on: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
    - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true`. _find_hunters (elitekill_targeted) checks per hunter.
+   - **Externally scripted level:** radiant causes (needs, stash, area) check is_externally_scripted(squad) before is_unscriptable_squad. find_squads callers pass exclude_externally_scripted = true. _find_hunters (elitekill_targeted) checks per hunter. Catches Guards Spawner, Warfare, LTX condlist, AP's own mid-mission squads.
    - **Tracker level:** script_squad and script_actor_target reject unscriptable + externally_scripted squads as defense-in-depth. Returns UNSCRIPTABLE_BYPASSED (WARN level) if reached -- indicates upstream filter gap.
 
 ---
@@ -287,24 +288,24 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 | NEEDS | hunger_campfire | 10 | needs | has_campfire -> consume HUNGER |
 | NEEDS | sleep_campfire | 10 | needs | has_campfire |
 | NEEDS | rest_campfire | 10 | needs | has_campfire -> consume REST |
-| NEEDS | heal_base | 10 | needs | is_base + faction_filter -> consume HEAL |
-| NEEDS | shelter_indoor | 10 | needs | is_base + faction_filter |
+| NEEDS | heal_base | 10 | needs | faction_filter -> consume HEAL |
+| NEEDS | shelter_indoor | 10 | needs | faction_filter |
 | NEEDS | money_search | 10 | needs | has_anomaly |
 | NEEDS | money_hunt | 20 | needs | is_lair |
 | NEEDS | supply_trader | 10 | needs | has_trader_job -> trade exchange |
-| NEEDS | job_guard | 20 | needs | is_base + faction_filter -> consume GUARD |
+| NEEDS | job_guard | 20 | needs | NOT is_base + faction_filter -> consume GUARD |
 | NEEDS | job_explore | 30 | needs | -|
 | NEEDS | job_research | 40 | needs | has_anomaly |
-| NEEDS | job_worship | 15 | needs | is_base + monolith/greh/zombied |
-| NEEDS | job_exercise | 15 | needs | is_base + army/dolg -> consume EXERCISE |
+| NEEDS | job_worship | 15 | needs | NOT is_base + monolith/greh/zombied |
+| NEEDS | job_exercise | 15 | needs | NOT is_base + army/dolg -> consume EXERCISE |
 | NEEDS | social_campfire | 10 | needs | has_campfire -> consume SOCIAL |
-| NEEDS | social_base | 20 | needs | is_base + faction_filter -> consume SOCIAL |
+| NEEDS | social_base | 20 | needs | faction_filter -> consume SOCIAL |
 
 ### _build_filter
 
 One closure per handler call. 3 concerns evaluated per-smart in _build_filter (single pass, nearest match):
 
-1. **Type filter** (entry.filter): has_campfire, is_base, has_anomaly, is_lair, has_trader_job, nil
+1. **Type filter** (entry.filter): has_campfire, is_base, NOT is_base, has_anomaly, is_lair, has_trader_job, nil
 2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -worship, exercise
 3. **Faction enemy** (entry.faction_filter): is_factions_enemies(community, smart_faction) -scripted_target bypasses engine target_precondition
 
