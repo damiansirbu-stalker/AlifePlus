@@ -75,6 +75,9 @@ local CONFIGS = {
     { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
         dto_field = "last_shelter_at", filter = xsmart.has_surge_shelter, priority = 10,
         exclude_enemy = true },
+    { need = "shelter", consequence = CONSEQUENCE.SHELTER_OUTDOOR, name = "shelter_outdoor",
+        dto_field = "last_shelter_at", filter = xsmart.has_campfire, priority = 20,
+        exclude_enemy = true },
     { need = "money", consequence = CONSEQUENCE.MONEY_HARVEST, name = "money_harvest",
         dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10 },
     { need = "money", consequence = CONSEQUENCE.MONEY_HUNT, name = "money_hunt",
@@ -103,6 +106,12 @@ local CONFIGS = {
         dto_field = "last_social_at", filter = xsmart.is_base, priority = 20,
         exclude_enemy = true, section_key = "SOCIAL" },
 }
+
+--- Mark need as fulfilled so it backs off for a full threshold period.
+--- Used when no destination can be found -- retrying immediately won't help.
+local function _fulfill_need(squad_id, dto_field)
+    ap_alife_tracker.reset_stalker_need(squad_id, dto_field, xtime.game_sec())
+end
 
 --- Build filter closure: type check + faction list check + enemy exclusion check
 local function _build_filter(entry, community)
@@ -183,7 +192,10 @@ local function _make_handler(entry)
             local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
 
             local smart = ap_utils.find_smart_observed(trace, event_data.position, find_opts)
-            if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+            if not smart then
+                _fulfill_need(event_data.squad_id, entry.dto_field)
+                return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART }
+            end
 
             local res
             ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()

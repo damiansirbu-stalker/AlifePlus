@@ -212,6 +212,12 @@ defaults = {
     consequence_shelter_indoor_chance = 30,
     consequence_shelter_indoor_pda_chance = 30,
 
+    -- Consequence: Shelter Outdoor
+    consequence_shelter_outdoor_enabled = true,
+    consequence_shelter_outdoor_rush = false,
+    consequence_shelter_outdoor_chance = 30,
+    consequence_shelter_outdoor_pda_chance = 30,
+
     -- Consequence: Money Harvest
     consequence_money_harvest_enabled = true,
     consequence_money_harvest_rush = true,
@@ -439,6 +445,10 @@ local key_to_tab = {
     consequence_shelter_indoor_rush = "consequences/shelter_indoor",
     consequence_shelter_indoor_chance = "consequences/shelter_indoor",
     consequence_shelter_indoor_pda_chance = "consequences/shelter_indoor",
+    consequence_shelter_outdoor_enabled = "consequences/shelter_outdoor",
+    consequence_shelter_outdoor_rush = "consequences/shelter_outdoor",
+    consequence_shelter_outdoor_chance = "consequences/shelter_outdoor",
+    consequence_shelter_outdoor_pda_chance = "consequences/shelter_outdoor",
     consequence_money_harvest_enabled = "consequences/money_harvest",
     consequence_money_harvest_rush = "consequences/money_harvest",
     consequence_money_harvest_chance = "consequences/money_harvest",
@@ -951,6 +961,18 @@ function on_mcm_load()
                             check("consequence_shelter_indoor_rush"),
                             track("consequence_shelter_indoor_chance", 0, 100, 5),
                             track("consequence_shelter_indoor_pda_chance", 0, 100, 5),
+                        },
+                    },
+                    {
+                        id = "shelter_outdoor",
+                        sh = true,
+                        gr = {
+                            slide("ui_mcm_ap_consequences_shelter_outdoor_title"),
+                            desc("ui_mcm_ap_consequences_shelter_outdoor_desc"),
+                            check("consequence_shelter_outdoor_enabled"),
+                            check("consequence_shelter_outdoor_rush"),
+                            track("consequence_shelter_outdoor_chance", 0, 100, 5),
+                            track("consequence_shelter_outdoor_pda_chance", 0, 100, 5),
                         },
                     },
                     {

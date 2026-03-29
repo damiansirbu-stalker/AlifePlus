@@ -186,10 +186,13 @@ Versions:
       Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)
       Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)
       Added: area conquest mutation toggle - disable to keep squad movement without changing smart terrain faction (MCM on/off)
-      Added: base guard for stash consequences - squads at base won't leave to chase stashes
+      Added: shelter outdoor - squads seek campfires when no indoor shelter is nearby (MCM on/off)
+      Added: stash fill allowed at bases, ambush and loot disallowed
       Changed: revenge and elite hunters skip friendly factions
       Changed: area conquest only targets enemy or unclaimed territory
+      Changed: needs that cannot find a destination back off for a full threshold cycle, preventing repeated failed attempts
       Changed: default consequence chances set to 30% uniform (was mixed 11-22%)
+      Note: needs use game time natively, thresholds work correctly at any time_factor, including real-time (time_factor=1)
     Smart terrain routing:
       Added: capacity-aware routing - all paths check real population + in-transit squads before sending more
       Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base

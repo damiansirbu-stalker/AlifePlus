@@ -261,7 +261,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 - **state** -no movement. Update tracker, markers, rewards. Used by: elite_promote, elitekill_bounty.
 - **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Base guard: squads at a base skip all stash consequences (won't leave base to chase stashes). Used by: stash_loot, stash_fill, stash_ambush.
 - **conquest** -script to empty smart, conquer immediately on fire, not on arrival. Used by: area_conquer.
-- **needs** -config-driven (15 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
+- **needs** -config-driven (16 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
 
 ---
 
@@ -290,6 +290,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 | NEEDS | rest_campfire | 10 | needs | has_campfire + exclude_enemy -> consume REST |
 | NEEDS | heal_shelter | 10 | needs | has_surge_shelter + exclude_enemy -> consume HEAL |
 | NEEDS | shelter_indoor | 10 | needs | has_surge_shelter + exclude_enemy |
+| NEEDS | shelter_outdoor | 20 | needs | has_campfire + exclude_enemy |
 | NEEDS | money_harvest | 10 | needs | has_anomaly |
 | NEEDS | money_hunt | 20 | needs | is_lair |
 | NEEDS | supply_trader | 10 | needs | has_trader_job -> trade exchange |
@@ -395,7 +396,7 @@ _check_arrivals runs every 30s (CreateTimeEvent). For each scripted_squad with t
 | revenge_chase | squadkill_revenge | re-script to killer's current smart |
 | harvest_chase | harvest_hunt | re-script to taker's current smart |
 | elitekill_chase | elitekill_targeted | re-script to killer's current smart |
-| {15 need keys} | consequence_needs | reset DTO, online: _dispatch_arrive |
+| {16 need keys} | consequence_needs | reset DTO, online: _dispatch_arrive |
 
 ### Save/load
 
