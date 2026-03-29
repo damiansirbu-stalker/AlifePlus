@@ -285,29 +285,29 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 | STASH | stash_ambush | 20 | stash | community_ambusher -> script to stash smart (passive) |
 | STASH | stash_fill | 30 | stash | community_stalker -> script to stash, on_arrive: fill stash |
 | AREA | area_conquer | 20 | conquest | script to empty smart, conquer immediately |
-| NEEDS | hunger_campfire | 10 | needs | has_campfire -> consume HUNGER |
-| NEEDS | sleep_campfire | 10 | needs | has_campfire |
-| NEEDS | rest_campfire | 10 | needs | has_campfire -> consume REST |
-| NEEDS | heal_base | 10 | needs | faction_filter -> consume HEAL |
-| NEEDS | shelter_indoor | 10 | needs | faction_filter |
-| NEEDS | money_search | 10 | needs | has_anomaly |
+| NEEDS | hunger_campfire | 10 | needs | has_campfire + exclude_enemy -> consume HUNGER |
+| NEEDS | sleep_campfire | 10 | needs | has_campfire + exclude_enemy |
+| NEEDS | rest_campfire | 10 | needs | has_campfire + exclude_enemy -> consume REST |
+| NEEDS | heal_shelter | 10 | needs | has_surge_shelter + exclude_enemy -> consume HEAL |
+| NEEDS | shelter_indoor | 10 | needs | has_surge_shelter + exclude_enemy |
+| NEEDS | money_harvest | 10 | needs | has_anomaly |
 | NEEDS | money_hunt | 20 | needs | is_lair |
 | NEEDS | supply_trader | 10 | needs | has_trader_job -> trade exchange |
-| NEEDS | job_guard | 20 | needs | NOT is_base + faction_filter -> consume GUARD |
-| NEEDS | job_explore | 30 | needs | -|
+| NEEDS | job_outpost | 20 | needs | NOT is_base + NOT is_lair + exclude_enemy -> consume GUARD |
+| NEEDS | job_explore | 30 | needs | unclaimed (fac="none") |
 | NEEDS | job_research | 40 | needs | has_anomaly |
 | NEEDS | job_worship | 15 | needs | NOT is_base + monolith/greh/zombied |
 | NEEDS | job_exercise | 15 | needs | NOT is_base + army/dolg -> consume EXERCISE |
-| NEEDS | social_campfire | 10 | needs | has_campfire -> consume SOCIAL |
-| NEEDS | social_base | 20 | needs | faction_filter -> consume SOCIAL |
+| NEEDS | social_campfire | 10 | needs | has_campfire + exclude_enemy -> consume SOCIAL |
+| NEEDS | social_base | 20 | needs | is_base + exclude_enemy -> consume SOCIAL |
 
 ### _build_filter
 
 One closure per handler call. 3 concerns evaluated per-smart in _build_filter (single pass, nearest match):
 
-1. **Type filter** (entry.filter): has_campfire, is_base, NOT is_base, has_anomaly, is_lair, has_trader_job, nil
+1. **Type filter** (entry.filter): has_campfire, has_surge_shelter, is_base, NOT is_base, NOT is_base + NOT is_lair, unclaimed (fac="none"), has_anomaly, is_lair, has_trader_job, nil
 2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -worship, exercise
-3. **Faction enemy** (entry.faction_filter): is_factions_enemies(community, smart_faction) -scripted_target bypasses engine target_precondition
+3. **Enemy exclusion** (entry.exclude_enemy): is_factions_enemies(community, smart_faction) -scripted_target bypasses engine target_precondition
 
 Capacity filtering is handled by ap_utils.find_smart (unified, covers all consequence paths).
 

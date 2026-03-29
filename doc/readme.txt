@@ -189,11 +189,13 @@ Versions:
       Added: base guard for stash consequences - squads at base won't leave to chase stashes
       Changed: revenge and elite hunters skip friendly factions
       Changed: area conquest only targets enemy or unclaimed territory
-      Changed: default consequence chances raised from 22% to 50% for needs and reactive consequences (random chance will probably disappear soon)
+      Changed: default consequence chances set to 30% uniform (was mixed 11-22%)
     Smart terrain routing:
       Added: capacity-aware routing - all paths check real population + in-transit squads before sending more
+      Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base
       Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base
       Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases
+      Fixed: heal and shelter sending squads to mutant lairs (no type filter)
       Fixed: destination capacity only covered needs, all other consequences bypassed it
     Stability:
       Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration
