@@ -330,6 +330,19 @@ end
 --- @param squad table Squad server object
 --- @param smart table Target smart terrain
 --- @param opts table|nil { rush, on_arrive, on_arrive_args }
+local function _validate_script_target(squad, caller)
+    local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
+    if unscriptable then
+        ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, unscriptable_reason or "unknown", unscriptable_name or "?", caller)
+        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, name = unscriptable_name, id = squad.id }
+    end
+    local ext, ext_detail = xsquad.is_externally_scripted(squad)
+    if ext and not scripted_squads[squad.id] then
+        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail, id = squad.id }
+    end
+    return nil
+end
+
 function script_squad(squad, smart, opts)
     if not squad or not smart then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
     opts = opts or {}
@@ -339,14 +352,8 @@ function script_squad(squad, smart, opts)
         ap_debug.warn("[TRACKER] script_squad: squad=%d invalid smart name", squad.id)
         return { code = RESULT.RULES_NEXT, reason = REASON.INVALID_SMART, id = squad.id }
     end
-    local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
-    if unscriptable then
-        ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s in script_squad", squad.id, unscriptable_reason or "unknown")
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, id = squad.id }
-    end
-    if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
-        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
-    end
+    local reject = _validate_script_target(squad, "script_squad")
+    if reject then return reject end
     if scripted_squads[squad.id] then
         ap_debug.debug("[TRACKER] script_squad: squad=%d already scripted (target=%s), releasing first",
             squad.id, scripted_squads[squad.id].scripted_target)
@@ -376,14 +383,8 @@ end
 function script_actor_target(squad)
     if not squad then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
     _cleanup_stale()
-    local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
-    if unscriptable then
-        ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s in script_actor_target", squad.id, unscriptable_reason or "unknown")
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, id = squad.id }
-    end
-    if xsquad.is_externally_scripted(squad) and not scripted_squads[squad.id] then
-        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, id = squad.id }
-    end
+    local reject = _validate_script_target(squad, "script_actor_target")
+    if reject then return reject end
     if scripted_squads[squad.id] then
         ap_debug.debug("[TRACKER] script_actor_target: squad=%d already scripted (target=%s), releasing first",
             squad.id, scripted_squads[squad.id].scripted_target)

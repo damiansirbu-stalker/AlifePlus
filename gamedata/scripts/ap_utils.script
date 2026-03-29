@@ -232,6 +232,7 @@ end
 --- @return table Array of squad server objects
 function find_squads(pos, opts)
     opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
+    opts.exclude_externally_scripted = true
     local result, skipped_unscriptable = xsquad.find_squads(pos, opts)
     if ap_debug.enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)

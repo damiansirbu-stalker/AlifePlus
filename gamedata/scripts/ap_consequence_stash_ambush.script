@@ -21,7 +21,7 @@ local function _handler(event_data)
 
         local squad = xobject.se(event_data.squad_id)
         if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
-        if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = "at_base" } end
+        if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
 
         local smart = ap_utils.find_smart_observed(trace, position, { level_id = level_id })
         if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end

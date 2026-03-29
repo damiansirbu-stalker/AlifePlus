@@ -9,8 +9,10 @@ local cfg = ap_mcm.cfg
 local function _on_smart(trace, squad)
     if not cfg.cause_stash_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-    local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
-    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
+    local ext, ext_detail = xsquad.is_externally_scripted(squad)
+    if ext then return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail } end
+    local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
+    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason, name = unscriptable_name } end
 
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end

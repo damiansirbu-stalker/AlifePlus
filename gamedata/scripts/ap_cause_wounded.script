@@ -26,13 +26,13 @@ local function on_npc_medkit_use(trace, npc, medkit, kind)
 
     local squad = xsquad.get_squad_by_member(npc:id())
     if squad then
-        local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
-        if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
+        local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
+        if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason, name = unscriptable_name } end
         if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
     end
 
     local se_npc = xobject.se(npc:id())
-    if not se_npc then return { code = RESULT.RULES_NEXT, reason = "no_se" } end
+    if not se_npc then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 
     return {

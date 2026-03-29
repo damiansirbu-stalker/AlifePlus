@@ -24,8 +24,8 @@ local function _on_death(trace, squad, npc, killer)
     if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ELITE } end
 
     local killer_id = ap_utils.get_entity_id(killer)
-    local unscriptable, unscriptable_reason = _killer_unscriptable(killer_id)
-    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason } end
+    local unscriptable, unscriptable_reason, unscriptable_name = _killer_unscriptable(killer_id)
+    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason, name = unscriptable_name } end
 
     local now = time_global()
     local key = "elitekill_" .. victim_id

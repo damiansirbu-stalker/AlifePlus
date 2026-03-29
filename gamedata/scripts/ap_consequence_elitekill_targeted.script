@@ -22,6 +22,20 @@ local chase_opts = {
     rush_key = "consequence_elitekill_targeted_rush",
 }
 
+local function _is_hunter_eligible(id, squad)
+    local ext, ext_detail = xsquad.is_externally_scripted(squad)
+    if ext then
+        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=externally_scripted detail=%s", id, ext_detail or "?")
+        return false
+    end
+    local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
+    if unscriptable then
+        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s name=%s", id, unscriptable_reason or "unknown", unscriptable_name or "?")
+        return false
+    end
+    return true
+end
+
 local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendly)
     local hunters
     ap_debug.observe(trace, ACTION.FIND_TARGETS, function()
@@ -32,9 +46,7 @@ local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendl
             if id == victim_id or id == killer_id then goto continue end
             local squad = xsquad.get_squad_by_member(id)
             if not squad then goto continue end
-            local unscriptable, unscriptable_reason = xsquad.is_unscriptable_squad(squad)
-            if unscriptable then
-                ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s", id, unscriptable_reason or "unknown")
+            if not _is_hunter_eligible(id, squad) then
                 skipped = skipped + 1
                 goto continue
             end
