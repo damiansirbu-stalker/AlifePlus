@@ -194,15 +194,14 @@ Versions:
       Changed: default consequence chances set to 30% uniform (was mixed 11-22%)
       Note: needs use game time natively, thresholds work correctly at any time_factor, including real-time (time_factor=1)
     Smart terrain routing:
-      Added: capacity-aware routing - all paths check real population + in-transit squads before sending more
+      Added: arrival overflow handling - squads arriving at full smarts complete their action, then release to engine simulation
       Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base
       Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base
       Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases
       Fixed: heal and shelter sending squads to mutant lairs (no type filter)
-      Fixed: destination capacity only covered needs, all other consequences bypassed it
     Stability:
       Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration
-      Changed: territory conquest extracted to own module with independent save/load
+      Changed: territory conquest extracted to own module with independent save/load (conquered territories reset once on update from RC1)
       Changed: semver dependency gate - xlibs patch updates no longer require AP updates
       Fixed: elite kill PDA always showing mutant template instead of stalker
       Fixed: consequence handlers duplicating across save/load cycles

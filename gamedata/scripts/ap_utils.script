@@ -266,36 +266,28 @@ function find_squads_observed(trace, position, opts)
     return squads
 end
 
---- Find nearest smart, excluding full smart terrains (capacity-aware)
+--- Find nearest smart terrain matching filter criteria
 --- @param pos vector Origin position
---- @param opts table Options (forwarded to xsmart.find_smart with capacity filter injected)
+--- @param opts table Options (forwarded to xsmart.find_smart)
 --- @return table|nil Smart server object or nil
 function find_smart(pos, opts)
-    local original_filter = opts.filter
     if not ap_debug.enabled() then
-        opts.filter = function(smart)
-            if original_filter and not original_filter(smart) then return false end
-            return xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id))
-        end
         return xsmart.find_smart(pos, opts)
     end
-    local checked, rejected_filter, rejected_capacity = 0, 0, 0
+    local original_filter = opts.filter
+    local checked, rejected_filter = 0, 0
     opts.filter = function(smart)
         checked = checked + 1
         if original_filter and not original_filter(smart) then
             rejected_filter = rejected_filter + 1
             return false
         end
-        if not xsmart.has_capacity(smart, nil, ap_alife_tracker.get_destination_count(smart.id)) then
-            rejected_capacity = rejected_capacity + 1
-            return false
-        end
         return true
     end
     local result = xsmart.find_smart(pos, opts)
     if not result then
-        ap_debug.debug("[DISPATCH.FIND_SMART] no_smart checked=%d rejected_filter=%d rejected_capacity=%d level=%s",
-            checked, rejected_filter, rejected_capacity, opts.level_id)
+        ap_debug.debug("[DISPATCH.FIND_SMART] no_smart checked=%d rejected_filter=%d level=%s",
+            checked, rejected_filter, opts.level_id)
     end
     return result
 end

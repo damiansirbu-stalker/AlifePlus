@@ -50,7 +50,7 @@ No engine patches, no disk writes. Runtime callbacks, Lua globals, xlibs wrapper
 | ap_alife_tracker | State manager: killers, elites, scripted_squads, stalker_needs |
 | ap_smart_mutator | Territory conquest: conquered_smarts, faction_controlled mutation, FIFO eviction |
 | ap_object_mutator | Runtime combat modifiers: grenades, AP ammo, rank boost (npc_on_before_hit) |
-| ap_utils | Event wrappers, PDA, capacity-aware find_smart, chase API, find helpers |
+| ap_utils | Event wrappers, PDA, find_smart, chase API, find helpers |
 | ap_cause_* | Cause predicates (one file per cause group) |
 | ap_consequence_* | Consequence handlers (one file per cause; needs = config table) |
 | ap_messages | PDA message templates |
@@ -176,7 +176,7 @@ Not obvious from any single file. Violations cause subtle bugs.
 
 2. **Result code contract.** Every consequence returns { code = RESULT.X }. Consumer checks .code for chain propagation. Missing or malformed return = error.
 
-3. **Scripted bypass.** scripted_target overrides SIMBOARD:get_squad_target(). Engine target_precondition (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in _build_filter and capacity safety in ap_utils.find_smart (unified capacity filter using real SIMBOARD population + in-transit count from _destination_counts).
+3. **Scripted bypass.** scripted_target overrides SIMBOARD:get_squad_target(). Engine target_precondition (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in _build_filter. Capacity is NOT checked at search time -- arrival overflow (_try_arrival_overflow) fires the handler then unscripts for online squads at full smarts; offline arrivals bypass capacity naturally.
 
 4. **Mutation volatility.** Runtime smart terrain mutations (faction_controlled, respawn_params, faction) rebuilt from LTX on every load. Anything that mutates these must save/restore independently. Only conquered_smarts does this (two-phase).
 
@@ -208,7 +208,6 @@ Ordered gates in dispatch(). Gates 1-2 run before any predicate. Gates 3-4 are p
 
 | Name | Type | Scope | Duration | Location |
 |------|------|-------|----------|----------|
-| Destination capacity | Reverse index (_destination_counts) | per-smart-id | Real-time: SIMBOARD.smarts[id].squads + in-transit count | ap_alife_tracker, ap_utils.find_smart |
 | Hit modifier lock | Mutex (acquire_lock) | global | 1s | ap_object_mutator |
 | Grenade restock cooldown | os.clock timestamp | per-NPC | MCM: elite_grenade_restock_cooldown_hours | ap_object_mutator |
 | AP ammo restock cooldown | os.clock timestamp | per-NPC | MCM: elite_ap_ammo_cooldown_hours | ap_object_mutator |
@@ -261,7 +260,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 - **state** -no movement. Update tracker, markers, rewards. Used by: elite_promote, elitekill_bounty.
 - **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Base guard: squads at a base skip all stash consequences (won't leave base to chase stashes). Used by: stash_loot, stash_fill, stash_ambush.
 - **conquest** -script to empty smart, conquer immediately on fire, not on arrival. Used by: area_conquer.
-- **needs** -config-driven (16 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m, capacity-filtered) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
+- **needs** -config-driven (16 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
 
 ---
 
@@ -310,7 +309,7 @@ One closure per handler call. 3 concerns evaluated per-smart in _build_filter (s
 2. **Faction list** (entry.faction_list): xsmart.has_factions(smart, list) -worship, exercise
 3. **Enemy exclusion** (entry.exclude_enemy): is_factions_enemies(community, smart_faction) -scripted_target bypasses engine target_precondition
 
-Capacity filtering is handled by ap_utils.find_smart (unified, covers all consequence paths).
+Capacity is not filtered at search time. Arrival overflow (_try_arrival_overflow) handles full smarts on arrival.
 
 ### Arrival dispatch
 
