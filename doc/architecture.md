@@ -182,7 +182,7 @@ Not obvious from any single file. Violations cause subtle bugs.
 
 5. **Unscriptable guard contract.** Named NPCs, traders, quest givers, task givers, and companions must never be scripted, moved, or modified by AP. Three layers enforce this:
    - **Cause level:** radiant causes (needs, stash, area) guard the triggering squad (it IS the responder). Reactive causes guard the entity AP would act on: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
-   - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true`. _find_hunters (elitekill_targeted) checks per hunter.
+   - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true`. Callers where the triggering squad could appear in results pass `exclude_squad_id` (squadkill_revenge, squadkill_flee, wounded_help, harvest_hunt). _find_hunters (elitekill_targeted) checks per hunter.
    - **Externally scripted level:** radiant causes (needs, stash, area) check is_externally_scripted(squad) before is_unscriptable_squad. find_squads callers pass exclude_externally_scripted = true. _find_hunters (elitekill_targeted) checks per hunter. Catches Guards Spawner, Warfare, LTX condlist, AP's own mid-mission squads.
    - **Tracker level:** script_squad and script_actor_target reject unscriptable + externally_scripted squads as defense-in-depth. Returns UNSCRIPTABLE_BYPASSED (WARN level) if reached -- indicates upstream filter gap.
 

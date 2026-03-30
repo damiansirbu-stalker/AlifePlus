@@ -1,4 +1,4 @@
-<h3>Latest: 1.2.0 (requires xlibs >= 1.2.2)</h3>
+<h3>Latest: 1.2.0 (xlibs 1.2.2)</h3>
 <h3>GitHub: <a href="https://github.com/damiansirbu-stalker/AlifePlus">https://github.com/damiansirbu-stalker/AlifePlus</a></h3>
 <p>! Please use the RESET button in MCM when updating to a new version !<br /><br /></p>
 <h2>You are not special.</h2>
@@ -77,24 +77,26 @@
 <li>Fill - Stalker squad spots the stash and hides supplies inside.<br /><br /></li>
 </ul>
 <h3>Area (radiant)</h3>
-<p>Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.<br /><br /></p>
-<h3>Needs (radiant)</h3>
 <ul>
-<li>Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation. The strongest unmet need wins.</li>
+<li>Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.<br /><br /></li>
+</ul>
+<h3>Needs (radiant)</h3>
+<p>Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation. The strongest unmet need wins.<br /><br /></p>
+<ul>
 <li>Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.</li>
 <li>Sleep - Waits for nightfall. Finds a campfire. Sleeps through the night.</li>
 <li>Rest - Finds a campfire. Smokes a cigarette, has a drink.</li>
-<li>Heal - Returns to a friendly base. Uses a medkit, bandage, or stimpack.</li>
-<li>Shelter - Returns to a friendly base when exposed too long.</li>
+<li>Heal - Finds a safe location. Uses a medkit, bandage, or stimpack.</li>
+<li>Shelter - Finds a safe location when exposed too long.</li>
 <li>Money - Searches anomaly fields for artefacts, or hunts mutant lairs.</li>
 <li>Supply - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.</li>
-<li>Job - Guards their base. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship. Military and Duty drill.</li>
-<li>Social - Finds a campfire or returns to base. Shares cigarettes and drinks.</li>
+<li>Job - Guards outposts and checkpoints. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship at remote sites. Military and Duty drill at forward positions.</li>
+<li>Social - Finds a campfire or a safe location. Shares cigarettes and drinks.</li>
 </ul>
-<p>NPCs consume real items from their inventory on arrival.</p>
-<p>A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying. A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.<br /><br /></p>
+<p>NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.</p>
+<p>A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.<br /><br /></p>
 <h2>Requirements</h2>
-<p>Anomaly 1.5.3<br />Modded exes<br /><a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs 1.2.0</a><br />MCM<br /><br /></p>
+<p>Anomaly 1.5.3<br />Modded exes<br /><a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs 1.2.2</a><br />MCM<br /><br /></p>
 <h2>Install (MO2)</h2>
 <p>1. Install xlibs<br />2. Install AlifePlus<br />3. Load order does not matter<br />4. Configure via MCM<br /><br />Uninstall: Disable or remove in MO2.<br /><br /></p>
 <h2>FAQ</h2>
@@ -102,9 +104,64 @@
 <h2>Known Issues</h2>
 <p>Map markers are a debugging feature (log_level=DEBUG). They lack persistence and do not update on entity death, despawn, or level transition.<br />PDA system still needs some work, messages and their sources are not what they could be yet.<br /><br /></p>
 <h2>Development</h2>
-<p>Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.<br />Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns, contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards), lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.<br />Full report in doc/test-report.log.<br /><br />Credits:<br />Stalker_Boss - Russian translation</p>
+<p>Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.<br />Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns, contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards), lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.<br />Full report in doc/test-report.log.<br /><br /></p>
+<h2>Usage and License</h2>
+<p>Modpacks: allowed and encouraged. Keep the readme and license files.<br />Addons, patches, compatibility layers: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.<br />Replicating the architecture or design in another mod: allowed if you credit the source visibly.<br />Competing standalone replacements that substitute for AlifePlus: not allowed.<br />Full license in LICENSE file and on GitHub.<br /><br /></p>
+<p>Credits:<br />Stalker_Boss - Russian translation</p>
 <p></p>
 <h2>Versions</h2>
+<h3>1.2.0</h3>
+<b>NPC protection:</b>
+<ul>
+<li>Fixed: named NPCs, traders, quest givers, and guards can no longer be moved or interrupted by AlifePlus</li>
+<li>Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped entirely</li>
+<li>Fixed: Aslan (Dead City barman) and Yantar bunker guards missing from protected list</li>
+<li>Fixed: squads excluded from responding to their own events</li>
+</ul>
+<b>Gameplay:</b>
+<ul>
+<li>Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)</li>
+<li>Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)</li>
+<li>Added: area conquest mutation toggle - disable to keep squad movement without changing smart terrain faction (MCM on/off)</li>
+<li>Added: shelter outdoor - squads seek campfires when no indoor shelter is nearby (MCM on/off)</li>
+<li>Added: stash fill allowed at bases, ambush and loot disallowed</li>
+<li>Changed: revenge and elite hunters skip friendly factions</li>
+<li>Changed: area conquest only targets enemy or unclaimed territory</li>
+<li>Changed: needs that cannot find a destination back off for a full threshold cycle, preventing repeated failed attempts</li>
+<li>Changed: default consequence chances set to 30% uniform (was mixed 11-22%)</li>
+<li>Note: needs use game time natively, thresholds work correctly at any time_factor, including real-time (time_factor=1)</li>
+</ul>
+<b>Smart terrain routing:</b>
+<ul>
+<li>Added: arrival overflow handling - squads arriving at full smarts complete their action, then release to engine simulation</li>
+<li>Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base</li>
+<li>Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base</li>
+<li>Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases</li>
+<li>Fixed: heal and shelter sending squads to mutant lairs (no type filter)</li>
+</ul>
+<b>Stability:</b>
+<ul>
+<li>Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration</li>
+<li>Changed: territory conquest extracted to own module with independent save/load (conquered territories reset once on update from RC1)</li>
+<li>Changed: semver dependency gate - xlibs patch updates no longer require AP updates</li>
+<li>Fixed: elite kill PDA always showing mutant template instead of stalker</li>
+<li>Fixed: consequence handlers duplicating across save/load cycles</li>
+<li>Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (cooldown added)</li>
+</ul>
+<b>Performance:</b>
+<ul>
+<li>Changed: debug/trace overhead eliminated when log level below DEBUG</li>
+</ul>
+<b>Observability:</b>
+<ul>
+<li>Added: structured arrival logging with destination, action, and item details</li>
+<li>Added: diagnostic logging for smart search and squad filtering</li>
+</ul>
+<b>Removed:</b>
+<ul>
+<li>Removed: periodic sync (redundant with new cleanup on squad wipe)</li>
+<li>Removed: dead enum values<br /><br /></li>
+</ul>
 <h3>1.2.0-RC1 - "Needs"</h3>
 <ul>
 <li>Needs:<br />9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social<br />15 new consequences with per-need MCM controls (enable, threshold, chance, action)<br />Night gate, faction-aware destination filter, destination limiter<br />8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies<br />Needs persisted per-squad in save data</li>

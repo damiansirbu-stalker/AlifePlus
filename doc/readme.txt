@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.2.0 (requires xlibs >= 1.2.2)
+Latest: 1.2.0 (xlibs 1.2.2)
 GitHub: https://github.com/damiansirbu-stalker/AlifePlus
 
 ! Please use the RESET button in MCM when updating to a new version !
@@ -182,6 +182,7 @@ Versions:
       Fixed: named NPCs, traders, quest givers, and guards can no longer be moved or interrupted by AlifePlus
       Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped entirely
       Fixed: Aslan (Dead City barman) and Yantar bunker guards missing from protected list
+      Fixed: squads excluded from responding to their own events
     Gameplay:
       Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)
       Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)
