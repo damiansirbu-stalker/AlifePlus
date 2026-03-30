@@ -1,6 +1,7 @@
 --- ap_utils: Event wrappers, PDA helpers, location formatting, lock utilities
 local error, pairs, ipairs, type, next, time_global, math_huge, tostring, table_concat = error, pairs, ipairs, type, next, time_global, math.huge, tostring, table.concat
 local RegisterScriptCallback = RegisterScriptCallback
+local INVALID_ENTITY_ID = xconst.INVALID_ENTITY_ID
 local CALLBACK = ap_const.CALLBACK
 local ACTION = ap_const.ACTION
 local RESULT = ap_const.RESULT
@@ -26,7 +27,8 @@ local function refresh_pda_senders()
 
     for _, squad in ipairs(squads or {}) do
         local cmd_id = squad:commander_id()
-        local se = cmd_id and sim:object(cmd_id)
+        if cmd_id == INVALID_ENTITY_ID then goto continue end
+        local se = sim:object(cmd_id)
         if not se or not se.character_name or not se.character_icon then goto continue end
         local name, icon = se:character_name(), se:character_icon()
         if name and icon and #name > 0 and #icon > 0 then
