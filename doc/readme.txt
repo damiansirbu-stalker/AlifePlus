@@ -119,7 +119,7 @@ Needs (radiant)
 Requirements:
 Anomaly 1.5.3
 Modded exes
-xlibs 1.2.2 (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
+xlibs 1.2.3 (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 MCM
 
 Install (MO2):

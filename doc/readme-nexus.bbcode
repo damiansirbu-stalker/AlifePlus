@@ -1,26 +1,25 @@
-[size=4][b]AlifePlus: Emergent A-Life for STALKER Anomaly[/b][/size]
-by Damian
-Latest: 1.2.1 (xlibs 1.2.2)
-
-[url=https://github.com/damiansirbu-stalker/AlifePlus]GitHub[/url]
+[size=3][b]Latest: 1.2.2 (xlibs 1.2.3)[/b][/size]
+[size=3][b]GitHub: [url=https://github.com/damiansirbu-stalker/AlifePlus]https://github.com/damiansirbu-stalker/AlifePlus[/url][/b][/size]
 
 [b]! Please use the RESET button in MCM when updating to a new version ![/b]
 
-[size=3][b]You are not special.[/b][/size]
+You are not special.
 
 AlifePlus is a behavior mod inspired by Roadside Picnic and the original STALKER vision. GSC wanted a simulation where the game world operates independently of player actions.
 I respected that and took it further, in AlifePlus the simulation is fair and equal for all creatures on the map, and the player is just one entity.
 
 Why use AlifePlus? You can decide by comparing how this mod works to any other mod.
 
-[size=2][b]Classical:[/b][/size]
+[line]
+
+[size=3][b]Classical:[/b][/size]
 Most A-Life mods scan the entire game world on a timer, entity by entity and smart by smart. O(n) per tick, ticking every frame.
 They pick squads and override their simulation with scripted behavior like a permanent hijack, overwriting important variables used by the engine or other mods.
 Heavy loops with API calls cause ghosting, leaking, or save corruption.
 Behaviors like trading have no cohesive economy. Movement is just for show, performing things the engine already handles or that dedicated mods do better.
 The world feels more alive because things move around, but the movement has no meaning and the performance cost adds up.
 
-[size=2][b]AlifePlus:[/b][/size]
+[size=3][b]AlifePlus:[/b][/size]
 Engine events are intercepted as they fire. The system reacts when something happens, not on a timer.
 Squads are extended, not hijacked. The engine's own job system produces the correct behavior without overwriting its variables.
 
@@ -55,8 +54,6 @@ The chimaera kills him and gains enough kills to become an elite itself ("elite 
 If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs).
 The cycle continues, the Zone does not care.
 
-[line]
-
 The mod was designed performance-first, load tested with my own testing framework (1000x load) and profiled with anomaly-devtools v1.3.0. The performance impact is almost inexistent as seen in the screenshots.
 The entire pipeline is instrumented with OTel-style tracing, structured logging with rotation, and microsecond profiling from the engine's own timer, so every operation is measurable.
 
@@ -74,71 +71,70 @@ Log level goes from silent to full tracing with pathing, performance timing, and
 
 [size=2][b]Massacre (reactive)[/b][/size]
 [list]
-[*]Scavenge - Nearby scavengers and predators converge on the massacre site.
-[*]Investigate - Victims' faction sends nearby squads to investigate.
+[*][b]Scavenge[/b] - Nearby scavengers and predators converge on the massacre site.
+[*][b]Investigate[/b] - Victims' faction sends nearby squads to investigate.
 [/list]
 
 [size=2][b]SquadKill (reactive)[/b][/size]
 [list]
-[*]Revenge - Same-faction squads pursue the killer as it moves.
-[*]Flee - Nearby squads of the victim's faction fall back to the nearest base.
+[*][b]Revenge[/b] - Same-faction squads pursue the killer as it moves.
+[*][b]Flee[/b] - Nearby squads of the victim's faction fall back to the nearest base.
 [/list]
 
 [size=2][b]BaseKill (reactive)[/b][/size]
 [list]
-[*]Support - Nearby friendly squads rush to reinforce the base under attack.
-[*]Flee - Squads at the base evacuate to the nearest friendly position.
+[*][b]Support[/b] - Nearby friendly squads rush to reinforce the base under attack.
+[*][b]Flee[/b] - Squads at the base evacuate to the nearest friendly position.
 [/list]
 
 [size=2][b]Elite (reactive)[/b][/size]
 [list]
-[*]Promote - NPCs accumulate kills to level up. 10 levels, each requiring more kills.
+[*][b]Promote[/b] - NPCs accumulate kills to level up. 10 levels, each requiring more kills.
 [*]Rank boost, grenades, and AP ammo scale with level.
 [/list]
 
 [size=2][b]EliteKill (reactive)[/b][/size]
 [list]
-[*]Bounty - Killer receives rubles scaled by the elite's level.
-[*]Targeted - Other elites on the same tier hunt the killer across the map.
+[*][b]Bounty[/b] - Killer receives rubles scaled by the elite's level.
+[*][b]Targeted[/b] - Other elites on the same tier hunt the killer across the map.
 [/list]
 
 [size=2][b]Wounded (reactive)[/b][/size]
 [list]
-[*]Hunt - Predator mutants sense weakness and close in.
-[*]Help - Nearby same-faction squads rush to help the wounded.
+[*][b]Hunt[/b] - Predator mutants sense weakness and close in.
+[*][b]Help[/b] - Nearby same-faction squads rush to help the wounded.
 [/list]
 
 [size=2][b]Harvest (reactive)[/b][/size]
 [list]
-[*]Hunt - Nearby outlaws pursue whoever picked up the artefact as it moves.
+[*][b]Hunt[/b] - Nearby outlaws pursue whoever picked up the artefact as it moves.
 [/list]
 
 [size=2][b]Stash (radiant)[/b][/size]
 [list]
-[*]Loot - Stalker squad spots the stash, walks there, and loots it.
-[*]Ambush - Outlaw squad spots the stash and camps it. The stash is bait.
-[*]Fill - Stalker squad spots the stash and hides supplies inside.
+[*][b]Loot[/b] - Stalker squad spots the stash, walks there, and loots it.
+[*][b]Ambush[/b] - Outlaw squad spots the stash and camps it. The stash is bait.
+[*][b]Fill[/b] - Stalker squad spots the stash and hides supplies inside.
 [/list]
 
 [size=2][b]Area (radiant)[/b][/size]
 [list]
-[*]Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.
+[*][b]Conquer[/b] - Squad claims the empty smart terrain. Engine spawns their faction there.
 [/list]
 
 [size=2][b]Needs (radiant)[/b][/size]
 Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation.
 The strongest unmet need wins.
-
 [list]
-[*]Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
-[*]Sleep - Waits for nightfall. Finds a campfire. Sleeps through the night.
-[*]Rest - Finds a campfire. Smokes a cigarette, has a drink.
-[*]Heal - Finds a safe location. Uses a medkit, bandage, or stimpack.
-[*]Shelter - Finds a safe location when exposed too long.
-[*]Money - Searches anomaly fields for artefacts, or hunts mutant lairs.
-[*]Supply - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.
-[*]Job - Guards outposts and checkpoints. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship at remote sites. Military and Duty drill at forward positions.
-[*]Social - Finds a campfire or a safe location. Shares cigarettes and drinks.
+[*][b]Hunger[/b] - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
+[*][b]Sleep[/b] - Waits for nightfall. Finds a campfire. Sleeps through the night.
+[*][b]Rest[/b] - Finds a campfire. Smokes a cigarette, has a drink.
+[*][b]Heal[/b] - Finds a safe location. Uses a medkit, bandage, or stimpack.
+[*][b]Shelter[/b] - Finds a safe location when exposed too long.
+[*][b]Money[/b] - Searches anomaly fields for artefacts, or hunts mutant lairs.
+[*][b]Supply[/b] - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.
+[*][b]Job[/b] - Guards outposts and checkpoints. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship at remote sites. Military and Duty drill at forward positions.
+[*][b]Social[/b] - Finds a campfire or a safe location. Shares cigarettes and drinks.
 [/list]
 
 NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.
@@ -146,35 +142,33 @@ A supply run costs some trophies, booze, an artefact and returns usables, medkit
 
 [line]
 
-[size=3][b]Requirements[/b][/size]
+[size=3][b]Requirements:[/b][/size]
 [list]
 [*]Anomaly 1.5.3
 [*]Modded exes
-[*][url=https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001]xlibs 1.2.2[/url]
+[*][url=https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001]xlibs 1.2.3[/url]
 [*]MCM
 [/list]
 
-[size=3][b]Install (MO2)[/b][/size]
-[list=1]
+[size=3][b]Install (MO2):[/b][/size]
+[list]
 [*]Install xlibs
 [*]Install AlifePlus
 [*]Load order does not matter
 [*]Configure via MCM
 [/list]
 
-[size=3][b]Uninstall (MO2)[/b][/size]
+[size=3][b]Uninstall (MO2):[/b][/size]
 Disable or remove in MO2.
 
 [line]
 
-[size=3][b]FAQ[/b][/size]
+[size=3][b]FAQ:[/b][/size]
 
 [b]How do I make events occur faster or slower?[/b]
-[list]
-[*]Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1.
-[*]Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4.
-[*]Gung-Ho: lower A-Life Interval to 1, raise Cause Budget and per Consequence to max, raise consequence chances to 50+, lower PDA chances to 10. Good luck!
-[/list]
+Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1.
+Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4.
+Gung-Ho: lower A-Life Interval to 1, raise Cause Budget and per Consequence to max, raise consequence chances to 50+, lower PDA chances to 10. Good luck!
 
 [b]Does it work with GAMMA?[/b]
 Built and tested with GAMMA, also tested partially with Zona and EFP.
@@ -189,52 +183,63 @@ Yes.
 [b]Do I need offline combat enabled?[/b]
 No. AlifePlus never requires or prefers online simulation.
 It works with all offline settings, including fully disabled.
-Offline combat produces fewer combat events but the system generates other events regardless, so A-Life activity continues.
+Offline combat produces fewer combat events but the system generates
+other events regardless, so A-Life activity continues.
 
 [line]
 
-[size=3][b]Known Issues[/b][/size]
-[list]
-[*]Map markers are a debugging feature (log_level=DEBUG). They lack persistence and do not update on entity death, despawn, or level transition.
-[*]PDA system still needs some work, messages and their sources are not what they could be yet.
-[/list]
+[size=3][b]Known Issues:[/b][/size]
+Map markers are a debugging feature (log_level=DEBUG). They lack persistence and do not update on entity death, despawn, or level transition.
+PDA system still needs some work, messages and their sources are not what they could be yet
 
-[size=3][b]Development[/b][/size]
+[line]
+
+[size=3][b]Development:[/b][/size]
 Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.
-Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns, contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards), lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.
+Validated by a custom multi-stage pipeline: luacheck, selene, tree-sitter AST analysis, ast-grep structural patterns,
+contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards),
+lua54 integration testing with X-Ray engine stubs, gitleaks and trufflehog secret scanning.
 Full report in doc/test-report.log.
 
-[size=3][b]Usage and License[/b][/size]
-Modpacks: allowed and encouraged. Keep the readme and license files.
-Addons, patches, compatibility layers: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
-Replicating the architecture or design in another mod: allowed if you credit the source visibly.
-Competing standalone replacements that substitute for AlifePlus: not allowed.
-Full license in LICENSE file and on GitHub.
-
-[size=3][b]Credits[/b][/size]
+[size=3][b]Credits:[/b][/size]
 Stalker_Boss - Russian translation
 
 [line]
 
-[size=3][b]Versions[/b][/size]
+[size=3][b]Usage and License:[/b][/size]
+[list]
+[*]Modpacks: allowed and encouraged. Keep the readme and license files.
+[*]Addons, patches, compatibility layers: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
+[*]Replicating the architecture or design in another mod: allowed if you credit the source visibly.
+[*]Competing standalone replacements that substitute for AlifePlus: not allowed.
+[*]Full license in LICENSE file and on GitHub.
+[/list]
+
+[line]
+
+[size=3][b]Versions:[/b][/size]
+
+[size=2][b]1.2.2[/b][/size]
+[list]
+[*]xlibs 1.2.3 dependency.
+[*]Changed: xstash.loot_stash call updated (xlibs rename from loot_stash_to_npc)
+[/list]
 
 [size=2][b]1.2.1[/b][/size]
-[b]Localization:[/b]
 [list]
+[*]Localization:
 [*]Added: Russian MCM translation
 [/list]
 
 [size=2][b]1.2.0[/b][/size]
-[b]NPC protection:[/b]
 [list]
+[*]NPC protection:
 [*]Fixed: named NPCs, traders, quest givers, and guards excluded from AlifePlus
 [*]Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped
 [*]Fixed: guards and bodyguards added to protected list (Rostok, Yantar, Army Warehouses, Jupiter, Pripyat, Sarcophagus, Lab X-18)
 [*]Fixed: Aslan (Dead City barman) ID corrected in protected list
 [*]Fixed: squads no longer respond to their own events
-[/list]
-[b]Gameplay:[/b]
-[list]
+[*]Gameplay:
 [*]Added: walk/rush toggle per consequence (MCM per-consequence on/off)
 [*]Added: stash protection - NPCs skip stashes containing toolkits and essential items (MCM on/off)
 [*]Added: area conquest mutation toggle - keep squad movement without changing smart terrain ownership (MCM on/off)
@@ -245,24 +250,18 @@ Stalker_Boss - Russian translation
 [*]Changed: needs back off after failing to find a destination, other needs get a turn
 [*]Changed: default consequence chances raised to 30% (MCM per-consequence chance sliders)
 [*]Note: needs use game time - thresholds work correctly at any time_factor including real-time
-[/list]
-[b]Smart terrain routing:[/b]
-[list]
+[*]Smart terrain routing:
 [*]Changed: heal and shelter now target surge shelters, not mutant lairs
 [*]Changed: heal, shelter, social accept any non-hostile location instead of requiring a base
 [*]Changed: guard, worship, exercise send squads to outposts and forward positions, away from bases
 [*]Changed: squads arriving at full locations complete their action then return to simulation
-[/list]
-[b]Stability:[/b]
-[list]
+[*]Stability:
 [*]Fixed: elite kill PDA always showing mutant template instead of stalker
 [*]Fixed: consequence handlers duplicating across save/load cycles
 [*]Fixed: artefact drop/pickup cycling triggering infinite harvest chasers
 [*]Changed: squad tracking uses game time - survives sleep and time acceleration
 [*]Changed: xlibs patch updates no longer require AlifePlus updates
-[/list]
-[b]Internal:[/b]
-[list]
+[*]Internal:
 [*]Changed: debug/trace overhead eliminated below DEBUG log level
 [*]Added: structured arrival logging, smart search diagnostics
 [*]Changed: territory conquest extracted to own module
@@ -270,43 +269,31 @@ Stalker_Boss - Russian translation
 [/list]
 
 [size=2][b]1.2.0-RC1 - "Needs"[/b][/size]
-[b]Needs:[/b]
 [list]
-[*]9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
-[*]15 new consequences with per-need MCM controls (enable, threshold, chance, action)
-[*]Night gate, faction-aware destination filter, destination limiter
-[*]8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
-[*]Needs persisted per-squad in save data
-[/list]
-[b]Event pipeline:[/b]
-[list]
-[*]Radiant/reactive split with independent token buckets
-[*]Consequence token bucket replaces global cause lock
-[*]Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
-[/list]
-[b]PDA:[/b]
-[list]
-[*]168 message variants across 40 categories, stalker/mutant distinction
-[/list]
-[b]MCM:[/b]
-[list]
-[*]Reset button, retuned default chances, cleaned up labels
-[*]Russian translation (Stalker_Boss)
-[/list]
-[b]Performance:[/b]
-[list]
-[*]MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
-[/list]
-[b]Fixes:[/b]
-[list]
-[*]Reactive event starvation (cause lock starving needs and area causes)
-[*]wounded_help faction matching (actor_stalker prefix)
-[*]PDA messages now distinguish stalkers from mutants
-[*]supply_trader exchange giving free items (now requires artefact)
-[/list]
-[b]Docs:[/b]
-[list]
-[*]manifesto.md with GSC vision, engine source proof, developer quotes
+[*]Needs:
+[*]Added: 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
+[*]Added: 15 new consequences with per-need MCM controls (enable, threshold, chance, action)
+[*]Added: Night gate, faction-aware destination filter, destination limiter
+[*]Added: 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
+[*]Added: Needs persisted per-squad in save data
+[*]Event pipeline:
+[*]Added: Radiant/reactive split with independent token buckets
+[*]Added: Consequence token bucket replaces global cause lock
+[*]Added: Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
+[*]PDA:
+[*]Added: 168 message variants across 40 categories, stalker/mutant distinction
+[*]MCM:
+[*]Added: Reset button, retuned default chances, cleaned up labels
+[*]Added: Russian translation (Stalker_Boss)
+[*]Performance:
+[*]Changed: MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
+[*]Docs:
+[*]Added: manifesto.md with GSC vision, engine source proof, developer quotes
+[*]Fixed:
+[*]Fixed: Reactive event starvation (cause lock starving needs and area causes)
+[*]Fixed: wounded_help faction matching (actor_stalker prefix)
+[*]Fixed: PDA messages now distinguish stalkers from mutants
+[*]Fixed: supply_trader exchange giving free items (now requires artefact)
 [/list]
 
 [size=2][b]1.1.1[/b][/size]
@@ -317,8 +304,7 @@ Stalker_Boss - Russian translation
 [size=2][b]1.1.0[/b][/size]
 [list]
 [*]10-level elite system replaces binary elite/legend. Alife Ratio balances simulation across maps.
-[*]Elite: 10 levels, AP ammo restock (best k_ap for weapon), engine rank boost (up to 20% accuracy), grenade restock.
-[*]Alife Ratio: Bresenham ratio gate for on/off-map event distribution, MCM slider (-10 to +10).
+[*]Elite: 10 levels, AP ammo restock (best k_ap for weapon), engine rank boost (up to 20% accuracy), grenade restock. Alife Ratio: Bresenham ratio gate for on/off-map event distribution, MCM slider (-10 to +10).
 [*]Fixed: elitekill_targeted never firing (bounty was stopping the chain)
 [*]Fixed: PDA message tone, elite buff performance
 [/list]
