@@ -113,54 +113,46 @@
 <h3>1.2.0</h3>
 <b>NPC protection:</b>
 <ul>
-<li>Fixed: named NPCs, traders, quest givers, and guards can no longer be moved or interrupted by AlifePlus</li>
-<li>Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped entirely</li>
-<li>Fixed: Aslan (Dead City barman) and Yantar bunker guards missing from protected list</li>
-<li>Fixed: squads excluded from responding to their own events</li>
+<li>Fixed: named NPCs, traders, quest givers, and guards excluded from AlifePlus</li>
+<li>Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped</li>
+<li>Fixed: guards and bodyguards added to protected list (Rostok, Yantar, Army Warehouses, Jupiter, Pripyat, Sarcophagus, Lab X-18)</li>
+<li>Fixed: Aslan (Dead City barman) ID corrected in protected list</li>
+<li>Fixed: squads no longer respond to their own events</li>
 </ul>
 <b>Gameplay:</b>
 <ul>
-<li>Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)</li>
-<li>Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)</li>
-<li>Added: area conquest mutation toggle - disable to keep squad movement without changing smart terrain faction (MCM on/off)</li>
-<li>Added: shelter outdoor - squads seek campfires when no indoor shelter is nearby (MCM on/off)</li>
-<li>Added: stash fill allowed at bases, ambush and loot disallowed</li>
+<li>Added: walk/rush toggle per consequence (MCM per-consequence on/off)</li>
+<li>Added: stash protection - NPCs skip stashes containing toolkits and essential items (MCM on/off)</li>
+<li>Added: area conquest mutation toggle - keep squad movement without changing smart terrain ownership (MCM on/off)</li>
+<li>Added: shelter outdoor - squads seek campfires when no indoor shelter nearby (MCM on/off)</li>
+<li>Added: stash fill allowed at bases, ambush and loot still blocked</li>
 <li>Changed: revenge and elite hunters skip friendly factions</li>
 <li>Changed: area conquest only targets enemy or unclaimed territory</li>
-<li>Changed: needs that cannot find a destination back off for a full threshold cycle, preventing repeated failed attempts</li>
-<li>Changed: default consequence chances set to 30% uniform (was mixed 11-22%)</li>
-<li>Note: needs use game time natively, thresholds work correctly at any time_factor, including real-time (time_factor=1)</li>
+<li>Changed: needs back off after failing to find a destination, other needs get a turn</li>
+<li>Changed: default consequence chances raised to 30% (MCM per-consequence chance sliders)</li>
+<li>Note: needs use game time - thresholds work correctly at any time_factor including real-time</li>
 </ul>
 <b>Smart terrain routing:</b>
 <ul>
-<li>Added: arrival overflow handling - squads arriving at full smarts complete their action, then release to engine simulation</li>
-<li>Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base</li>
-<li>Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base</li>
-<li>Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases</li>
-<li>Fixed: heal and shelter sending squads to mutant lairs (no type filter)</li>
+<li>Changed: heal and shelter now target surge shelters, not mutant lairs</li>
+<li>Changed: heal, shelter, social accept any non-hostile location instead of requiring a base</li>
+<li>Changed: guard, worship, exercise send squads to outposts and forward positions, away from bases</li>
+<li>Changed: squads arriving at full locations complete their action then return to simulation</li>
 </ul>
 <b>Stability:</b>
 <ul>
-<li>Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration</li>
-<li>Changed: territory conquest extracted to own module with independent save/load (conquered territories reset once on update from RC1)</li>
-<li>Changed: semver dependency gate - xlibs patch updates no longer require AP updates</li>
 <li>Fixed: elite kill PDA always showing mutant template instead of stalker</li>
 <li>Fixed: consequence handlers duplicating across save/load cycles</li>
-<li>Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (cooldown added)</li>
+<li>Fixed: artefact drop/pickup cycling triggering infinite harvest chasers</li>
+<li>Changed: squad tracking uses game time - survives sleep and time acceleration</li>
+<li>Changed: xlibs patch updates no longer require AlifePlus updates</li>
 </ul>
-<b>Performance:</b>
+<b>Internal:</b>
 <ul>
-<li>Changed: debug/trace overhead eliminated when log level below DEBUG</li>
-</ul>
-<b>Observability:</b>
-<ul>
-<li>Added: structured arrival logging with destination, action, and item details</li>
-<li>Added: diagnostic logging for smart search and squad filtering</li>
-</ul>
-<b>Removed:</b>
-<ul>
-<li>Removed: periodic sync (redundant with new cleanup on squad wipe)</li>
-<li>Removed: dead enum values<br /><br /></li>
+<li>Changed: debug/trace overhead eliminated below DEBUG log level</li>
+<li>Added: structured arrival logging, smart search diagnostics</li>
+<li>Changed: territory conquest extracted to own module</li>
+<li>Removed: periodic sync (belt and suspenders, never needed), dead enum values<br /><br /></li>
 </ul>
 <h3>1.2.0-RC1 - "Needs"</h3>
 <ul>

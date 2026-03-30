@@ -179,42 +179,38 @@ Versions:
 
   1.2.0
     NPC protection:
-      Fixed: named NPCs, traders, quest givers, and guards can no longer be moved or interrupted by AlifePlus
-      Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped entirely
-      Fixed: Aslan (Dead City barman) and Yantar bunker guards missing from protected list
-      Fixed: squads excluded from responding to their own events
+      Fixed: named NPCs, traders, quest givers, and guards excluded from AlifePlus
+      Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped
+      Fixed: guards and bodyguards added to protected list (Rostok, Yantar, Army Warehouses, Jupiter, Pripyat, Sarcophagus, Lab X-18)
+      Fixed: Aslan (Dead City barman) ID corrected in protected list
+      Fixed: squads no longer respond to their own events
     Gameplay:
-      Added: per-consequence walk/rush toggle - tactical consequences rush, routine needs walk (MCM on/off)
-      Added: stash protection - NPCs skip stashes containing essential items like toolkits (MCM on/off)
-      Added: area conquest mutation toggle - disable to keep squad movement without changing smart terrain faction (MCM on/off)
-      Added: shelter outdoor - squads seek campfires when no indoor shelter is nearby (MCM on/off)
-      Added: stash fill allowed at bases, ambush and loot disallowed
+      Added: walk/rush toggle per consequence (MCM per-consequence on/off)
+      Added: stash protection - NPCs skip stashes containing toolkits and essential items (MCM on/off)
+      Added: area conquest mutation toggle - keep squad movement without changing smart terrain ownership (MCM on/off)
+      Added: shelter outdoor - squads seek campfires when no indoor shelter nearby (MCM on/off)
+      Added: stash fill allowed at bases, ambush and loot still blocked
       Changed: revenge and elite hunters skip friendly factions
       Changed: area conquest only targets enemy or unclaimed territory
-      Changed: needs that cannot find a destination back off for a full threshold cycle, preventing repeated failed attempts
-      Changed: default consequence chances set to 30% uniform (was mixed 11-22%)
-      Note: needs use game time natively, thresholds work correctly at any time_factor, including real-time (time_factor=1)
+      Changed: needs back off after failing to find a destination, other needs get a turn
+      Changed: default consequence chances raised to 30% (MCM per-consequence chance sliders)
+      Note: needs use game time - thresholds work correctly at any time_factor including real-time
     Smart terrain routing:
-      Added: arrival overflow handling - squads arriving at full smarts complete their action, then release to engine simulation
-      Changed: needs filter audit - enemy exclusion on 4 consequences, indoor filter for heal/shelter, lair exclusion for outpost, unclaimed for explore, base for social_base
-      Changed: heal, shelter, social needs accept any non-hostile smart instead of requiring a base
-      Changed: guard, worship, exercise needs send squads to outposts and forward positions, away from bases
-      Fixed: heal and shelter sending squads to mutant lairs (no type filter)
+      Changed: heal and shelter now target surge shelters, not mutant lairs
+      Changed: heal, shelter, social accept any non-hostile location instead of requiring a base
+      Changed: guard, worship, exercise send squads to outposts and forward positions, away from bases
+      Changed: squads arriving at full locations complete their action then return to simulation
     Stability:
-      Changed: squad tracking uses game time instead of wall clock - survives sleep and time acceleration
-      Changed: territory conquest extracted to own module with independent save/load (conquered territories reset once on update from RC1)
-      Changed: semver dependency gate - xlibs patch updates no longer require AP updates
       Fixed: elite kill PDA always showing mutant template instead of stalker
       Fixed: consequence handlers duplicating across save/load cycles
-      Fixed: artefact drop/pickup cycling triggering infinite harvest chasers (cooldown added)
-    Performance:
-      Changed: debug/trace overhead eliminated when log level below DEBUG
-    Observability:
-      Added: structured arrival logging with destination, action, and item details
-      Added: diagnostic logging for smart search and squad filtering
-    Removed:
-      Removed: periodic sync (redundant with new cleanup on squad wipe)
-      Removed: dead enum values
+      Fixed: artefact drop/pickup cycling triggering infinite harvest chasers
+      Changed: squad tracking uses game time - survives sleep and time acceleration
+      Changed: xlibs patch updates no longer require AlifePlus updates
+    Internal:
+      Changed: debug/trace overhead eliminated below DEBUG log level
+      Added: structured arrival logging, smart search diagnostics
+      Changed: territory conquest extracted to own module
+      Removed: periodic sync (belt and suspenders, never needed), dead enum values
 
   1.2.0-RC1 - "Needs"
     Needs:
