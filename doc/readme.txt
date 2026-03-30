@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-Latest: 1.2.0 (xlibs 1.2.2)
+Latest: 1.2.1 (xlibs 1.2.2)
 GitHub: https://github.com/damiansirbu-stalker/AlifePlus
 
 ! Please use the RESET button in MCM when updating to a new version !
@@ -176,6 +176,10 @@ Usage and License:
   Full license in LICENSE file and on GitHub.
 
 Versions:
+
+  1.2.1
+    Localization:
+      Added: Russian MCM translation
 
   1.2.0
     NPC protection:
