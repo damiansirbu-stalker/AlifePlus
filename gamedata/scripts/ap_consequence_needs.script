@@ -212,10 +212,7 @@ local function _make_handler(entry)
                 return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
             end
 
-            ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-                ap_utils.mark(squad, entry.name)
-                return ap_debug.result_squad(squad)
-            end)
+            ap_utils.mark(squad, entry.name)
 
             ap_debug.observe(trace, ACTION.SEND_PDA, function()
                 local cmd_se = xobject.se(squad:commander_id())

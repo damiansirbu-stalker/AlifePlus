@@ -32,10 +32,7 @@ local function _handler(event_data)
 
         ap_smart_mutator.conquer_smart(smart.id, squad.player_id)
 
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            ap_utils.mark(squad.id, "Conquering area")
-            return ap_debug.result_squad(squad)
-        end)
+        ap_utils.mark(squad, "Conquering area")
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
                 "text_pda_consequence_area_conquer", { smart = xlevel.get_smart_display_name(smart) })

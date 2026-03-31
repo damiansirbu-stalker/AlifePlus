@@ -42,12 +42,7 @@ local function _handler(event_data)
             return ap_debug.result_squads(moved, { dst_id = base.id, rejected = #fleeing - #moved })
         end)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            for _, squad in ipairs(moved) do
-                ap_utils.mark(squad, "Fleeing")
-            end
-            return ap_debug.result_squads(moved)
-        end)
+        ap_utils.mark_squads(moved, "Fleeing")
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_utils.get_location_description(nil, position, level_id)
             return ap_utils.send_pda(cfg.consequence_squadkill_flee_pda_chance, "text_pda_consequence_squadkill_flee", { location = location })

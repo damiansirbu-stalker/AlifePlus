@@ -1,0 +1,92 @@
+1.2.2
+  xlibs 1.2.3 dependency.
+  Changed: xstash.loot_stash call updated (xlibs rename from loot_stash_to_npc)
+
+1.2.1
+  Localization:
+    Added: Russian MCM translation
+
+1.2.0
+  NPC protection:
+    Fixed: named NPCs, traders, quest givers, and guards excluded from AlifePlus
+    Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped
+    Fixed: guards and bodyguards added to protected list (Rostok, Yantar, Army Warehouses, Jupiter, Pripyat, Sarcophagus, Lab X-18)
+    Fixed: Aslan (Dead City barman) ID corrected in protected list
+    Fixed: squads no longer respond to their own events
+  Gameplay:
+    Added: walk/rush toggle per consequence (MCM per-consequence on/off)
+    Added: stash protection - NPCs skip stashes containing toolkits and essential items (MCM on/off)
+    Added: area conquest mutation toggle - keep squad movement without changing smart terrain ownership (MCM on/off)
+    Added: shelter outdoor - squads seek campfires when no indoor shelter nearby (MCM on/off)
+    Added: stash fill allowed at bases, ambush and loot still blocked
+    Changed: revenge and elite hunters skip friendly factions
+    Changed: area conquest only targets enemy or unclaimed territory
+    Changed: needs back off after failing to find a destination, other needs get a turn
+    Changed: default consequence chances raised to 30% (MCM per-consequence chance sliders)
+    Note: needs use game time - thresholds work correctly at any time_factor including real-time
+  Smart terrain routing:
+    Changed: heal and shelter now target surge shelters, not mutant lairs
+    Changed: heal, shelter, social accept any non-hostile location instead of requiring a base
+    Changed: guard, worship, exercise send squads to outposts and forward positions, away from bases
+    Changed: squads arriving at full locations complete their action then return to simulation
+  Stability:
+    Fixed: elite kill PDA always showing mutant template instead of stalker
+    Fixed: consequence handlers duplicating across save/load cycles
+    Fixed: artefact drop/pickup cycling triggering infinite harvest chasers
+    Changed: squad tracking uses game time - survives sleep and time acceleration
+    Changed: xlibs patch updates no longer require AlifePlus updates
+  Internal:
+    Changed: debug/trace overhead eliminated below DEBUG log level
+    Added: structured arrival logging, smart search diagnostics
+    Changed: territory conquest extracted to own module
+    Removed: periodic sync (belt and suspenders, never needed), dead enum values
+
+1.2.0-RC1 - "Needs"
+  Needs:
+    Added: 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
+    Added: 15 new consequences with per-need MCM controls (enable, threshold, chance, action)
+    Added: Night gate, faction-aware destination filter, destination limiter
+    Added: 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
+    Added: Needs persisted per-squad in save data
+  Event pipeline:
+    Added: Radiant/reactive split with independent token buckets
+    Added: Consequence token bucket replaces global cause lock
+    Added: Radiant exhaustion peek, actor_on_interaction adapter, unscriptable guard
+  PDA:
+    Added: 168 message variants across 40 categories, stalker/mutant distinction
+  MCM:
+    Added: Reset button, retuned default chances, cleaned up labels
+    Added: Russian translation (Stalker_Boss)
+  Performance:
+    Changed: MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
+  Docs:
+    Added: manifesto.md with GSC vision, engine source proof, developer quotes
+  Fixed:
+    Fixed: Reactive event starvation (cause lock starving needs and area causes)
+    Fixed: wounded_help faction matching (actor_stalker prefix)
+    Fixed: PDA messages now distinguish stalkers from mutants
+    Fixed: supply_trader exchange giving free items (now requires artefact)
+
+1.1.1
+  Fixed: dependency gate uses exact version match instead of string comparison
+
+1.1.0
+  10-level elite system replaces binary elite/legend. Alife Ratio balances simulation across maps.
+  Elite: 10 levels, AP ammo restock (best k_ap for weapon), engine rank boost (up to 20% accuracy), grenade restock. Alife Ratio: Bresenham ratio gate for on/off-map event distribution, MCM slider (-10 to +10).
+  Fixed: elitekill_targeted never firing (bounty was stopping the chain)
+  Fixed: PDA message tone, elite buff performance
+
+1.0.1
+  Dependency gate, bugfixes, Russian translation.
+  Added: dependency gate - clear error message if xlibs is missing or outdated
+  Added: Russian translation (Stalker_Boss)
+  Fixed: companion squads excluded from squad searches (xlibs)
+  Fixed: player-created stashes excluded from stash searches (xlibs)
+
+1.0.0
+  First release. Event-driven emergent A-Life system.
+  10 causes, 17 consequences. Full MCM configuration.
+  Added: reactive causes (massacre, squadkill, basekill, elite, legend,
+         legendkill, wounded, harvest)
+  Added: radiant causes (stash, area)
+  Added: chase API, area conquest, hit modifiers, rank boost

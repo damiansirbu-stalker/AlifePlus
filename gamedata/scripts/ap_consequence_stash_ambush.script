@@ -33,10 +33,7 @@ local function _handler(event_data)
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
 
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            ap_utils.mark(squad, "Ambush")
-            return ap_debug.result_squad(squad)
-        end)
+        ap_utils.mark(squad, "Ambush")
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_utils.send_pda(cfg.consequence_stash_ambush_pda_chance, "text_pda_consequence_stash_ambush")
         end)

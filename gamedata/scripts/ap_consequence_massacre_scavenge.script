@@ -36,12 +36,7 @@ local function _handler(event_data)
             return ap_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            for _, squad in ipairs(moved) do
-                ap_utils.mark(squad, "Scavenge")
-            end
-            return ap_debug.result_squads(moved)
-        end)
+        ap_utils.mark_squads(moved, "Scavenge")
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_utils.get_location_description(nil, position, level_id)
             return ap_utils.send_pda(cfg.consequence_massacre_scavenge_pda_chance, "text_pda_consequence_massacre_scavenge", { location = location })

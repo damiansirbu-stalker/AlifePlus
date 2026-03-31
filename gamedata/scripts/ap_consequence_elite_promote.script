@@ -36,10 +36,7 @@ local function _handler(event_data)
         end)
         if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
 
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            ap_utils.mark(killer_id, "Elite L" .. level .. ": " .. name, true)
-            return { code = "ok", id = killer_id }
-        end)
+        ap_utils.mark(killer_id, "Elite L" .. level .. ": " .. name, true)
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
             if not se then return { code = "no_entity" } end

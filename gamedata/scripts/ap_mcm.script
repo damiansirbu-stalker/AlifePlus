@@ -292,11 +292,13 @@ defaults = {
 
     -- Development
     log_level = "WARN",
+    map_markers = false,
 
 }
 
 local key_to_tab = {
     log_level = "development",
+    map_markers = "development",
     alife_ratio = "general",
     distributor_interval_sec = "general",
     cause_max_events = "general",
@@ -518,9 +520,13 @@ function btn_reset_all()
     end
 end
 
+function set_version_text(anchor, handlers)
+    handlers.desc:SetText(_ap_deps.get_version())
+end
+
 local function slide(txt)
     return {
-        id = "title", type = "slide", link = "ui_options_slider_player",
+        id = "title", type = "slide", link = "ap_mcm_banner",
         text = txt, size = { 512, 50 }, spacing = 20
     }
 end
@@ -558,7 +564,8 @@ function on_mcm_load()
                     { id = "div_reset", type = "line" },
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
-                    { id = "version", type = "desc", text = "ui_mcm_ap_version", clr = {255, 0, 206, 209} },
+                    { id = "version", type = "desc", text = "ui_mcm_ap_general_title",
+                        ui_hook_functor = { ap_mcm.set_version_text }, clr = {255, 0, 206, 209} },
                 },
             },
             {
@@ -1114,6 +1121,7 @@ function on_mcm_load()
                         {"INFO", "info"},
                         {"DEBUG", "debug"},
                     }),
+                    check("map_markers"),
                 },
             },
         },

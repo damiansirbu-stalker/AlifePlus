@@ -55,10 +55,7 @@ local function _handler(event_data)
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
 
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            ap_utils.mark(squad.id, "Fill stash")
-            return ap_debug.result_squad(squad)
-        end)
+        ap_utils.mark(squad, "Fill stash")
         return { code = RESULT.OK_STOP, reason = item_count .. "_items",
             id = squad.id, dst_id = smart.id, stash_id = stash_id }
     end)

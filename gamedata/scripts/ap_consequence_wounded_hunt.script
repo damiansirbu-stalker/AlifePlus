@@ -38,12 +38,7 @@ local function _handler(event_data)
             return ap_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
-        ap_debug.observe(trace, ACTION.ADD_MARKER, function()
-            for _, squad in ipairs(moved) do
-                ap_utils.mark(squad.id, "Hunting wounded")
-            end
-            return ap_debug.result_squads(moved)
-        end)
+        ap_utils.mark_squads(moved, "Hunting wounded")
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_utils.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
         end)
