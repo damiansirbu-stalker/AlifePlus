@@ -1,4 +1,4 @@
---- ap_consequence_area_conquer: Actor squad conquers nearby empty area
+--- ap_consequence_area_conquer: Squad conquers nearby empty area on arrival
 
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -7,6 +7,14 @@ local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
 
 local cfg = ap_mcm.cfg
+
+local function _on_arrive(squad, args)
+    if not args then return end
+    ap_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
+    ap_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
+    ap_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
+        "text_pda_consequence_area_conquer", { smart = args.smart_name })
+end
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -25,24 +33,23 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_area_conquer_rush })
+            res = ap_alife_tracker.script_squad(squad, smart, {
+                rush = cfg.consequence_area_conquer_rush,
+                on_arrive = CONSEQUENCE.AREA_CONQUER,
+                on_arrive_args = { target_smart_id = target_smart_id, smart_name = xlevel.get_smart_display_name(smart) },
+            })
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
 
-        ap_smart_mutator.conquer_smart(smart.id, squad.player_id)
-
         ap_utils.mark(squad, "Conquering area")
-        ap_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
-                "text_pda_consequence_area_conquer", { smart = xlevel.get_smart_display_name(smart) })
-        end)
 
         return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id }
     end)
 end
 
 function on_game_start()
+    ap_alife_tracker.register_arrival_handler(CONSEQUENCE.AREA_CONQUER, _on_arrive)
     ap_consumer.register(CONSEQUENCE.AREA_CONQUER, {
         event = CAUSE.AREA,
         priority = 20,
