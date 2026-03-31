@@ -10,6 +10,7 @@ Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.2.0](https://www.moddb.com/mods/s
 
 ## Documentation
 
-- [readme.txt](doc/readme.txt) -- full description, features, changelog
+- [readme.txt](doc/readme.txt) -- full description, features
+- [changelog](https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog) -- version history
 - [manifesto.md](doc/manifesto.md) -- design rationale with GSC developer quotes and engine source evidence defending every mechanic
 - [architecture.md](doc/architecture.md) -- technical reference: pipeline, causes, consequences, invariants
