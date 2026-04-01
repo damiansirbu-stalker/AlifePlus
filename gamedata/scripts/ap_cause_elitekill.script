@@ -13,7 +13,9 @@ local function _killer_unscriptable(killer_id)
     if not killer_id or killer_id == 0 then return false end
     local squad = xsquad.get_squad_by_member(killer_id)
     if not squad then return false end
-    return xsquad.is_unscriptable_squad(squad)
+    local perm, reason, name = xsquad.is_permanent_squad(squad)
+    if perm then return perm, reason, name end
+    return xsquad.has_active_role(squad)
 end
 
 local function _on_death(trace, squad, npc, killer)

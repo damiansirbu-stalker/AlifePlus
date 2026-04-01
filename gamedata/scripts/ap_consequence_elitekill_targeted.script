@@ -28,9 +28,9 @@ local function _is_hunter_eligible(id, squad)
         ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=externally_scripted detail=%s", id, ext_detail or "?")
         return false
     end
-    local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
-    if unscriptable then
-        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s name=%s", id, unscriptable_reason or "unknown", unscriptable_name or "?")
+    local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
+    if permanent then
+        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s name=%s", id, permanent_reason or "unknown", permanent_name or "?")
         return false
     end
     return true

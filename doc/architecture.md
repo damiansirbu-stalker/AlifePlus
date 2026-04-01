@@ -186,17 +186,18 @@ Not obvious from any single file. Violations cause subtle bugs.
 
    | # | Guard | Nature | What it catches | Cost |
    |---|-------|--------|-----------------|------|
-   | 1 | `is_unscriptable_squad` | static+dynamic | story_id, trader, named_npc (static, cached), task_giver, companion (dynamic) | O(1) cached, O(t) uncached |
-   | 2 | `is_task_target` | dynamic | `sim_offline_combat.task_squads` registry (assault, bounty, delivery, dominance, rescue, chimera, smart_control, top_10, companions), `axr_task_manager.bounties_by_id`/`hostages_by_id` fallback | O(1) hash + O(m*b) fallback |
-   | 3 | `is_externally_scripted` | dynamic | scripted_target, __lock, warfare, condlist, random_targets | O(1) field reads |
+   | 1 | `is_permanent_squad` | static | story_id, trader, named_npc, empty_squad (cached per squad, weak keys) | O(1) cached, O(1) uncached with 4-5 luabind |
+   | 2 | `has_active_role` | dynamic | task_giver, companion (re-evaluated every call) | O(1) + O(t) task_info scan |
+   | 3 | `is_task_target` | dynamic | `sim_offline_combat.task_squads` registry (assault, bounty, delivery, dominance, rescue, chimera, smart_control, top_10, companions), `axr_task_manager.bounties_by_id`/`hostages_by_id` fallback | O(1) hash + O(m*b) fallback |
+   | 4 | `is_externally_scripted` | dynamic | scripted_target, __lock, warfare, condlist, random_targets | O(1) field reads |
 
-   Future: `is_unscriptable_squad` will split into `is_permanent_squad` (static: story, trader, named_npc) and `has_active_role` (dynamic: task_giver, companion).
+   `is_unscriptable_squad` removed. All callers use `is_permanent_squad` and/or `has_active_role` directly.
 
    **AP guard layers (where guards are called):**
 
-   - **Cause level:** radiant causes (needs, stash, area) check `is_unscriptable_squad` + `is_externally_scripted` on the triggering squad (it IS the responder). Reactive causes guard the entity AP would act on: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
-   - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true` and `exclude_externally_scripted = true`. Callers where the triggering squad could appear in results pass `exclude_squad_id` (squadkill_revenge, squadkill_flee, wounded_help, harvest_hunt). _find_hunters (elitekill_targeted) checks per hunter.
-   - **Tracker level (chokepoint):** `_validate_script_target` in script_squad/script_actor_target rejects all three: `is_unscriptable_squad` -> `is_task_target` -> `is_externally_scripted` (with AP self-exclusion). Every AP squad movement flows through this. Returns RULES_NEXT on reject.
+   - **Cause level:** radiant causes (needs, stash, area) check `is_permanent_squad` + `is_externally_scripted` on the triggering squad (it IS the responder; tracker catches active roles). Reactive causes guard the entity AP would act on with both `is_permanent_squad` + `has_active_role`: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
+   - **Consequence level:** all find_squads callers pass `exclude_unscriptable = true` and `exclude_externally_scripted = true` (exclude_unscriptable checks `is_permanent_squad` + `has_active_role`). Callers where the triggering squad could appear in results pass `exclude_squad_id` (squadkill_revenge, squadkill_flee, wounded_help, harvest_hunt). _find_hunters (elitekill_targeted) checks `is_permanent_squad` per hunter.
+   - **Tracker level (chokepoint):** `_validate_script_target` in script_squad/script_actor_target rejects all four: `is_permanent_squad` -> `has_active_role` -> `is_task_target` -> `is_externally_scripted` (with AP self-exclusion). Every AP squad movement flows through this. Returns RULES_NEXT on reject.
 
    **Anomaly-side protections (not owned by AP, documented for reference):**
 
@@ -206,7 +207,7 @@ Not obvious from any single file. Violations cause subtle bugs.
    | `squad.force_online` | Prevents engine from switching squad to offline state (keeps NPCs spawned) | sim_squad_scripted:check_online_status |
    | `squad.stay_time` reset | Resets idle timer so squad doesn't leave smart terrain naturally | tasks_assault:144, tasks_dominance:119 |
    | `task_giver_squads` | Protects task giver NPCs from offline combat death (rebuilt every 30s) | sim_offline_combat:coordinator |
-   | `xsquad.release_squads` | Checks `is_unscriptable_squad` + `is_task_target` before mass squad removal | xsquad.script |
+   | `xsquad.release_squads` | Checks `is_permanent_squad` + `has_active_role` + `is_task_target` before mass squad removal | xsquad.script |
 
 ---
 

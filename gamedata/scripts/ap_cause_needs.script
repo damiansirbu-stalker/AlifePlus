@@ -61,8 +61,8 @@ local function _on_smart(trace, squad)
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
     local ext, ext_detail = xsquad.is_externally_scripted(squad)
     if ext then return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail } end
-    local unscriptable, unscriptable_reason, unscriptable_name = xsquad.is_unscriptable_squad(squad)
-    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason, name = unscriptable_name } end
+    local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
+    if permanent then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = permanent_reason, name = permanent_name } end
     if not _community_stalker[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad.player_id } end
 
     local level_id = xlevel.get_level_id(squad)
