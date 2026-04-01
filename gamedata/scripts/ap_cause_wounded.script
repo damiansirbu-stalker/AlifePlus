@@ -27,9 +27,9 @@ local function on_npc_medkit_use(trace, npc, medkit, kind)
     local squad = xsquad.get_squad_by_member(npc:id())
     if squad then
         local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
-        if permanent then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = permanent_reason, name = permanent_name } end
+        if permanent then return { code = RESULT.RULES_NEXT, reason = REASON.PERMANENT_BYPASSED, detail = permanent_reason, name = permanent_name } end
         local active_role, role_reason, role_name = xsquad.has_active_role(squad)
-        if active_role then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = role_reason, name = role_name } end
+        if active_role then return { code = RESULT.RULES_NEXT, reason = REASON.ACTIVE_ROLE_BYPASSED, detail = role_reason, name = role_name } end
         if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
     end
 

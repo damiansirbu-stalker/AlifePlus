@@ -9,13 +9,15 @@ local time_global = time_global
 local cfg = ap_mcm.cfg
 local _cooldown
 
-local function _killer_unscriptable(killer_id)
-    if not killer_id or killer_id == 0 then return false end
+local function _killer_protected(killer_id)
+    if not killer_id or killer_id == 0 then return nil end
     local squad = xsquad.get_squad_by_member(killer_id)
-    if not squad then return false end
-    local perm, reason, name = xsquad.is_permanent_squad(squad)
-    if perm then return perm, reason, name end
-    return xsquad.has_active_role(squad)
+    if not squad then return nil end
+    local perm, perm_reason, perm_name = xsquad.is_permanent_squad(squad)
+    if perm then return REASON.PERMANENT_BYPASSED, perm_reason, perm_name end
+    local role, role_reason, role_name = xsquad.has_active_role(squad)
+    if role then return REASON.ACTIVE_ROLE_BYPASSED, role_reason, role_name end
+    return nil
 end
 
 local function _on_death(trace, squad, npc, killer)
@@ -26,8 +28,8 @@ local function _on_death(trace, squad, npc, killer)
     if not ap_alife_tracker.is_elite(victim_id) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ELITE } end
 
     local killer_id = ap_utils.get_entity_id(killer)
-    local unscriptable, unscriptable_reason, unscriptable_name = _killer_unscriptable(killer_id)
-    if unscriptable then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = unscriptable_reason, name = unscriptable_name } end
+    local protected_reason, protected_detail, protected_name = _killer_protected(killer_id)
+    if protected_reason then return { code = RESULT.RULES_NEXT, reason = protected_reason, detail = protected_detail, name = protected_name } end
 
     local now = time_global()
     local key = "elitekill_" .. victim_id

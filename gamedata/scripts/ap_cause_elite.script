@@ -13,9 +13,9 @@ local function _on_death(trace, squad, se_victim, se_killer)
     if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
     local killer_perm, killer_perm_reason, killer_perm_name = xsquad.is_permanent_squad(killer_squad)
-    if killer_perm then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = killer_perm_reason, name = killer_perm_name } end
+    if killer_perm then return { code = RESULT.RULES_NEXT, reason = REASON.PERMANENT_BYPASSED, detail = killer_perm_reason, name = killer_perm_name } end
     local killer_role, killer_role_reason, killer_role_name = xsquad.has_active_role(killer_squad)
-    if killer_role then return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE, detail = killer_role_reason, name = killer_role_name } end
+    if killer_role then return { code = RESULT.RULES_NEXT, reason = REASON.ACTIVE_ROLE_BYPASSED, detail = killer_role_reason, name = killer_role_name } end
 
     local victim_id = ap_utils.get_entity_id(se_victim)
     local kills = ap_alife_tracker.projected_kill_count(killer_id, victim_id)
