@@ -14,7 +14,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.BASEKILL_SUPPORT, function()
         if not cfg.consequence_basekill_support_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_basekill_support_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("basekill_support", cfg.consequence_basekill_support_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local smart = event_data.smart
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id

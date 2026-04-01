@@ -23,7 +23,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.HARVEST_HUNT, function()
         if not cfg.consequence_harvest_hunt_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_harvest_hunt_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("harvest_hunt", cfg.consequence_harvest_hunt_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local taker_is_player = event_data.taker_is_player
         local taker_squad_id = event_data.taker_squad_id

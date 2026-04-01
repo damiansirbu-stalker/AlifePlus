@@ -14,7 +14,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.MASSACRE_INVESTIGATE, function()
         if not cfg.consequence_massacre_investigate_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_massacre_investigate_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("massacre_investigate", cfg.consequence_massacre_investigate_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
         if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end

@@ -20,7 +20,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.WOUNDED_HELP, function()
         if not cfg.consequence_wounded_help_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_wounded_help_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("wounded_help", cfg.consequence_wounded_help_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local npc_id, is_player = event_data.npc_id, event_data.is_player
         local position, level_id = event_data.position, event_data.level_id

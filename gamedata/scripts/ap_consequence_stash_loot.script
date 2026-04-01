@@ -65,7 +65,7 @@ local function _handler(event_data)
     return ap_debug.observe(trace, CONSEQUENCE.STASH_LOOT, function()
         if not cfg.consequence_stash_loot_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not community_stalker[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
-        if not xmath.chance(cfg.consequence_stash_loot_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("stash_loot", cfg.consequence_stash_loot_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
         if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end

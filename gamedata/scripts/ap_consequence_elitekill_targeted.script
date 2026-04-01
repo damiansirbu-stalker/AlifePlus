@@ -68,7 +68,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.ELITEKILL_TARGETED, function()
         if not cfg.consequence_elitekill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_elitekill_targeted_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("elitekill_targeted", cfg.consequence_elitekill_targeted_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local killer_id, level_id = event_data.killer_id, event_data.level_id
         local victim_name = event_data.name or "unknown"

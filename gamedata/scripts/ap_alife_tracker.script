@@ -318,6 +318,10 @@ local function _validate_script_target(squad, caller)
         ap_debug.warn("[TRACKER] UNSCRIPTABLE_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, unscriptable_reason or "unknown", unscriptable_name or "?", caller)
         return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = unscriptable_reason, name = unscriptable_name, id = squad.id }
     end
+    local task_tgt, task_detail = xsquad.is_task_target(squad)
+    if task_tgt then
+        return { code = RESULT.RULES_NEXT, reason = "task_target", detail = task_detail, id = squad.id }
+    end
     local ext, ext_detail = xsquad.is_externally_scripted(squad)
     if ext and not scripted_squads[squad.id] then
         return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail, id = squad.id }

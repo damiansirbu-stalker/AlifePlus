@@ -20,7 +20,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
         if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_area_conquer_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not xmath.prd_chance("area_conquer", cfg.consequence_area_conquer_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
         if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
