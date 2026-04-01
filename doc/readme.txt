@@ -134,9 +134,9 @@ Disable or remove in MO2.
 FAQ:
 
 How do I make events occur faster or slower?
-    Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1.
-    Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4.
-	Gung-Ho: lower A-Life Interval to 1, raise Cause Budget and per Consequence to max, raise consequence chances to 50+, lower PDA chances to 10. Good luck!
+    Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1, raise Radiant Cooldown to 15-20.
+    Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4, lower Radiant Cooldown to 5.
+    Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, raise consequence chances to 50+, set Radiant Cooldown to 0. Good luck!
 
 Does it work with GAMMA?
   Built and tested with GAMMA, also tested partially with Zona and EFP.

@@ -1,24 +1,34 @@
 next
-  Fixed: area conquest mutation firing before squad arrival (engine overwrote faction)
-  Fixed: task target squads protected from AP scripting (assault, bounty, delivery, etc.)
-  Changed: map markers decoupled from consequences (collection-driven, 5s periodic sync instead of inline calls)
-  Fixed: squadkill consequence guard ordering (community check before PRD chance)
-  Fixed: cause stash passing monster squads to consequences (community gate added)
-  Added: CAUSE_TYPE enum (radiant/reactive), each cause declares its type at registration
-  Added: global radiant consequence cooldown (MCM, prevents ambient burst fires in busy areas)
-  Added: map markers MCM toggle (works at any log level, independent from debug tracing)
-  Added: version logged at startup (mod + xlibs)
-  Changed: MCM refresh (banner, version from code, cream version color)
-  Changed: consequence chance rolls use pseudo-random distribution (prevents long droughts, same average rate)
-  Changed: squad guard split (radiant causes use is_permanent_squad, reactive causes use both, tracker uses full 4-guard chain)
-  Changed: tracker distinguishes permanent NPCs from active-role NPCs in skip reasons
-  Changed: find_squads distance bounds use inclusive upper (Demonized pattern)
-  Changed: squad protection guards applied centrally instead of per-consequence
-  Fixed: log deadbanding reduces spam in busy areas (xlibs)
-  Fixed: Russian MCM encoding (windows-1251)
-  Fixed: tracker task target guard missing REASON constant and WARN log
-  Fixed: elitekill_targeted missing has_active_role guard (companions/task givers could be selected as hunters)
-  Fixed: architecture.md conquest pattern description (now on arrival, not immediate)
+  Core:
+    Added: radiant/reactive cause types, events classified at registration for separate rate limiting
+    Added: global radiant cooldown prevents consequence bursts in busy areas (MCM configurable)
+    Changed: map markers decoupled from consequence execution (collection-driven periodic sync, lighter on the engine)
+    Changed: consequence chances use pseudo-random distribution (same average rate, reduced variance)
+  Gameplay:
+    Fixed: territory changes hands only after the conquering squad physically arrives (no remote takeovers)
+    Fixed: stashes only filled when empty (no more artifact hoards from repeated fills)
+    Fixed: mutant squads no longer trigger stalker stash events (wrong community filtered at cause level)
+    Fixed: revenge only rolls against valid enemy factions (no wasted evaluations on monsters)
+    Fixed: elite hunters respect the protection list (companions and task givers are off-limits)
+  Compatibility:
+    Fixed: task target squads (assault, bounty, delivery) protected from all AP scripting
+    Changed: squad protection guards applied centrally instead of per-consequence
+    Changed: permanent NPCs and active-role NPCs tracked separately
+    Changed: radiant causes check is_permanent_squad, reactive causes check both
+  Map & PDA:
+    Added: map markers MCM toggle (independent from debug tracing)
+    Changed: PDA sender logging streamlined for production use
+  MCM:
+    Added: version displayed at startup (mod + xlibs)
+    Changed: MCM visual refresh
+    Fixed: Russian MCM encoding restored (windows-1251)
+  X-Ray & xlibs:
+    Added: timed event scheduling works correctly with major modpacks (globals resolve at call time for demonized_time_events compatibility)
+    Added: log deadbanding reduces repeated lines in busy areas
+    Added: consequence rate limit peek without consuming tokens (xtable.check_lock)
+    Added: cleaner console output (xmath.chance diagnostic noise removed)
+    Changed: find_squads distance bounds use inclusive upper
+    Fixed: PDA sender no longer re-evaluates rejected squads
 
 1.2.2
   xlibs 1.2.3 dependency.

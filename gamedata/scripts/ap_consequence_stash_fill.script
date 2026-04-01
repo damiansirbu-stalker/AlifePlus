@@ -38,6 +38,7 @@ local function _handler(event_data)
 
         local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
         if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end
+        if xstash.get_stash_items(stash_id) then return { code = RESULT.RULES_NEXT, reason = "stash_not_empty" } end
 
         local squad = xobject.se(event_data.squad_id)
         if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end

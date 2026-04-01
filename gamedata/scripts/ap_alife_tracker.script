@@ -3,7 +3,7 @@
 local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
-local ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback = ResetTimeEvent, CreateTimeEvent, RegisterScriptCallback
+local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -467,6 +467,7 @@ local function _process_arrival(squad_id)
 end
 
 local function _check_arrivals()
+    ap_debug.debug("[TRACKER] _check_arrivals fired, scripted=%d consequence=%d", xtable.count(scripted_squads), xtable.count(_consequence_squads))
     ResetTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC)
     for squad_id in pairs(_consequence_squads) do
         if not scripted_squads[squad_id] then
@@ -502,18 +503,25 @@ end
 --- Register a squad as consequence-controlled (called by consequence handlers after successful script_squad)
 function register_consequence_squad(squad_id, label)
     if not squad_id then return end
-    _consequence_squads[squad_id] = label or "unknown"
+    label = label or "unknown"
+    _consequence_squads[squad_id] = label
+    ap_debug.debug("[TRACKER] register_consequence_squad: squad=%d label=%s", squad_id, label)
 end
 
 --- Periodic marker sync: mark new squads, unmark dead/done squads
 local function _check_markers()
+    ap_debug.debug("[TRACKER] _check_markers fired, cfg.map_markers=%s consequence=%d marked=%d", tostring(cfg.map_markers), xtable.count(_consequence_squads), xtable.count(_marked_squads))
     ResetTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC)
+    if not cfg.map_markers then return false end
     for squad_id, label in pairs(_consequence_squads) do
         local se = xobject.se(squad_id)
         local alive = se and scripted_squads[squad_id]
+        ap_debug.debug("[TRACKER] _check_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
+            squad_id, tostring(se ~= nil), tostring(scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_marked_squads[squad_id] ~= nil))
         if not alive and _marked_squads[squad_id] then
             xpda.unmark_squad(squad_id)
             _marked_squads[squad_id] = nil
+            ap_debug.debug("[TRACKER] unmark: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
         end
         if not alive then
             _consequence_squads[squad_id] = nil
@@ -521,9 +529,17 @@ local function _check_markers()
             local full_label = label .. ": " .. xsquad.get_community_name(se)
             xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_data.MARKER_TYPE })
             _marked_squads[squad_id] = true
+            ap_debug.debug("[TRACKER] mark: squad=%d label=%s", squad_id, full_label)
         end
     end
     return false
+end
+
+--- Called on every level load (including save load). Resets marker state.
+local function _on_first_update()
+    ap_debug.debug("[TRACKER] _on_first_update fired")
+    xpda.clear_squad_markers()
+    _marked_squads = {}
 end
 
 function on_game_start()
@@ -532,13 +548,13 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
 
     CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)
+    ap_debug.debug("[TRACKER] arrivals timer created in on_game_start")
 
-    if cfg.map_markers then
-        RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, xpda.clear_squad_markers)
-        CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
-    end
+    CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
+    ap_debug.debug("[TRACKER] markers timer created in on_game_start")
 
     ap_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
     ap_debug.info("[TRACKER] Initialized")

@@ -12,8 +12,6 @@ local cfg = ap_mcm.cfg
 local _pda_senders = {}
 
 local function refresh_pda_senders()
-    -- @safety nil-guarded: alife sim, se, method existence, return values all checked
-    local t0 = time_global()
     _pda_senders = {}
     local squads = xsquad.find_online_squads(nil, {
         factions = ap_data.community_stalker,
@@ -21,7 +19,6 @@ local function refresh_pda_senders()
         exclude_active_role = true,
         max_count = 20,
     })
-    local t1 = time_global()
 
     local sim = alife()
     if not sim then return end
@@ -37,8 +34,7 @@ local function refresh_pda_senders()
         end
         ::continue::
     end
-    local t2 = time_global()
-    ap_debug.debug("[PDA_SENDER] refresh: find_squads=%dms, total=%dms, senders=%d", t1-t0, t2-t0, #_pda_senders)
+    ap_debug.debug("[PDA_SENDER] refresh: senders=%d", #_pda_senders)
 end
 
 local function get_pda_sender()
@@ -92,11 +88,20 @@ end
 --- @param key string ap_messages key
 --- @param params table|nil Substitution parameters for ap_messages.get
 function send_pda(chance, key, params)
-    if not xmath.chance(chance) then return { code = "chance", key = key } end
+    if not xmath.chance(chance) then
+        return { code = "chance", key = key }
+    end
     local msg = ap_messages and ap_messages.get(key, params)
-    if not msg then return { code = "no_msg", key = key } end
+    if not msg then
+        ap_debug.debug("[SEND_PDA] no message: key=%s", key)
+        return { code = "no_msg", key = key }
+    end
     local sender = get_pda_sender()
-    if not sender then return { code = "no_sender", key = key } end
+    if not sender then
+        ap_debug.debug("[SEND_PDA] no sender available")
+        return { code = "no_sender", key = key }
+    end
+    ap_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
     xpda.send(sender.name, msg, sender.icon)
     return { code = "sent", key = key, sender = sender.name }
 end
