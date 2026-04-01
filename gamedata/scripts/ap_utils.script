@@ -17,7 +17,8 @@ local function refresh_pda_senders()
     _pda_senders = {}
     local squads = xsquad.find_online_squads(nil, {
         factions = ap_data.community_stalker,
-        exclude_unscriptable = true,
+        exclude_permanent = true,
+        exclude_active_role = true,
         max_count = 20,
     })
     local t1 = time_global()
@@ -245,14 +246,17 @@ end
 function find_squads(pos, opts)
     opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
     opts.exclude_externally_scripted = true
-    local result, skipped_unscriptable = xsquad.find_squads(pos, opts)
+    opts.exclude_permanent = true
+    opts.exclude_active_role = true
+    opts.exclude_task_target = true
+    local result, skipped_protected = xsquad.find_squads(pos, opts)
     if ap_debug.enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)
             .. " lv=" .. tostring(opts.level_id or "any")
             .. " dist=" .. tostring(opts.min_distance or 0) .. "-" .. tostring(opts.max_distance)
             .. " excl_smart=" .. tostring(opts.exclude_at_smart_id or "none")
             .. " excl_ids=" .. (opts.exclude_ids and tostring(next(opts.exclude_ids) and "yes" or "none") or "none")
-            .. (skipped_unscriptable > 0 and " skipped_unscriptable=" .. skipped_unscriptable or "")
+            .. (skipped_protected > 0 and " skipped_protected=" .. skipped_protected or "")
         if #result == 0 then
             ap_debug.debug("[DISPATCH.FIND_SQUADS] count=0 | %s", params)
         else
