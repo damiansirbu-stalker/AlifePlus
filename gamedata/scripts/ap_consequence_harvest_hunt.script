@@ -15,7 +15,6 @@ local chase_opts = {
     pda_start = "text_pda_consequence_harvest_hunt",
     pda_lost = "text_pda_consequence_harvest_hunt_lost",
     pda_found = "text_pda_consequence_harvest_hunt_found",
-    marker = "Hunting",
     rush_key = "consequence_harvest_hunt_rush",
 }
 
@@ -48,6 +47,7 @@ local function _handler(event_data)
         local moved, dst_id = ap_utils.chase_start(trace, chasers, target_squad,
             { location = location }, chase_opts)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+        for i = 1, #moved do ap_alife_tracker.register_consequence_squad(moved[i].id, CONSEQUENCE.HARVEST_HUNT) end
 
         return ap_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_hunters", dst_id = dst_id or 0,

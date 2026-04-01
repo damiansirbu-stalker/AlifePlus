@@ -1,6 +1,7 @@
 --- ap_cause_massacre: Tracks stalker death clusters near smarts, publishes cause:massacre at threshold
 
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -34,7 +35,7 @@ function on_game_start()
     deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_massacre_decay_time })
 
     ap_producer_reactive.register(CAUSE.MASSACRE, {
-        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, on_squad_npc_death)
 
     ap_debug.info("[CAUSE.MASSACRE] Initialized")

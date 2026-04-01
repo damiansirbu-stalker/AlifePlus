@@ -14,6 +14,8 @@ local ARRIVAL_CHECK_SEC = 30
 local SCRIPTED_SQUAD_TTL = ap_const.SCRIPTED_SQUAD_TTL
 local ELITE_MAX_LEVEL = 10
 
+local MAP_MARKER_CHECK_SEC = 5
+
 local killers = {}
 local elites = {}
 local scripted_squads = {}
@@ -23,6 +25,9 @@ local elite_dead
 local cfg = ap_mcm.cfg
 local stalker_needs = {}
 local NEED_FIELDS = ap_const.NEED_FIELDS
+
+local _consequence_squads = {}
+local _marked_squads = {}
 
 --- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
 local function unscript_squad(squad_or_id)
@@ -463,6 +468,11 @@ end
 
 local function _check_arrivals()
     ResetTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC)
+    for squad_id in pairs(_consequence_squads) do
+        if not scripted_squads[squad_id] then
+            _consequence_squads[squad_id] = nil
+        end
+    end
     local pending = {}
     for squad_id in pairs(scripted_squads) do
         pending[#pending + 1] = squad_id
@@ -489,6 +499,33 @@ local function _on_squad_npc_death(squad, npc, killer)
     end)
 end
 
+--- Register a squad as consequence-controlled (called by consequence handlers after successful script_squad)
+function register_consequence_squad(squad_id, label)
+    if not squad_id then return end
+    _consequence_squads[squad_id] = label or "unknown"
+end
+
+--- Periodic marker sync: mark new squads, unmark dead/done squads
+local function _check_markers()
+    ResetTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC)
+    for squad_id, label in pairs(_consequence_squads) do
+        local se = xobject.se(squad_id)
+        local alive = se and scripted_squads[squad_id]
+        if not alive and _marked_squads[squad_id] then
+            xpda.unmark_squad(squad_id)
+            _marked_squads[squad_id] = nil
+        end
+        if not alive then
+            _consequence_squads[squad_id] = nil
+        elseif not _marked_squads[squad_id] then
+            local full_label = label .. ": " .. xsquad.get_community_name(se)
+            xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_data.MARKER_TYPE })
+            _marked_squads[squad_id] = true
+        end
+    end
+    return false
+end
+
 function on_game_start()
     elite_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
 
@@ -497,6 +534,11 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
 
     CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)
+
+    if cfg.map_markers then
+        RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, xpda.clear_squad_markers)
+        CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
+    end
 
     ap_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
     ap_debug.info("[TRACKER] Initialized")

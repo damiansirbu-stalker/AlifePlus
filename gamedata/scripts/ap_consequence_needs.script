@@ -211,8 +211,7 @@ local function _make_handler(entry)
             if res.code ~= RESULT.OK_NEXT then
                 return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
             end
-
-            ap_utils.mark(squad, entry.name)
+            ap_alife_tracker.register_consequence_squad(event_data.squad_id, entry.consequence)
 
             ap_debug.observe(trace, ACTION.SEND_PDA, function()
                 local cmd_se = xobject.se(squad:commander_id())

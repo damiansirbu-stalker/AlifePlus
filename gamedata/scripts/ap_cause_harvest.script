@@ -1,5 +1,6 @@
 --- ap_cause_harvest: Artefact pickup by player or NPC
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -65,10 +66,10 @@ end
 
 function on_game_start()
     ap_producer_reactive.register(CAUSE.HARVEST, {
-        callback = CALLBACK.ACTOR_ON_ITEM_TAKE,
+        callback = CALLBACK.ACTOR_ON_ITEM_TAKE, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_actor_take)
     ap_producer_reactive.register(CAUSE.HARVEST, {
-        callback = CALLBACK.NPC_ON_ITEM_TAKE,
+        callback = CALLBACK.NPC_ON_ITEM_TAKE, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_npc_take)
     ap_debug.info("[CAUSE.HARVEST] Initialized (actor=item_take, npc=item_take)")
 end

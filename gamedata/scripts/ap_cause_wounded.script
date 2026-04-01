@@ -1,5 +1,6 @@
 --- ap_cause_wounded: Detects healing item usage by NPCs and player
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -84,11 +85,11 @@ function on_game_start()
     _setup_hooks()
 
     ap_producer_reactive.register(CAUSE.WOUNDED, {
-        callback = CALLBACK.X_NPC_MEDKIT_USE,
+        callback = CALLBACK.X_NPC_MEDKIT_USE, cause_type = CAUSE_TYPE.REACTIVE,
     }, on_npc_medkit_use)
 
     ap_producer_reactive.register(CAUSE.WOUNDED, {
-        callback = CALLBACK.ACTOR_ON_ITEM_USE,
+        callback = CALLBACK.ACTOR_ON_ITEM_USE, cause_type = CAUSE_TYPE.REACTIVE,
     }, on_actor_item_use)
 
     ap_debug.info("[CAUSE.WOUNDED] Initialized (npc=medkit, player=item_use)")

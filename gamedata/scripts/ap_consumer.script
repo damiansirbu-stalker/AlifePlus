@@ -3,7 +3,9 @@ local error, pairs, ipairs, tostring, table_sort = error, pairs, ipairs, tostrin
 local RegisterScriptCallback = RegisterScriptCallback
 
 local RESULT = ap_const.RESULT
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
+local cfg = ap_mcm.cfg
 
 local _registry = {}
 
@@ -56,12 +58,26 @@ local function _run_handler(entry, event_data)
     return entry.handler(event_data)
 end
 
+local function _check_radiant_cooldown(event_data, event_type)
+    if event_data.cause_type ~= CAUSE_TYPE.RADIANT then return true end
+    if xtable.check_lock("global_radiant_consequence") then return true end
+    ap_debug.debug("[CONSUMER] GLOBAL_RADIANT_COOLDOWN cause=%s", event_type)
+    return false
+end
+
+local function _acquire_radiant_cooldown(event_data)
+    if event_data.cause_type ~= CAUSE_TYPE.RADIANT then return end
+    xtable.acquire_lock("global_radiant_consequence", cfg.consequence_global_radiant_cooldown)
+end
+
 local function _process(event_type, event_data)
     local consequences = _registry[event_type]
     if not consequences then return end
 
-    ap_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s",
-        event_type, event_data.squad_id or event_data.id, event_data.level_id)
+    ap_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s",
+        event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
+
+    if not _check_radiant_cooldown(event_data, event_type) then return end
 
     for _, entry in ipairs(consequences) do
         if not ap_utils.check_consequence_rate_limit(entry.name) then
@@ -73,6 +89,7 @@ local function _process(event_type, event_data)
 
         if result and (result.code == RESULT.OK_NEXT or result.code == RESULT.OK_STOP) then
             ap_utils.increment_consequence_counter(entry.name)
+            _acquire_radiant_cooldown(event_data)
         end
 
         if result and (result.code == RESULT.OK_STOP or result.code == RESULT.ERROR_STOP) then break end

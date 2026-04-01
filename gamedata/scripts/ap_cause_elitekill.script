@@ -1,6 +1,7 @@
 --- ap_cause_elitekill: Publishes cause:elitekill when an elite dies
 
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -54,7 +55,7 @@ end
 function on_game_start()
     _cooldown = ap_utils.create_cooldown(60000)
     ap_producer_reactive.register(CAUSE.ELITEKILL, {
-        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_death)
     ap_debug.info("[CAUSE.ELITEKILL] Initialized")
 end

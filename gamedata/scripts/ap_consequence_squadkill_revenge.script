@@ -15,7 +15,6 @@ local chase_opts = {
     pda_start = "text_pda_consequence_squadkill_revenge",
     pda_lost = "text_pda_consequence_squadkill_revenge_lost",
     pda_found = "text_pda_consequence_squadkill_revenge_found",
-    marker = "Chasing",
     rush_key = "consequence_squadkill_revenge_rush",
 }
 
@@ -23,10 +22,10 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_debug.observe(trace, CONSEQUENCE.SQUADKILL_REVENGE, function()
         if not cfg.consequence_squadkill_revenge_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.prd_chance("squadkill_revenge", cfg.consequence_squadkill_revenge_chance) then return { code = RESULT.CHANCE_NEXT } end
         if not ap_data.community_stalker[event_data.victim_faction] then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY }
         end
+        if not xmath.prd_chance("squadkill_revenge", cfg.consequence_squadkill_revenge_chance) then return { code = RESULT.CHANCE_NEXT } end
 
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0
@@ -56,6 +55,7 @@ local function _handler(event_data)
         local moved, dst_id = ap_utils.chase_start(trace, avengers, target_squad,
             { location = location }, chase_opts)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+        for i = 1, #moved do ap_alife_tracker.register_consequence_squad(moved[i].id, CONSEQUENCE.SQUADKILL_REVENGE) end
 
         return ap_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_avengers",

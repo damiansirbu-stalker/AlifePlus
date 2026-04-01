@@ -1,14 +1,20 @@
 next
   Fixed: area conquest mutation firing before squad arrival (engine overwrote faction)
   Fixed: task target squads protected from AP scripting (assault, bounty, delivery, etc.)
+  Changed: map markers decoupled from consequences (collection-driven, 5s periodic sync instead of inline calls)
+  Fixed: squadkill consequence guard ordering (community check before PRD chance)
+  Fixed: cause stash passing monster squads to consequences (community gate added)
+  Added: CAUSE_TYPE enum (radiant/reactive), each cause declares its type at registration
+  Added: global radiant consequence cooldown (MCM, prevents ambient burst fires in busy areas)
   Added: map markers MCM toggle (works at any log level, independent from debug tracing)
-  Added: MCM banner
   Added: version logged at startup (mod + xlibs)
-  Changed: MCM version displayed from code, no longer hardcoded in XML
+  Changed: MCM refresh (banner, version from code, cream version color)
   Changed: consequence chance rolls use pseudo-random distribution (prevents long droughts, same average rate)
   Changed: squad guard split (radiant causes use is_permanent_squad, reactive causes use both, tracker uses full 4-guard chain)
   Changed: tracker distinguishes permanent NPCs from active-role NPCs in skip reasons
+  Changed: find_squads distance bounds use inclusive upper (Demonized pattern)
   Changed: squad protection guards applied centrally instead of per-consequence
+  Fixed: log deadbanding reduces spam in busy areas (xlibs)
   Fixed: Russian MCM encoding (windows-1251)
   Fixed: tracker task target guard missing REASON constant and WARN log
   Fixed: elitekill_targeted missing has_active_role guard (companions/task givers could be selected as hunters)

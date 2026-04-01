@@ -3,6 +3,7 @@ local next, pairs, tostring, type = next, pairs, tostring, type
 local RegisterScriptCallback = RegisterScriptCallback
 
 local CALLBACK = ap_const.CALLBACK
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local cfg = ap_mcm.cfg
 local _handlers = {}
 local _subscribed = {}
@@ -10,11 +11,8 @@ local _radiant_event_limiter = nil
 local _reactive_event_limiter = nil
 local _last_interaction_squad = {}
 
---- Radiant callback set (built from RADIANT_CALLBACKS for O(1) lookup in dispatch)
-local _radiant_event_set = {}
-for i = 1, #ap_const.RADIANT_CALLBACKS do
-    _radiant_event_set[ap_const.RADIANT_CALLBACKS[i]] = true
-end
+--- Radiant callback set (built dynamically from cause registrations with cause_type = RADIANT)
+local _radiant_callbacks = {}
 
 --- Actor callbacks are always on the player's level (no level extraction needed)
 local _actor_callbacks = {
@@ -90,10 +88,10 @@ local function _check_reactive_event_limiter(callback_type)
 end
 
 local function _check_event_limiter(callback_type)
-    if _radiant_event_set[callback_type] then
-        return _check_radiant_event_limiter(), "RADIANT"
+    if _radiant_callbacks[callback_type] then
+        return _check_radiant_event_limiter(), CAUSE_TYPE.RADIANT
     end
-    return _check_reactive_event_limiter(callback_type), "REACTIVE"
+    return _check_reactive_event_limiter(callback_type), CAUSE_TYPE.REACTIVE
 end
 
 --- Register a cause handler
@@ -110,11 +108,15 @@ function register(name, config, handler)
         ap_debug.err("[PRODUCER.REACTIVE] register '%s': missing callback", name)
         return false
     end
+    local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
     if not _handlers[callback] then
         _handlers[callback] = {}
     end
-    _handlers[callback][name] = { handler = handler, label = name }
-    ap_debug.info("[PRODUCER.REACTIVE] registered: %s callback=%s", name, callback)
+    _handlers[callback][name] = { handler = handler, label = name, cause_type = cause_type }
+    if cause_type == CAUSE_TYPE.RADIANT then
+        _radiant_callbacks[callback] = true
+    end
+    ap_debug.info("[PRODUCER.REACTIVE] registered: %s callback=%s type=%s", name, callback, cause_type)
     return true
 end
 
@@ -128,8 +130,9 @@ function unregister(name, callback)
 end
 
 --- Try to publish a cause result
-local function _try_publish(on_map, name, result, trace, level_id)
+local function _try_publish(on_map, name, result, trace, level_id, cause_type)
     result._trace = trace
+    result.cause_type = cause_type
     ap_utils.event_publish(result.cause, result)
     ap_utils.increment_cause_counter(name)
     ap_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
@@ -137,7 +140,7 @@ local function _try_publish(on_map, name, result, trace, level_id)
 end
 
 local function _radiant_exhausted(callback_type)
-    return _radiant_event_set[callback_type] and _radiant_event_limiter
+    return _radiant_callbacks[callback_type] and _radiant_event_limiter
         and not _radiant_event_limiter:peek("radiant")
 end
 
@@ -159,7 +162,7 @@ local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
         local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
 
         if result and result.cause then
-            _try_publish(on_map, name, result, trace, level_id)
+            _try_publish(on_map, name, result, trace, level_id, entry.cause_type)
         end
 
         ::continue::
@@ -246,6 +249,7 @@ function on_game_start()
     -- Reset state on new game/load
     _dispatchers = {}
     _subscribed = {}
+    _radiant_callbacks = {}
     _on_count = 0
     _off_count = 0
     _last_interaction_squad = {}

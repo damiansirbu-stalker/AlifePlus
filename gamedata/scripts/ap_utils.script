@@ -101,36 +101,6 @@ function send_pda(chance, key, params)
     return { code = "sent", key = key, sender = sender.name }
 end
 
-local _markers_enabled = false
-
---- Debug map marker (no-op when markers disabled via MCM)
---- Type dispatch: number = plain label, squad object = appends ": community_name"
---- @param target number|userdata Entity/squad ID (number) or squad object (appends community name)
---- @param label string Marker label (plain for number, prefix for squad object)
---- @param entity boolean|nil If true, use entity marker instead of squad marker
-function mark(target, label, entity)
-    if not _markers_enabled then return end
-    local id
-    if type(target) == "number" then
-        id = target
-    else
-        id = target.id
-        label = label .. ": " .. xsquad.get_community_name(target)
-    end
-    local fn = entity and xpda.mark_entity or xpda.mark_squad
-    fn(id, { label = label, marker_type = ap_data.MARKER_TYPE })
-end
-
---- Debug map markers for multiple squads (no-op when markers disabled via MCM)
---- @param squads table Array of squad server objects
---- @param label string Marker label prefix (community name appended per squad)
-function mark_squads(squads, label)
-    if not _markers_enabled then return end
-    for i = 1, #squads do
-        mark(squads[i], label)
-    end
-end
-
 --- Increment death count at key, check threshold, reset on fire. Returns count or nil.
 --- @param deaths table TTL table instance (xttltable.create_ttl_table)
 --- @param key number Smart terrain ID
@@ -340,7 +310,6 @@ end
 ---   pda_chance_key: string - MCM key for PDA chance
 ---   pda_lost: string - ap_messages key for "target lost"
 ---   pda_found: string - ap_messages key for "target found"
----   marker: string - debug marker label (e.g. "Chasing")
 ---   cfg: table - MCM config reference (live, read at call time)
 function chase_register(opts)
     local cfg = opts.cfg
@@ -384,7 +353,6 @@ function chase_register(opts)
             if res.code ~= RESULT.OK_NEXT then
                 return { code = res.code, reason = res.reason }
             end
-            mark(squad, opts.marker)
             return { code = "ok", id = squad.id, dst_id = smart.id, chase = chase_count }
         end)
     end)
@@ -437,20 +405,11 @@ function chase_start(trace, chasers, target, pda_data, opts)
         })
     end)
     if #moved == 0 then return moved, dst_id end
-    mark_squads(moved, opts.marker)
     ap_debug.observe(trace, ACTION.SEND_PDA, function()
         return send_pda(cfg[opts.pda_chance_key], opts.pda_start, pda_data)
     end)
     return moved, dst_id
 end
 
-local function _refresh_markers()
-    _markers_enabled = cfg.map_markers == true
-end
-
 function on_game_start()
-    _refresh_markers()
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _refresh_markers)
-    -- Ephemeral squad markers cleared on level load
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, xpda.clear_squad_markers)
 end

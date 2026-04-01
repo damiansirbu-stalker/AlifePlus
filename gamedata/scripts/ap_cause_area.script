@@ -1,6 +1,7 @@
 --- ap_cause_area: Squad near empty smart terrain (stalker factions only)
 
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
@@ -50,7 +51,7 @@ end
 function on_game_start()
     local radiant = ap_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_producer_reactive.register(CAUSE.AREA, { callback = radiant[i] }, _on_smart)
+        ap_producer_reactive.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
     end
     ap_debug.info("[CAUSE.AREA] Initialized")
 end

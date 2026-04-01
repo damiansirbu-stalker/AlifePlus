@@ -2,6 +2,7 @@
 
 local math_random, math_max, math_floor = math.random, math.max, math.floor
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
@@ -101,7 +102,7 @@ function on_game_start()
     _community_stalker = ap_data.community_stalker
     local radiant = ap_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_producer_reactive.register(NEEDS_KEY, { callback = radiant[i] }, _on_smart)
+        ap_producer_reactive.register(NEEDS_KEY, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
     end
     ap_debug.info("[CAUSE.NEEDS] Initialized")
 end

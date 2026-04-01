@@ -1,6 +1,7 @@
 --- ap_cause_basekill: Tracks stalker deaths at faction bases, publishes cause:basekill at threshold
 
 local CAUSE = ap_const.CAUSE
+local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local CALLBACK = ap_const.CALLBACK
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
@@ -45,7 +46,7 @@ function on_game_start()
     deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_basekill_decay_time })
 
     ap_producer_reactive.register(CAUSE.BASEKILL, {
-        callback = CALLBACK.SQUAD_ON_NPC_DEATH,
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, on_squad_npc_death)
 
     ap_debug.info("[CAUSE.BASEKILL] Initialized")
