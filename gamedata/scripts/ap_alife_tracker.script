@@ -316,12 +316,12 @@ local function _validate_script_target(squad, caller)
     local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
     if permanent then
         ap_debug.warn("[TRACKER] PERMANENT_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, permanent_reason or "unknown", permanent_name or "?", caller)
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = permanent_reason, name = permanent_name, id = squad.id }
+        return { code = RESULT.RULES_NEXT, reason = REASON.PERMANENT_BYPASSED, detail = permanent_reason, name = permanent_name, id = squad.id }
     end
     local active_role, role_reason, role_name = xsquad.has_active_role(squad)
     if active_role then
         ap_debug.warn("[TRACKER] ACTIVE_ROLE_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, role_reason or "unknown", role_name or "?", caller)
-        return { code = RESULT.RULES_NEXT, reason = REASON.UNSCRIPTABLE_BYPASSED, detail = role_reason, name = role_name, id = squad.id }
+        return { code = RESULT.RULES_NEXT, reason = REASON.ACTIVE_ROLE_BYPASSED, detail = role_reason, name = role_name, id = squad.id }
     end
     local task_tgt, task_detail = xsquad.is_task_target(squad)
     if task_tgt then

@@ -209,6 +209,8 @@ Not obvious from any single file. Violations cause subtle bugs.
    | `task_giver_squads` | Protects task giver NPCs from offline combat death (rebuilt every 30s) | sim_offline_combat:coordinator |
    | `xsquad.release_squads` | Checks `is_permanent_squad` + `has_active_role` + `is_task_target` before mass squad removal | xsquad.script |
 
+   **Engine reality:** X-Ray's `alife():release()` and `SIMBOARD:remove_squad()` have zero protection. Any script call to release/remove will unconditionally destroy the entity and all children. All protection is script-side. This is why every path that removes or scripts a squad must go through the guard chain above.
+
 ---
 
 ## Pipeline Gates
