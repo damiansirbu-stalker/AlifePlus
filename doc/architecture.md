@@ -284,7 +284,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 - **flee** -script to nearest friendly base, same level. Used by: squadkill_flee, basekill_flee.
 - **state** -no movement. Update tracker, markers, rewards. Used by: elite_promote, elitekill_bounty.
 - **stash** -script to stash's nearest smart. On-arrive: inventory ops via alife (loot/fill). Ambush is passive, no arrival handler. Base guard: squads at a base skip all stash consequences (won't leave base to chase stashes). Used by: stash_loot, stash_fill, stash_ambush.
-- **conquest** -script to empty smart, conquer immediately on fire, not on arrival. Used by: area_conquer.
+- **conquest** -script to empty smart, conquer on arrival (faction persists because squad is present). Used by: area_conquer.
 - **needs** -config-driven (16 rows in CONFIGS, _make_handler factory). Triggering squad IS the responder. Pipeline: need match -> enabled -> chance -> _build_filter -> find_smart(500m) -> script(rush per MCM) -> OK_STOP. On-arrive: consume/trade/passive. Gulag handles animations; AP never touches the job planner.
 
 ---
@@ -308,7 +308,7 @@ Gate sequence per consequence: enabled -> chance -> rate limit -> logic -> PDA. 
 | STASH | stash_loot | 10 | stash | community_stalker -> script to stash, on_arrive: loot to NPC |
 | STASH | stash_ambush | 20 | stash | community_ambusher -> script to stash smart (passive) |
 | STASH | stash_fill | 30 | stash | community_stalker -> script to stash, on_arrive: fill stash |
-| AREA | area_conquer | 20 | conquest | script to empty smart, conquer immediately |
+| AREA | area_conquer | 20 | conquest | script to empty smart, conquer on arrival |
 | NEEDS | hunger_campfire | 10 | needs | has_campfire + exclude_enemy -> consume HUNGER |
 | NEEDS | sleep_campfire | 10 | needs | has_campfire + exclude_enemy |
 | NEEDS | rest_campfire | 10 | needs | has_campfire + exclude_enemy -> consume REST |

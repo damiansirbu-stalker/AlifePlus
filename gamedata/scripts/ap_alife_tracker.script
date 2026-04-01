@@ -325,7 +325,8 @@ local function _validate_script_target(squad, caller)
     end
     local task_tgt, task_detail = xsquad.is_task_target(squad)
     if task_tgt then
-        return { code = RESULT.RULES_NEXT, reason = "task_target", detail = task_detail, id = squad.id }
+        ap_debug.warn("[TRACKER] TASK_TARGET_BYPASSED: squad=%d reason=%s in %s", squad.id, task_detail or "unknown", caller)
+        return { code = RESULT.RULES_NEXT, reason = REASON.TASK_TARGET_BYPASSED, detail = task_detail, id = squad.id }
     end
     local ext, ext_detail = xsquad.is_externally_scripted(squad)
     if ext and not scripted_squads[squad.id] then

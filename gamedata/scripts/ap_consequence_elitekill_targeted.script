@@ -33,6 +33,11 @@ local function _is_hunter_eligible(id, squad)
         ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s name=%s", id, permanent_reason or "unknown", permanent_name or "?")
         return false
     end
+    local active_role, role_reason = xsquad.has_active_role(squad)
+    if active_role then
+        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s", id, role_reason or "unknown")
+        return false
+    end
     return true
 end
 
@@ -58,7 +63,7 @@ local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendl
             ::continue::
         end
         local res = ap_debug.result_squads(hunters)
-        res.skipped_unscriptable = skipped
+        res.skipped_protected = skipped
         return res
     end)
     return hunters
