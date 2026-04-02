@@ -1,6 +1,7 @@
 --- ap_alife_tracker: Tracks killers/elites/scripted_squads, lifecycle management
 
 local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
+local clock = os.clock
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
@@ -12,6 +13,7 @@ local SQUAD_ACTION = ap_const.SQUAD_ACTION
 local DEAD_GRACE_SEC = 3600
 local ARRIVAL_CHECK_SEC = 30
 local SCRIPTED_SQUAD_TTL = ap_const.SCRIPTED_SQUAD_TTL
+local SQUAD_RADIANT_COOLDOWN_SEC = ap_const.SQUAD_RADIANT_COOLDOWN_SEC
 local ELITE_MAX_LEVEL = 10
 
 local MAP_MARKER_CHECK_SEC = 5
@@ -28,6 +30,7 @@ local NEED_FIELDS = ap_const.NEED_FIELDS
 
 local _consequence_squads = {}
 local _marked_squads = {}
+local _squad_radiant_cooldown = {}
 
 --- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
 local function unscript_squad(squad_or_id)
@@ -96,6 +99,10 @@ local function _on_load_state(m_data)
     killers = saved.killers or {}
     elites = _validate_elites(saved.elites or {})
     scripted_squads = saved.scripted_squads or {}
+    local now = clock()
+    for _, data in pairs(scripted_squads) do
+        data.clock_at = now
+    end
     stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     if not saved.killers then ap_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.elites then ap_debug.warn("[TRACKER] load: missing elites, fresh init") end
@@ -318,26 +325,12 @@ end
 --- @param smart table Target smart terrain
 --- @param opts table|nil { rush, on_arrive, on_arrive_args }
 local function _validate_script_target(squad, caller)
-    local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
-    if permanent then
-        ap_debug.warn("[TRACKER] PERMANENT_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, permanent_reason or "unknown", permanent_name or "?", caller)
-        return { code = RESULT.RULES_NEXT, reason = REASON.PERMANENT_BYPASSED, detail = permanent_reason, name = permanent_name, id = squad.id }
-    end
-    local active_role, role_reason, role_name = xsquad.has_active_role(squad)
-    if active_role then
-        ap_debug.warn("[TRACKER] ACTIVE_ROLE_BYPASSED: squad=%d reason=%s name=%s in %s", squad.id, role_reason or "unknown", role_name or "?", caller)
-        return { code = RESULT.RULES_NEXT, reason = REASON.ACTIVE_ROLE_BYPASSED, detail = role_reason, name = role_name, id = squad.id }
-    end
-    local task_tgt, task_detail = xsquad.is_task_target(squad)
-    if task_tgt then
-        ap_debug.warn("[TRACKER] TASK_TARGET_BYPASSED: squad=%d reason=%s in %s", squad.id, task_detail or "unknown", caller)
-        return { code = RESULT.RULES_NEXT, reason = REASON.TASK_TARGET_BYPASSED, detail = task_detail, id = squad.id }
-    end
-    local ext, ext_detail = xsquad.is_externally_scripted(squad)
-    if ext and not scripted_squads[squad.id] then
-        return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail, id = squad.id }
-    end
-    return nil
+    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    if not protected then return nil end
+    -- Allow externally_scripted if squad is already AP-scripted (re-scripting)
+    if reason == REASON.IS_EXT_SCRIPTED and scripted_squads[squad.id] then return nil end
+    ap_debug.warn("[TRACKER] BYPASSED: squad=%d reason=%s detail=%s name=%s in %s", squad.id, reason or "?", detail or "?", name or "?", caller)
+    return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = name, id = squad.id }
 end
 
 function script_squad(squad, smart, opts)
@@ -363,6 +356,7 @@ function script_squad(squad, smart, opts)
         scripted_target = name,
         target_smart_id = smart.id,
         tracked_at = xtime.game_sec(),
+        clock_at = clock(),
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
     }
@@ -432,6 +426,11 @@ local function _process_arrival(squad_id)
     local data = scripted_squads[squad_id]
     if not data then return end
     if not data.target_smart_id then return end
+    if data.clock_at and (clock() - data.clock_at) < SQUAD_RADIANT_COOLDOWN_SEC then
+        ap_debug.debug("[TRACKER] ARRIVAL_COOLDOWN: squad=%d target=%s elapsed=%.0fs remaining=%.0fs",
+            squad_id, data.scripted_target, clock() - data.clock_at, SQUAD_RADIANT_COOLDOWN_SEC - (clock() - data.clock_at))
+        return
+    end
     local squad = xobject.se(squad_id)
     if not squad then
         unscript_squad(squad_id)
@@ -463,11 +462,14 @@ local function _process_arrival(squad_id)
         squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     if scripted_squads[squad_id] ~= data then return end
+    _squad_radiant_cooldown[squad_id] = clock() + SQUAD_RADIANT_COOLDOWN_SEC
     unscript_squad(squad)
 end
 
 local function _check_arrivals()
-    ap_debug.debug("[TRACKER] _check_arrivals fired, scripted=%d consequence=%d", xtable.count(scripted_squads), xtable.count(_consequence_squads))
+    if ap_debug.enabled() then
+        ap_debug.debug("[TRACKER] _check_arrivals fired, scripted=%d consequence=%d", xtable.count(scripted_squads), xtable.count(_consequence_squads))
+    end
     ResetTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC)
     for squad_id in pairs(_consequence_squads) do
         if not scripted_squads[squad_id] then
@@ -508,16 +510,32 @@ function register_consequence_squad(squad_id, label)
     ap_debug.debug("[TRACKER] register_consequence_squad: squad=%d label=%s", squad_id, label)
 end
 
+--- Check if squad is in radiant cooldown (wall time, os.clock)
+function check_squad_radiant_cooldown(squad_id)
+    local expiry = _squad_radiant_cooldown[squad_id]
+    if not expiry then return false end
+    if clock() >= expiry then
+        _squad_radiant_cooldown[squad_id] = nil
+        return false
+    end
+    return true
+end
+
 --- Periodic marker sync: mark new squads, unmark dead/done squads
 local function _check_markers()
-    ap_debug.debug("[TRACKER] _check_markers fired, cfg.map_markers=%s consequence=%d marked=%d", tostring(cfg.map_markers), xtable.count(_consequence_squads), xtable.count(_marked_squads))
+    if ap_debug.enabled() then
+        ap_debug.debug("[TRACKER] _check_markers fired, cfg.map_markers=%s consequence=%d marked=%d", tostring(cfg.map_markers), xtable.count(_consequence_squads), xtable.count(_marked_squads))
+    end
     ResetTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC)
     if not cfg.map_markers then return false end
+    local dbg = ap_debug.enabled()
     for squad_id, label in pairs(_consequence_squads) do
         local se = xobject.se(squad_id)
         local alive = se and scripted_squads[squad_id]
-        ap_debug.debug("[TRACKER] _check_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
-            squad_id, tostring(se ~= nil), tostring(scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_marked_squads[squad_id] ~= nil))
+        if dbg then
+            ap_debug.debug("[TRACKER] _check_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
+                squad_id, tostring(se ~= nil), tostring(scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_marked_squads[squad_id] ~= nil))
+        end
         if not alive and _marked_squads[squad_id] then
             xpda.unmark_squad(squad_id)
             _marked_squads[squad_id] = nil
@@ -535,11 +553,14 @@ local function _check_markers()
     return false
 end
 
---- Called on every level load (including save load). Resets marker state.
+--- Called on every level load (including save load). Resets marker state, starts marker timer if enabled.
 local function _on_first_update()
-    ap_debug.debug("[TRACKER] _on_first_update fired")
     xpda.clear_squad_markers()
     _marked_squads = {}
+    if cfg.map_markers then
+        CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
+        ap_debug.debug("[TRACKER] markers timer created (map_markers=true)")
+    end
 end
 
 function on_game_start()
@@ -552,9 +573,6 @@ function on_game_start()
 
     CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)
     ap_debug.debug("[TRACKER] arrivals timer created in on_game_start")
-
-    CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
-    ap_debug.debug("[TRACKER] markers timer created in on_game_start")
 
     ap_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
     ap_debug.info("[TRACKER] Initialized")

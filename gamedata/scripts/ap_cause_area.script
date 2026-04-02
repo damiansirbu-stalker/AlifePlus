@@ -12,11 +12,6 @@ local community_stalker = ap_data.community_stalker
 local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-    local ext, ext_detail = xsquad.is_externally_scripted(squad)
-    if ext then return { code = RESULT.RULES_NEXT, reason = REASON.EXTERNALLY_SCRIPTED, detail = ext_detail } end
-    local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
-    if permanent then return { code = RESULT.RULES_NEXT, reason = REASON.PERMANENT_BYPASSED, detail = permanent_reason, name = permanent_name } end
-
     local squad_faction = squad.player_id
     if not community_stalker[squad_faction] then
         return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad_faction }

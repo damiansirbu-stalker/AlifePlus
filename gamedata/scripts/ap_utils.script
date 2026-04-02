@@ -5,6 +5,7 @@ local INVALID_ENTITY_ID = xconst.INVALID_ENTITY_ID
 local CALLBACK = ap_const.CALLBACK
 local ACTION = ap_const.ACTION
 local RESULT = ap_const.RESULT
+local REASON = ap_const.REASON
 local cfg = ap_mcm.cfg
 
 -- PDA sender cache: ephemeral list of online stalkers with valid name+icon.
@@ -41,6 +42,21 @@ local function get_pda_sender()
     if #_pda_senders == 0 then refresh_pda_senders() end
     if #_pda_senders == 0 then return nil end
     return xmath.sample(_pda_senders)
+end
+
+--- Check all 4 squad protection guards (permanent, active_role, task_target, externally_scripted)
+--- @param squad se_squad Squad server object
+--- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
+function is_protected(squad)
+    local perm, perm_reason, perm_name = xsquad.is_permanent_squad(squad)
+    if perm then return true, REASON.IS_PERMANENT, perm_reason, perm_name end
+    local role, role_reason, role_name = xsquad.has_active_role(squad)
+    if role then return true, REASON.HAS_ACTIVE_ROLE, role_reason, role_name end
+    local task_tgt, task_detail = xsquad.is_task_target(squad)
+    if task_tgt then return true, REASON.IS_TASK_TARGET, task_detail end
+    local ext, ext_detail = xsquad.is_externally_scripted(squad)
+    if ext then return true, REASON.IS_EXT_SCRIPTED, ext_detail end
+    return false
 end
 
 --- Subscribe to an event with logging
@@ -88,21 +104,28 @@ end
 --- @param key string ap_messages key
 --- @param params table|nil Substitution parameters for ap_messages.get
 function send_pda(chance, key, params)
+    ap_debug.debug("[SEND_PDA.TRACE] enter chance=%s key=%s", tostring(chance), key)
     if not xmath.chance(chance) then
         return { code = "chance", key = key }
     end
+    ap_debug.debug("[SEND_PDA.TRACE] chance_passed key=%s", key)
     local msg = ap_messages and ap_messages.get(key, params)
+    ap_debug.debug("[SEND_PDA.TRACE] msg=%s key=%s", tostring(msg ~= nil), key)
     if not msg then
         ap_debug.debug("[SEND_PDA] no message: key=%s", key)
         return { code = "no_msg", key = key }
     end
+    ap_debug.debug("[SEND_PDA.TRACE] pre_sender key=%s", key)
     local sender = get_pda_sender()
+    ap_debug.debug("[SEND_PDA.TRACE] sender=%s key=%s", tostring(sender ~= nil), key)
     if not sender then
         ap_debug.debug("[SEND_PDA] no sender available")
         return { code = "no_sender", key = key }
     end
-    ap_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
+    ap_debug.debug("[SEND_PDA.TRACE] pre_xpda_send sender=%s msg_len=%d key=%s", sender.name, #msg, key)
     xpda.send(sender.name, msg, sender.icon)
+    ap_debug.debug("[SEND_PDA.TRACE] post_xpda_send key=%s", key)
+    ap_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
     return { code = "sent", key = key, sender = sender.name }
 end
 

@@ -21,26 +21,16 @@ local chase_opts = {
     rush_key = "consequence_elitekill_targeted_rush",
 }
 
-local function _is_hunter_eligible(id, squad)
-    local ext, ext_detail = xsquad.is_externally_scripted(squad)
-    if ext then
-        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=externally_scripted detail=%s", id, ext_detail or "?")
-        return false
-    end
-    local permanent, permanent_reason, permanent_name = xsquad.is_permanent_squad(squad)
-    if permanent then
-        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s name=%s", id, permanent_reason or "unknown", permanent_name or "?")
-        return false
-    end
-    local active_role, role_reason = xsquad.has_active_role(squad)
-    if active_role then
-        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped hunter=%d reason=%s", id, role_reason or "unknown")
+local function _is_avenger_eligible(id, squad)
+    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    if protected then
+        ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped avenger=%d reason=%s detail=%s name=%s", id, reason or "?", detail or "?", name or "?")
         return false
     end
     return true
 end
 
-local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendly)
+local function _find_elite_avengers(trace, level_id, victim_id, killer_id, skip_friendly)
     local hunters
     ap_debug.observe(trace, ACTION.FIND_TARGETS, function()
         hunters = {}
@@ -50,7 +40,7 @@ local function _find_hunters(trace, level_id, victim_id, killer_id, skip_friendl
             if id == victim_id or id == killer_id then goto continue end
             local squad = xsquad.get_squad_by_member(id)
             if not squad then goto continue end
-            if not _is_hunter_eligible(id, squad) then
+            if not _is_avenger_eligible(id, squad) then
                 skipped = skipped + 1
                 goto continue
             end
@@ -87,7 +77,7 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        local hunters = _find_hunters(trace, level_id, event_data.id, killer_id, is_player_kill)
+        local hunters = _find_elite_avengers(trace, level_id, event_data.id, killer_id, is_player_kill)
         if #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 
         local max_hunters = cfg.consequence_elitekill_targeted_max_squads

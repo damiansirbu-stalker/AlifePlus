@@ -11,10 +11,10 @@ next
     Fixed: revenge only rolls against valid enemy factions (no wasted evaluations on monsters)
     Fixed: elite hunters respect the protection list (companions and task givers are off-limits)
   Compatibility:
-    Fixed: task target squads (assault, bounty, delivery) protected from all AP scripting
-    Changed: squad protection guards applied centrally instead of per-consequence
-    Changed: permanent NPCs and active-role NPCs tracked separately
-    Changed: radiant causes check is_permanent_squad, reactive causes check both
+    Changed: single protection check for all paths - story NPCs, traders, companions, task givers, bounty targets, and externally scripted squads verified through one function (is_protected). No protected NPC slips through a missed check.
+    Changed: three-layer NPC protection - producer rejects protected squads before any cause runs, causes reject before consequences run, tracker catches anything that slipped through and logs a warning
+    Fixed: bounty and hostage target squads rejected at producer level (previously only caught at tracker after wasted work)
+    Fixed: externally scripted squads rejected at producer level for radiant events (previously duplicated in each cause file)
   Map & PDA:
     Added: map markers MCM toggle (independent from debug tracing)
     Changed: PDA sender logging streamlined for production use

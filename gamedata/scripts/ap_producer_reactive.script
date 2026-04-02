@@ -182,6 +182,19 @@ local function dispatch(callback_type, ...)
         if type(id) == "number" then squad_id = id end
     end
 
+    if _radiant_callbacks[callback_type] and squad_id then
+        if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
+            ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d %s", squad_id, callback_type)
+            return
+        end
+        local squad = first_arg
+        local protected, reason, detail, name = ap_utils.is_protected(squad)
+        if protected then
+            ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
+            return
+        end
+    end
+
     if on_map ~= nil and not _alife_ratio_gate(on_map) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
             on_map, cfg.alife_ratio, _on_count, _off_count, level_id, squad_id)
@@ -245,6 +258,13 @@ local function subscribe_to_callbacks()
     end
 end
 
+local function _has_radiant_entry(entries)
+    for _, entry in pairs(entries) do
+        if entry.cause_type == CAUSE_TYPE.RADIANT then return true end
+    end
+    return false
+end
+
 function on_game_start()
     -- Reset state on new game/load
     _dispatchers = {}
@@ -255,6 +275,12 @@ function on_game_start()
     _last_interaction_squad = {}
     _radiant_event_limiter = nil
     _reactive_event_limiter = nil
+    -- Rebuild radiant callback set from registrations (causes register before this on_game_start)
+    for callback, entries in pairs(_handlers) do
+        if _has_radiant_entry(entries) then
+            _radiant_callbacks[callback] = true
+        end
+    end
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, subscribe_to_callbacks)
     ap_debug.info("[PRODUCER.REACTIVE] Initialized")
 end

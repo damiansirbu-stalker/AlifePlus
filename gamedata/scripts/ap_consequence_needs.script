@@ -213,17 +213,31 @@ local function _make_handler(entry)
             end
             ap_alife_tracker.register_consequence_squad(event_data.squad_id, entry.consequence)
 
+            ap_debug.debug("[NEEDS.TRACE] pre_send_pda squad=%d name=%s enabled=%s", event_data.squad_id, entry.name, tostring(ap_debug.enabled()))
             ap_debug.observe(trace, ACTION.SEND_PDA, function()
-                local cmd_se = xobject.se(squad:commander_id())
+                ap_debug.debug("[NEEDS.TRACE] inside_send_pda squad=%d name=%s", event_data.squad_id, entry.name)
+                local cmd_id = squad:commander_id()
+                ap_debug.debug("[NEEDS.TRACE] commander_id=%d squad=%d", cmd_id, event_data.squad_id)
+                local cmd_se = xobject.se(cmd_id)
+                ap_debug.debug("[NEEDS.TRACE] cmd_se=%s squad=%d", tostring(cmd_se ~= nil), event_data.squad_id)
                 local cmd_name = "A stalker"
                 if cmd_se then cmd_name = cmd_se:character_name() end
-                return ap_utils.send_pda(cfg["consequence_" .. entry.name .. "_pda_chance"],
+                ap_debug.debug("[NEEDS.TRACE] cmd_name=%s squad=%d", cmd_name, event_data.squad_id)
+                local location = ap_utils.get_location_description(nil, smart.position, event_data.level_id)
+                ap_debug.debug("[NEEDS.TRACE] location=%s squad=%d", tostring(location), event_data.squad_id)
+                local pda_chance = cfg["consequence_" .. entry.name .. "_pda_chance"]
+                ap_debug.debug("[NEEDS.TRACE] pda_chance=%s squad=%d", tostring(pda_chance), event_data.squad_id)
+                local pda_result = ap_utils.send_pda(pda_chance,
                     "text_pda_consequence_" .. entry.name, {
                         name = cmd_name,
-                        location = ap_utils.get_location_description(nil, smart.position, event_data.level_id),
+                        location = location,
                     })
+                ap_debug.debug("[NEEDS.TRACE] send_pda_returned squad=%d code=%s", event_data.squad_id, pda_result and pda_result.code or "nil")
+                return pda_result
             end)
+            ap_debug.debug("[NEEDS.TRACE] post_send_pda squad=%d name=%s", event_data.squad_id, entry.name)
 
+            ap_debug.debug("[NEEDS.TRACE] pre_ok_stop squad=%d name=%s", event_data.squad_id, entry.name)
             return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, level_id = event_data.level_id }
         end)
     end
