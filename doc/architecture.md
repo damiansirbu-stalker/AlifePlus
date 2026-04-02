@@ -191,11 +191,12 @@ Not obvious from any single file. Violations cause subtle bugs.
    | 3 | `is_task_target` | dynamic | `sim_offline_combat.task_squads` registry (assault, bounty, delivery, dominance, rescue, chimera, smart_control, top_10, companions), `axr_task_manager.bounties_by_id`/`hostages_by_id` fallback | O(1) hash + O(m*b) fallback |
    | 4 | `is_externally_scripted` | dynamic | scripted_target, __lock, warfare, condlist, random_targets | O(1) field reads |
 
-   `is_unscriptable_squad` removed. All callers use `is_permanent_squad` and/or `has_active_role` directly.
+   `is_unscriptable_squad` removed. Centralized into `ap_utils.is_protected(squad)` which calls all four guards in order and returns on first match.
 
-   **AP guard layers (where guards are called):**
+   **AP guard layers (4 protection types x 4 layers):**
 
-   - **Cause level:** radiant causes (needs, stash, area) check `is_permanent_squad` + `is_externally_scripted` on the triggering squad (it IS the responder; tracker catches active roles). Reactive causes guard the entity AP would act on with both `is_permanent_squad` + `has_active_role`: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
+   - **Producer level (radiant only):** `_is_radiant_blocked` calls `is_protected` (all 4 guards) on the triggering squad before any cause evaluates. Rejects permanently protected, active-role, task-target, and externally scripted squads. Reactive callbacks skip this layer (the triggering entity may be a dead victim, not a responder).
+   - **Cause level:** reactive causes guard the entity AP would act on with `is_protected`: elite guards the killer (gets buffs), elitekill guards the killer (gets bounty + hunters sent), wounded guards the patient (draws predators), harvest guards the taker (draws outlaws). Reactive causes where the trigger is a dead victim (massacre, squadkill, basekill) need no guard -- consequences find responders via find_squads.
    - **Consequence level:** `ap_utils.find_squads` centrally sets `exclude_permanent`, `exclude_active_role`, `exclude_task_target`, `exclude_externally_scripted`. Callers where the triggering squad could appear in results pass `exclude_squad_id` (squadkill_revenge, squadkill_flee, wounded_help, harvest_hunt). `_find_hunters` (elitekill_targeted) checks `is_permanent_squad` + `has_active_role` per hunter.
    - **Tracker level (chokepoint):** `_validate_script_target` in script_squad/script_actor_target rejects all four: `is_permanent_squad` -> `has_active_role` -> `is_task_target` -> `is_externally_scripted` (with AP self-exclusion). Every AP squad movement flows through this. Returns RULES_NEXT on reject.
 
@@ -262,13 +263,13 @@ Stop codes: **OK_STOP** (success, exclusive), **ERROR_STOP** (failure, abort). P
 | MASSACRE | reactive | squad_on_npc_death | IsStalker(victim), at smart, not is_base, kill_count >= threshold |
 | SQUADKILL | reactive | squad_on_npc_death | npc_count <= 1 (last member), not is_base |
 | BASEKILL | reactive | squad_on_npc_death | IsStalker(victim), at is_base, kill_count >= threshold, smart has faction |
-| ELITE | reactive | squad_on_npc_death | killer not unscriptable, killer_id exists, projected_kill_count crosses new elite level |
-| ELITEKILL | reactive | squad_on_npc_death | is_elite(victim_id), killer not unscriptable, per-victim cooldown not active |
-| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not unscriptable, subject exists, not is_base |
-| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not unscriptable |
-| STASH | radiant | RADIANT_CALLBACKS | not unscriptable, stash within RADIUS_DISTANT_MAX |
-| AREA | radiant | RADIANT_CALLBACKS | not unscriptable, community_stalker, empty smart, not is_base |
-| NEEDS | radiant | RADIANT_CALLBACKS | not unscriptable, community_stalker, level.present(), Hull drive scoring (see Needs) |
+| ELITE | reactive | squad_on_npc_death | killer not protected, killer_id exists, projected_kill_count crosses new elite level |
+| ELITEKILL | reactive | squad_on_npc_death | is_elite(victim_id), killer not protected, per-victim cooldown not active |
+| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, subject exists, not is_base |
+| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
+| STASH | radiant | RADIANT_CALLBACKS | not protected, stash within RADIUS_DISTANT_MAX |
+| AREA | radiant | RADIANT_CALLBACKS | not protected, community_stalker, empty smart, not is_base |
+| NEEDS | radiant | RADIANT_CALLBACKS | not protected, community_stalker, level.present(), Hull drive scoring (see Needs) |
 
 ### Predicate contract
 

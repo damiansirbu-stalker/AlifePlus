@@ -1,47 +1,41 @@
 --- ap_utils: Event wrappers, PDA helpers, location formatting, lock utilities
 local error, pairs, ipairs, type, next, time_global, math_huge, tostring, table_concat = error, pairs, ipairs, type, next, time_global, math.huge, tostring, table.concat
+local IsStalker, get_object_story_id, math_random = IsStalker, get_object_story_id, math.random
 local RegisterScriptCallback = RegisterScriptCallback
-local INVALID_ENTITY_ID = xconst.INVALID_ENTITY_ID
 local CALLBACK = ap_const.CALLBACK
 local ACTION = ap_const.ACTION
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 local cfg = ap_mcm.cfg
 
--- PDA sender cache: ephemeral list of online stalkers with valid name+icon.
--- Rebuilt lazily when empty (online set changes on level transitions).
-local _pda_senders = {}
-
-local function refresh_pda_senders()
-    _pda_senders = {}
-    local squads = xsquad.find_online_squads(nil, {
-        factions = ap_data.community_stalker,
-        exclude_permanent = true,
-        exclude_active_role = true,
-        max_count = 20,
-    })
-
-    local sim = alife()
-    if not sim then return end
-
-    for _, squad in ipairs(squads or {}) do
-        local cmd_id = squad:commander_id()
-        if cmd_id == INVALID_ENTITY_ID then goto continue end
-        local se = sim:object(cmd_id)
-        if not se or not se.character_name or not se.character_icon then goto continue end
-        local name, icon = se:character_name(), se:character_icon()
-        if name and icon and #name > 0 and #icon > 0 then
-            _pda_senders[#_pda_senders + 1] = { name = name, icon = icon }
-        end
+-- Pick a random online stalker as PDA sender (A/S pattern: db.OnlineStalkers inline)
+-- Filters: alive stalker, not story NPC, stalker faction, not enemy of player
+local function _pick_pda_sender()
+    local online = db.OnlineStalkers
+    if not online then return nil end
+    local actor = db.actor
+    if not actor then return nil end
+    local actor_community = actor:character_community()
+    local storage = db.storage
+    local candidates = {}
+    for i = 1, #online do
+        local id = online[i]
+        local st = storage[id]
+        local npc = st and st.object
+        if not npc or not IsStalker(npc) or not npc:alive() then goto continue end
+        if get_object_story_id(id) then goto continue end
+        local community = npc:character_community()
+        if not ap_data.community_stalker[community] then goto continue end
+        if game_relations.is_factions_enemies(actor_community, community) then goto continue end
+        candidates[#candidates + 1] = npc
         ::continue::
     end
-    ap_debug.debug("[PDA_SENDER] refresh: senders=%d", #_pda_senders)
-end
-
-local function get_pda_sender()
-    if #_pda_senders == 0 then refresh_pda_senders() end
-    if #_pda_senders == 0 then return nil end
-    return xmath.sample(_pda_senders)
+    local count = #candidates
+    ap_debug.debug("[PDA_SENDER] candidates=%d online=%d", count, #online)
+    if count > 0 then
+        local npc = candidates[math_random(count)]
+        return { name = npc:character_name(), icon = npc:character_icon() }
+    end
 end
 
 --- Check all 4 squad protection guards (permanent, active_role, task_target, externally_scripted)
@@ -104,27 +98,20 @@ end
 --- @param key string ap_messages key
 --- @param params table|nil Substitution parameters for ap_messages.get
 function send_pda(chance, key, params)
-    ap_debug.debug("[SEND_PDA.TRACE] enter chance=%s key=%s", tostring(chance), key)
     if not xmath.chance(chance) then
         return { code = "chance", key = key }
     end
-    ap_debug.debug("[SEND_PDA.TRACE] chance_passed key=%s", key)
     local msg = ap_messages and ap_messages.get(key, params)
-    ap_debug.debug("[SEND_PDA.TRACE] msg=%s key=%s", tostring(msg ~= nil), key)
     if not msg then
         ap_debug.debug("[SEND_PDA] no message: key=%s", key)
         return { code = "no_msg", key = key }
     end
-    ap_debug.debug("[SEND_PDA.TRACE] pre_sender key=%s", key)
-    local sender = get_pda_sender()
-    ap_debug.debug("[SEND_PDA.TRACE] sender=%s key=%s", tostring(sender ~= nil), key)
+    local sender = _pick_pda_sender()
     if not sender then
         ap_debug.debug("[SEND_PDA] no sender available")
         return { code = "no_sender", key = key }
     end
-    ap_debug.debug("[SEND_PDA.TRACE] pre_xpda_send sender=%s msg_len=%d key=%s", sender.name, #msg, key)
     xpda.send(sender.name, msg, sender.icon)
-    ap_debug.debug("[SEND_PDA.TRACE] post_xpda_send key=%s", key)
     ap_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
     return { code = "sent", key = key, sender = sender.name }
 end

@@ -1,34 +1,33 @@
 next
   Core:
-    Added: radiant/reactive cause types, events classified at registration for separate rate limiting
+    Added: radiant/reactive event split, world-state changes and combat events rate-limited independently (no starvation)
     Added: global radiant cooldown prevents consequence bursts in busy areas (MCM configurable)
-    Changed: map markers decoupled from consequence execution (collection-driven periodic sync, lighter on the engine)
-    Changed: consequence chances use pseudo-random distribution (same average rate, reduced variance)
+    Changed: map markers sync independently from consequence execution (periodic collection scan, lighter on the engine)
+    Changed: consequence chances use pseudo-random distribution (same average rate, no long dry streaks)
   Gameplay:
     Fixed: territory changes hands only after the conquering squad physically arrives (no remote takeovers)
     Fixed: stashes only filled when empty (no more artifact hoards from repeated fills)
-    Fixed: mutant squads no longer trigger stalker stash events (wrong community filtered at cause level)
+    Fixed: mutant squads no longer trigger stalker stash events (filtered at cause level, no wasted evaluations)
     Fixed: revenge only rolls against valid enemy factions (no wasted evaluations on monsters)
     Fixed: elite hunters respect the protection list (companions and task givers are off-limits)
   Compatibility:
-    Changed: single protection check for all paths - story NPCs, traders, companions, task givers, bounty targets, and externally scripted squads verified through one function (is_protected). No protected NPC slips through a missed check.
-    Changed: three-layer NPC protection - producer rejects protected squads before any cause runs, causes reject before consequences run, tracker catches anything that slipped through and logs a warning
-    Fixed: bounty and hostage target squads rejected at producer level (previously only caught at tracker after wasted work)
-    Fixed: externally scripted squads rejected at producer level for radiant events (previously duplicated in each cause file)
+    Changed: four protection types (permanent, active role, task target, externally scripted) verified through one function (is_protected). Same rules everywhere, no protected NPC slips through
+    Changed: three-layer NPC protection -- producer rejects radiant squads before any cause evaluates, consequence search excludes all four types, tracker rejects anything that reaches script_squad
+    Changed: bounty targets, hostage targets, and externally scripted squads rejected at producer level (no wasted evaluations on untouchable squads)
   Map & PDA:
     Added: map markers MCM toggle (independent from debug tracing)
-    Changed: PDA sender logging streamlined for production use
+    Changed: PDA sender rebuilt to match dynamic_news_manager best practices (friendly factions only, online NPC registry)
+    Changed: PDA messages come from stalkers already in the world (no server-object lookups, no sender cache)
   MCM:
     Added: version displayed at startup (mod + xlibs)
     Changed: MCM visual refresh
     Fixed: Russian MCM encoding restored (windows-1251)
   X-Ray & xlibs:
-    Added: timed event scheduling works correctly with major modpacks (globals resolve at call time for demonized_time_events compatibility)
-    Added: log deadbanding reduces repeated lines in busy areas
+    Added: timed events work correctly with demonized_time_events and major modpacks (globals resolve at call time)
+    Added: log deadbanding suppresses repeated lines in busy areas (cleaner logs without lost information)
     Added: consequence rate limit peek without consuming tokens (xtable.check_lock)
     Added: cleaner console output (xmath.chance diagnostic noise removed)
     Changed: find_squads distance bounds use inclusive upper
-    Fixed: PDA sender no longer re-evaluates rejected squads
 
 1.2.2
   xlibs 1.2.3 dependency.

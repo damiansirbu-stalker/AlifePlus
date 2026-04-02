@@ -169,6 +169,21 @@ local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
     end
 end
 
+-- Check radiant squad protection (cooldown + permanent/role/task guards)
+local function _is_radiant_blocked(callback_type, squad_id, squad)
+    if not _radiant_callbacks[callback_type] or not squad_id then return false end
+    if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
+        ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d %s", squad_id, callback_type)
+        return true
+    end
+    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    if protected then
+        ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
+        return true
+    end
+    return false
+end
+
 local function dispatch(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
@@ -182,18 +197,7 @@ local function dispatch(callback_type, ...)
         if type(id) == "number" then squad_id = id end
     end
 
-    if _radiant_callbacks[callback_type] and squad_id then
-        if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
-            ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d %s", squad_id, callback_type)
-            return
-        end
-        local squad = first_arg
-        local protected, reason, detail, name = ap_utils.is_protected(squad)
-        if protected then
-            ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
-            return
-        end
-    end
+    if _is_radiant_blocked(callback_type, squad_id, first_arg) then return end
 
     if on_map ~= nil and not _alife_ratio_gate(on_map) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
