@@ -1,6 +1,6 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 GitHub: https://github.com/damiansirbu-stalker/AlifePlus
-Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
+Changelog: doc/changelog
 
 ! Please use the RESET button in MCM when updating to a new version !
 
@@ -164,7 +164,7 @@ Do I need offline combat enabled?
   other events regardless, so A-Life activity continues.
 
 Known Issues:
-Map markers are a debugging feature (log_level=DEBUG). They lack persistence and do not update on entity death, despawn, or level transition.
+Map markers are a debugging feature. They lack persistence and do not update on entity death, despawn, or level transition.
 
 Development:
 Written against X-Ray Monolith engine source, Demonized exes source code, and Anomaly 1.5.3 unpacked gamedata.
