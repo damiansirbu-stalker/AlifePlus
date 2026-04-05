@@ -229,6 +229,7 @@ end
 --- @param opts table Options (forwarded to xsquad.find_squads with exclude_ids injected)
 --- @return table Array of squad server objects
 function find_squads(pos, opts)
+    if cfg.cross_map_enabled then opts.level_id = nil end
     opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
     opts.exclude_externally_scripted = true
     opts.exclude_permanent = true
@@ -272,6 +273,7 @@ end
 --- @param opts table Options (forwarded to xsmart.find_smart)
 --- @return table|nil Smart server object or nil
 function find_smart(pos, opts)
+    if cfg.cross_map_enabled then opts.level_id = nil end
     if not ap_debug.enabled() then
         return xsmart.find_smart(pos, opts)
     end
@@ -345,12 +347,12 @@ function chase_register(opts)
         local level_id = xlevel.get_level_id(target_squad)
         if not level_id then return end
         local squad_level = xlevel.get_level_id(squad)
-        if squad_level ~= level_id then
+        if not cfg.cross_map_enabled and squad_level ~= level_id then
             send_pda(cfg[opts.pda_chance_key], opts.pda_lost)
             return
         end
         ap_debug.observe(nil, ACTION.CHASE_TARGET, function()
-            local smart = find_smart(target_squad.position, {
+            local smart = xsmart.find_smart(target_squad.position, {
                 level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
             })
             if not smart then return { code = "no_smart" } end
@@ -392,9 +394,13 @@ function chase_start(trace, chasers, target, pda_data, opts)
         dst_id = 0
     else
         local level_id = xlevel.get_level_id(target)
-        smart = find_smart_observed(trace, target.position, {
-            level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
-        })
+        ap_debug.observe(trace, ACTION.FIND_DESTINATION, function()
+            smart = xsmart.find_smart(target.position, {
+                level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
+            })
+            if not smart then return { code = "empty" } end
+            return { code = "ok", id = smart.id }
+        end)
         if not smart then return {}, nil end
         dst_id = smart.id
     end

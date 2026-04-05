@@ -9,6 +9,9 @@ defaults = {
     consequence_max_events = 2,
     consequence_global_radiant_cooldown = 10,
 
+    -- Cross-Map Targets (experimental)
+    cross_map_enabled = false,
+
     -- Cause: Elite
     cause_elite_enabled = true,
     elite_kills_per_level = 2,
@@ -305,6 +308,7 @@ local key_to_tab = {
     cause_max_events = "general",
     consequence_max_events = "general",
     consequence_global_radiant_cooldown = "general",
+    cross_map_enabled = "general",
     cause_elite_enabled = "causes/elite",
     elite_kills_per_level = "causes/elite",
     cause_elitekill_enabled = "causes/elitekill",
@@ -564,6 +568,8 @@ function on_mcm_load()
                     track("cause_max_events", 1, 100, 1),
                     track("consequence_max_events", 1, 100, 1),
                     track("consequence_global_radiant_cooldown", 5, 120, 5),
+                    { id = "div_cross_map", type = "line" },
+                    check("cross_map_enabled"),
                     { id = "div_reset", type = "line" },
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
