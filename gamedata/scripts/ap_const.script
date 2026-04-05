@@ -33,18 +33,14 @@ NEED_FIELDS = {
 --- X-Ray callback names
 CALLBACK = {
     -- Cause triggers (via producer)
+    SQUAD_ON_UPDATE = "squad_on_update",
     SQUAD_ON_NPC_DEATH = "squad_on_npc_death",
-    SQUAD_ON_ENTER_SMART = "squad_on_enter_smart",
-    SQUAD_ON_LEAVE_SMART = "squad_on_leave_smart",
     SQUAD_ON_AFTER_GAME_VERTEX_CHANGE = "squad_on_after_game_vertex_change",
     SQUAD_ON_AFTER_LEVEL_CHANGE = "squad_on_after_level_change",
     X_NPC_MEDKIT_USE = "x_npc_medkit_use",
     ACTOR_ON_ITEM_USE = "actor_on_item_use",
     ACTOR_ON_ITEM_TAKE = "actor_on_item_take",
     NPC_ON_ITEM_TAKE = "npc_on_item_take",
-    ACTOR_ON_INTERACTION = "actor_on_interaction",
-    -- Internal (adapter-generated, not engine callbacks)
-    ACTOR_ON_SMART = "actor_on_smart",
     -- Lifecycle
     ACTOR_ON_FIRST_UPDATE = "actor_on_first_update",
     SAVE_STATE = "save_state",
@@ -65,9 +61,7 @@ CAUSE_TYPE = { RADIANT = "radiant", REACTIVE = "reactive" }
 
 --- Radiant cause callbacks (all radiant causes register on these)
 RADIANT_CALLBACKS = {
-    CALLBACK.SQUAD_ON_ENTER_SMART,
-    CALLBACK.SQUAD_ON_LEAVE_SMART,
-    CALLBACK.ACTOR_ON_SMART,
+    CALLBACK.SQUAD_ON_UPDATE,
 }
 
 --- Cause event names

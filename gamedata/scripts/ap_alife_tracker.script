@@ -10,7 +10,6 @@ local REASON = ap_const.REASON
 local SQUAD_ACTION = ap_const.SQUAD_ACTION
 
 local DEAD_GRACE_SEC = 3600
-local ARRIVAL_CHECK_SEC = 30
 local SCRIPTED_SQUAD_TTL = ap_const.SCRIPTED_SQUAD_TTL
 local SQUAD_RADIANT_COOLDOWN_SEC = ap_const.SQUAD_RADIANT_COOLDOWN_SEC
 local ELITE_MAX_LEVEL = 10
@@ -45,6 +44,7 @@ local function unscript_squad(squad_or_id)
         xsquad.release_squad(squad)
     end
     scripted_squads[squad_id] = nil
+    _consequence_squads[squad_id] = nil
     return true
 end
 
@@ -241,6 +241,15 @@ end
 local function _unregister_squad(squad_id)
     if not squad_id then return end
     stalker_needs[squad_id] = nil
+end
+
+--- Clean up per-squad state on entity destruction (prevents leaks for destroyed squads)
+local function _on_server_entity_on_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    if not id then return end
+    _squad_radiant_cooldown[id] = nil
+    _consequence_squads[id] = nil
 end
 
 -- =============================================================================
@@ -465,23 +474,10 @@ local function _process_arrival(squad_id)
     unscript_squad(squad)
 end
 
-local function _check_arrivals()
-    if ap_debug.enabled() then
-        ap_debug.debug("[TRACKER] _check_arrivals fired, scripted=%d consequence=%d", xtable.count(scripted_squads), xtable.count(_consequence_squads))
-    end
-    ResetTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC)
-    for squad_id in pairs(_consequence_squads) do
-        if not scripted_squads[squad_id] then
-            _consequence_squads[squad_id] = nil
-        end
-    end
-    local pending = {}
-    for squad_id in pairs(scripted_squads) do
-        pending[#pending + 1] = squad_id
-    end
-    for _, squad_id in ipairs(pending) do
-        _process_arrival(squad_id)
-    end
+--- Process arrival for a single squad (called from producer's SCRIPTED gate on squad_on_update)
+--- @param squad_id number Squad server ID
+function process_arrival(squad_id)
+    _process_arrival(squad_id)
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
@@ -569,9 +565,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
-
-    CreateTimeEvent("ap_alife_tracker", "arrivals", ARRIVAL_CHECK_SEC, _check_arrivals)
-    ap_debug.debug("[TRACKER] arrivals timer created in on_game_start")
+    RegisterScriptCallback("server_entity_on_unregister", _on_server_entity_on_unregister)
 
     ap_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
     ap_debug.info("[TRACKER] Initialized")

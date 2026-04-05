@@ -1,44 +1,37 @@
 --- ap_producer_reactive: Dispatches cause predicates on engine callbacks
 local next, pairs, tostring, type = next, pairs, tostring, type
-local RegisterScriptCallback = RegisterScriptCallback
+local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 
 local CALLBACK = ap_const.CALLBACK
 local CAUSE_TYPE = ap_const.CAUSE_TYPE
 local cfg = ap_mcm.cfg
 local _handlers = {}
 local _subscribed = {}
-local _radiant_event_limiter = nil
 local _reactive_event_limiter = nil
-local _last_interaction_squad = {}
 
---- Radiant callback set (built dynamically from cause registrations with cause_type = RADIANT)
+--- Radiant tick sources (built from registrations with cause_type = RADIANT)
 local _radiant_callbacks = {}
 
---- Actor callbacks are always on the player's level (no level extraction needed)
-local _actor_callbacks = {
+--- Radiant handlers (collapsed from all radiant registrations into one flat table)
+local _radiant_handlers = {}
+
+--- Callbacks that are always on the player's map (actor/npc game_objects only exist online)
+local _always_on_map = {
     [CALLBACK.ACTOR_ON_ITEM_USE] = true,
     [CALLBACK.ACTOR_ON_ITEM_TAKE] = true,
+    [CALLBACK.NPC_ON_ITEM_TAKE] = true,
+    [CALLBACK.X_NPC_MEDKIT_USE] = true,
 }
 
 --- Weighted fair share counters for on-map vs off-map ratio enforcement
 local _on_count = 0
 local _off_count = 0
 
---- Resolve whether an event is on the player's current map
---- @return boolean|nil on_map (true = on-map, false = off-map, nil = unknown)
---- @return number|nil level_id (event's level, nil for actor callbacks or unknown)
-local function _resolve_on_map(callback_type, first_arg)
-    if _actor_callbacks[callback_type] then return true, nil end
-    if not first_arg then return nil, nil end
-    local event_level = xlevel.get_level_id(first_arg)
-    local actor_level = xlevel.get_actor_level_id()
-    if not event_level or not actor_level then return nil, event_level end
-    return event_level == actor_level, event_level
-end
+--- PACER state: next allowed radiant evaluation (os.clock timestamp)
+local _next_radiant = 0
 
 --- Bresenham-derived alife_ratio gate: enforces on-map vs off-map cause ratio.
 --- alife_ratio > 0: on-map favored, off-map throttled. < 0: inverse. 0: disabled.
---- Formula: throttled_count * |alife_ratio| <= (10 - |alife_ratio|) * favored_count
 --- @param on_map boolean true = on-map, false = off-map
 --- @return boolean true = allowed, false = blocked
 local function _alife_ratio_gate(on_map)
@@ -73,13 +66,17 @@ local function _alife_ratio_gate(on_map)
     return false
 end
 
-local function _check_radiant_event_limiter()
-    if not _radiant_event_limiter then
-        _radiant_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / cfg.distributor_interval_sec })
+--- RATIO gate for reactive: on_map from _always_on_map (actor/npc) or first_arg.online (squad)
+local function _ratio_gate(callback_type, first_arg)
+    local on_map = _always_on_map[callback_type]
+    if on_map == nil and first_arg then
+        on_map = first_arg.online
     end
-    return _radiant_event_limiter:acquire("radiant")
+    if on_map == nil then return true end
+    return _alife_ratio_gate(on_map)
 end
 
+--- Reactive PACER: token bucket, 1/sec per callback type (time_global)
 local function _check_reactive_event_limiter(callback_type)
     if not _reactive_event_limiter then
         _reactive_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / ap_const.REACTIVE_EVENT_INTERVAL_SEC })
@@ -87,16 +84,9 @@ local function _check_reactive_event_limiter(callback_type)
     return _reactive_event_limiter:acquire(callback_type)
 end
 
-local function _check_event_limiter(callback_type)
-    if _radiant_callbacks[callback_type] then
-        return _check_radiant_event_limiter(), CAUSE_TYPE.RADIANT
-    end
-    return _check_reactive_event_limiter(callback_type), CAUSE_TYPE.REACTIVE
-end
-
 --- Register a cause handler
 --- @param name string Handler name
---- @param config table { callback = "callback_name" }
+--- @param config table { callback = "callback_name", cause_type = RADIANT|REACTIVE }
 --- @param handler function(trace, ...) Handler function
 function register(name, config, handler)
     if not name or not config or not handler then
@@ -139,15 +129,16 @@ local function _try_publish(on_map, name, result, trace, level_id, cause_type)
         result.cause, result.squad_id, on_map, level_id)
 end
 
-local function _radiant_exhausted(callback_type)
-    return _radiant_callbacks[callback_type] and _radiant_event_limiter
-        and not _radiant_event_limiter:peek("radiant")
-end
-
-local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
+--- Evaluate cause handlers for a squad that passed all gates
+--- @param handlers table Registered handlers for this callback
+--- @param on_map boolean|nil On-map status for ratio logging
+--- @param squad userdata|nil Squad object (nil for actor callbacks)
+local function _eval_handlers(handlers, on_map, squad, ...)
+    local squad_id = squad and squad.id
+    local level_id = squad and xlevel.get_level_id(squad)
     local args = {...}
     for name, entry in pairs(handlers) do
-        if squad_id and ap_alife_tracker.get_scripted_ids()[squad_id] then
+        if squad and squad.scripted_target then
             ap_debug.debug("[PRODUCER.REACTIVE] SCRIPTED_BREAK squad=%d before=%s", squad_id, name)
             break
         end
@@ -169,96 +160,90 @@ local function _eval_handlers(handlers, on_map, level_id, squad_id, ...)
     end
 end
 
--- Check radiant squad protection (cooldown + permanent/role/task guards)
-local function _is_radiant_blocked(callback_type, squad_id, squad)
-    if not _radiant_callbacks[callback_type] or not squad_id then return false end
-    if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
-        ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d %s", squad_id, callback_type)
-        return true
+--- Radiant tick handler: any radiant callback delivers a squad, same pipeline runs
+--- Gates: SCRIPTED -> PACER -> RATIO -> PROTECTION -> COOLDOWN -> EVAL
+local function _on_radiant_tick(squad)
+    if not next(_radiant_handlers) then return end
+
+    local squad_id = squad.id
+    if ap_alife_tracker.get_scripted_ids()[squad_id] then
+        ap_alife_tracker.process_arrival(squad_id)
+        return
     end
+
+    local now = clock()
+    if now < _next_radiant then return end
+    _next_radiant = now + cfg.distributor_interval_sec
+
+    if not _alife_ratio_gate(squad.online) then
+        ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
+            tostring(squad.online), cfg.alife_ratio, _on_count, _off_count, squad_id)
+        return
+    end
+
     local protected, reason, detail, name = ap_utils.is_protected(squad)
     if protected then
         ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
-        return true
+        return
     end
-    return false
+
+    if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
+        ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d", squad_id)
+        return
+    end
+
+    _eval_handlers(_radiant_handlers, squad.online, squad, squad)
 end
 
-local function dispatch(callback_type, ...)
+--- Reactive entry point (~6.5/sec)
+--- Gates: PACER -> RATIO -> EVAL
+local function _dispatch_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
-    if _radiant_exhausted(callback_type) then return end
+
+    if not _check_reactive_event_limiter(callback_type) then return end
 
     local first_arg = select(1, ...)
-    local on_map, level_id = _resolve_on_map(callback_type, first_arg)
-    local squad_id
-    if not _actor_callbacks[callback_type] and type(first_arg) == "userdata" then
+    if not _ratio_gate(callback_type, first_arg) then
+        ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d",
+            callback_type, cfg.alife_ratio, _on_count, _off_count)
+        return
+    end
+
+    local squad
+    if not _always_on_map[callback_type] and type(first_arg) == "userdata" then
         local id = first_arg.id
-        if type(id) == "number" then squad_id = id end
+        if type(id) == "number" then squad = first_arg end
     end
 
-    if _is_radiant_blocked(callback_type, squad_id, first_arg) then return end
-
-    if on_map ~= nil and not _alife_ratio_gate(on_map) then
-        ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d level=%s sq=%s",
-            on_map, cfg.alife_ratio, _on_count, _off_count, level_id, squad_id)
-        return
-    end
-
-    local event_allowed, event_class = _check_event_limiter(callback_type)
-    if not event_allowed then
-        ap_debug.debug("[PRODUCER.REACTIVE] %s_EVENT_BLOCKED %s level=%s sq=%s",
-            event_class, callback_type, level_id, squad_id)
-        return
-    end
-
-    _eval_handlers(handlers, on_map, level_id, squad_id, ...)
+    local on_map = _always_on_map[callback_type] or (squad and squad.online)
+    _eval_handlers(handlers, on_map, squad, ...)
 end
 
---- Adapter: actor_on_interaction -> actor_on_smart dispatch
---- Extracts one resident squad per smart per tick via rotation
-local function _interaction_adapter(interaction_type, target)
-    if interaction_type ~= "smarts" then return end
-    if not target then return end
-    local smart_id = target.id
-    local squads = xsmart.get_smart_squads(smart_id)
-    if not squads then return end
-    local last_key = _last_interaction_squad[smart_id]
-    local squad_id
-    if last_key and squads[last_key] then
-        squad_id = next(squads, last_key)
-    end
-    if not squad_id then
-        squad_id = next(squads)
-    end
-    if not squad_id then return end
-    _last_interaction_squad[smart_id] = squad_id
-    local squad = xobject.se(squad_id)
-    if not squad then return end
-    dispatch(CALLBACK.ACTOR_ON_SMART, squad)
-end
-
-local function _create_dispatcher(callback)
-    return function(...) dispatch(callback, ...) end
+local function _create_reactive_dispatcher(callback)
+    return function(...) _dispatch_reactive(callback, ...) end
 end
 
 local _dispatchers = {}
 
+--- Subscribe radiant (shared _on_radiant_tick) and reactive (per-callback _dispatch_reactive)
 local function subscribe_to_callbacks()
+    for callback in pairs(_radiant_callbacks) do
+        if _subscribed[callback] then goto continue end
+        RegisterScriptCallback(callback, _on_radiant_tick)
+        _subscribed[callback] = true
+        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (radiant)", callback)
+        ::continue::
+    end
     for callback in pairs(_handlers) do
         if _subscribed[callback] then goto continue end
-        if callback == CALLBACK.ACTOR_ON_SMART then goto continue end
-        local dispatcher = _create_dispatcher(callback)
+        if _radiant_callbacks[callback] then goto continue end
+        local dispatcher = _create_reactive_dispatcher(callback)
         _dispatchers[callback] = dispatcher
         RegisterScriptCallback(callback, dispatcher)
         _subscribed[callback] = true
         ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s", callback)
         ::continue::
-    end
-    if not _subscribed[CALLBACK.ACTOR_ON_INTERACTION] then
-        RegisterScriptCallback(CALLBACK.ACTOR_ON_INTERACTION, _interaction_adapter)
-        _subscribed[CALLBACK.ACTOR_ON_INTERACTION] = true
-        ap_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (adapter -> %s)", CALLBACK.ACTOR_ON_INTERACTION, CALLBACK.ACTOR_ON_SMART)
     end
 end
 
@@ -269,22 +254,36 @@ local function _has_radiant_entry(entries)
     return false
 end
 
-function on_game_start()
-    -- Reset state on new game/load
-    _dispatchers = {}
-    _subscribed = {}
-    _radiant_callbacks = {}
-    _on_count = 0
-    _off_count = 0
-    _last_interaction_squad = {}
-    _radiant_event_limiter = nil
-    _reactive_event_limiter = nil
-    -- Rebuild radiant callback set from registrations (causes register before this on_game_start)
-    for callback, entries in pairs(_handlers) do
-        if _has_radiant_entry(entries) then
-            _radiant_callbacks[callback] = true
+local function _collect_radiant_handlers(entries)
+    for name, entry in pairs(entries) do
+        if entry.cause_type == CAUSE_TYPE.RADIANT then
+            _radiant_handlers[name] = entry
         end
     end
+end
+
+--- Rebuild radiant tick sources and collapse all radiant handlers into one flat table
+local function _rebuild_radiant_set()
+    _radiant_callbacks = {}
+    _radiant_handlers = {}
+    for callback, entries in pairs(_handlers) do
+        if not _has_radiant_entry(entries) then goto continue end
+        _radiant_callbacks[callback] = true
+        _collect_radiant_handlers(entries)
+        ::continue::
+    end
+end
+
+--- Two-phase init: on_game_start resets state + rebuilds radiant set from registrations,
+--- then defers engine subscription to actor_on_first_update (guarantees all causes registered)
+function on_game_start()
+    _dispatchers = {}
+    _subscribed = {}
+    _on_count = 0
+    _off_count = 0
+    _next_radiant = 0
+    _reactive_event_limiter = nil
+    _rebuild_radiant_set()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, subscribe_to_callbacks)
     ap_debug.info("[PRODUCER.REACTIVE] Initialized")
 end
