@@ -216,8 +216,14 @@ function get_elites()
 end
 
 --- Get elites on specific level as {id = data}
+--- When cross_map_enabled, returns all alive elites regardless of level.
 function get_elites_on_level(level_id)
     if not level_id then return {} end
+    if cfg.cross_map_enabled then
+        local result = {}
+        for id, data in pairs(elites) do result[id] = data end
+        return result
+    end
     local result = {}
     for id, data in pairs(elites) do
         if data.level_id == level_id then result[id] = data end
