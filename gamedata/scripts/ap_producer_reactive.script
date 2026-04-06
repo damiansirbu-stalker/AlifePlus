@@ -30,8 +30,13 @@ local _off_count = 0
 --- PACER state: next allowed radiant evaluation (os.clock timestamp)
 local _next_radiant = 0
 
---- Bresenham-derived alife_ratio gate: enforces on-map vs off-map cause ratio.
---- alife_ratio > 0: on-map favored, off-map throttled. < 0: inverse. 0: disabled.
+--- GATE: RATIO (radiant 3/5, reactive 2/3)
+--- Cost: local table read + arithmetic on module-level counters
+--- Complexity: O(1)
+--- Rationale: Bresenham-derived fair share enforces on-map vs off-map cause ratio.
+---   Placed after cheap checks (PACER, SCRIPTED) but before expensive engine calls
+---   (PROTECTION). Prevents off-map spam from dominating the cause budget without
+---   touching the engine. alife_ratio > 0: on-map favored. < 0: inverse. 0: disabled.
 --- @param on_map boolean true = on-map, false = off-map
 --- @return boolean true = allowed, false = blocked
 local function _alife_ratio_gate(on_map)
@@ -66,7 +71,12 @@ local function _alife_ratio_gate(on_map)
     return false
 end
 
---- RATIO gate for reactive: on_map from _always_on_map (actor/npc) or first_arg.online (squad)
+--- GATE: RATIO-REACTIVE (reactive 2/3)
+--- Cost: one table lookup (_always_on_map) + optional field read + delegates to _alife_ratio_gate
+--- Complexity: O(1)
+--- Rationale: reactive wrapper around _alife_ratio_gate. Resolves on_map from callback type
+---   (actor/npc callbacks are always on-map) or from first_arg.online (squad). Unknown
+---   on_map passes unconditionally -- reactive callbacks may lack a squad argument.
 local function _ratio_gate(callback_type, first_arg)
     local on_map = _always_on_map[callback_type]
     if on_map == nil and first_arg then
@@ -76,12 +86,78 @@ local function _ratio_gate(callback_type, first_arg)
     return _alife_ratio_gate(on_map)
 end
 
---- Reactive PACER: token bucket, 1/sec per callback type (time_global)
-local function _check_reactive_event_limiter(callback_type)
+--- GATE: PACER-REACTIVE (reactive 1/3)
+--- Cost: lazy init (one-time table creation) + token bucket acquire (hash lookup + arithmetic)
+--- Complexity: O(1)
+--- Rationale: first gate in reactive pipeline. Token bucket limits each callback type to
+---   1 event per REACTIVE_EVENT_INTERVAL_SEC. Cheapest possible reject -- no engine calls,
+---   no squad data needed. Prevents reactive callbacks from flooding the cause pipeline
+---   during high-activity bursts (e.g. mass looting, grenade chains).
+local function _reactive_pacer_gate(callback_type)
     if not _reactive_event_limiter then
         _reactive_event_limiter = xttltable.create_token_bucket({ capacity = 1, rate = 1 / ap_const.REACTIVE_EVENT_INTERVAL_SEC })
     end
     return _reactive_event_limiter:acquire(callback_type)
+end
+
+--- GATE: PACER-RADIANT (radiant 1/5)
+--- Cost: os.clock() read + number comparison (cached in module-level _next_radiant)
+--- Complexity: O(1)
+--- Rationale: first gate in radiant pipeline. Cheapest possible reject -- single clock read
+---   vs a cached timestamp. Throttles radiant evaluation to one per distributor_interval_sec
+---   (default 5s, MCM range 1-30s). squad_on_update fires ~30/sec across all squads, so this
+---   gate rejects ~99%+ of calls. All subsequent gates (SCRIPTED, RATIO, PROTECTION) are
+---   skipped entirely when pacer blocks.
+--- @return boolean true = allowed, false = blocked (updates _next_radiant on allow)
+local function _radiant_pacer_gate()
+    local now = clock()
+    if now < _next_radiant then return false end
+    _next_radiant = now + cfg.distributor_interval_sec
+    return true
+end
+
+--- GATE: SCRIPTED (radiant 2/5)
+--- Cost: one table lookup in ap_alife_tracker.get_scripted_ids() (returns module-level table ref)
+--- Complexity: O(1)
+--- Rationale: squads already under AP scripted control must not generate new causes -- they are
+---   executing a consequence (moving to a target). Placed after PACER (free) but before RATIO
+---   (has side effects on counters) and PROTECTION (engine call). Avoids polluting the ratio
+---   counters with squads that would be rejected anyway.
+--- @param squad_id number Squad server ID
+--- @return boolean true = allowed, false = blocked (squad is scripted)
+local function _scripted_gate(squad_id)
+    return not ap_alife_tracker.get_scripted_ids()[squad_id]
+end
+
+--- GATE: PROTECTION (radiant 4/5)
+--- Cost: engine call via ap_utils.is_protected() -- checks story/quest/companion status
+--- Complexity: O(1) but touches luabind (engine boundary crossing)
+--- Rationale: last gate before evaluation. Most expensive check in the chain -- crosses into
+---   engine to verify squad is not story-critical, quest-assigned, or companion. Placed after
+---   all cheap gates (PACER, SCRIPTED, RATIO) to minimize engine calls. Only squads that pass
+---   all prior gates reach this point (~1 per 5s default).
+--- @param squad userdata Squad server object
+--- @return boolean true = allowed, false = blocked (squad is protected)
+local function _protection_gate(squad)
+    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    if protected then
+        ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name or "?")
+    end
+    return not protected
+end
+
+--- Mid-evaluation guard: checks if a squad became scripted during handler iteration.
+--- NOT a pipeline gate -- this runs inside _eval_handlers between handler invocations.
+--- Purpose: when handler A fires, its cause may be published synchronously (Lua is
+---   single-threaded, event_publish is synchronous), triggering a consequence that calls
+---   script_squad() on the same squad. Without this check, handler B would fire for a
+---   now-scripted squad, producing a competing cause whose consequence silently overrides
+---   handler A's destination (last-writer-wins with non-deterministic pairs() order).
+--- @param squad_id number|nil Squad server ID (nil for actor callbacks, returns true)
+--- @return boolean true = safe to continue, false = squad was scripted mid-chain (caller should break)
+local function _scripted_during_eval(squad_id)
+    if not squad_id then return true end
+    return not ap_alife_tracker.get_scripted_ids()[squad_id]
 end
 
 --- Register a cause handler
@@ -138,7 +214,7 @@ local function _eval_handlers(handlers, on_map, squad, ...)
     local level_id = squad and xlevel.get_level_id(squad)
     local args = {...}
     for name, entry in pairs(handlers) do
-        if squad_id and ap_alife_tracker.get_scripted_ids()[squad_id] then break end
+        if not _scripted_during_eval(squad_id) then break end
         if not ap_utils.check_cause_rate_limit(name) then goto continue end
 
         local trace = ap_debug.trace()
@@ -150,39 +226,27 @@ local function _eval_handlers(handlers, on_map, squad, ...)
 end
 
 --- Radiant tick handler: any radiant callback delivers a squad, same pipeline runs
---- Gates: PACER -> SCRIPTED -> RATIO -> PROTECTION -> EVAL
+--- Gates: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
 local function _on_radiant_tick(squad)
     if not next(_radiant_handlers) then return end
-
-    local now = clock()
-    if now < _next_radiant then return end
-    _next_radiant = now + cfg.distributor_interval_sec
-
-    local squad_id = squad.id
-    if ap_alife_tracker.get_scripted_ids()[squad_id] then return end
-
+    if not _radiant_pacer_gate() then return end
+    if not _scripted_gate(squad.id) then return end
     if not _alife_ratio_gate(squad.online) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
-            tostring(squad.online), cfg.alife_ratio, _on_count, _off_count, squad_id)
+            tostring(squad.online), cfg.alife_ratio, _on_count, _off_count, squad.id)
         return
     end
-
-    local protected, reason, detail, name = ap_utils.is_protected(squad)
-    if protected then
-        ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
-        return
-    end
-
+    if not _protection_gate(squad) then return end
     _eval_handlers(_radiant_handlers, squad.online, squad, squad)
 end
 
 --- Reactive entry point (~6.5/sec)
---- Gates: PACER -> RATIO -> EVAL
+--- Gates: PACER(1/3) -> RATIO(2/3) -> EVAL(3/3)
 local function _dispatch_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or not next(handlers) then return end
 
-    if not _check_reactive_event_limiter(callback_type) then return end
+    if not _reactive_pacer_gate(callback_type) then return end
 
     local first_arg = select(1, ...)
     if not _ratio_gate(callback_type, first_arg) then

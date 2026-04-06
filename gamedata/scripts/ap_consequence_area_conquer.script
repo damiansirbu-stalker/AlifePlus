@@ -48,11 +48,11 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    ap_alife_tracker.register_arrival_handler(CONSEQUENCE.AREA_CONQUER, _on_arrive)
     ap_consumer.register(CONSEQUENCE.AREA_CONQUER, {
         event = CAUSE.AREA,
         priority = 20,
         condition = function() return cfg.consequence_area_conquer_enabled end,
+        on_arrive = _on_arrive,
     }, _handler)
     ap_debug.info("[CONSEQUENCE.AREA_CONQUER] Initialized")
 end

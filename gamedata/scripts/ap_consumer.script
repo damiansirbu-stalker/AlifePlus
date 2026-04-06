@@ -12,6 +12,9 @@ local function _priority_compare(a, b)
 end
 
 --- Register a consequence handler for an event
+--- @param name string Consequence name (used as trace key, rate limit key, arrival key)
+--- @param config table { event, priority, condition, on_arrive }
+--- @param handler function(event_data) Consequence handler
 function register(name, config, handler)
     if not name or not config or not handler then
         ap_debug.err("[CONSUMER] register: missing name, config, or handler")
@@ -20,6 +23,10 @@ function register(name, config, handler)
     if not config.event then
         ap_debug.err("[CONSUMER] register '%s': missing event", name)
         return false
+    end
+
+    if config.on_arrive then
+        ap_alife_tracker.register_arrival_handler(name, config.on_arrive)
     end
 
     local event = config.event

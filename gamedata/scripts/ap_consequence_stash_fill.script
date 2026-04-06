@@ -51,7 +51,7 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_stash_fill_rush, on_arrive = "stash_fill", on_arrive_args = { stash_id = stash_id, items = items } })
+            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_stash_fill_rush, on_arrive = CONSEQUENCE.STASH_FILL, on_arrive_args = { stash_id = stash_id, items = items } })
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
@@ -63,11 +63,11 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    ap_alife_tracker.register_arrival_handler("stash_fill", _on_arrive)
     ap_consumer.register(CONSEQUENCE.STASH_FILL, {
         event = CAUSE.STASH,
         priority = 30,
         condition = function() return cfg.consequence_stash_fill_enabled end,
+        on_arrive = _on_arrive,
     }, _handler)
     ap_debug.info("[CONSEQUENCE.STASH_FILL] Initialized")
 end

@@ -86,12 +86,14 @@ function goto_elite()
     _tip("Teleported to elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
 end
 
+local CONSEQUENCE = ap_const.CONSEQUENCE
 local NEEDS_ARRIVE_KEYS = {
-    hunger_campfire = true, sleep_campfire = true, rest_campfire = true,
-    heal_shelter = true, shelter_indoor = true, money_harvest = true,
-    money_hunt = true, supply_trader = true, job_outpost = true,
-    job_explore = true, job_research = true, job_worship = true,
-    job_exercise = true, social_campfire = true, social_base = true,
+    [CONSEQUENCE.HUNGER_CAMPFIRE] = true, [CONSEQUENCE.SLEEP_CAMPFIRE] = true, [CONSEQUENCE.REST_CAMPFIRE] = true,
+    [CONSEQUENCE.HEAL_SHELTER] = true, [CONSEQUENCE.SHELTER_INDOOR] = true, [CONSEQUENCE.SHELTER_OUTDOOR] = true,
+    [CONSEQUENCE.MONEY_HARVEST] = true, [CONSEQUENCE.MONEY_HUNT] = true, [CONSEQUENCE.SUPPLY_TRADER] = true,
+    [CONSEQUENCE.JOB_OUTPOST] = true, [CONSEQUENCE.JOB_EXPLORE] = true, [CONSEQUENCE.JOB_RESEARCH] = true,
+    [CONSEQUENCE.JOB_WORSHIP] = true, [CONSEQUENCE.JOB_EXERCISE] = true,
+    [CONSEQUENCE.SOCIAL_CAMPFIRE] = true, [CONSEQUENCE.SOCIAL_BASE] = true,
 }
 
 --- @export console

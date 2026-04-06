@@ -201,7 +201,7 @@ local function _make_handler(entry)
             ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
                 res = ap_alife_tracker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
-                    on_arrive = entry.name,
+                    on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
                         section_key = entry.section_key, arrive_fn = entry.arrive_fn,
                         dst_name = smart:name() },
@@ -234,12 +234,12 @@ end
 function on_game_start()
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
-        ap_alife_tracker.register_arrival_handler(entry.name, _on_arrive)
         local enabled_key = "consequence_" .. entry.name .. "_enabled"
         ap_consumer.register(entry.consequence, {
             event = CAUSE.NEEDS,
             priority = entry.priority,
             condition = _make_condition(enabled_key),
+            on_arrive = _on_arrive,
         }, _make_handler(entry))
     end
     ap_debug.info("[CONSEQUENCE.NEEDS] Initialized: %d consequences", #CONFIGS)
