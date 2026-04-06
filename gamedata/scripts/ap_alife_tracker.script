@@ -11,10 +11,13 @@ local SQUAD_ACTION = ap_const.SQUAD_ACTION
 
 local DEAD_GRACE_SEC = 3600
 local SCRIPTED_SQUAD_TTL = ap_const.SCRIPTED_SQUAD_TTL
-local SQUAD_RADIANT_COOLDOWN_SEC = ap_const.SQUAD_RADIANT_COOLDOWN_SEC
+local HOUSEKEEP_ARRIVAL_SCAN_SEC = ap_const.HOUSEKEEP_ARRIVAL_SCAN_SEC
 local ELITE_MAX_LEVEL = 10
 
-local MAP_MARKER_CHECK_SEC = 5
+local HOUSEKEEP_EV = "ap_alife_tracker"
+local HOUSEKEEP_ARRIVAL_SCAN = "housekeep_arrival_scan"
+local HOUSEKEEP_MARKER_SYNC = "housekeep_marker_sync"
+local HOUSEKEEP_MARKER_SEC = 5
 
 local killers = {}
 local elites = {}
@@ -28,7 +31,6 @@ local NEED_FIELDS = ap_const.NEED_FIELDS
 
 local _consequence_squads = {}
 local _marked_squads = {}
-local _squad_radiant_cooldown = {}
 
 --- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
 local function unscript_squad(squad_or_id)
@@ -98,9 +100,8 @@ local function _on_load_state(m_data)
     killers = saved.killers or {}
     elites = _validate_elites(saved.elites or {})
     scripted_squads = saved.scripted_squads or {}
-    local now = clock()
     for _, data in pairs(scripted_squads) do
-        data.clock_at = now
+        if data.arrived then data.release_at = 0 end
     end
     stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     if not saved.killers then ap_debug.warn("[TRACKER] load: missing killers, fresh init") end
@@ -248,7 +249,6 @@ local function _on_server_entity_on_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
     if not id then return end
-    _squad_radiant_cooldown[id] = nil
     _consequence_squads[id] = nil
 end
 
@@ -364,9 +364,9 @@ function script_squad(squad, smart, opts)
         scripted_target = name,
         target_smart_id = smart.id,
         tracked_at = xtime.game_sec(),
-        clock_at = clock(),
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
+        post_arrived_wait = opts.post_arrived_wait or ap_const.POST_ARRIVED_WAIT_SEC,
     }
     if ap_debug.enabled() then
         ap_debug.debug("[TRACKER] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
@@ -430,15 +430,10 @@ local function _try_arrival_overflow(squad_id, squad, smart, data)
     return true
 end
 
-local function _process_arrival(squad_id)
-    local data = scripted_squads[squad_id]
-    if not data then return end
+--- Phase 1: check if squad arrived at destination
+local function _check_arrived(squad_id, data)
     if not data.target_smart_id then return end
-    if data.clock_at and (clock() - data.clock_at) < SQUAD_RADIANT_COOLDOWN_SEC then
-        ap_debug.debug("[TRACKER] ARRIVAL_COOLDOWN: squad=%d target=%s elapsed=%.0fs remaining=%.0fs",
-            squad_id, data.scripted_target, clock() - data.clock_at, SQUAD_RADIANT_COOLDOWN_SEC - (clock() - data.clock_at))
-        return
-    end
+    if data.arrived then return end
     local squad = xobject.se(squad_id)
     if not squad then
         unscript_squad(squad_id)
@@ -449,35 +444,53 @@ local function _process_arrival(squad_id)
         unscript_squad(squad)
         return
     end
-    local arrived = xsmart.is_arrived(squad, smart)
-    ap_debug.debug("[TRACKER] check_arrival: squad=%d arrived=%s target=%s",
-        squad_id, arrived, data.scripted_target)
-    _log_proximity("proximity", squad, smart, data)
-    if not arrived then return end
+    if not xsmart.is_arrived(squad, smart) then return end
+    _log_proximity("arrived", squad, smart, data)
     if _try_arrival_overflow(squad_id, squad, smart, data) then return end
     local key = data.on_arrive
     if not key then
-        unscript_squad(squad)
+        data.arrived = true
+        data.release_at = xtime.game_sec() + data.post_arrived_wait
         return
     end
     local handler = _arrival_handlers[key]
     if not handler then
         ap_debug.err("[TRACKER] on_arrive: no handler for key=%s squad=%d", key, squad_id)
-        unscript_squad(squad)
+        data.arrived = true
+        data.release_at = xtime.game_sec() + data.post_arrived_wait
         return
     end
-    ap_debug.debug("[TRACKER] _process_arrival: squad=%d handler=%s target=%s",
-        squad_id, key, data.scripted_target)
+    ap_debug.debug("[TRACKER] on_arrive: squad=%d handler=%s target=%s", squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     if scripted_squads[squad_id] ~= data then return end
-    _squad_radiant_cooldown[squad_id] = clock() + SQUAD_RADIANT_COOLDOWN_SEC
-    unscript_squad(squad)
+    data.arrived = true
+    data.release_at = xtime.game_sec() + data.post_arrived_wait
 end
 
---- Process arrival for a single squad (called from producer's SCRIPTED gate on squad_on_update)
---- @param squad_id number Squad server ID
-function process_arrival(squad_id)
-    _process_arrival(squad_id)
+--- Phase 2: release squad after post_arrived_wait expires
+local function _check_release(squad_id, data)
+    if not data.arrived then return end
+    if xtime.game_sec() < data.release_at then return end
+    unscript_squad(squad_id)
+end
+
+local function _process_arrival(squad_id)
+    local data = scripted_squads[squad_id]
+    if not data then return end
+    _check_arrived(squad_id, data)
+    _check_release(squad_id, data)
+end
+
+--- Housekeeping: periodic arrival scan of scripted squads
+local function _housekeep_arrival_scan()
+    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC)
+    local pending = {}
+    for squad_id in pairs(scripted_squads) do
+        pending[#pending + 1] = squad_id
+    end
+    for _, squad_id in ipairs(pending) do
+        _process_arrival(squad_id)
+    end
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
@@ -505,30 +518,21 @@ function register_consequence_squad(squad_id, label)
     ap_debug.debug("[TRACKER] register_consequence_squad: squad=%d label=%s", squad_id, label)
 end
 
---- Check if squad is in radiant cooldown (wall time, os.clock)
-function check_squad_radiant_cooldown(squad_id)
-    local expiry = _squad_radiant_cooldown[squad_id]
-    if not expiry then return false end
-    if clock() >= expiry then
-        _squad_radiant_cooldown[squad_id] = nil
-        return false
-    end
-    return true
-end
 
 --- Periodic marker sync: mark new squads, unmark dead/done squads
-local function _check_markers()
+local function _housekeep_marker_sync()
     if ap_debug.enabled() then
-        ap_debug.debug("[TRACKER] _check_markers fired, cfg.map_markers=%s consequence=%d marked=%d", tostring(cfg.map_markers), xtable.count(_consequence_squads), xtable.count(_marked_squads))
+        ap_debug.debug("[TRACKER] marker_sync fired, markers=%s consequence=%d marked=%d",
+            tostring(cfg.map_markers), xtable.count(_consequence_squads), xtable.count(_marked_squads))
     end
-    ResetTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC)
+    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC)
     if not cfg.map_markers then return false end
     local dbg = ap_debug.enabled()
     for squad_id, label in pairs(_consequence_squads) do
         local se = xobject.se(squad_id)
         local alive = se and scripted_squads[squad_id]
         if dbg then
-            ap_debug.debug("[TRACKER] _check_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
+            ap_debug.debug("[TRACKER] _housekeep_marker_sync: squad=%d se=%s scripted=%s alive=%s marked=%s",
                 squad_id, tostring(se ~= nil), tostring(scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_marked_squads[squad_id] ~= nil))
         end
         if not alive and _marked_squads[squad_id] then
@@ -553,7 +557,7 @@ local function _on_first_update()
     xpda.clear_squad_markers()
     _marked_squads = {}
     if cfg.map_markers then
-        CreateTimeEvent("ap_alife_tracker", "markers", MAP_MARKER_CHECK_SEC, _check_markers)
+        CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC, _housekeep_marker_sync)
         ap_debug.debug("[TRACKER] markers timer created (map_markers=true)")
     end
 end
@@ -566,6 +570,8 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback("server_entity_on_unregister", _on_server_entity_on_unregister)
+
+    CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC, _housekeep_arrival_scan)
 
     ap_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
     ap_debug.info("[TRACKER] Initialized")

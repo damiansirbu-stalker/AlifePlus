@@ -138,42 +138,28 @@ local function _eval_handlers(handlers, on_map, squad, ...)
     local level_id = squad and xlevel.get_level_id(squad)
     local args = {...}
     for name, entry in pairs(handlers) do
-        if squad and squad.scripted_target then
-            ap_debug.debug("[PRODUCER.REACTIVE] SCRIPTED_BREAK squad=%d before=%s", squad_id, name)
-            break
-        end
-
-        local allowed, count, max = ap_utils.check_cause_rate_limit(name)
-        if not allowed then
-            ap_debug.debug("[PRODUCER.REACTIVE] CAUSE_RATE_BLOCKED cause=%s count=%d/%d level=%s sq=%s", name, count, max, level_id, squad_id)
-            goto continue
-        end
+        if squad_id and ap_alife_tracker.get_scripted_ids()[squad_id] then break end
+        if not ap_utils.check_cause_rate_limit(name) then goto continue end
 
         local trace = ap_debug.trace()
         local result = ap_debug.observe(trace, entry.label, entry.handler, unpack(args))
-
-        if result and result.cause then
-            _try_publish(on_map, name, result, trace, level_id, entry.cause_type)
-        end
+        if result and result.cause then _try_publish(on_map, name, result, trace, level_id, entry.cause_type) end
 
         ::continue::
     end
 end
 
 --- Radiant tick handler: any radiant callback delivers a squad, same pipeline runs
---- Gates: SCRIPTED -> PACER -> RATIO -> PROTECTION -> COOLDOWN -> EVAL
+--- Gates: PACER -> SCRIPTED -> RATIO -> PROTECTION -> EVAL
 local function _on_radiant_tick(squad)
     if not next(_radiant_handlers) then return end
-
-    local squad_id = squad.id
-    if ap_alife_tracker.get_scripted_ids()[squad_id] then
-        ap_alife_tracker.process_arrival(squad_id)
-        return
-    end
 
     local now = clock()
     if now < _next_radiant then return end
     _next_radiant = now + cfg.distributor_interval_sec
+
+    local squad_id = squad.id
+    if ap_alife_tracker.get_scripted_ids()[squad_id] then return end
 
     if not _alife_ratio_gate(squad.online) then
         ap_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
@@ -184,11 +170,6 @@ local function _on_radiant_tick(squad)
     local protected, reason, detail, name = ap_utils.is_protected(squad)
     if protected then
         ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad_id, detail or "?", name or "?")
-        return
-    end
-
-    if ap_alife_tracker.check_squad_radiant_cooldown(squad_id) then
-        ap_debug.debug("[PRODUCER.REACTIVE] SQUAD_RADIANT_COOLDOWN squad=%d", squad_id)
         return
     end
 
