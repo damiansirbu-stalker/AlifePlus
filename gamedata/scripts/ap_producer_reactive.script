@@ -117,7 +117,7 @@ local function _radiant_pacer_gate()
 end
 
 --- GATE: SCRIPTED (radiant 2/5)
---- Cost: one table lookup in ap_alife_tracker.get_scripted_ids() (returns module-level table ref)
+--- Cost: one table lookup in ap_squad.get_ap_scripted_ids() (returns module-level table ref)
 --- Complexity: O(1)
 --- Rationale: squads already under AP scripted control must not generate new causes -- they are
 ---   executing a consequence (moving to a target). Placed after PACER (free) but before RATIO
@@ -126,11 +126,11 @@ end
 --- @param squad_id number Squad server ID
 --- @return boolean true = allowed, false = blocked (squad is scripted)
 local function _scripted_gate(squad_id)
-    return not ap_alife_tracker.get_scripted_ids()[squad_id]
+    return not ap_squad.get_ap_scripted_ids()[squad_id]
 end
 
 --- GATE: PROTECTION (radiant 4/5)
---- Cost: engine call via ap_utils.is_protected() -- checks story/quest/companion status
+--- Cost: engine call via ap_squad.is_protected() -- checks ownership/story/quest/companion
 --- Complexity: O(1) but touches luabind (engine boundary crossing)
 --- Rationale: last gate before evaluation. Most expensive check in the chain -- crosses into
 ---   engine to verify squad is not story-critical, quest-assigned, or companion. Placed after
@@ -139,7 +139,7 @@ end
 --- @param squad userdata Squad server object
 --- @return boolean true = allowed, false = blocked (squad is protected)
 local function _protection_gate(squad)
-    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    local protected, reason, detail, name = ap_squad.is_protected(squad)
     if protected then
         ap_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name or "?")
     end
@@ -157,7 +157,7 @@ end
 --- @return boolean true = safe to continue, false = squad was scripted mid-chain (caller should break)
 local function _scripted_during_eval(squad_id)
     if not squad_id then return true end
-    return not ap_alife_tracker.get_scripted_ids()[squad_id]
+    return not ap_squad.get_ap_scripted_ids()[squad_id]
 end
 
 --- Register a cause handler

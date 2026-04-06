@@ -38,20 +38,6 @@ local function _pick_pda_sender()
     end
 end
 
---- Check all 4 squad protection guards (permanent, active_role, task_target, externally_scripted)
---- @param squad se_squad Squad server object
---- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
-function is_protected(squad)
-    local perm, perm_reason, perm_name = xsquad.is_permanent_squad(squad)
-    if perm then return true, REASON.IS_PERMANENT, perm_reason, perm_name end
-    local role, role_reason, role_name = xsquad.has_active_role(squad)
-    if role then return true, REASON.HAS_ACTIVE_ROLE, role_reason, role_name end
-    local task_tgt, task_detail = xsquad.is_task_target(squad)
-    if task_tgt then return true, REASON.IS_TASK_TARGET, task_detail end
-    local ext, ext_detail = xsquad.is_externally_scripted(squad)
-    if ext then return true, REASON.IS_EXT_SCRIPTED, ext_detail end
-    return false
-end
 
 --- Subscribe to an event with logging
 function event_subscribe(event_name, callback, subscriber_name)
@@ -229,8 +215,9 @@ end
 --- @param opts table Options (forwarded to xsquad.find_squads with exclude_ids injected)
 --- @return table Array of squad server objects
 function find_squads(pos, opts)
-    opts.exclude_ids = ap_alife_tracker.get_scripted_ids()
-    opts.exclude_externally_scripted = true
+    opts.exclude_ids = ap_squad.get_ap_scripted_ids()
+    opts.exclude_filter = ap_squad.get_owner
+    opts.exclude_scripted = true
     opts.exclude_permanent = true
     opts.exclude_active_role = true
     opts.exclude_task_target = true

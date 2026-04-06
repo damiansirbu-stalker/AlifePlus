@@ -5,6 +5,7 @@ defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
     distributor_interval_sec = 5,
+    allow_external_ownership = true,
     cause_max_events = 10,
     consequence_max_events = 2,
 
@@ -301,6 +302,7 @@ local key_to_tab = {
     map_markers = "development",
     alife_ratio = "general",
     distributor_interval_sec = "general",
+    allow_external_ownership = "general",
     cause_max_events = "general",
     consequence_max_events = "general",
     cause_elite_enabled = "causes/elite",
@@ -561,6 +563,7 @@ function on_mcm_load()
                     track("distributor_interval_sec", 1, 30, 1),
                     track("cause_max_events", 1, 100, 1),
                     track("consequence_max_events", 1, 100, 1),
+                    check("allow_external_ownership"),
                     { id = "div_reset", type = "line" },
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },

@@ -33,7 +33,7 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, {
+            res = ap_squad.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,
                 on_arrive_args = { target_smart_id = target_smart_id, smart_name = xlevel.get_smart_display_name(smart) },
@@ -41,7 +41,7 @@ local function _handler(event_data)
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_alife_tracker.register_consequence_squad(squad.id, CONSEQUENCE.AREA_CONQUER)
+        ap_squad.register_consequence_squad(squad.id, CONSEQUENCE.AREA_CONQUER)
 
         return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id }
     end)

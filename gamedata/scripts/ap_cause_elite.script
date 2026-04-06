@@ -13,7 +13,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
     local killer_id = ap_utils.get_entity_id(se_killer)
     if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
-    local protected, reason, detail, pname = ap_utils.is_protected(killer_squad)
+    local protected, reason, detail, pname = ap_squad.is_protected(killer_squad)
     if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
 
     local victim_id = ap_utils.get_entity_id(se_victim)

@@ -10,8 +10,9 @@ local ACTION = ap_const.ACTION
 
 local cfg = ap_mcm.cfg
 
+-- TODO: remove is_protected check if elite refactoring ends up only mutants being elites
 local function _is_avenger_eligible(id, squad)
-    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    local protected, reason, detail, name = ap_squad.is_protected(squad)
     if protected then
         ap_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped avenger=%d reason=%s detail=%s name=%s", id, reason or "?", detail or "?", name or "?")
         return false
@@ -75,7 +76,7 @@ local function _on_arrive(squad, args)
             ap_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance, "text_pda_consequence_elitekill_targeted_found")
             return { code = "co_located", id = squad.id, chase = chase_count }
         end
-        local res = ap_alife_tracker.script_squad(squad, smart, {
+        local res = ap_squad.script_squad(squad, smart, {
             rush = cfg.consequence_elitekill_targeted_rush,
             on_arrive = CONSEQUENCE.ELITEKILL_TARGETED,
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
@@ -124,7 +125,7 @@ local function _handler(event_data)
             if not hunters then return { code = "no_squads" } end
             if is_player_kill then
                 for _, chaser in ipairs(hunters) do
-                    local res = ap_alife_tracker.script_actor_target(chaser)
+                    local res = ap_squad.script_actor_target(chaser)
                     if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
                 end
             else
@@ -134,7 +135,7 @@ local function _handler(event_data)
                 if not smart then return { code = "no_smart" } end
                 dst_id = smart.id
                 for _, chaser in ipairs(hunters) do
-                    local res = ap_alife_tracker.script_squad(chaser, smart, {
+                    local res = ap_squad.script_squad(chaser, smart, {
                         rush = cfg.consequence_elitekill_targeted_rush,
                         on_arrive = CONSEQUENCE.ELITEKILL_TARGETED,
                         on_arrive_args = { target_squad_id = killer_squad.id },
@@ -150,7 +151,7 @@ local function _handler(event_data)
             return ap_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance,
                 pda_key, { name = victim_name, location = location })
         end)
-        for i = 1, #moved do ap_alife_tracker.register_consequence_squad(moved[i].id, CONSEQUENCE.ELITEKILL_TARGETED) end
+        for i = 1, #moved do ap_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.ELITEKILL_TARGETED) end
 
         return ap_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_hunters",

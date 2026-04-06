@@ -14,7 +14,7 @@ local function _killer_protected(killer_id)
     if not killer_id or killer_id == 0 then return nil end
     local squad = xsquad.get_squad_by_member(killer_id)
     if not squad then return nil end
-    local protected, reason, detail, name = ap_utils.is_protected(squad)
+    local protected, reason, detail, name = ap_squad.is_protected(squad)
     if protected then return reason, detail, name end
     return nil
 end

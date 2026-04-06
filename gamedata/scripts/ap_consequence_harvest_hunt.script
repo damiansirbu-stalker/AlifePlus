@@ -39,7 +39,7 @@ local function _on_arrive(squad, args)
             ap_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_found")
             return { code = "co_located", id = squad.id, chase = chase_count }
         end
-        local res = ap_alife_tracker.script_squad(squad, smart, {
+        local res = ap_squad.script_squad(squad, smart, {
             rush = cfg.consequence_harvest_hunt_rush,
             on_arrive = CONSEQUENCE.HARVEST_HUNT,
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
@@ -81,7 +81,7 @@ local function _handler(event_data)
             if not chasers then return { code = "no_squads" } end
             if taker_is_player then
                 for _, chaser in ipairs(chasers) do
-                    local res = ap_alife_tracker.script_actor_target(chaser)
+                    local res = ap_squad.script_actor_target(chaser)
                     if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
                 end
             else
@@ -91,7 +91,7 @@ local function _handler(event_data)
                 if not smart then return { code = "no_smart" } end
                 dst_id = smart.id
                 for _, chaser in ipairs(chasers) do
-                    local res = ap_alife_tracker.script_squad(chaser, smart, {
+                    local res = ap_squad.script_squad(chaser, smart, {
                         rush = cfg.consequence_harvest_hunt_rush,
                         on_arrive = CONSEQUENCE.HARVEST_HUNT,
                         on_arrive_args = { target_squad_id = taker_squad_id },
@@ -107,7 +107,7 @@ local function _handler(event_data)
             return ap_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance,
                 "text_pda_consequence_harvest_hunt", { location = location })
         end)
-        for i = 1, #moved do ap_alife_tracker.register_consequence_squad(moved[i].id, CONSEQUENCE.HARVEST_HUNT) end
+        for i = 1, #moved do ap_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.HARVEST_HUNT) end
 
         return ap_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_hunters", dst_id = dst_id,

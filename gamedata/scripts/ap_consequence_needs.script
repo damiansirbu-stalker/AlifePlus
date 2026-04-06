@@ -199,7 +199,7 @@ local function _make_handler(entry)
 
             local res
             ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-                res = ap_alife_tracker.script_squad(squad, smart, {
+                res = ap_squad.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
@@ -211,7 +211,7 @@ local function _make_handler(entry)
             if res.code ~= RESULT.OK_NEXT then
                 return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
             end
-            ap_alife_tracker.register_consequence_squad(event_data.squad_id, entry.consequence)
+            ap_squad.register_consequence_squad(event_data.squad_id, entry.consequence)
 
             ap_debug.observe(trace, ACTION.SEND_PDA, function()
                 local cmd_id = squad:commander_id()

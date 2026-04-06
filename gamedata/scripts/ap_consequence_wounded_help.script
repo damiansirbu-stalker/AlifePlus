@@ -45,13 +45,13 @@ local function _handler(event_data)
         local last_reason
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_alife_tracker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_help_rush })
+                local res = ap_squad.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_help_rush })
                 if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_alife_tracker.register_consequence_squad(moved[i].id, CONSEQUENCE.WOUNDED_HELP) end
+        for i = 1, #moved do ap_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.WOUNDED_HELP) end
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_utils.get_location_description(nil, position, level_id)
             return ap_utils.send_pda(cfg.consequence_wounded_help_pda_chance, "text_pda_consequence_wounded_help", { location = location })

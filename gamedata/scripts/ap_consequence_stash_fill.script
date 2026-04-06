@@ -51,11 +51,11 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_stash_fill_rush, on_arrive = CONSEQUENCE.STASH_FILL, on_arrive_args = { stash_id = stash_id, items = items } })
+            res = ap_squad.script_squad(squad, smart, { rush = cfg.consequence_stash_fill_rush, on_arrive = CONSEQUENCE.STASH_FILL, on_arrive_args = { stash_id = stash_id, items = items } })
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_alife_tracker.register_consequence_squad(squad.id, CONSEQUENCE.STASH_FILL)
+        ap_squad.register_consequence_squad(squad.id, CONSEQUENCE.STASH_FILL)
 
         return { code = RESULT.OK_STOP, reason = item_count .. "_items",
             id = squad.id, dst_id = smart.id, stash_id = stash_id }

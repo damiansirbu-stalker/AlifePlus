@@ -34,7 +34,7 @@ local function _evaluate(_trace, item, npc)
         position = npc:position()
         local squad = xsquad.get_squad_by_member(npc:id())
         if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
-        local protected, reason, detail, pname = ap_utils.is_protected(squad)
+        local protected, reason, detail, pname = ap_squad.is_protected(squad)
         if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
         taker_squad_id = squad.id
         level_id = xlevel.get_level_id(squad)

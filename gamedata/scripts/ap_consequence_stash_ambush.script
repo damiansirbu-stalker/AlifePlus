@@ -28,11 +28,11 @@ local function _handler(event_data)
 
         local res
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_alife_tracker.script_squad(squad, smart, { rush = cfg.consequence_stash_ambush_rush })
+            res = ap_squad.script_squad(squad, smart, { rush = cfg.consequence_stash_ambush_rush })
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_alife_tracker.register_consequence_squad(squad.id, CONSEQUENCE.STASH_AMBUSH)
+        ap_squad.register_consequence_squad(squad.id, CONSEQUENCE.STASH_AMBUSH)
 
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_utils.send_pda(cfg.consequence_stash_ambush_pda_chance, "text_pda_consequence_stash_ambush")
