@@ -1,4 +1,48 @@
 
+next
+  Pipeline:
+    Changed: single squad_on_update tick source replaces enter/leave_smart dependency (no modded exe required)
+    Changed: radiant pipeline gate chain: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
+    Changed: reactive pipeline gate chain: PACER(1/3) -> RATIO(2/3) -> EVAL(3/3)
+    Changed: all gates extracted into named local functions with cost/complexity/order/rationale headers
+    Changed: uniform gate polarity (true=allowed, if-not chain)
+    Added: _scripted_during_eval mid-chain guard prevents competing consequences from overriding each other's squad destinations
+    Changed: radiant PACER uses os.clock timestamp comparison (default 5s, MCM 1-30s), rejects ~99%+ of squad_on_update calls
+    Changed: reactive PACER renamed from _check_reactive_event_limiter to _reactive_pacer_gate
+    Changed: on-map vs off-map detection uses squad.online field instead of level comparison (eliminates luabind call)
+    Removed: global radiant cooldown MCM setting (redundant with PACER gate)
+    Removed: _last_interaction_squad dedup cache (redundant with SCRIPTED gate)
+    Removed: _radiant_event_limiter token bucket (replaced by timestamp PACER)
+  Arrival:
+    Changed: post_arrived_wait uses game time (advances during time skips, survives save/load)
+    Changed: housekeeping arrival scan runs every 10s via CreateTimeEvent (was 30s)
+    Changed: on_arrive registered via consumer.register opts (no separate register_arrival_handler call needed)
+    Changed: consequence name IS the arrival handler key (one identity: trace key, rate limit key, arrival key)
+    Changed: arrival keys use CONSEQUENCE constants (stash_loot -> CONSEQUENCE.STASH_LOOT, etc.)
+    Changed: chase arrival logic inlined into each chase consequence (squadkill_revenge, elitekill_targeted, harvest_hunt)
+    Removed: chase_register/chase_start from ap_utils (~115 lines)
+    Fixed: shelter_outdoor missing from ap_test NEEDS_ARRIVE_KEYS
+  Architecture:
+    Added: ap_squad.script -- squad ownership, scripting lifecycle, arrival detection, protection, PDA markers
+    Changed: ap_alife_tracker stripped to domain logic only (kills, elites, needs, death handler)
+    Changed: is_protected moved from ap_utils to ap_squad
+    Changed: scripted_squads, arrival handlers, consequence squads, marker sync extracted from tracker to ap_squad
+    Changed: all module-local collections prefixed (ap_scripted_squads, ap_killers, ap_elites, ap_stalker_needs)
+    Changed: save/load split -- ap_squad saves to m_data.ap_squad, tracker saves to m_data.ap_alife_tracker
+    Removed: _validate_script_target from script_squad (protection is upstream: pipeline gates + find_squads exclusions)
+  Ownership:
+    Added: squad ownership registry -- register_owner(name, filter_fn) / get_owner(squad) in ap_squad
+    Added: proxy ownership filters for Warfare (registered_with_warfare) and BAO (__lock), registered at init
+    Added: MCM toggle allow_external_ownership (default true)
+    Changed: is_protected checks ownership registry before is_scripted fallback
+    Changed: find_squads uses get_owner as exclude_filter (runs before luabind checks in xsquad)
+  xlibs (requires xlibs update):
+    Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
+    Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)
+    Added: exclude_filter option in xsquad._check_protected (generic function filter, runs first)
+    Changed: exclude_externally_scripted renamed to exclude_scripted in find_squad/find_squads
+    Removed: find_online_squads (dead code, zero callers)
+
 1.2.3
   Core:
     Added: radiant/reactive event split, world-state changes and combat events rate-limited independently (no starvation)

@@ -117,7 +117,7 @@ local function _radiant_pacer_gate()
 end
 
 --- GATE: SCRIPTED (radiant 2/5)
---- Cost: one table lookup in ap_squad.get_ap_scripted_ids() (returns module-level table ref)
+--- Cost: one table lookup in ap_squad.get_scripted_ids() (returns module-level table ref)
 --- Complexity: O(1)
 --- Rationale: squads already under AP scripted control must not generate new causes -- they are
 ---   executing a consequence (moving to a target). Placed after PACER (free) but before RATIO
@@ -126,7 +126,7 @@ end
 --- @param squad_id number Squad server ID
 --- @return boolean true = allowed, false = blocked (squad is scripted)
 local function _scripted_gate(squad_id)
-    return not ap_squad.get_ap_scripted_ids()[squad_id]
+    return not ap_squad.get_scripted_ids()[squad_id]
 end
 
 --- GATE: PROTECTION (radiant 4/5)
@@ -157,7 +157,7 @@ end
 --- @return boolean true = safe to continue, false = squad was scripted mid-chain (caller should break)
 local function _scripted_during_eval(squad_id)
     if not squad_id then return true end
-    return not ap_squad.get_ap_scripted_ids()[squad_id]
+    return not ap_squad.get_scripted_ids()[squad_id]
 end
 
 --- Register a cause handler
