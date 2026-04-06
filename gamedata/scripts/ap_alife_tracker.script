@@ -4,6 +4,7 @@ local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
+local TRACE = ap_const.TRACE
 local ELITE_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_const.NEED_FIELDS
@@ -247,7 +248,7 @@ local function _on_squad_npc_death(squad, npc, killer)
         if squad and squad:npc_count() <= 1 then
             _unregister_squad(squad.id)
         end
-        return { code = "ok", killer_id = killer_id, victim_id = victim_id }
+        return { code = TRACE.OK, killer_id = killer_id, victim_id = victim_id }
     end)
 end
 

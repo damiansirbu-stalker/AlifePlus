@@ -7,6 +7,7 @@ local REASON = ap_const.REASON
 local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
+local TRACE = ap_const.TRACE
 
 local cfg = ap_mcm.cfg
 local community_harvest = ap_data.community_harvest
@@ -34,10 +35,10 @@ local function _on_arrive(squad, args)
         local smart = ap_utils.find_smart(target_squad.position, {
             level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
         })
-        if not smart then return { code = "no_smart" } end
+        if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
             ap_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_found")
-            return { code = "co_located", id = squad.id, chase = chase_count }
+            return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
         end
         local res = ap_squad.script_squad(squad, smart, {
             rush = cfg.consequence_harvest_hunt_rush,
@@ -45,7 +46,7 @@ local function _on_arrive(squad, args)
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
         })
         if res.code ~= RESULT.OK_NEXT then return { code = res.code, reason = res.reason } end
-        return { code = "ok", id = squad.id, dst_id = smart.id, chase = chase_count }
+        return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
     end)
 end
 
@@ -78,7 +79,7 @@ local function _handler(event_data)
         local dst_id = 0
         local location = ap_utils.get_location_description(nil, position, level_id)
         ap_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            if not chasers then return { code = "no_squads" } end
+            if not chasers then return { code = TRACE.NO_SQUADS } end
             if taker_is_player then
                 for _, chaser in ipairs(chasers) do
                     local res = ap_squad.script_actor_target(chaser)
@@ -88,7 +89,7 @@ local function _handler(event_data)
                 local smart = ap_utils.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_const.RADIUS_DISTANT_MAX,
                 })
-                if not smart then return { code = "no_smart" } end
+                if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id
                 for _, chaser in ipairs(chasers) do
                     local res = ap_squad.script_squad(chaser, smart, {

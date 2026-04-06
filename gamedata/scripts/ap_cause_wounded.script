@@ -6,7 +6,7 @@ local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
 -- Declare custom callback (must be before on_game_start)
-AddScriptCallback("x_npc_medkit_use")
+AddScriptCallback(CALLBACK.X_NPC_MEDKIT_USE)
 
 local cfg = ap_mcm.cfg
 
@@ -71,7 +71,7 @@ end
 
 local function _setup_hooks()
     local ok = xevent.hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
-        xevent.emit("x_npc_medkit_use", npc, medkit, kind)
+        xevent.emit(CALLBACK.X_NPC_MEDKIT_USE, npc, medkit, kind)
         return orig(npc, medkit, kind)
     end)
     if ok then

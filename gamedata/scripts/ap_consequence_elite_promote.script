@@ -5,6 +5,7 @@ local REASON = ap_const.REASON
 local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
+local TRACE = ap_const.TRACE
 
 local cfg = ap_mcm.cfg
 
@@ -32,13 +33,13 @@ local function _handler(event_data)
                 kills = kills, name = name, level_id = level_id, is_stalker = event_data.is_stalker,
             })
             if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
-            return { code = "ok", id = killer_id, level = level }
+            return { code = TRACE.OK, id = killer_id, level = level }
         end)
         if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
 
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
-            if not se then return { code = "no_entity" } end
+            if not se then return { code = TRACE.NO_ENTITY } end
             local location = ap_utils.get_location_description(se, nil, level_id)
             local pda_key = event_data.is_stalker
                 and "text_pda_consequence_elite_promote"

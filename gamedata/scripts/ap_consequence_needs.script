@@ -8,6 +8,7 @@ local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
+local TRACE = ap_const.TRACE
 local RADIUS_DISTANT_MAX = ap_const.RADIUS_DISTANT_MAX
 local NEEDS_SECTIONS = ap_const.NEEDS_SECTIONS
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
@@ -137,14 +138,14 @@ local function _dispatch_arrive(trace, go, args)
         if sections then
             ap_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
                 local consumed = _consume(go, sections)
-                return { code = consumed and "ok" or "none", consumed = consumed }
+                return { code = consumed and TRACE.OK or TRACE.NONE, consumed = consumed }
             end)
             return "consume"
         end
     elseif args.arrive_fn == "trade" then
         ap_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
             local sold, bought = _arrive_trade(go)
-            return { code = sold and "ok" or "no_artefact", sold = sold, bought = bought }
+            return { code = sold and TRACE.OK or TRACE.NO_ARTEFACT, sold = sold, bought = bought }
         end)
         return "trade"
     end
@@ -164,7 +165,7 @@ local function _on_arrive(squad, args)
         if online then
             action = _dispatch_arrive(trace, st.object, args)
         end
-        return { code = "ok", squad = squad.id, need = args.name,
+        return { code = TRACE.OK, squad = squad.id, need = args.name,
             dst = args.dst_name, online = online, action = action }
     end)
 end
@@ -180,7 +181,7 @@ local function _make_handler(entry)
     local chance_key = "consequence_" .. entry.name .. "_chance"
 
     return function(event_data)
-        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = "need_mismatch" } end
+        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
         local trace = event_data._trace
         return ap_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end

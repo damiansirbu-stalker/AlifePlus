@@ -7,6 +7,7 @@ local REASON = ap_const.REASON
 local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
+local TRACE = ap_const.TRACE
 
 local cfg = ap_mcm.cfg
 local community_stalker = ap_data.community_stalker
@@ -47,14 +48,14 @@ local function _on_arrive(squad, args)
         end)
         ap_debug.observe(trace, ACTION.SEND_PDA, function()
             local notable = xstash.filter_notable_stash_items(items, 2)
-            if #notable == 0 then return { code = "no_items" } end
+            if #notable == 0 then return { code = TRACE.NO_ITEMS } end
             local names = {}
             for i = 1, #notable do names[i] = ui_item.get_sec_name(notable[i]) end
             return ap_utils.send_pda(cfg.consequence_stash_loot_pda_chance,
                 "text_pda_consequence_stash_loot_success", { items = table_concat(names, ", ") })
         end)
         return {
-            code = "ok",
+            code = TRACE.OK,
             reason = string_format("stash=%d npc=%s items=%d", stash_id, squad:name(), items and #items or 0)
         }
     end)

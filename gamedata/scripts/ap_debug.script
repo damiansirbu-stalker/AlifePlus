@@ -4,6 +4,7 @@
 local pairs, type, tostring, table_sort, table_concat = pairs, type, tostring, table.sort, table.concat
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_const.CALLBACK
+local TRACE = ap_const.TRACE
 
 local _null_trace = xtrace.new_if(false)
 
@@ -82,16 +83,16 @@ end
 
 --- Build observe result for multi-squad operations (MOVE_SQUAD, consequence returns)
 function result_squads(squads, extra)
-    if not enabled() then return extra or { code = "ok" } end
-    local res = { code = "ok", count = #squads, ids = _collect_ids(squads) }
+    if not enabled() then return extra or { code = TRACE.OK } end
+    local res = { code = TRACE.OK, count = #squads, ids = _collect_ids(squads) }
     if extra then for k, v in pairs(extra) do res[k] = v end end
     return res
 end
 
 --- Build observe result for single-squad operations
 function result_squad(squad, extra)
-    if not enabled() then return extra or { code = "ok" } end
-    local res = { code = "ok", id = squad and squad.id }
+    if not enabled() then return extra or { code = TRACE.OK } end
+    local res = { code = TRACE.OK, id = squad and squad.id }
     if extra then for k, v in pairs(extra) do res[k] = v end end
     return res
 end

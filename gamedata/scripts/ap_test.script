@@ -226,7 +226,7 @@ local function _demo_fire_next()
     if #_demo_queue == 0 then
         _demo_active = false
         _demo_restore_causes()
-        UnregisterScriptCallback("actor_on_update", _demo_fire_next)
+        UnregisterScriptCallback(ap_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
         _tip("Needs demo: complete")
         ap_debug.debug("[TEST] needs_demo complete")
         return
@@ -256,7 +256,7 @@ function needs_demo()
         _demo_active = false
         _demo_queue = {}
         _demo_restore_causes()
-        UnregisterScriptCallback("actor_on_update", _demo_fire_next)
+        UnregisterScriptCallback(ap_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
         _tip("Needs demo stopped")
         ap_debug.debug("[TEST] needs_demo stopped")
         return
@@ -268,7 +268,7 @@ function needs_demo()
     _demo_next_fire = 0
     _demo_need_idx = 0
     _demo_disable_competing_causes()
-    RegisterScriptCallback("actor_on_update", _demo_fire_next)
+    RegisterScriptCallback(ap_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
     _tip(string_format("Needs demo: %d squads queued (hunger/exercise/social/sleep)", #squads))
     ap_debug.debug("[TEST] needs_demo started squads=%d needs=hunger,job,social,sleep", #squads)
 end

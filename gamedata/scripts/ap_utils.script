@@ -6,6 +6,7 @@ local CALLBACK = ap_const.CALLBACK
 local ACTION = ap_const.ACTION
 local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
+local TRACE = ap_const.TRACE
 local cfg = ap_mcm.cfg
 
 -- Pick a random online stalker as PDA sender (A/S pattern: db.OnlineStalkers inline)
@@ -85,21 +86,21 @@ end
 --- @param params table|nil Substitution parameters for ap_messages.get
 function send_pda(chance, key, params)
     if not xmath.chance(chance) then
-        return { code = "chance", key = key }
+        return { code = TRACE.CHANCE, key = key }
     end
     local msg = ap_messages and ap_messages.get(key, params)
     if not msg then
         ap_debug.debug("[SEND_PDA] no message: key=%s", key)
-        return { code = "no_msg", key = key }
+        return { code = TRACE.NO_MSG, key = key }
     end
     local sender = _pick_pda_sender()
     if not sender then
         ap_debug.debug("[SEND_PDA] no sender available")
-        return { code = "no_sender", key = key }
+        return { code = TRACE.NO_SENDER, key = key }
     end
     xpda.send(sender.name, msg, sender.icon)
     ap_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
-    return { code = "sent", key = key, sender = sender.name }
+    return { code = TRACE.SENT, key = key, sender = sender.name }
 end
 
 --- Increment death count at key, check threshold, reset on fire. Returns count or nil.
@@ -289,8 +290,8 @@ function find_smart_observed(trace, position, opts)
     local smart
     ap_debug.observe(trace, ACTION.FIND_DESTINATION, function()
         smart = find_smart(position, opts)
-        if not smart then return { code = "empty" } end
-        return { code = "ok", id = smart.id }
+        if not smart then return { code = TRACE.EMPTY } end
+        return { code = TRACE.OK, id = smart.id }
     end)
     return smart
 end

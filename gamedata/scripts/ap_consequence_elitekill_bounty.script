@@ -6,6 +6,7 @@ local RESULT = ap_const.RESULT
 local CAUSE = ap_const.CAUSE
 local CONSEQUENCE = ap_const.CONSEQUENCE
 local ACTION = ap_const.ACTION
+local TRACE = ap_const.TRACE
 
 local cfg = ap_mcm.cfg
 
@@ -35,7 +36,7 @@ local function _handler(event_data)
         if recipient then
             ap_debug.observe(trace, ACTION.GIVE_MONEY, function()
                 xcreature.give_money(recipient, reward)
-                return { code = "ok", reward = reward }
+                return { code = TRACE.OK, reward = reward }
             end)
         end
 

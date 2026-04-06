@@ -7,8 +7,6 @@ local RESULT = ap_const.RESULT
 local REASON = ap_const.REASON
 
 local HOURS_TO_SECONDS = 3600
-local NEEDS_KEY = "cause:needs"
-
 local cfg = ap_mcm.cfg
 local _community_stalker
 
@@ -98,7 +96,7 @@ function on_game_start()
     _community_stalker = ap_data.community_stalker
     local radiant = ap_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_producer_reactive.register(NEEDS_KEY, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+        ap_producer_reactive.register(CAUSE.NEEDS, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
     end
     ap_debug.info("[CAUSE.NEEDS] Initialized")
 end
