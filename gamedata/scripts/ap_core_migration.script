@@ -1,0 +1,43 @@
+--- ap_core_migration: One-time save data migrations, runs on load_state
+local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
+local CALLBACK = ap_core_const.CALLBACK
+
+--- v1.3.0: release orphaned squads from old ap_squad save key
+--- Old ap_scripted_squads entries reference squads with engine-side scripted_target still set.
+--- Without AP tracking, those squads stay permanently pinned to their destination.
+local function _v130_release_orphaned_squads(m_data)
+    local old = m_data.ap_squad
+    if not old then return end
+    local squads = old.ap_scripted_squads
+    if not squads or type(squads) ~= "table" then return end
+    for squad_id in pairs(squads) do
+        if type(squad_id) == "number" then
+            local squad = xobject.se(squad_id)
+            if squad then xsquad.release_squad(squad) end
+        end
+    end
+end
+
+--- v1.3.0: delete deprecated save keys after core/ext file rename
+--- Old keys: ap_squad, ap_alife_tracker, ap_smart_mutator
+--- New keys: ap_core_squad, ap_ext_tracker, ap_core_smart_mutator
+--- Data is not migrated -- fresh start. Conquered smarts already lost on load (engine rebuilds from LTX).
+local function _v130_delete_old_save_keys(m_data)
+    m_data.ap_squad = nil
+    m_data.ap_alife_tracker = nil
+    m_data.ap_smart_mutator = nil
+    m_data.ap_conquest = nil
+end
+
+--- Run all migrations on load_state. Registered in on_game_start.
+--- Alphabetical load order (ap_core_migration < ap_core_squad < ap_ext_tracker)
+--- ensures this runs before any module reads m_data.
+local function _on_load_state(m_data)
+    if not m_data then return end
+    _v130_release_orphaned_squads(m_data)
+    _v130_delete_old_save_keys(m_data)
+end
+
+function on_game_start()
+    RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+end
