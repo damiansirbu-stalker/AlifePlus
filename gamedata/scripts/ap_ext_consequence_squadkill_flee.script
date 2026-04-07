@@ -13,8 +13,8 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
         if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_data.community_stalker[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
-        if not xmath.prd_chance("squadkill_flee", cfg.consequence_squadkill_flee_chance) then return { code = RESULT.CHANCE_NEXT } end
+        if not ap_ext_data.community_stalker[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction } end
+        if not xmath.prd_chance("squadkill_flee", cfg.consequence_squadkill_flee_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_squadkill_flee_chance } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 

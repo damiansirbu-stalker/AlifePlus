@@ -184,7 +184,7 @@ local function _make_handler(entry)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
-            if not xmath.prd_chance(entry.name, cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT } end
+            if not xmath.prd_chance(entry.name, cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT, chance = cfg[chance_key] } end
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end

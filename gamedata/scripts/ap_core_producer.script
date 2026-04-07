@@ -30,6 +30,10 @@ local _off_count = 0
 
 --- PACER state: next allowed radiant evaluation (os.clock timestamp)
 local _next_radiant = 0
+local _pacer_rejected = 0
+local _pacer_accepted = 0
+local _pacer_last_log = 0
+local PACER_LOG_INTERVAL = 30
 
 --- GATE: RATIO (radiant 3/5, reactive 2/3)
 --- Cost: local table read + arithmetic on module-level counters
@@ -97,8 +101,19 @@ end
 --- @return boolean true = allowed, false = blocked (updates _next_radiant on allow)
 local function _radiant_pacer_gate()
     local now = clock()
-    if now < _next_radiant then return false end
+    if now < _next_radiant then
+        _pacer_rejected = _pacer_rejected + 1
+        return false
+    end
+    _pacer_accepted = _pacer_accepted + 1
     _next_radiant = now + cfg.distributor_interval_sec
+    if (now - _pacer_last_log) >= PACER_LOG_INTERVAL then
+        ap_core_debug.debug("[PRODUCER.REACTIVE] PACER_SUMMARY accepted=%d rejected=%d interval=%ds",
+            _pacer_accepted, _pacer_rejected, PACER_LOG_INTERVAL)
+        _pacer_accepted = 0
+        _pacer_rejected = 0
+        _pacer_last_log = now
+    end
     return true
 end
 
@@ -127,7 +142,8 @@ end
 local function _protection_gate(squad)
     local protected, reason, detail, name = ap_core_squad.is_protected(squad)
     if protected then
-        ap_core_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name or "?")
+        if not name then name = squad:section_name() or "?" end
+        ap_core_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name)
     end
     return not protected
 end
@@ -241,8 +257,8 @@ local function _dispatch_reactive(callback_type, ...)
         on_map = first_arg.online
     end
     if on_map ~= nil and not _alife_ratio_gate(on_map) then
-        ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d",
-            callback_type, cfg.alife_ratio, _on_count, _off_count)
+        ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d sq=%s",
+            callback_type, cfg.alife_ratio, _on_count, _off_count, type(first_arg) == "userdata" and first_arg.id or "?")
         return
     end
 
