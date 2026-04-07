@@ -1,6 +1,14 @@
 --- ap_core_migration: One-time save data migrations, runs on load_state
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
+local xobject, xsquad = xobject, xsquad
 local CALLBACK = ap_core_const.CALLBACK
+
+local function _release_squad(squad_id)
+    if type(squad_id) ~= "number" then return end
+    local squad = xobject.se(squad_id)
+    if not squad then return end
+    xsquad.release_squad(squad)
+end
 
 --- v1.3.0: release orphaned squads from old ap_squad save key
 --- Old ap_scripted_squads entries reference squads with engine-side scripted_target still set.
@@ -11,17 +19,13 @@ local function _v130_release_orphaned_squads(m_data)
     local squads = old.ap_scripted_squads
     if not squads or type(squads) ~= "table" then return end
     for squad_id in pairs(squads) do
-        if type(squad_id) == "number" then
-            local squad = xobject.se(squad_id)
-            if squad then xsquad.release_squad(squad) end
-        end
+        _release_squad(squad_id)
     end
 end
 
 --- v1.3.0: delete deprecated save keys after core/ext file rename
---- Old keys: ap_squad, ap_alife_tracker, ap_smart_mutator
+--- Old keys: ap_squad, ap_alife_tracker, ap_smart_mutator, ap_conquest
 --- New keys: ap_core_squad, ap_ext_tracker, ap_core_smart_mutator
---- Data is not migrated -- fresh start. Conquered smarts already lost on load (engine rebuilds from LTX).
 local function _v130_delete_old_save_keys(m_data)
     m_data.ap_squad = nil
     m_data.ap_alife_tracker = nil
