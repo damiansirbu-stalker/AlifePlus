@@ -27,8 +27,8 @@ next
     Changed: ap_alife_tracker stripped to domain logic only (kills, elites, needs, death handler)
     Changed: is_protected moved from ap_utils to ap_squad
     Changed: scripted_squads, arrival handlers, consequence squads, marker sync extracted from tracker to ap_squad
-    Changed: all module-local collections prefixed (ap_scripted_squads, ap_killers, ap_elites, ap_stalker_needs)
-    Changed: save/load split -- ap_squad saves to m_data.ap_squad, tracker saves to m_data.ap_alife_tracker
+    Changed: all module-local collections prefixed with _ (private convention)
+    Changed: save/load split -- ap_squad saves to m_data.ap_core_squad, tracker saves to m_data.ap_ext_tracker
     Removed: _validate_script_target from script_squad (protection is upstream: pipeline gates + find_squads exclusions)
   Ownership:
     Added: squad ownership registry -- register_owner(name, filter_fn) / get_owner(squad) in ap_squad
@@ -43,11 +43,22 @@ next
     Changed: all files renamed to ap_core_* (framework) and ap_ext_* (domain extensions)
     Changed: ap_producer_reactive renamed to ap_core_producer
     Changed: ap_alife_tracker renamed to ap_ext_tracker
-    Changed: private functions prefixed with _ (unscript_squad, get_cause_rate_key, get_consequence_rate_key, subscribe_to_callbacks)
+    Changed: all private locals/functions prefixed with _ across all files (21 renames)
     Changed: producer.unregister made local (never called externally)
     Added: ap_core_migration.script -- one-time save data migrations on load_state
     Changed: save keys renamed to match new module names (ap_core_squad, ap_ext_tracker, ap_core_smart_mutator)
     Added: migration v1.3.0 releases orphaned scripted squads, deletes all deprecated save keys (ap_squad, ap_alife_tracker, ap_smart_mutator, ap_conquest)
+  Review fixes:
+    Fixed: radiant causes dead on first session -- _rebuild_radiant_set ran before causes registered (alphabetical on_game_start order)
+    Fixed: debug log level read MCM before config loaded (same alphabetical order issue)
+    Fixed: warfare ownership filter ~= nil caught false as owned (false ~= nil is true in Lua)
+    Fixed: bao ownership filter same ~= nil issue
+    Changed: producer/debug init split into declare (on_game_start) + aggregate (actor_on_first_update)
+    Changed: chase consequence move loops extracted to _move_actor_chasers/_move_smart_chasers (fixes 3-level nesting)
+    Changed: debug args with xtable.count/tostring wrapped in enabled() guard (5 locations)
+    Changed: arrival scan uses cached _pending_buf instead of per-call allocation
+    Changed: needs _dispatch_arrive guard clause flattened
+    Removed: unused cached globals (error, time_global, math_huge, ipairs, tostring, RESULT, REASON, CALLBACK, RegisterScriptCallback across 3 files)
   xlibs (requires xlibs update):
     Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
     Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)
