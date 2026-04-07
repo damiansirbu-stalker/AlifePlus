@@ -39,7 +39,7 @@ local function _handler(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.BASEKILL_SUPPORT) end
+        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.BASEKILL_SUPPORT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_core_utils.get_location_description(nil, position, level_id)
             return ap_core_utils.send_pda(cfg.consequence_basekill_support_pda_chance, "text_pda_consequence_basekill_support", { location = location })

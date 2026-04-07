@@ -55,7 +55,7 @@ local function _handler(event_data)
             return res
         end)
         if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_core_squad.register_consequence_squad(squad.id, CONSEQUENCE.STASH_FILL)
+        ap_core_squad.add_marked_squad(squad.id, CONSEQUENCE.STASH_FILL)
 
         return { code = RESULT.OK_STOP, reason = item_count .. "_items",
             id = squad.id, dst_id = smart.id, stash_id = stash_id }

@@ -59,6 +59,14 @@ next
     Changed: arrival scan uses cached _pending_buf instead of per-call allocation
     Changed: needs _dispatch_arrive guard clause flattened
     Removed: unused cached globals (error, time_global, math_huge, ipairs, tostring, RESULT, REASON, CALLBACK, RegisterScriptCallback across 3 files)
+  Markers:
+    Changed: marker system redesigned -- one collection (_ap_marked_squads) with is_marked flag replaces two collections (_ap_consequence_squads + _ap_marked_squads)
+    Changed: marker update split into _apply_markers (5s, flag-based) and _validate_markers (60s, entity checks)
+    Changed: marker alive check reads entity directly (se.scripted_target) instead of _ap_scripted_squads lookup
+    Added: persistent markers for non-movement consequences (elite_promote marks elite's squad until death)
+    Added: add_marked_squad(squad_id, label, opts) replaces register_consequence_squad
+    Changed: scripted squad lifecycle functions renamed (_update_scripted_squads, _update_scripted_squad, _update_arrival_flags, _update_wait)
+    Fixed: logger prefix in producer registration errors ([PRODUCER] -> [PRODUCER.REACTIVE])
   xlibs (requires xlibs update):
     Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
     Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)

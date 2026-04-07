@@ -14,12 +14,12 @@ local TIMER_EV = "ap_core_squad"
 local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
 local UPDATE_MARKERS = "update_markers"
 local UPDATE_MARKERS_SEC = 5
+local VALIDATE_MARKERS_SEC = 60
 
 local cfg = ap_core_mcm.cfg
 
 local _ap_scripted_squads = {}
 local _arrival_handlers = {}
-local _ap_consequence_squads = {}
 local _ap_marked_squads = {}
 
 -- =============================================================================
@@ -88,7 +88,6 @@ local function _unscript_squad(squad_or_id)
         xsquad.release_squad(squad)
     end
     _ap_scripted_squads[squad_id] = nil
-    _ap_consequence_squads[squad_id] = nil
     return true
 end
 
@@ -167,12 +166,19 @@ function register_arrival_handler(key, fn)
     ap_core_debug.debug("[SQUAD] register_arrival_handler: key=%s", key)
 end
 
---- Register a squad as consequence-controlled (for PDA markers)
-function register_consequence_squad(squad_id, label)
+--- Add a squad to the map marker system
+--- @param squad_id number Squad server ID
+--- @param label string Marker label (consequence name)
+--- @param opts table|nil Options: persistent=true keeps marker until entity dies (default: removed when unscripted)
+function add_marked_squad(squad_id, label, opts)
     if not squad_id then return end
-    label = label or "unknown"
-    _ap_consequence_squads[squad_id] = label
-    ap_core_debug.debug("[SQUAD] register_consequence_squad: squad=%d label=%s", squad_id, label)
+    opts = opts or {}
+    _ap_marked_squads[squad_id] = {
+        label = label or "unknown",
+        is_marked = false,
+        persistent = opts.persistent or false,
+    }
+    ap_core_debug.debug("[SQUAD] add_marked_squad: squad=%d label=%s persistent=%s", squad_id, label or "unknown", tostring(opts.persistent or false))
 end
 
 -- =============================================================================
@@ -266,44 +272,61 @@ end
 -- PDA MARKERS
 -- =============================================================================
 
-local function _update_markers()
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] _update_markers fired, markers=%s consequence=%d marked=%d",
-            tostring(cfg.map_markers), xtable.count(_ap_consequence_squads), xtable.count(_ap_marked_squads))
-    end
-    ResetTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
-    if not cfg.map_markers then return false end
-    local dbg = ap_core_debug.enabled()
-    for squad_id, label in pairs(_ap_consequence_squads) do
+local function _should_remove_marker(entry, se)
+    if not se then return true end
+    if not entry.persistent and not se.scripted_target then return true end
+    return false
+end
+
+local function _apply_markers()
+    for squad_id, entry in pairs(_ap_marked_squads) do
+        if entry.is_marked then goto continue end
         local se = xobject.se(squad_id)
-        local alive = se and _ap_scripted_squads[squad_id]
-        if dbg then
-            ap_core_debug.debug("[SQUAD] _update_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
-                squad_id, tostring(se ~= nil), tostring(_ap_scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_ap_marked_squads[squad_id] ~= nil))
-        end
-        if not alive and _ap_marked_squads[squad_id] then
+        if not se then goto continue end
+        local full_label = entry.label .. ": " .. xsquad.get_community_name(se)
+        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_ext_data.MARKER_TYPE })
+        entry.is_marked = true
+        ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
+        ::continue::
+    end
+end
+
+local function _validate_markers()
+    for squad_id, entry in pairs(_ap_marked_squads) do
+        local se = xobject.se(squad_id)
+        if not _should_remove_marker(entry, se) then goto continue end
+        if entry.is_marked then
             xpda.unmark_squad(squad_id)
-            _ap_marked_squads[squad_id] = nil
             ap_core_debug.debug("[SQUAD] unmark: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
         end
-        if not alive then
-            _ap_consequence_squads[squad_id] = nil
-        elseif not _ap_marked_squads[squad_id] then
-            local full_label = label .. ": " .. xsquad.get_community_name(se)
-            xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_ext_data.MARKER_TYPE })
-            _ap_marked_squads[squad_id] = true
-            ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
-        end
+        _ap_marked_squads[squad_id] = nil
+        ::continue::
     end
+end
+
+local _last_validate_at = 0
+
+local function _update_markers()
+    ResetTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
+    if not cfg.map_markers then return false end
+    local now = os.clock()
+    if (now - _last_validate_at) >= VALIDATE_MARKERS_SEC then
+        _last_validate_at = now
+        _validate_markers()
+    end
+    _apply_markers()
     return false
 end
 
 local function _on_first_update()
     xpda.clear_squad_markers()
-    _ap_marked_squads = {}
+    for _, entry in pairs(_ap_marked_squads) do
+        entry.is_marked = false
+    end
+    _last_validate_at = 0
     if cfg.map_markers then
         CreateTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)
-        ap_core_debug.debug("[SQUAD] markers timer created (map_markers=true)")
+        ap_core_debug.debug("[SQUAD] marker timer created (map_markers=true)")
     end
 end
 
@@ -339,7 +362,11 @@ local function _on_server_entity_on_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
     if not id then return end
-    _ap_consequence_squads[id] = nil
+    local entry = _ap_marked_squads[id]
+    if entry then
+        if entry.is_marked then xpda.unmark_squad(id) end
+        _ap_marked_squads[id] = nil
+    end
 end
 
 -- =============================================================================

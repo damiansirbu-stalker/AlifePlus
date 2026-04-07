@@ -160,7 +160,7 @@ local function _handler(event_data)
             return ap_core_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance,
                 pda_key, { name = victim_name, location = location })
         end)
-        for i = 1, #moved do ap_core_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.ELITEKILL_TARGETED) end
+        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.ELITEKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_hunters",

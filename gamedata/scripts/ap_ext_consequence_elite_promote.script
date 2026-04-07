@@ -37,6 +37,11 @@ local function _handler(event_data)
         end)
         if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
 
+        local killer_squad = xsquad.get_squad_by_member(killer_id)
+        if killer_squad then
+            ap_core_squad.add_marked_squad(killer_squad.id, CONSEQUENCE.ELITE_PROMOTE, { persistent = true })
+        end
+
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
             if not se then return { code = TRACE.NO_ENTITY } end

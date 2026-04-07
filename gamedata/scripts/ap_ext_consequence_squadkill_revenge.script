@@ -123,7 +123,7 @@ local function _handler(event_data)
             return ap_core_utils.send_pda(cfg.consequence_squadkill_revenge_pda_chance,
                 "text_pda_consequence_squadkill_revenge", { location = location })
         end)
-        for i = 1, #moved do ap_core_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.SQUADKILL_REVENGE) end
+        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.SQUADKILL_REVENGE) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_avengers",
