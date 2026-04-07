@@ -10,16 +10,18 @@ local function _release_squad(squad_id)
     xsquad.release_squad(squad)
 end
 
---- v1.3.0: release orphaned squads from old ap_squad save key
+--- v1.3.0: release orphaned squads from old save keys
 --- Old ap_scripted_squads entries reference squads with engine-side scripted_target still set.
 --- Without AP tracking, those squads stay permanently pinned to their destination.
+--- Covers both pre-branch (ap_alife_tracker.scripted_squads) and mid-branch (ap_squad.ap_scripted_squads).
 local function _v130_release_orphaned_squads(m_data)
-    local old = m_data.ap_squad
-    if not old then return end
-    local squads = old.ap_scripted_squads
-    if not squads or type(squads) ~= "table" then return end
-    for squad_id in pairs(squads) do
-        _release_squad(squad_id)
+    local squads = m_data.ap_squad and m_data.ap_squad.ap_scripted_squads
+    if squads and type(squads) == "table" then
+        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    end
+    squads = m_data.ap_alife_tracker and m_data.ap_alife_tracker.scripted_squads
+    if squads and type(squads) == "table" then
+        for squad_id in pairs(squads) do _release_squad(squad_id) end
     end
 end
 

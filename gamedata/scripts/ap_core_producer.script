@@ -1,6 +1,6 @@
 --- ap_core_producer: Dispatches cause predicates on engine callbacks
 --- Gate chains: radiant (PACER->SCRIPTED->RATIO->PROTECTION->EVAL), reactive (PACER->RATIO->EVAL)
-local next, pairs, tostring, type = next, pairs, tostring, type
+local next, pairs, tostring, type, unpack = next, pairs, tostring, type, unpack
 local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -70,21 +70,6 @@ local function _alife_ratio_gate(on_map)
         return true
     end
     return false
-end
-
---- GATE: RATIO-REACTIVE (reactive 2/3)
---- Cost: one table lookup (_always_on_map) + optional field read + delegates to _alife_ratio_gate
---- Complexity: O(1)
---- Rationale: reactive wrapper around _alife_ratio_gate. Resolves on_map from callback type
----   (actor/npc callbacks are always on-map) or from first_arg.online (squad). Unknown
----   on_map passes unconditionally -- reactive callbacks may lack a squad argument.
-local function _ratio_gate(callback_type, first_arg)
-    local on_map = _always_on_map[callback_type]
-    if on_map == nil and first_arg then
-        on_map = first_arg.online
-    end
-    if on_map == nil then return true end
-    return _alife_ratio_gate(on_map)
 end
 
 --- GATE: PACER-REACTIVE (reactive 1/3)
@@ -187,32 +172,21 @@ function register(name, config, handler)
     return true
 end
 
-local function _unregister(name, callback)
-    if _handlers[callback] and _handlers[callback][name] then
-        _handlers[callback][name] = nil
-        ap_core_debug.debug("[PRODUCER.REACTIVE] unregistered: handler=%s callback=%s", name, callback)
-        return true
-    end
-    return false
-end
-
 --- Try to publish a cause result
-local function _try_publish(on_map, name, result, trace, level_id, cause_type)
+local function _try_publish(on_map, name, result, trace, cause_type)
     result._trace = trace
     result.cause_type = cause_type
     ap_core_utils.event_publish(result.cause, result)
     ap_core_utils.increment_cause_counter(name)
     ap_core_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
-        result.cause, result.squad_id, on_map, level_id)
+        result.cause, result.squad_id, on_map, result.level_id)
 end
 
 --- Evaluate cause handlers for a squad that passed all gates
 --- @param handlers table Registered handlers for this callback
 --- @param on_map boolean|nil On-map status for ratio logging
---- @param squad userdata|nil Squad object (nil for actor callbacks)
-local function _eval_handlers(handlers, on_map, squad, ...)
-    local squad_id = squad and squad.id
-    local level_id = squad and xlevel.get_level_id(squad)
+--- @param squad_id number|nil Squad ID (nil for actor callbacks)
+local function _eval_handlers(handlers, on_map, squad_id, ...)
     local args = {...}
     for name, entry in pairs(handlers) do
         if not _scripted_during_eval(squad_id) then break end
@@ -220,7 +194,7 @@ local function _eval_handlers(handlers, on_map, squad, ...)
 
         local trace = ap_core_debug.trace()
         local result = ap_core_debug.observe(trace, entry.label, entry.handler, unpack(args))
-        if result and result.cause then _try_publish(on_map, name, result, trace, level_id, entry.cause_type) end
+        if result and result.cause then _try_publish(on_map, name, result, trace, entry.cause_type) end
 
         ::continue::
     end
@@ -231,14 +205,16 @@ end
 local function _on_radiant_update(squad)
     if not next(_radiant_handlers) then return end
     if not _radiant_pacer_gate() then return end
-    if not _scripted_gate(squad.id) then return end
-    if not _alife_ratio_gate(squad.online) then
+    local squad_id = squad.id
+    if not _scripted_gate(squad_id) then return end
+    local on_map = squad.online
+    if not _alife_ratio_gate(on_map) then
         ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
-            tostring(squad.online), cfg.alife_ratio, _on_count, _off_count, squad.id)
+            tostring(on_map), cfg.alife_ratio, _on_count, _off_count, squad_id)
         return
     end
     if not _protection_gate(squad) then return end
-    _eval_handlers(_radiant_handlers, squad.online, squad, squad)
+    _eval_handlers(_radiant_handlers, on_map, squad_id, squad)
 end
 
 --- Reactive entry point (~6.5/sec)
@@ -250,20 +226,23 @@ local function _dispatch_reactive(callback_type, ...)
     if not _reactive_pacer_gate(callback_type) then return end
 
     local first_arg = select(1, ...)
-    if not _ratio_gate(callback_type, first_arg) then
+    local on_map = _always_on_map[callback_type]
+    if on_map == nil and first_arg then
+        on_map = first_arg.online
+    end
+    if on_map ~= nil and not _alife_ratio_gate(on_map) then
         ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d",
             callback_type, cfg.alife_ratio, _on_count, _off_count)
         return
     end
 
-    local squad
+    local squad_id
     if not _always_on_map[callback_type] and type(first_arg) == "userdata" then
         local id = first_arg.id
-        if type(id) == "number" then squad = first_arg end
+        if type(id) == "number" then squad_id = id end
     end
 
-    local on_map = _always_on_map[callback_type] or (squad and squad.online)
-    _eval_handlers(handlers, on_map, squad, ...)
+    _eval_handlers(handlers, on_map, squad_id, ...)
 end
 
 local function _create_reactive_dispatcher(callback)
