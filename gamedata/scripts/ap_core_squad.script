@@ -22,9 +22,6 @@ local _ap_scripted_squads = {}
 local _arrival_handlers = {}
 local _ap_marked_squads = {}
 
--- =============================================================================
--- OWNERSHIP REGISTRY
--- =============================================================================
 
 local _owners = {}
 
@@ -49,9 +46,6 @@ function get_owner(squad)
     return nil
 end
 
--- =============================================================================
--- PROTECTION
--- =============================================================================
 
 --- Check all squad protection guards: permanent, active_role, task_target, ownership, scripted
 --- @param squad se_squad Squad server object
@@ -70,9 +64,6 @@ function is_protected(squad)
     return false
 end
 
--- =============================================================================
--- SCRIPTED SQUADS
--- =============================================================================
 
 --- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
 local function _unscript_squad(squad_or_id)
@@ -181,9 +172,6 @@ function add_marked_squad(squad_id, label, opts)
     ap_core_debug.debug("[SQUAD] add_marked_squad: squad=%d label=%s persistent=%s", squad_id, label or "unknown", tostring(opts.persistent or false))
 end
 
--- =============================================================================
--- ARRIVAL LIFECYCLE
--- =============================================================================
 
 local function _try_arrival_overflow(squad_id, squad, smart, data)
     local cmd_id = squad:commander_id()
@@ -268,9 +256,6 @@ local function _update_scripted_squads()
     end
 end
 
--- =============================================================================
--- PDA MARKERS
--- =============================================================================
 
 local function _should_remove_marker(entry, se)
     if not se then return true end
@@ -330,9 +315,6 @@ local function _on_first_update()
     end
 end
 
--- =============================================================================
--- SAVE / LOAD
--- =============================================================================
 
 local function _on_save_state(m_data)
     m_data.ap_core_squad = {
@@ -354,9 +336,6 @@ local function _on_load_state(m_data)
     end
 end
 
--- =============================================================================
--- ENTITY CLEANUP
--- =============================================================================
 
 local function _on_server_entity_on_unregister(se_obj)
     if not se_obj then return end
@@ -369,9 +348,6 @@ local function _on_server_entity_on_unregister(se_obj)
     end
 end
 
--- =============================================================================
--- INIT
--- =============================================================================
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
@@ -380,14 +356,6 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
 
     CreateTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC, _update_scripted_squads)
-
-    --- Register proxy ownership filters for mods that set known squad fields
-    register_owner("warfare", function(squad)
-        return squad.registered_with_warfare == true
-    end)
-    register_owner("bao", function(squad)
-        return squad.__lock == true
-    end)
 
     ap_core_debug.info("[SQUAD] Initialized")
 end
