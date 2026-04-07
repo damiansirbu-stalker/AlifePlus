@@ -9,7 +9,7 @@ local REASON = ap_core_const.REASON
 local cfg = ap_core_mcm.cfg
 local deaths = nil
 
-local function on_squad_npc_death(trace, squad, se_victim, se_killer)
+local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     if not cfg.cause_massacre_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not se_victim then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
     if not xcreature.is_stalker(se_victim) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
@@ -36,7 +36,7 @@ function on_game_start()
 
     ap_core_producer.register(CAUSE.MASSACRE, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
-    }, on_squad_npc_death)
+    }, _on_squad_npc_death)
 
     ap_core_debug.info("[CAUSE.MASSACRE] Initialized")
 end

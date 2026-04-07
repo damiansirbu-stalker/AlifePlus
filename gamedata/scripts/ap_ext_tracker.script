@@ -9,21 +9,23 @@ local ELITE_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_core_const.NEED_FIELDS
 
-local ap_killers = {}
-local ap_elites = {}
+local _ap_killers = {}
+local _ap_elites = {}
 local _last_victim_id
-local ap_elite_dead
+local _ap_elite_dead
 local cfg = ap_core_mcm.cfg
-local ap_stalker_needs = {}
+local _ap_stalker_needs = {}
 
 local function _on_save_state(m_data)
     m_data.ap_ext_tracker = {
-        killers = ap_killers,
-        elites = ap_elites,
-        stalker_needs = ap_stalker_needs,
+        killers = _ap_killers,
+        elites = _ap_elites,
+        stalker_needs = _ap_stalker_needs,
     }
-    ap_core_debug.debug("[TRACKER] save: killers=%d elites=%d needs=%d",
-        xtable.count(ap_killers), xtable.count(ap_elites), xtable.count(ap_stalker_needs))
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[TRACKER] save: killers=%d elites=%d needs=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_elites), xtable.count(_ap_stalker_needs))
+    end
 end
 
 local function _validate_elites(loaded)
@@ -48,21 +50,23 @@ local function _validate_stalker_needs(loaded)
 end
 
 local function _on_load_state(m_data)
-    ap_elite_dead:clear()
+    _ap_elite_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
-    ap_killers = saved.killers or {}
-    ap_elites = _validate_elites(saved.elites or {})
-    ap_stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
+    _ap_killers = saved.killers or {}
+    _ap_elites = _validate_elites(saved.elites or {})
+    _ap_stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.elites then ap_core_debug.warn("[TRACKER] load: missing elites, fresh init") end
-    ap_core_debug.debug("[TRACKER] load: killers=%d elites=%d needs=%d",
-        xtable.count(ap_killers), xtable.count(ap_elites), xtable.count(ap_stalker_needs))
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[TRACKER] load: killers=%d elites=%d needs=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_elites), xtable.count(_ap_stalker_needs))
+    end
 end
 
 local function _dump_killers()
     if not ap_core_debug.enabled() then return end
     local parts = {}
-    for id, count in pairs(ap_killers) do
+    for id, count in pairs(_ap_killers) do
         parts[#parts + 1] = id .. "=" .. count
     end
     ap_core_debug.debug("[TRACKER] killers: {%s}", table_concat(parts, ", "))
@@ -72,22 +76,22 @@ end
 --- @param killer_id number Killer entity ID
 --- @param victim_id number|nil Victim entity ID (logging only)
 --- @return number Current kill count for killer
-local function register_kill(killer_id, victim_id)
+local function _register_kill(killer_id, victim_id)
     if not killer_id or killer_id == 0 then return 0 end
     if killer_id == victim_id then return 0 end
     _last_victim_id = victim_id
-    local old = ap_killers[killer_id] or 0
+    local old = _ap_killers[killer_id] or 0
     local new = old + 1
-    ap_killers[killer_id] = new
-    ap_core_debug.debug("[TRACKER] register_kill: killer=%d victim=%d %d->%d", killer_id, victim_id or -1, old, new)
+    _ap_killers[killer_id] = new
+    ap_core_debug.debug("[TRACKER] _register_kill: killer=%d victim=%d %d->%d", killer_id, victim_id or -1, old, new)
     _dump_killers()
     return new
 end
 
---- Projected kill count inclusive of a pending death (order-independent of register_kill)
+--- Projected kill count inclusive of a pending death (order-independent of _register_kill)
 function projected_kill_count(killer_id, victim_id)
     if not killer_id or killer_id == 0 then return 0 end
-    local count = ap_killers[killer_id] or 0
+    local count = _ap_killers[killer_id] or 0
     if killer_id == victim_id then return count end
     if victim_id and victim_id ~= _last_victim_id then
         count = count + 1
@@ -104,21 +108,21 @@ end
 
 --- Check if entity is an elite (returns true even if dead, for cause queries)
 function is_elite(id)
-    return id and (ap_elites[id] ~= nil or ap_elite_dead:has(id))
+    return id and (_ap_elites[id] ~= nil or _ap_elite_dead:has(id))
 end
 
 --- Get elite data (returns data even if dead, for cause queries)
 function get_elite(id)
     if not id then return nil end
-    return ap_elites[id] or ap_elite_dead:get(id)
+    return _ap_elites[id] or _ap_elite_dead:get(id)
 end
 
 --- Get elite level for entity (0 if not elite)
 function get_elite_level(id)
     if not id then return 0 end
-    local data = ap_elites[id]
+    local data = _ap_elites[id]
     if data then return data.level end
-    local dead_data = ap_elite_dead:get(id)
+    local dead_data = _ap_elite_dead:get(id)
     if dead_data then return dead_data.level end
     return 0
 end
@@ -128,7 +132,7 @@ function update_elite(id, data)
     if not id or not data or not data.kills then return nil end
     local level = compute_level(data.kills)
     if level < 1 then return nil end
-    local existing = ap_elites[id]
+    local existing = _ap_elites[id]
     local name = data.name or (existing and existing.name) or "Elite"
     local level_id = data.level_id or (existing and existing.level_id)
     if not level_id then
@@ -137,26 +141,26 @@ function update_elite(id, data)
     end
     local is_stalker = data.is_stalker
     if is_stalker == nil then is_stalker = (existing and existing.is_stalker) or false end
-    ap_elites[id] = { level = level, kills = data.kills, level_id = level_id, name = name, is_stalker = is_stalker }
+    _ap_elites[id] = { level = level, kills = data.kills, level_id = level_id, name = name, is_stalker = is_stalker }
     ap_core_debug.debug("[TRACKER] update_elite: id=%d kills=%d level=%d name=%s", id, data.kills, level, name)
-    return ap_elites[id]
+    return _ap_elites[id]
 end
 
 --- Move elite to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC)
-local function unregister_elite(id)
+local function _unregister_elite(id)
     if not id then return false end
-    local data = ap_elites[id]
+    local data = _ap_elites[id]
     if not data then return false end
-    ap_elite_dead:set(id, data)
-    ap_elites[id] = nil
-    ap_core_debug.debug("[TRACKER] unregister_elite: name=%s id=%d level=%d (dead)", data.name or "?", id, data.level or 0)
+    _ap_elite_dead:set(id, data)
+    _ap_elites[id] = nil
+    ap_core_debug.debug("[TRACKER] _unregister_elite: name=%s id=%d level=%d (dead)", data.name or "?", id, data.level or 0)
     return true
 end
 
 --- Get all alive elites as {id = data}
 function get_elites()
     local result = {}
-    for id, data in pairs(ap_elites) do result[id] = data end
+    for id, data in pairs(_ap_elites) do result[id] = data end
     return result
 end
 
@@ -164,20 +168,20 @@ end
 function get_elites_on_level(level_id)
     if not level_id then return {} end
     local result = {}
-    for id, data in pairs(ap_elites) do
+    for id, data in pairs(_ap_elites) do
         if data.level_id == level_id then result[id] = data end
     end
     return result
 end
 
 --- Unregister entity from all tracking (on death or unregister)
-local function unregister_entity(id)
+local function _unregister_entity(id)
     if not id then return end
-    local had_kills = ap_killers[id] ~= nil
-    local had_elite = unregister_elite(id)
-    ap_killers[id] = nil
+    local had_kills = _ap_killers[id] ~= nil
+    local had_elite = _unregister_elite(id)
+    _ap_killers[id] = nil
     if had_kills or had_elite then
-        ap_core_debug.debug("[TRACKER] unregister_entity: id=%d kills=%s elite=%s",
+        ap_core_debug.debug("[TRACKER] _unregister_entity: id=%d kills=%s elite=%s",
             id, tostring(had_kills), tostring(had_elite))
     end
 end
@@ -185,7 +189,7 @@ end
 --- Unregister squad from all squad-keyed tracking (on last NPC death)
 local function _unregister_squad(squad_id)
     if not squad_id then return end
-    ap_stalker_needs[squad_id] = nil
+    _ap_stalker_needs[squad_id] = nil
 end
 
 -- =============================================================================
@@ -194,7 +198,7 @@ end
 
 function get_stalker_needs(squad_id)
     if not squad_id then return nil end
-    return ap_stalker_needs[squad_id]
+    return _ap_stalker_needs[squad_id]
 end
 
 function init_stalker_needs(squad_id, now)
@@ -203,7 +207,7 @@ function init_stalker_needs(squad_id, now)
     for i = 1, #NEED_FIELDS do
         dto[NEED_FIELDS[i]] = now
     end
-    ap_stalker_needs[squad_id] = dto
+    _ap_stalker_needs[squad_id] = dto
     ap_core_debug.debug("[TRACKER] init_stalker_needs: squad=%d all_fields=now", squad_id)
     return dto
 end
@@ -211,10 +215,10 @@ end
 function force_stalker_need(squad_id, field)
     if not squad_id or not field then return end
     local now = xtime.game_sec()
-    local dto = ap_stalker_needs[squad_id]
+    local dto = _ap_stalker_needs[squad_id]
     if not dto then
         dto = {}
-        ap_stalker_needs[squad_id] = dto
+        _ap_stalker_needs[squad_id] = dto
     end
     for i = 1, #NEED_FIELDS do
         dto[NEED_FIELDS[i]] = now
@@ -225,7 +229,7 @@ end
 
 function reset_stalker_need(squad_id, key, now)
     if not squad_id or not key or not now then return false end
-    local dto = ap_stalker_needs[squad_id]
+    local dto = _ap_stalker_needs[squad_id]
     if not dto then return false end
     dto[key] = now
     return true
@@ -240,10 +244,10 @@ local function _on_squad_npc_death(squad, npc, killer)
         local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
         local killer_id = ap_core_utils.get_entity_id(killer)
         if killer_id and xcreature.is_npc(killer_id) then
-            register_kill(killer_id, victim_id)
+            _register_kill(killer_id, victim_id)
         end
         if victim_id then
-            unregister_entity(victim_id)
+            _unregister_entity(victim_id)
         end
         if squad and squad:npc_count() <= 1 then
             _unregister_squad(squad.id)
@@ -253,7 +257,7 @@ local function _on_squad_npc_death(squad, npc, killer)
 end
 
 function on_game_start()
-    ap_elite_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
+    _ap_elite_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

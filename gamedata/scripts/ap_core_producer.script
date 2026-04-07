@@ -217,8 +217,10 @@ local function _on_radiant_update(squad)
     if not _scripted_gate(squad_id) then return end
     local on_map = squad.online
     if not _alife_ratio_gate(on_map) then
-        ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
-            tostring(on_map), cfg.alife_ratio, _on_count, _off_count, squad_id)
+        if ap_core_debug.enabled() then
+            ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
+                tostring(on_map), cfg.alife_ratio, _on_count, _off_count, squad_id)
+        end
         return
     end
     if not _protection_gate(squad) then return end
@@ -260,7 +262,7 @@ end
 local _dispatchers = {}
 
 --- Subscribe radiant (shared _on_radiant_update) and reactive (per-callback _dispatch_reactive)
-local function _subscribe_to_callbacks()
+local function _init_subscriptions()
     for callback in pairs(_radiant_callbacks) do
         if _subscribed[callback] then goto continue end
         RegisterScriptCallback(callback, _on_radiant_update)
@@ -307,8 +309,13 @@ local function _rebuild_radiant_set()
     end
 end
 
---- Two-phase init: on_game_start resets state + rebuilds radiant set from registrations,
---- then defers engine subscription to actor_on_first_update (guarantees all causes registered)
+--- Deferred init: runs on actor_on_first_update after all causes registered
+local function _on_first_update()
+    _rebuild_radiant_set()
+    _init_subscriptions()
+end
+
+--- on_game_start: reset state + register deferred init (no cross-module reads)
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}
@@ -316,7 +323,6 @@ function on_game_start()
     _off_count = 0
     _next_radiant = 0
     _reactive_event_limiter = nil
-    _rebuild_radiant_set()
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _subscribe_to_callbacks)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     ap_core_debug.info("[PRODUCER.REACTIVE] Initialized")
 end

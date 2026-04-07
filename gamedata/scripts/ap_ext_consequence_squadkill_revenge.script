@@ -11,6 +11,24 @@ local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
 
+local function _move_actor_chasers(squads, moved)
+    for _, chaser in ipairs(squads) do
+        local res = ap_core_squad.script_actor_target(chaser)
+        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+    end
+end
+
+local function _move_smart_chasers(squads, smart, target_squad_id, moved)
+    for _, chaser in ipairs(squads) do
+        local res = ap_core_squad.script_squad(chaser, smart, {
+            rush = cfg.consequence_squadkill_revenge_rush,
+            on_arrive = CONSEQUENCE.SQUADKILL_REVENGE,
+            on_arrive_args = { target_squad_id = target_squad_id },
+        })
+        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+    end
+end
+
 local function _on_arrive(squad, args)
     local target_squad_id = args.target_squad_id
     if not target_squad_id then return end
@@ -88,24 +106,14 @@ local function _handler(event_data)
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             if not avengers then return { code = TRACE.NO_SQUADS } end
             if is_player_kill then
-                for _, chaser in ipairs(avengers) do
-                    local res = ap_core_squad.script_actor_target(chaser)
-                    if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
-                end
+                _move_actor_chasers(avengers, moved)
             else
                 local smart = ap_core_utils.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id
-                for _, chaser in ipairs(avengers) do
-                    local res = ap_core_squad.script_squad(chaser, smart, {
-                        rush = cfg.consequence_squadkill_revenge_rush,
-                        on_arrive = CONSEQUENCE.SQUADKILL_REVENGE,
-                        on_arrive_args = { target_squad_id = killer_squad_id },
-                    })
-                    if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
-                end
+                _move_smart_chasers(avengers, smart, killer_squad_id, moved)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #avengers - #moved })
         end)

@@ -97,8 +97,14 @@ function result_squad(squad, extra)
     return res
 end
 
---- Log all MCM settings at session start (runs once on first update)
-local function _dump_settings()
+--- Set log level from MCM (deferred to first update when MCM config is loaded)
+local function _init_log_level()
+    local level = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_level") or "WARN"
+    log.set_level(level)
+end
+
+--- Log all MCM settings at session start
+local function _log_mcm_settings()
     local parts = {}
     local mcm = ap_core_mcm.cfg
     for key, _ in pairs(ap_core_mcm.defaults) do
@@ -108,15 +114,14 @@ local function _dump_settings()
     log.debug("[MCM] %s", table_concat(parts, " "))
 end
 
-local function _on_option_change()
-    local level = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_level") or "WARN"
-    log.set_level(level)
+--- Deferred init: runs on actor_on_first_update after MCM config loaded
+local function _on_first_update()
+    _init_log_level()
+    _log_mcm_settings()
 end
 
+--- on_game_start: register callbacks only (no cross-module reads)
 function on_game_start()
-    local level = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_level") or "WARN"
-    log.set_level(level)
-
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _dump_settings)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _init_log_level)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
 end

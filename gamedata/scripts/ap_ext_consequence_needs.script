@@ -133,16 +133,15 @@ local function _dispatch_arrive(trace, go, args)
     if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then
         return "disabled"
     end
-    if args.section_key then
-        local sections = NEEDS_SECTIONS[args.section_key]
-        if sections then
-            ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
-                local consumed = _consume(go, sections)
-                return { code = consumed and TRACE.OK or TRACE.NONE, consumed = consumed }
-            end)
-            return "consume"
-        end
-    elseif args.arrive_fn == "trade" then
+    local sections = args.section_key and NEEDS_SECTIONS[args.section_key]
+    if sections then
+        ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+            local consumed = _consume(go, sections)
+            return { code = consumed and TRACE.OK or TRACE.NONE, consumed = consumed }
+        end)
+        return "consume"
+    end
+    if args.arrive_fn == "trade" then
         ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
             local sold, bought = _arrive_trade(go)
             return { code = sold and TRACE.OK or TRACE.NO_ARTEFACT, sold = sold, bought = bought }

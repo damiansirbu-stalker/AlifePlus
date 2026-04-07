@@ -21,7 +21,7 @@ local HEALING_ITEMS = {
     medkit_scientic = true,
 }
 
-local function on_npc_medkit_use(trace, npc, medkit, kind)
+local function _on_npc_medkit_use(trace, npc, medkit, kind)
     if not cfg.cause_wounded_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not npc or not npc:alive() then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_OR_DEAD } end
 
@@ -48,7 +48,7 @@ local function on_npc_medkit_use(trace, npc, medkit, kind)
     }
 end
 
-local function on_actor_item_use(trace, item, section)
+local function _on_actor_item_use(trace, item, section)
     if not cfg.cause_wounded_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not HEALING_ITEMS[section] then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_HEALING } end
 
@@ -84,11 +84,11 @@ function on_game_start()
 
     ap_core_producer.register(CAUSE.WOUNDED, {
         callback = CALLBACK.X_NPC_MEDKIT_USE, cause_type = CAUSE_TYPE.REACTIVE,
-    }, on_npc_medkit_use)
+    }, _on_npc_medkit_use)
 
     ap_core_producer.register(CAUSE.WOUNDED, {
         callback = CALLBACK.ACTOR_ON_ITEM_USE, cause_type = CAUSE_TYPE.REACTIVE,
-    }, on_actor_item_use)
+    }, _on_actor_item_use)
 
     ap_core_debug.info("[CAUSE.WOUNDED] Initialized (npc=medkit, player=item_use)")
 end
