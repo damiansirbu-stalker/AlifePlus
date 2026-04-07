@@ -1,5 +1,5 @@
 --- ap_core_squad: Squad scripting lifecycle, ownership registry, arrival, protection
-local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
+local pairs, tostring, type = pairs, tostring, type
 local RegisterScriptCallback = RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -8,12 +8,12 @@ local REASON = ap_core_const.REASON
 local SQUAD_ACTION = ap_core_const.SQUAD_ACTION
 
 local SCRIPTED_SQUAD_TTL = ap_core_const.SCRIPTED_SQUAD_TTL
-local HOUSEKEEP_ARRIVAL_SCAN_SEC = ap_core_const.HOUSEKEEP_ARRIVAL_SCAN_SEC
+local UPDATE_SCRIPTED_SQUADS_SEC = ap_core_const.UPDATE_SCRIPTED_SQUADS_SEC
 
-local HOUSEKEEP_EV = "ap_core_squad"
-local HOUSEKEEP_ARRIVAL_SCAN = "housekeep_arrival_scan"
-local HOUSEKEEP_MARKER_SYNC = "housekeep_marker_sync"
-local HOUSEKEEP_MARKER_SEC = 5
+local TIMER_EV = "ap_core_squad"
+local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
+local UPDATE_MARKERS = "update_markers"
+local UPDATE_MARKERS_SEC = 5
 
 local cfg = ap_core_mcm.cfg
 
@@ -194,7 +194,7 @@ local function _try_arrival_overflow(squad_id, squad, smart, data)
     return true
 end
 
-local function _check_arrived(squad_id, data)
+local function _update_arrival_flags(squad_id, data)
     if not data.target_smart_id then return end
     if data.arrived then return end
     local squad = xobject.se(squad_id)
@@ -230,34 +230,34 @@ local function _check_arrived(squad_id, data)
     data.release_at = xtime.game_sec() + data.post_arrived_wait
 end
 
-local function _check_release(squad_id, data)
+local function _update_wait(squad_id, data)
     if not data.arrived then return end
     if xtime.game_sec() < data.release_at then return end
     _unscript_squad(squad_id)
 end
 
-local function _process_arrival(squad_id)
+local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
     if (xtime.game_sec() - (data.tracked_at or 0)) > SCRIPTED_SQUAD_TTL then
         _unscript_squad(squad_id)
         return
     end
-    _check_arrived(squad_id, data)
-    _check_release(squad_id, data)
+    _update_arrival_flags(squad_id, data)
+    _update_wait(squad_id, data)
 end
 
 local _pending_buf = {}
 
-local function _housekeep_arrival_scan()
-    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC)
+local function _update_scripted_squads()
+    ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
     local count = 0
     for squad_id in pairs(_ap_scripted_squads) do
         count = count + 1
         _pending_buf[count] = squad_id
     end
     for i = 1, count do
-        _process_arrival(_pending_buf[i])
+        _update_scripted_squad(_pending_buf[i])
         _pending_buf[i] = nil
     end
 end
@@ -266,19 +266,19 @@ end
 -- PDA MARKERS
 -- =============================================================================
 
-local function _housekeep_marker_sync()
+local function _update_markers()
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] marker_sync fired, markers=%s consequence=%d marked=%d",
+        ap_core_debug.debug("[SQUAD] _update_markers fired, markers=%s consequence=%d marked=%d",
             tostring(cfg.map_markers), xtable.count(_ap_consequence_squads), xtable.count(_ap_marked_squads))
     end
-    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC)
+    ResetTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
     if not cfg.map_markers then return false end
     local dbg = ap_core_debug.enabled()
     for squad_id, label in pairs(_ap_consequence_squads) do
         local se = xobject.se(squad_id)
         local alive = se and _ap_scripted_squads[squad_id]
         if dbg then
-            ap_core_debug.debug("[SQUAD] _housekeep_marker_sync: squad=%d se=%s scripted=%s alive=%s marked=%s",
+            ap_core_debug.debug("[SQUAD] _update_markers: squad=%d se=%s scripted=%s alive=%s marked=%s",
                 squad_id, tostring(se ~= nil), tostring(_ap_scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_ap_marked_squads[squad_id] ~= nil))
         end
         if not alive and _ap_marked_squads[squad_id] then
@@ -302,7 +302,7 @@ local function _on_first_update()
     xpda.clear_squad_markers()
     _ap_marked_squads = {}
     if cfg.map_markers then
-        CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC, _housekeep_marker_sync)
+        CreateTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)
         ap_core_debug.debug("[SQUAD] markers timer created (map_markers=true)")
     end
 end
@@ -352,7 +352,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
 
-    CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC, _housekeep_arrival_scan)
+    CreateTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC, _update_scripted_squads)
 
     --- Register proxy ownership filters for mods that set known squad fields
     register_owner("warfare", function(squad)

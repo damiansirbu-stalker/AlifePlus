@@ -162,11 +162,11 @@ function register(name, config, handler)
     end
     local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
     if cause_type == CAUSE_TYPE.REACTIVE and _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER] register '%s': reactive cause on radiant callback '%s'", name, callback)
+        ap_core_debug.err("[PRODUCER.REACTIVE] register '%s': reactive cause on radiant callback '%s'", name, callback)
         return false
     end
     if cause_type == CAUSE_TYPE.RADIANT and _handlers[callback] and not _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER] register '%s': radiant cause on reactive callback '%s'", name, callback)
+        ap_core_debug.err("[PRODUCER.REACTIVE] register '%s': radiant cause on reactive callback '%s'", name, callback)
         return false
     end
     if not _handlers[callback] then
