@@ -1,0 +1,58 @@
+--- ap_ext_consequence_area_conquer: Squad conquers nearby empty area on arrival
+
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
+
+local cfg = ap_core_mcm.cfg
+
+local function _on_arrive(squad, args)
+    if not args then return end
+    ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
+    ap_core_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
+    ap_core_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
+        "text_pda_consequence_area_conquer", { smart = args.smart_name })
+end
+
+local function _handler(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
+        if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not xmath.prd_chance("area_conquer", cfg.consequence_area_conquer_chance) then return { code = RESULT.CHANCE_NEXT } end
+
+        local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
+        if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+
+        local smart = xobject.se(target_smart_id)
+        if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+
+        local squad = xobject.se(event_data.squad_id)
+        if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local res
+        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            res = ap_core_squad.script_squad(squad, smart, {
+                rush = cfg.consequence_area_conquer_rush,
+                on_arrive = CONSEQUENCE.AREA_CONQUER,
+                on_arrive_args = { target_smart_id = target_smart_id, smart_name = xlevel.get_smart_display_name(smart) },
+            })
+            return res
+        end)
+        if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
+        ap_core_squad.register_consequence_squad(squad.id, CONSEQUENCE.AREA_CONQUER)
+
+        return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id }
+    end)
+end
+
+function on_game_start()
+    ap_core_consumer.register(CONSEQUENCE.AREA_CONQUER, {
+        event = CAUSE.AREA,
+        priority = 20,
+        condition = function() return cfg.consequence_area_conquer_enabled end,
+        on_arrive = _on_arrive,
+    }, _handler)
+    ap_core_debug.info("[CONSEQUENCE.AREA_CONQUER] Initialized")
+end

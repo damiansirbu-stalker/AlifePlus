@@ -1,0 +1,274 @@
+--- ap_core_test: MCM debug tools and demo harnesses
+
+local pairs, table_sort, table_remove, math_min = pairs, table.sort, table.remove, math.min
+local math_floor, math_huge, math_random = math.floor, math.huge, math.random
+local string_format, time_global, tostring = string.format, time_global, tostring
+local character_community, IsStalker = character_community, IsStalker
+local UnregisterScriptCallback, RegisterScriptCallback = UnregisterScriptCallback, RegisterScriptCallback
+
+local ARTEFACTS = {
+    "af_medusa", "af_cristall_flower", "af_fireball",
+    "af_electra_sparkler", "af_gravi", "af_gold_fish",
+    "af_mincer_meat", "af_eye",
+}
+
+local function _tip(msg)
+    local actor = db.actor
+    if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
+end
+
+local function _find_nearest_elite()
+    local actor = db.actor
+    if not actor then return nil, "Not in game" end
+    local sim = alife()
+    local actor_se = sim:actor()
+    if not actor_se then return nil, "No actor entity" end
+    local actor_level = xlevel.get_level_id(actor_se)
+    local pos = actor:position()
+    local elites = ap_ext_tracker.get_elites()
+    local total, on_level = 0, 0
+    local best_id, best_data, best_dist, best_pos = nil, nil, math_huge, nil
+    for npc_id, data in pairs(elites) do
+        total = total + 1
+        if data.level_id ~= actor_level then goto skip end
+        on_level = on_level + 1
+        local se = sim:object(npc_id)
+        if not se then goto skip end
+        local dist = pos:distance_to(se.position)
+        if dist < best_dist then
+            best_id = npc_id
+            best_data = data
+            best_dist = dist
+            best_pos = se.position
+        end
+        ::skip::
+    end
+    ap_core_debug.debug("[TEST] elite_search total=%d on_level=%d level_id=%d", total, on_level, actor_level)
+    if not best_id then return nil, "No elites on this level" end
+    local squad = xsquad.get_squad_by_member(best_id)
+    if not squad then
+        ap_core_debug.debug("[TEST] elite_search no_squad npc_id=%d", best_id)
+        return nil, "Elite squad not found"
+    end
+    return { id = best_id, data = best_data, dist = best_dist, pos = best_pos, squad = squad }
+end
+
+--- @export console
+function pull_elite()
+    ap_core_debug.debug("[TEST] pull_elite pressed")
+    local result, reason = _find_nearest_elite()
+    if not result then
+        ap_core_debug.debug("[TEST] pull_elite SKIP %s", reason)
+        return _tip(reason)
+    end
+    local actor = db.actor
+    local pos = actor:position()
+    local tp = vector():set(pos.x + 10, pos.y, pos.z)
+    TeleportSquad(result.squad, tp, actor:level_vertex_id(), actor:game_vertex_id())
+    ap_core_debug.debug("[TEST] pull_elite OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
+        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        math_floor(result.dist), result.squad:get_squad_community())
+    _tip("Pulled elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " from " .. math_floor(result.dist) .. "m")
+end
+
+--- @export console
+function goto_elite()
+    ap_core_debug.debug("[TEST] goto_elite pressed")
+    local result, reason = _find_nearest_elite()
+    if not result then
+        ap_core_debug.debug("[TEST] goto_elite SKIP %s", reason)
+        return _tip(reason)
+    end
+    db.actor:set_actor_position(result.pos)
+    ap_core_debug.debug("[TEST] goto_elite OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
+        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        math_floor(result.dist), result.squad:get_squad_community())
+    _tip("Teleported to elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
+end
+
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local NEEDS_ARRIVE_KEYS = {
+    [CONSEQUENCE.HUNGER_CAMPFIRE] = true, [CONSEQUENCE.SLEEP_CAMPFIRE] = true, [CONSEQUENCE.REST_CAMPFIRE] = true,
+    [CONSEQUENCE.HEAL_SHELTER] = true, [CONSEQUENCE.SHELTER_INDOOR] = true, [CONSEQUENCE.SHELTER_OUTDOOR] = true,
+    [CONSEQUENCE.MONEY_HARVEST] = true, [CONSEQUENCE.MONEY_HUNT] = true, [CONSEQUENCE.SUPPLY_TRADER] = true,
+    [CONSEQUENCE.JOB_OUTPOST] = true, [CONSEQUENCE.JOB_EXPLORE] = true, [CONSEQUENCE.JOB_RESEARCH] = true,
+    [CONSEQUENCE.JOB_WORSHIP] = true, [CONSEQUENCE.JOB_EXERCISE] = true,
+    [CONSEQUENCE.SOCIAL_CAMPFIRE] = true, [CONSEQUENCE.SOCIAL_BASE] = true,
+}
+
+--- @export console
+function goto_need()
+    ap_core_debug.debug("[TEST] goto_need pressed")
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local sim = alife()
+    local actor_community = db.actor:character_community()
+    local scripted = ap_core_squad.get_scripted_ids()
+    for squad_id, data in pairs(scripted) do
+        if not NEEDS_ARRIVE_KEYS[data.on_arrive] then goto skip end
+        local squad = sim:object(squad_id)
+        if not squad then goto skip end
+        if game_relations.is_factions_enemies(actor_community, squad:get_squad_community()) then goto skip end
+        local cmd_se = xobject.se(squad:commander_id())
+        if not cmd_se then goto skip end
+        db.actor:set_actor_position(cmd_se.position)
+        local name = cmd_se:character_name()
+        ap_core_debug.debug("[TEST] goto_need OK squad=%d need=%s target=%s npc=%s",
+            squad_id, data.on_arrive, data.scripted_target, name)
+        _tip("Teleported to " .. name .. " (" .. data.on_arrive .. " -> " .. data.scripted_target .. ")")
+        do return end
+        ::skip::
+    end
+    _tip("No friendly squad filling a need right now")
+    ap_core_debug.debug("[TEST] goto_need SKIP no_friendly_need_squad")
+end
+
+--- @export console
+function spawn_artefact()
+    ap_core_debug.debug("[TEST] spawn_artefact pressed")
+    local actor = db.actor
+    if not actor then
+        ap_core_debug.debug("[TEST] spawn_artefact SKIP no_actor")
+        return _tip("Not in game")
+    end
+    local sec = xmath.sample(ARTEFACTS)
+    local se = xobject.create_item(sec, actor:id())
+    if se then
+        ap_core_debug.debug("[TEST] spawn_artefact OK sec=%s", sec)
+        _tip("Spawned " .. sec)
+    else
+        ap_core_debug.debug("[TEST] spawn_artefact FAIL sec=%s", sec)
+        _tip("Failed to spawn " .. sec)
+    end
+end
+
+-- =============================================================================
+-- NEEDS DEMO: integration test - fires real needs pipeline for nearby squads
+-- Forces specific observable leisure needs (eating, exercise, guitar, sleeping),
+-- Full stack: alife_ratio -> event_limiter -> cause_rate -> predicate -> xbus ->
+-- consumer -> consequence -> script_squad -> arrival -> PDA.
+-- =============================================================================
+
+local DEMO_MAX_SQUADS = 5
+local DEMO_MIN_INTERVAL_MS = 2000
+
+local DEMO_NEEDS = {
+    { need = "hunger", field = "last_hunger_at" },
+    { need = "job",    field = "last_job_at" },
+    { need = "social", field = "last_social_at" },
+    { need = "rest",   field = "last_rest_at" },
+}
+
+local _demo_queue = {}
+local _demo_next_fire = 0
+local _demo_active = false
+local _demo_need_idx = 0
+local _demo_saved_causes = nil
+
+--- Check if online NPC is a valid demo candidate (alive stalker, not actor)
+local function _is_demo_candidate(npc_id)
+    local obj = xobject.go(npc_id)
+    if not obj then return false end
+    if not obj:alive() then return false end
+    if not IsStalker(obj) then return false end
+    if obj:id() == 0 then return false end
+    return true, obj
+end
+
+--- Find nearby online stalker squads sorted by distance
+local function _find_demo_squads(max_count)
+    local actor = db.actor
+    if not actor then return {} end
+    local actor_pos = actor:position()
+    local seen = {}
+    local candidates = {}
+    for npc_id in pairs(db.storage) do
+        local ok, obj = _is_demo_candidate(npc_id)
+        if not ok then goto skip end
+        local squad = xsquad.get_squad_by_member(npc_id)
+        if not squad then goto skip end
+        if seen[squad.id] then goto skip end
+        if not ap_ext_data.community_stalker[squad.player_id] then goto skip end
+        seen[squad.id] = true
+        candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
+        ::skip::
+    end
+    table_sort(candidates, function(a, b) return a.dist < b.dist end)
+    local squads = {}
+    for i = 1, math_min(max_count, #candidates) do
+        squads[i] = candidates[i].squad
+    end
+    return squads
+end
+
+local function _demo_disable_competing_causes()
+    local mcm = ap_core_mcm.cfg
+    _demo_saved_causes = {
+        cause_area_enabled = mcm.cause_area_enabled,
+        cause_stash_enabled = mcm.cause_stash_enabled,
+    }
+    mcm.cause_area_enabled = false
+    mcm.cause_stash_enabled = false
+    ap_core_debug.debug("[TEST] needs_demo disabled competing causes")
+end
+
+local function _demo_restore_causes()
+    if not _demo_saved_causes then return end
+    local mcm = ap_core_mcm.cfg
+    mcm.cause_area_enabled = _demo_saved_causes.cause_area_enabled
+    mcm.cause_stash_enabled = _demo_saved_causes.cause_stash_enabled
+    ap_core_debug.debug("[TEST] needs_demo restored causes")
+    _demo_saved_causes = nil
+end
+
+local function _demo_fire_next()
+    if not _demo_active then return end
+    if #_demo_queue == 0 then
+        _demo_active = false
+        _demo_restore_causes()
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
+        _tip("Needs demo: complete")
+        ap_core_debug.debug("[TEST] needs_demo complete")
+        return
+    end
+    local now = time_global()
+    if now < _demo_next_fire then return end
+
+    local squad = table_remove(_demo_queue, 1)
+    _demo_need_idx = _demo_need_idx % #DEMO_NEEDS + 1
+    local demo_need = DEMO_NEEDS[_demo_need_idx]
+
+    ap_ext_tracker.force_stalker_need(squad.id, demo_need.field)
+    SendScriptCallback(ap_core_const.CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
+        squad, 1, squad.m_game_vertex_id, false)
+
+    local interval_ms = DEMO_MIN_INTERVAL_MS
+    _demo_next_fire = now + interval_ms
+
+    ap_core_debug.debug("[TEST] needs_demo fired squad=%d faction=%s need=%s remaining=%d interval=%dms",
+        squad.id, squad.player_id, demo_need.need, #_demo_queue, math_floor(interval_ms))
+    _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
+end
+
+--- @export console
+function needs_demo()
+    if _demo_active then
+        _demo_active = false
+        _demo_queue = {}
+        _demo_restore_causes()
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
+        _tip("Needs demo stopped")
+        ap_core_debug.debug("[TEST] needs_demo stopped")
+        return
+    end
+    local squads = _find_demo_squads(DEMO_MAX_SQUADS)
+    if #squads == 0 then return _tip("No stalker squads nearby") end
+    _demo_queue = squads
+    _demo_active = true
+    _demo_next_fire = 0
+    _demo_need_idx = 0
+    _demo_disable_competing_causes()
+    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
+    _tip(string_format("Needs demo: %d squads queued (hunger/exercise/social/sleep)", #squads))
+    ap_core_debug.debug("[TEST] needs_demo started squads=%d needs=hunger,job,social,sleep", #squads)
+end

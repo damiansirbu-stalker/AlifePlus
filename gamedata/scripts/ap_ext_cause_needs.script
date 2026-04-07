@@ -1,0 +1,102 @@
+--- ap_ext_cause_needs: Timer-based human needs evaluation on smart terrain transitions
+
+local math_random, math_max, math_floor = math.random, math.max, math.floor
+local CAUSE = ap_core_const.CAUSE
+local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+
+local HOURS_TO_SECONDS = 3600
+local cfg = ap_core_mcm.cfg
+local _community_stalker
+
+--- Drive weights (Maslow hierarchy: survival > security > esteem > belonging)
+--- Scoring: drive = weight * (elapsed / threshold)^2 (Hull 1943)
+local NEEDS = {
+    { need = "shelter", field = "last_shelter_at", threshold_key = "cause_shelter_threshold", enabled_key = "cause_shelter_enabled", weight = 5.0 },
+    { need = "heal",    field = "last_heal_at",    threshold_key = "cause_heal_threshold",    enabled_key = "cause_heal_enabled",    weight = 4.0 },
+    { need = "hunger",  field = "last_hunger_at",  threshold_key = "cause_hunger_threshold",  enabled_key = "cause_hunger_enabled",  weight = 3.0 },
+    { need = "sleep",   field = "last_sleep_at",   threshold_key = "cause_sleep_threshold",   enabled_key = "cause_sleep_enabled",   weight = 2.5, night = true },
+    { need = "rest",    field = "last_rest_at",    threshold_key = "cause_rest_threshold",    enabled_key = "cause_rest_enabled",    weight = 2.0 },
+    { need = "supply",  field = "last_supply_at",  threshold_key = "cause_supply_threshold",  enabled_key = "cause_supply_enabled",  weight = 1.5 },
+    { need = "money",   field = "last_money_at",   threshold_key = "cause_money_threshold",   enabled_key = "cause_money_enabled",   weight = 1.2 },
+    { need = "job",     field = "last_job_at",     threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled",     weight = 1.0 },
+    { need = "social",  field = "last_social_at",  threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled",  weight = 0.8 },
+}
+
+--- Find strongest overdue drive across all needs (Hull drive reduction scoring)
+local function _find_strongest_drive(dto, now)
+    if not level.present() then return nil, 0 end
+    local hours = level.get_time_hours()
+    local best_entry = nil
+    local best_drive = 0
+
+    for i = 1, #NEEDS do
+        local need = NEEDS[i]
+
+        if not cfg[need.enabled_key] then goto continue end
+        if need.night and hours >= 5 and hours < 20 then goto continue end
+
+        local elapsed = now - dto[need.field]
+        local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
+        if elapsed <= threshold then goto continue end
+        local ratio = elapsed / threshold
+        local drive = need.weight * ratio * ratio
+
+        if drive > best_drive then
+            best_drive = drive
+            best_entry = need
+        end
+
+        ::continue::
+    end
+
+    return best_entry, best_drive
+end
+
+--- Evaluate needs for squad at smart terrain transition
+local function _on_smart(trace, squad)
+    if not cfg.cause_needs_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if not _community_stalker[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad.player_id } end
+
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    local now = xtime.game_sec()
+
+    local dto = ap_ext_tracker.get_stalker_needs(squad.id)
+    if not dto then
+        dto = ap_ext_tracker.init_stalker_needs(squad.id, now)
+        for i = 1, #NEEDS do
+            local need = NEEDS[i]
+            if not cfg[need.enabled_key] then goto init_next end
+            local scatter = math_floor(cfg[need.threshold_key] * HOURS_TO_SECONDS * 2)
+            dto[need.field] = math_max(0, now - math_random(0, scatter))
+            ::init_next::
+        end
+    end
+
+    local winner, best_drive = _find_strongest_drive(dto, now)
+    if not winner then return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD } end
+
+    return {
+        cause = CAUSE.NEEDS,
+        need = winner.need,
+        dto_field = winner.field,
+        drive = best_drive,
+        squad_id = squad.id,
+        community = squad.player_id,
+        position = squad.position,
+        level_id = level_id,
+    }
+end
+
+function on_game_start()
+    _community_stalker = ap_ext_data.community_stalker
+    local radiant = ap_core_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_core_producer.register(CAUSE.NEEDS, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+    end
+    ap_core_debug.info("[CAUSE.NEEDS] Initialized")
+end

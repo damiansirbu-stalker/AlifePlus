@@ -1,0 +1,48 @@
+--- ap_ext_cause_stash: Squad near stash (stalker or ambusher communities only)
+
+local CAUSE = ap_core_const.CAUSE
+local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+
+local cfg = ap_core_mcm.cfg
+local community_stalker = ap_ext_data.community_stalker
+local community_ambusher = ap_ext_data.community_ambusher
+
+local function _on_smart(trace, squad)
+    if not cfg.cause_stash_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    local community = squad.player_id
+    if not community_stalker[community] and not community_ambusher[community] then
+        return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY }
+    end
+
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    local stashes = xstash.find_stashes(squad.position, {
+        max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+        level_id = level_id,
+        max_count = 1,
+    })
+    local stash = stashes[1]
+    if not stash then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_NEARBY } end
+
+    return {
+        cause = CAUSE.STASH,
+        squad_id = squad.id,
+        community = squad.player_id,
+        stash_id = stash.id,
+        stash_filled = stash.filled,
+        position = stash.position,
+        level_id = level_id,
+    }
+end
+
+function on_game_start()
+    local radiant = ap_core_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_core_producer.register(CAUSE.STASH, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+    end
+    ap_core_debug.info("[CAUSE.STASH] Initialized")
+end

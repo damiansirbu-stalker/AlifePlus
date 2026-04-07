@@ -1,0 +1,59 @@
+--- ap_ext_consequence_massacre_investigate: Sends nearby stalker squads to investigate massacre sites
+
+local ipairs = ipairs
+
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
+
+local cfg = ap_core_mcm.cfg
+
+local function _handler(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_INVESTIGATE, function()
+        if not cfg.consequence_massacre_investigate_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not xmath.prd_chance("massacre_investigate", cfg.consequence_massacre_investigate_chance) then return { code = RESULT.CHANCE_NEXT } end
+
+        local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
+        if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+
+        local investigate_faction = event_data.faction
+        if not investigate_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
+
+        local squads = ap_core_utils.find_squads_observed(trace, position, {
+            factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
+            exclude_at_smart_id = smart.id,
+        })
+        if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+
+        local moved = {}
+        local last_reason
+        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            for _, squad in ipairs(squads) do
+                local res = ap_core_squad.script_squad(squad, smart, { rush = cfg.consequence_massacre_investigate_rush })
+                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        for i = 1, #moved do ap_core_squad.register_consequence_squad(moved[i].id, CONSEQUENCE.MASSACRE_INVESTIGATE) end
+        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
+            local location = ap_core_utils.get_location_description(nil, position, level_id)
+            return ap_core_utils.send_pda(cfg.consequence_massacre_investigate_pda_chance, "text_pda_consequence_massacre_investigate", { location = location })
+        end)
+
+        return ap_core_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_" .. investigate_faction, dst_id = smart.id, faction = investigate_faction })
+    end)
+end
+
+function on_game_start()
+    ap_core_consumer.register(CONSEQUENCE.MASSACRE_INVESTIGATE, {
+        event = CAUSE.MASSACRE,
+        priority = 20,
+        condition = function() return cfg.consequence_massacre_investigate_enabled end,
+    }, _handler)
+    ap_core_debug.info("[CONSEQUENCE.MASSACRE_INVESTIGATE] Initialized")
+end

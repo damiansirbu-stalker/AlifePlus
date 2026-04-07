@@ -1,0 +1,247 @@
+--- ap_ext_consequence_needs: Config-table-driven consequences for timer-based human needs
+
+local alife_release_id, alife_create_item = alife_release_id, alife_create_item
+local math_random, string_sub = math.random, string.sub
+
+local CAUSE = ap_core_const.CAUSE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
+local TRACE = ap_core_const.TRACE
+local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
+local NEEDS_SECTIONS = ap_core_const.NEEDS_SECTIONS
+local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
+
+local cfg = ap_core_mcm.cfg
+
+--- Try each section via npc:object, release first match. Returns consumed section or nil.
+local function _consume(go, sections)
+    for i = 1, #sections do
+        local item = go:object(sections[i])
+        if item then alife_release_id(item:id()) return sections[i] end
+    end
+    return nil
+end
+
+--- Find first artefact in inventory, return its id and section or nil
+local function _find_artefact(go)
+    local sell_id, sell_sec = nil, nil
+    go:iterate_inventory(function(_owner, item)
+        if not sell_id then
+            local sec = item:section()
+            if sec and string_sub(sec, 1, 3) == "af_" then
+                sell_id = item:id()
+                sell_sec = sec
+            end
+        end
+    end, go)
+    return sell_id, sell_sec
+end
+
+--- Release artefact, create one random supply item. Returns sold_section, bought_section or nil.
+local function _arrive_trade(go)
+    local sell_id, sell_sec = _find_artefact(go)
+    if not sell_id then return nil, nil end
+    alife_release_id(sell_id)
+    local se = xobject.se(go:id())
+    if se and se.m_level_vertex_id ~= INVALID_LEVEL_VERTEX_ID then
+        local buy_sec = NEEDS_SECTIONS.TRADE_BUY[math_random(#NEEDS_SECTIONS.TRADE_BUY)]
+        alife_create_item(buy_sec, se)
+        return sell_sec, buy_sec
+    end
+    return sell_sec, nil
+end
+
+local function _is_not_base(smart) return not xsmart.is_base(smart) end
+local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
+local function _is_unclaimed(smart)
+    local fac = xsmart.get_smart_faction(smart)
+    return fac == "none"
+end
+
+local CONFIGS = {
+    { need = "hunger", consequence = CONSEQUENCE.HUNGER_CAMPFIRE, name = "hunger_campfire",
+        dto_field = "last_hunger_at", filter = xsmart.has_campfire, priority = 10,
+        exclude_enemy = true, section_key = "HUNGER" },
+    { need = "sleep", consequence = CONSEQUENCE.SLEEP_CAMPFIRE, name = "sleep_campfire",
+        dto_field = "last_sleep_at", filter = xsmart.has_campfire, priority = 10,
+        exclude_enemy = true },
+    { need = "rest", consequence = CONSEQUENCE.REST_CAMPFIRE, name = "rest_campfire",
+        dto_field = "last_rest_at", filter = xsmart.has_campfire, priority = 10,
+        exclude_enemy = true, section_key = "REST" },
+    { need = "heal", consequence = CONSEQUENCE.HEAL_SHELTER, name = "heal_shelter",
+        dto_field = "last_heal_at", filter = xsmart.has_surge_shelter, priority = 10,
+        exclude_enemy = true, section_key = "HEAL" },
+    { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
+        dto_field = "last_shelter_at", filter = xsmart.has_surge_shelter, priority = 10,
+        exclude_enemy = true },
+    { need = "shelter", consequence = CONSEQUENCE.SHELTER_OUTDOOR, name = "shelter_outdoor",
+        dto_field = "last_shelter_at", filter = xsmart.has_campfire, priority = 20,
+        exclude_enemy = true },
+    { need = "money", consequence = CONSEQUENCE.MONEY_HARVEST, name = "money_harvest",
+        dto_field = "last_money_at", filter = xsmart.has_anomaly, priority = 10 },
+    { need = "money", consequence = CONSEQUENCE.MONEY_HUNT, name = "money_hunt",
+        dto_field = "last_money_at", filter = xsmart.is_lair, priority = 20 },
+    { need = "supply", consequence = CONSEQUENCE.SUPPLY_TRADER, name = "supply_trader",
+        dto_field = "last_supply_at", filter = xsmart.has_trader_job, priority = 10,
+        arrive_fn = "trade" },
+    { need = "job", consequence = CONSEQUENCE.JOB_OUTPOST, name = "job_outpost",
+        dto_field = "last_job_at", filter = _is_not_base_or_lair, priority = 20,
+        exclude_enemy = true, section_key = "GUARD" },
+    { need = "job", consequence = CONSEQUENCE.JOB_EXPLORE, name = "job_explore",
+        dto_field = "last_job_at", filter = _is_unclaimed, priority = 30 },
+    { need = "job", consequence = CONSEQUENCE.JOB_RESEARCH, name = "job_research",
+        dto_field = "last_job_at", filter = xsmart.has_anomaly, priority = 40 },
+    { need = "job", consequence = CONSEQUENCE.JOB_WORSHIP, name = "job_worship",
+        dto_field = "last_job_at", filter = _is_not_base, priority = 15,
+        faction_list = { monolith = true, greh = true, zombied = true } },
+    { need = "job", consequence = CONSEQUENCE.JOB_EXERCISE, name = "job_exercise",
+        dto_field = "last_job_at", filter = _is_not_base, priority = 15,
+        faction_list = { army = true, dolg = true },
+        section_key = "EXERCISE" },
+    { need = "social", consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, name = "social_campfire",
+        dto_field = "last_social_at", filter = xsmart.has_campfire, priority = 10,
+        exclude_enemy = true, section_key = "SOCIAL" },
+    { need = "social", consequence = CONSEQUENCE.SOCIAL_BASE, name = "social_base",
+        dto_field = "last_social_at", filter = xsmart.is_base, priority = 20,
+        exclude_enemy = true, section_key = "SOCIAL" },
+}
+
+--- Mark need as fulfilled so it backs off for a full threshold period.
+--- Used when no destination can be found -- retrying immediately won't help.
+local function _fulfill_need(squad_id, dto_field)
+    ap_ext_tracker.reset_stalker_need(squad_id, dto_field, xtime.game_sec())
+end
+
+--- Build filter closure: type check + faction list check + enemy exclusion check
+local function _build_filter(entry, community)
+    return function(smart)
+        if entry.filter and not entry.filter(smart) then return false end
+        if entry.faction_list and not xsmart.has_factions(smart, entry.faction_list) then return false end
+        if entry.exclude_enemy and community then
+            local fac = xsmart.get_smart_faction(smart)
+            if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
+        end
+        return true
+    end
+end
+
+--- Dispatch arrive action (online only): consume sections or trade exchange.
+--- Wraps item operations in observe for structured tracing. Returns action string.
+local function _dispatch_arrive(trace, go, args)
+    if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then
+        return "disabled"
+    end
+    if args.section_key then
+        local sections = NEEDS_SECTIONS[args.section_key]
+        if sections then
+            ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+                local consumed = _consume(go, sections)
+                return { code = consumed and TRACE.OK or TRACE.NONE, consumed = consumed }
+            end)
+            return "consume"
+        end
+    elseif args.arrive_fn == "trade" then
+        ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+            local sold, bought = _arrive_trade(go)
+            return { code = sold and TRACE.OK or TRACE.NO_ARTEFACT, sold = sold, bought = bought }
+        end)
+        return "trade"
+    end
+    return "passive"
+end
+
+--- Reset need timestamp and run arrive action on arrival at destination
+local function _on_arrive(squad, args)
+    if not args or not args.dto_field then return end
+    ap_core_debug.observe(nil, ACTION.COMPLETE_NEEDS, function(trace)
+        local now = xtime.game_sec()
+        ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, now)
+        local cmd_id = squad:commander_id()
+        local st = db.storage[cmd_id]
+        local online = st and st.object ~= nil
+        local action = "offline"
+        if online then
+            action = _dispatch_arrive(trace, st.object, args)
+        end
+        return { code = TRACE.OK, squad = squad.id, need = args.name,
+            dst = args.dst_name, online = online, action = action }
+    end)
+end
+
+--- Build condition closure for consumer registration
+local function _make_condition(enabled_key)
+    return function() return cfg[enabled_key] end
+end
+
+--- Build consequence handler closure for one config row
+local function _make_handler(entry)
+    local enabled_key = "consequence_" .. entry.name .. "_enabled"
+    local chance_key = "consequence_" .. entry.name .. "_chance"
+
+    return function(event_data)
+        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
+        local trace = event_data._trace
+        return ap_core_debug.observe(trace, entry.consequence, function()
+            if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
+            if not xmath.prd_chance(entry.name, cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT } end
+
+            local squad = xobject.se(event_data.squad_id)
+            if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+            local filter = _build_filter(entry, event_data.community)
+            local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
+
+            local smart = ap_core_utils.find_smart_observed(trace, event_data.position, find_opts)
+            if not smart then
+                _fulfill_need(event_data.squad_id, entry.dto_field)
+                return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART }
+            end
+
+            local res
+            ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+                res = ap_core_squad.script_squad(squad, smart, {
+                    rush = cfg["consequence_" .. entry.name .. "_rush"],
+                    on_arrive = entry.consequence,
+                    on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
+                        section_key = entry.section_key, arrive_fn = entry.arrive_fn,
+                        dst_name = smart:name() },
+                })
+                return res
+            end)
+            if res.code ~= RESULT.OK_NEXT then
+                return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
+            end
+            ap_core_squad.register_consequence_squad(event_data.squad_id, entry.consequence)
+
+            ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
+                local cmd_id = squad:commander_id()
+                local cmd_se = xobject.se(cmd_id)
+                local cmd_name = "A stalker"
+                if cmd_se then cmd_name = cmd_se:character_name() end
+                local location = ap_core_utils.get_location_description(nil, smart.position, event_data.level_id)
+                local pda_chance = cfg["consequence_" .. entry.name .. "_pda_chance"]
+                return ap_core_utils.send_pda(pda_chance,
+                    "text_pda_consequence_" .. entry.name, {
+                        name = cmd_name,
+                        location = location,
+                    })
+            end)
+            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, level_id = event_data.level_id }
+        end)
+    end
+end
+
+function on_game_start()
+    for i = 1, #CONFIGS do
+        local entry = CONFIGS[i]
+        local enabled_key = "consequence_" .. entry.name .. "_enabled"
+        ap_core_consumer.register(entry.consequence, {
+            event = CAUSE.NEEDS,
+            priority = entry.priority,
+            condition = _make_condition(enabled_key),
+            on_arrive = _on_arrive,
+        }, _make_handler(entry))
+    end
+    ap_core_debug.info("[CONSEQUENCE.NEEDS] Initialized: %d consequences", #CONFIGS)
+end

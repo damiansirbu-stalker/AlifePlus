@@ -39,6 +39,12 @@ next
   Constants:
     Changed: all inline magic strings replaced with ap_const constants (CALLBACK, REASON, TRACE, CAUSE) across 17 files
     Added: TRACE table in ap_const -- 13 diagnostic result codes for observe closures (OK, NO_SMART, CO_LOCATED, etc.)
+  File structure:
+    Changed: all files renamed to ap_core_* (framework) and ap_ext_* (domain extensions)
+    Changed: ap_producer_reactive renamed to ap_core_producer
+    Changed: ap_alife_tracker renamed to ap_ext_tracker
+    Changed: private functions prefixed with _ (unscript_squad, get_cause_rate_key, get_consequence_rate_key, subscribe_to_callbacks)
+    Changed: producer.unregister made local (never called externally)
   xlibs (requires xlibs update):
     Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
     Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)

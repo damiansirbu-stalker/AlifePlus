@@ -1,0 +1,368 @@
+--- ap_core_squad: Squad scripting lifecycle, ownership registry, arrival, protection
+local pairs, tostring, type, ipairs = pairs, tostring, type, ipairs
+local RegisterScriptCallback = RegisterScriptCallback
+
+local CALLBACK = ap_core_const.CALLBACK
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local SQUAD_ACTION = ap_core_const.SQUAD_ACTION
+
+local SCRIPTED_SQUAD_TTL = ap_core_const.SCRIPTED_SQUAD_TTL
+local HOUSEKEEP_ARRIVAL_SCAN_SEC = ap_core_const.HOUSEKEEP_ARRIVAL_SCAN_SEC
+
+local HOUSEKEEP_EV = "ap_core_squad"
+local HOUSEKEEP_ARRIVAL_SCAN = "housekeep_arrival_scan"
+local HOUSEKEEP_MARKER_SYNC = "housekeep_marker_sync"
+local HOUSEKEEP_MARKER_SEC = 5
+
+local cfg = ap_core_mcm.cfg
+
+local ap_scripted_squads = {}
+local _arrival_handlers = {}
+local _ap_consequence_squads = {}
+local _ap_marked_squads = {}
+
+-- =============================================================================
+-- OWNERSHIP REGISTRY
+-- =============================================================================
+
+local _owners = {}
+
+--- Register a squad ownership filter. Squads matching the filter are treated as owned
+--- by the registering mod. AP's protection gate skips owned squads.
+--- @param name string Owner name (e.g. "warfare", "bao", "guards")
+--- @param filter_fn function(squad) -> boolean True if this mod owns the squad
+function register_owner(name, filter_fn)
+    _owners[#_owners + 1] = { name = name, filter = filter_fn }
+    ap_core_debug.info("[SQUAD] register_owner: %s", name)
+end
+
+--- Query squad ownership. Returns owner name or nil.
+--- Respects allow_external_ownership MCM toggle.
+--- @param squad userdata Squad server object
+--- @return string|nil Owner name or nil if unowned
+function get_owner(squad)
+    if not cfg.allow_external_ownership then return nil end
+    for i = 1, #_owners do
+        if _owners[i].filter(squad) then return _owners[i].name end
+    end
+    return nil
+end
+
+-- =============================================================================
+-- PROTECTION
+-- =============================================================================
+
+--- Check all squad protection guards: permanent, active_role, task_target, ownership, scripted
+--- @param squad se_squad Squad server object
+--- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
+function is_protected(squad)
+    local perm, perm_reason, perm_name = xsquad.is_permanent_squad(squad)
+    if perm then return true, REASON.IS_PERMANENT, perm_reason, perm_name end
+    local role, role_reason, role_name = xsquad.has_active_role(squad)
+    if role then return true, REASON.HAS_ACTIVE_ROLE, role_reason, role_name end
+    local task_tgt, task_detail = xsquad.is_task_target(squad)
+    if task_tgt then return true, REASON.IS_TASK_TARGET, task_detail end
+    local owner = get_owner(squad)
+    if owner then return true, REASON.IS_OWNED, owner end
+    local scripted, scripted_detail = xsquad.is_scripted(squad)
+    if scripted then return true, REASON.IS_SCRIPTED, scripted_detail end
+    return false
+end
+
+-- =============================================================================
+-- SCRIPTED SQUADS
+-- =============================================================================
+
+--- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
+local function _unscript_squad(squad_or_id)
+    local tp = type(squad_or_id)
+    if tp ~= "number" and tp ~= "userdata" then return false end
+    local is_id = tp == "number"
+    local squad_id = is_id and squad_or_id or squad_or_id.id
+    if not ap_scripted_squads[squad_id] then return false end
+    local squad
+    if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
+    if squad then
+        ap_core_debug.debug("[SQUAD] _unscript_squad: squad=%d scripted_target=%s", squad_id, ap_scripted_squads[squad_id].scripted_target)
+        xsquad.release_squad(squad)
+    end
+    ap_scripted_squads[squad_id] = nil
+    _ap_consequence_squads[squad_id] = nil
+    return true
+end
+
+local function _cleanup_stale()
+    local now = xtime.game_sec()
+    for squad_id, data in pairs(ap_scripted_squads) do
+        local squad = xobject.se(squad_id)
+        local expired = (now - (data.tracked_at or 0)) > SCRIPTED_SQUAD_TTL
+        if squad and not expired then goto continue end
+        ap_core_debug.debug("[SQUAD] cleanup_stale: squad=%d reason=%s", squad_id, squad and "ttl" or "entity_gone")
+        _unscript_squad(squad or squad_id)
+        ::continue::
+    end
+end
+
+local function _log_proximity(source, squad, smart, data)
+    if not ap_core_debug.enabled() then return end
+    local dist, threshold, gvid_match, same_level = xsmart.get_proximity(squad, smart)
+    ap_core_debug.debug(
+        "[SQUAD] %s: squad=%d handler=%s dist=%.0f threshold=%.0f gvid=%s level=%s action=%s assigned=%s scripted=%s",
+        source, squad.id, tostring(data.on_arrive),
+        dist, threshold,
+        tostring(gvid_match), tostring(same_level),
+        SQUAD_ACTION[squad.current_action] or tostring(squad.current_action),
+        tostring(squad.assigned_target_id),
+        tostring(squad.scripted_target))
+end
+
+function script_squad(squad, smart, opts)
+    if not squad or not smart then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
+    opts = opts or {}
+    _cleanup_stale()
+    local name = smart:name()
+    if not name or name == "" then
+        ap_core_debug.warn("[SQUAD] script_squad: squad=%d invalid smart name", squad.id)
+        return { code = RESULT.RULES_NEXT, reason = REASON.INVALID_SMART, id = squad.id }
+    end
+    if ap_scripted_squads[squad.id] then
+        ap_core_debug.debug("[SQUAD] script_squad: squad=%d already scripted (target=%s), releasing first",
+            squad.id, ap_scripted_squads[squad.id].scripted_target)
+        xsquad.release_squad(squad)
+    end
+    if not xsquad.control_squad(squad, smart, opts.rush) then
+        return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED, id = squad.id, dst = name }
+    end
+    ap_scripted_squads[squad.id] = {
+        scripted_target = name,
+        target_smart_id = smart.id,
+        tracked_at = xtime.game_sec(),
+        on_arrive = opts.on_arrive,
+        on_arrive_args = opts.on_arrive_args,
+        post_arrived_wait = opts.post_arrived_wait or ap_core_const.POST_ARRIVED_WAIT_SEC,
+    }
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
+    end
+    _log_proximity("script_time", squad, smart, ap_scripted_squads[squad.id])
+    return { code = RESULT.OK_NEXT, id = squad.id, dst = name, dst_id = smart.id }
+end
+
+--- Script squad to pursue player directly (no arrival detection)
+function script_actor_target(squad)
+    if not squad then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
+    _cleanup_stale()
+    if ap_scripted_squads[squad.id] then
+        ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d already scripted (target=%s), releasing first",
+            squad.id, ap_scripted_squads[squad.id].scripted_target)
+        xsquad.release_squad(squad)
+    end
+    if not xsquad.target_actor(squad, true) then
+        return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED, id = squad.id }
+    end
+    ap_scripted_squads[squad.id] = {
+        scripted_target = "actor",
+        target_actor_id = 0,
+        tracked_at = xtime.game_sec(),
+    }
+    ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d -> actor", squad.id)
+    return { code = RESULT.OK_NEXT, id = squad.id, dst = "actor", dst_id = 0 }
+end
+
+--- Get AP scripted squad table (read-only reference, do not modify)
+function get_scripted_ids()
+    return ap_scripted_squads
+end
+
+--- Register an arrival handler by key (called from consumer on_game_start)
+function register_arrival_handler(key, fn)
+    _arrival_handlers[key] = fn
+    ap_core_debug.debug("[SQUAD] register_arrival_handler: key=%s", key)
+end
+
+--- Register a squad as consequence-controlled (for PDA markers)
+function register_consequence_squad(squad_id, label)
+    if not squad_id then return end
+    label = label or "unknown"
+    _ap_consequence_squads[squad_id] = label
+    ap_core_debug.debug("[SQUAD] register_consequence_squad: squad=%d label=%s", squad_id, label)
+end
+
+-- =============================================================================
+-- ARRIVAL LIFECYCLE
+-- =============================================================================
+
+local function _try_arrival_overflow(squad_id, squad, smart, data)
+    local cmd_id = squad:commander_id()
+    local is_online = cmd_id and db.storage[cmd_id] and db.storage[cmd_id].object ~= nil
+    if not is_online or xsmart.has_capacity(smart) then return false end
+    local key = data.on_arrive
+    local handler = key and _arrival_handlers[key]
+    if handler then
+        handler(squad, data.on_arrive_args)
+        if ap_scripted_squads[squad_id] ~= data then return true end
+    end
+    ap_core_debug.debug("[SQUAD] arrival_overflow: squad=%d full=%s", squad_id, data.scripted_target)
+    _unscript_squad(squad)
+    return true
+end
+
+local function _check_arrived(squad_id, data)
+    if not data.target_smart_id then return end
+    if data.arrived then return end
+    local squad = xobject.se(squad_id)
+    if not squad then
+        _unscript_squad(squad_id)
+        return
+    end
+    local smart = xobject.se(data.target_smart_id)
+    if not smart then
+        _unscript_squad(squad)
+        return
+    end
+    if not xsmart.is_arrived(squad, smart) then return end
+    _log_proximity("arrived", squad, smart, data)
+    if _try_arrival_overflow(squad_id, squad, smart, data) then return end
+    local key = data.on_arrive
+    if not key then
+        data.arrived = true
+        data.release_at = xtime.game_sec() + data.post_arrived_wait
+        return
+    end
+    local handler = _arrival_handlers[key]
+    if not handler then
+        ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
+        data.arrived = true
+        data.release_at = xtime.game_sec() + data.post_arrived_wait
+        return
+    end
+    ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s", squad_id, key, data.scripted_target)
+    handler(squad, data.on_arrive_args)
+    if ap_scripted_squads[squad_id] ~= data then return end
+    data.arrived = true
+    data.release_at = xtime.game_sec() + data.post_arrived_wait
+end
+
+local function _check_release(squad_id, data)
+    if not data.arrived then return end
+    if xtime.game_sec() < data.release_at then return end
+    _unscript_squad(squad_id)
+end
+
+local function _process_arrival(squad_id)
+    local data = ap_scripted_squads[squad_id]
+    if not data then return end
+    _check_arrived(squad_id, data)
+    _check_release(squad_id, data)
+end
+
+local function _housekeep_arrival_scan()
+    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC)
+    local pending = {}
+    for squad_id in pairs(ap_scripted_squads) do
+        pending[#pending + 1] = squad_id
+    end
+    for _, squad_id in ipairs(pending) do
+        _process_arrival(squad_id)
+    end
+end
+
+-- =============================================================================
+-- PDA MARKERS
+-- =============================================================================
+
+local function _housekeep_marker_sync()
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[SQUAD] marker_sync fired, markers=%s consequence=%d marked=%d",
+            tostring(cfg.map_markers), xtable.count(_ap_consequence_squads), xtable.count(_ap_marked_squads))
+    end
+    ResetTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC)
+    if not cfg.map_markers then return false end
+    local dbg = ap_core_debug.enabled()
+    for squad_id, label in pairs(_ap_consequence_squads) do
+        local se = xobject.se(squad_id)
+        local alive = se and ap_scripted_squads[squad_id]
+        if dbg then
+            ap_core_debug.debug("[SQUAD] _housekeep_marker_sync: squad=%d se=%s scripted=%s alive=%s marked=%s",
+                squad_id, tostring(se ~= nil), tostring(ap_scripted_squads[squad_id] ~= nil), tostring(alive ~= nil), tostring(_ap_marked_squads[squad_id] ~= nil))
+        end
+        if not alive and _ap_marked_squads[squad_id] then
+            xpda.unmark_squad(squad_id)
+            _ap_marked_squads[squad_id] = nil
+            ap_core_debug.debug("[SQUAD] unmark: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
+        end
+        if not alive then
+            _ap_consequence_squads[squad_id] = nil
+        elseif not _ap_marked_squads[squad_id] then
+            local full_label = label .. ": " .. xsquad.get_community_name(se)
+            xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_ext_data.MARKER_TYPE })
+            _ap_marked_squads[squad_id] = true
+            ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
+        end
+    end
+    return false
+end
+
+local function _on_first_update()
+    xpda.clear_squad_markers()
+    _ap_marked_squads = {}
+    if cfg.map_markers then
+        CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_MARKER_SYNC, HOUSEKEEP_MARKER_SEC, _housekeep_marker_sync)
+        ap_core_debug.debug("[SQUAD] markers timer created (map_markers=true)")
+    end
+end
+
+-- =============================================================================
+-- SAVE / LOAD
+-- =============================================================================
+
+local function _on_save_state(m_data)
+    m_data.ap_core_squad = {
+        ap_scripted_squads = ap_scripted_squads,
+    }
+    ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.count(ap_scripted_squads))
+end
+
+local function _on_load_state(m_data)
+    local saved = m_data.ap_core_squad or {}
+    ap_scripted_squads = saved.ap_scripted_squads or {}
+    for _, data in pairs(ap_scripted_squads) do
+        if data.arrived then data.release_at = 0 end
+    end
+    ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.count(ap_scripted_squads))
+end
+
+-- =============================================================================
+-- ENTITY CLEANUP
+-- =============================================================================
+
+local function _on_server_entity_on_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    if not id then return end
+    _ap_consequence_squads[id] = nil
+end
+
+-- =============================================================================
+-- INIT
+-- =============================================================================
+
+function on_game_start()
+    RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
+    RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
+
+    CreateTimeEvent(HOUSEKEEP_EV, HOUSEKEEP_ARRIVAL_SCAN, HOUSEKEEP_ARRIVAL_SCAN_SEC, _housekeep_arrival_scan)
+
+    --- Register proxy ownership filters for mods that set known squad fields
+    register_owner("warfare", function(squad)
+        return squad.registered_with_warfare ~= nil
+    end)
+    register_owner("bao", function(squad)
+        return squad.__lock ~= nil
+    end)
+
+    ap_core_debug.info("[SQUAD] Initialized")
+end

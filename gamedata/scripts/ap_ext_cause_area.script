@@ -1,0 +1,52 @@
+--- ap_ext_cause_area: Squad near empty smart terrain (stalker factions only)
+
+local CAUSE = ap_core_const.CAUSE
+local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+
+local cfg = ap_core_mcm.cfg
+
+local community_stalker = ap_ext_data.community_stalker
+
+local function _on_smart(trace, squad)
+    if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    local squad_faction = squad.player_id
+    if not community_stalker[squad_faction] then
+        return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad_faction }
+    end
+
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    local target = xsmart.find_smart(squad.position, {
+        level_id = level_id,
+        max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+        filter = function(smart)
+            if not xsmart.is_smart_empty(smart) then return false end
+            if xsmart.is_base(smart) then return false end
+            local fac = xsmart.get_smart_faction(smart)
+            return fac == "none" or game_relations.is_factions_enemies(squad_faction, fac)
+        end,
+    })
+    if not target then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+
+    return {
+        cause = CAUSE.AREA,
+        squad_id = squad.id,
+        target_smart_id = target.id,
+        target_smart = target,
+        former_faction = xsmart.get_smart_faction(target),
+        position = target.position,
+        level_id = level_id,
+    }
+end
+
+function on_game_start()
+    local radiant = ap_core_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_core_producer.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+    end
+    ap_core_debug.info("[CAUSE.AREA] Initialized")
+end

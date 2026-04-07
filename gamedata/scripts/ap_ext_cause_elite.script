@@ -1,0 +1,48 @@
+--- ap_ext_cause_elite: Publishes cause:elite when NPC reaches a new elite level
+
+local CAUSE = ap_core_const.CAUSE
+local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CALLBACK = ap_core_const.CALLBACK
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local cfg = ap_core_mcm.cfg
+
+local function _on_death(trace, squad, se_victim, se_killer)
+    if not cfg.cause_elite_enabled then return { code = RESULT.DISABLED_NEXT } end
+
+    local killer_id = ap_core_utils.get_entity_id(se_killer)
+    if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+    local killer_squad = xsquad.get_squad_by_member(killer_id)
+    local protected, reason, detail, pname = ap_core_squad.is_protected(killer_squad)
+    if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
+
+    local victim_id = ap_core_utils.get_entity_id(se_victim)
+    local kills = ap_ext_tracker.projected_kill_count(killer_id, victim_id)
+    local level = ap_ext_tracker.compute_level(kills)
+    if level < 1 then
+        return { code = RESULT.RULES_NEXT, reason = REASON.LOW_KILLS,
+            killer_id = killer_id, kills = kills }
+    end
+
+    local current_level = ap_ext_tracker.get_elite_level(killer_id)
+    if level <= current_level then
+        return { code = RESULT.RULES_NEXT, reason = REASON.NO_PROMOTION,
+            killer_id = killer_id, kills = kills, level = level }
+    end
+
+    return {
+        cause = CAUSE.ELITE,
+        killer_id = killer_id,
+        kills = kills,
+        level = level,
+        level_id = xlevel.get_level_id(se_killer),
+        is_stalker = xcreature.is_stalker(se_killer),
+    }
+end
+
+function on_game_start()
+    ap_core_producer.register(CAUSE.ELITE, {
+        callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
+    }, _on_death)
+    ap_core_debug.info("[CAUSE.ELITE] Initialized")
+end
