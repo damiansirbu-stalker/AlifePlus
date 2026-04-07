@@ -10,7 +10,7 @@ local _handlers = {}
 local _subscribed = {}
 local _reactive_event_limiter = nil
 
---- Radiant tick sources (built from registrations with cause_type = RADIANT)
+--- Radiant callback sources (built from registrations with cause_type = RADIANT)
 local _radiant_callbacks = {}
 
 --- Radiant handlers (collapsed from all radiant registrations into one flat table)
@@ -226,9 +226,9 @@ local function _eval_handlers(handlers, on_map, squad, ...)
     end
 end
 
---- Radiant tick handler: any radiant callback delivers a squad, same pipeline runs
+--- Radiant callback handler: evaluates cause predicates for the squad that triggered the callback
 --- Gates: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
-local function _on_radiant_tick(squad)
+local function _on_radiant_update(squad)
     if not next(_radiant_handlers) then return end
     if not _radiant_pacer_gate() then return end
     if not _scripted_gate(squad.id) then return end
@@ -272,11 +272,11 @@ end
 
 local _dispatchers = {}
 
---- Subscribe radiant (shared _on_radiant_tick) and reactive (per-callback _dispatch_reactive)
+--- Subscribe radiant (shared _on_radiant_update) and reactive (per-callback _dispatch_reactive)
 local function _subscribe_to_callbacks()
     for callback in pairs(_radiant_callbacks) do
         if _subscribed[callback] then goto continue end
-        RegisterScriptCallback(callback, _on_radiant_tick)
+        RegisterScriptCallback(callback, _on_radiant_update)
         _subscribed[callback] = true
         ap_core_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (radiant)", callback)
         ::continue::
@@ -302,13 +302,13 @@ end
 
 local function _collect_radiant_handlers(entries)
     for name, entry in pairs(entries) do
-        if entry.cause_type == CAUSE_TYPE.RADIANT then
-            _radiant_handlers[name] = entry
-        end
+        if entry.cause_type ~= CAUSE_TYPE.RADIANT then goto continue end
+        _radiant_handlers[name] = entry
+        ::continue::
     end
 end
 
---- Rebuild radiant tick sources and collapse all radiant handlers into one flat table
+--- Rebuild radiant callback sources and collapse all radiant handlers into one flat table
 local function _rebuild_radiant_set()
     _radiant_callbacks = {}
     _radiant_handlers = {}
