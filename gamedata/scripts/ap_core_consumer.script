@@ -71,6 +71,11 @@ local function _process(event_type, event_data)
         event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
 
     for _, entry in ipairs(consequences) do
+        if not ap_core_limiter.check_global_consequence_rate_limit() then
+            ap_core_debug.debug("[CONSUMER] GLOBAL_CONSEQUENCE_RATE_BLOCKED consequence=%s cause=%s", entry.name, event_type)
+            break
+        end
+
         if not ap_core_limiter.check_consequence_rate_limit(entry.name) then
             ap_core_debug.debug("[CONSUMER] RATE_BLOCKED consequence=%s", entry.name)
             goto continue
@@ -79,6 +84,7 @@ local function _process(event_type, event_data)
         local result = _run_handler(entry, event_data)
 
         if result and (result.code == RESULT.OK_NEXT or result.code == RESULT.OK_STOP) then
+            ap_core_limiter.increment_global_consequence_counter()
             ap_core_limiter.increment_consequence_counter(entry.name)
         end
 

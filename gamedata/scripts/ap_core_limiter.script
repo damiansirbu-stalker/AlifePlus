@@ -60,6 +60,28 @@ function increment_consequence_counter(name)
     limiter:acquire(_get_consequence_rate_key(name))
 end
 
+local _GLOBAL_CONSEQUENCE_RATE_KEY = "global_consequence"
+local _global_consequence_counter = nil
+
+local function _ensure_global_consequence_counter()
+    if not _global_consequence_counter then
+        _global_consequence_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.GLOBAL_CONSEQUENCE_WINDOW_SEC })
+    end
+    return _global_consequence_counter
+end
+
+--- Check global consequence rate limit (true = allowed, false = max events reached in window)
+function check_global_consequence_rate_limit()
+    local counter = _ensure_global_consequence_counter()
+    return counter:count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
+end
+
+--- Increment global consequence counter after a consequence fires
+function increment_global_consequence_counter()
+    local counter = _ensure_global_consequence_counter()
+    counter:add(_GLOBAL_CONSEQUENCE_RATE_KEY)
+end
+
 --- Create an isolated cooldown checker (each caller gets its own cache)
 --- @param expire_ms number Cooldown duration in milliseconds
 --- @return table { check = function(key, now), mark = function(key, now) }
@@ -79,4 +101,5 @@ end
 function on_game_start()
     _cause_counter = nil
     _consequence_limiter = nil
+    _global_consequence_counter = nil
 end
