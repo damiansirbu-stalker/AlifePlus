@@ -1,0 +1,82 @@
+--- ap_core_limiter: Rate limiting for causes and consequences
+
+local cfg = ap_core_mcm.cfg
+
+local function _get_cause_rate_key(name)
+    return "lock:" .. name
+end
+
+local function _get_consequence_rate_key(name)
+    return "lock:" .. name
+end
+
+local _cause_counter = nil
+local _consequence_limiter = nil
+
+local function _ensure_cause_counter()
+    if not _cause_counter then
+        _cause_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.CAUSE_WINDOW_SEC })
+    end
+    return _cause_counter
+end
+
+local function _ensure_consequence_limiter()
+    if not _consequence_limiter then
+        local max = cfg.consequence_max_events
+        local window = ap_core_const.CONSEQUENCE_WINDOW_SEC
+        _consequence_limiter = xttltable.create_token_bucket({ capacity = 1, rate = max / window })
+    end
+    return _consequence_limiter
+end
+
+--- Check cause rate limit (true = allowed, false = blocked)
+--- @return boolean allowed, number count, number max
+function check_cause_rate_limit(name)
+    local counter = _ensure_cause_counter()
+    local key = _get_cause_rate_key(name)
+    local count = counter:count(key)
+    local max = cfg.cause_max_events
+    if count >= max then
+        return false, count, max
+    end
+    return true, count, max
+end
+
+--- Increment cause counter after publish
+function increment_cause_counter(name)
+    local counter = _ensure_cause_counter()
+    counter:add(_get_cause_rate_key(name))
+end
+
+--- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
+function check_consequence_rate_limit(name)
+    local limiter = _ensure_consequence_limiter()
+    return limiter:peek(_get_consequence_rate_key(name))
+end
+
+--- Acquire consequence token after success
+function increment_consequence_counter(name)
+    local limiter = _ensure_consequence_limiter()
+    limiter:acquire(_get_consequence_rate_key(name))
+end
+
+--- Create an isolated cooldown checker (each caller gets its own cache)
+--- @param expire_ms number Cooldown duration in milliseconds
+--- @return table { check = function(key, now), mark = function(key, now) }
+function create_cooldown(expire_ms)
+    local cache = {}
+    return {
+        check = function(key, now)
+            local exp = cache[key]
+            return exp and exp > now
+        end,
+        mark = function(key, now)
+            cache[key] = now + expire_ms
+        end,
+    }
+end
+
+function on_game_start()
+    _cause_counter = nil
+    _consequence_limiter = nil
+end

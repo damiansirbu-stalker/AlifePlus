@@ -1,4 +1,4 @@
---- ap_core_test: MCM debug tools and demo harnesses
+--- ap_ext_test: MCM debug tools and demo harnesses
 
 local pairs, table_sort, table_remove, math_min = pairs, table.sort, table.remove, math.min
 local math_floor, math_huge = math.floor, math.huge
@@ -86,7 +86,7 @@ function goto_elite()
     _tip("Teleported to elite L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
 end
 
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local CONSEQUENCE = ap_ext_const.CONSEQUENCE
 local NEEDS_ARRIVE_KEYS = {
     [CONSEQUENCE.HUNGER_CAMPFIRE] = true, [CONSEQUENCE.SLEEP_CAMPFIRE] = true, [CONSEQUENCE.REST_CAMPFIRE] = true,
     [CONSEQUENCE.HEAL_SHELTER] = true, [CONSEQUENCE.SHELTER_INDOOR] = true, [CONSEQUENCE.SHELTER_OUTDOOR] = true,
@@ -186,7 +186,7 @@ local function _find_demo_squads(max_count)
         local squad = xsquad.get_squad_by_member(npc_id)
         if not squad then goto skip end
         if seen[squad.id] then goto skip end
-        if not ap_ext_data.community_stalker[squad.player_id] then goto skip end
+        if not ap_ext_const.community_stalker[squad.player_id] then goto skip end
         seen[squad.id] = true
         candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
         ::skip::

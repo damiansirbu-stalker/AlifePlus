@@ -1,9 +1,8 @@
 --- ap_core_utils: Event pub/sub, PDA dispatch, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
 local IsStalker, get_object_story_id, math_random = IsStalker, get_object_story_id, math.random
-local ACTION = ap_core_const.ACTION
+local ACTION = ap_ext_const.ACTION
 local TRACE = ap_core_const.TRACE
-local cfg = ap_core_mcm.cfg
 
 -- Pick a random online stalker as PDA sender (A/S pattern: db.OnlineStalkers inline)
 -- Filters: alive stalker, not story NPC, stalker faction, not enemy of player
@@ -22,7 +21,7 @@ local function _pick_pda_sender()
         if not npc or not IsStalker(npc) or not npc:alive() then goto continue end
         if get_object_story_id(id) then goto continue end
         local community = npc:character_community()
-        if not ap_ext_data.community_stalker[community] then goto continue end
+        if not ap_ext_const.community_stalker[community] then goto continue end
         if game_relations.is_factions_enemies(actor_community, community) then goto continue end
         candidates[#candidates + 1] = npc
         ::continue::
@@ -112,67 +111,6 @@ function count_deaths_massacre(deaths, key, threshold)
     return count
 end
 
---- Build rate limit key for cause
-local function _get_cause_rate_key(name)
-    return "lock:" .. name
-end
-
---- Build rate limit key for consequence
-local function _get_consequence_rate_key(name)
-    return "lock:" .. name
-end
-
--- Rate limit counters (lazy init)
-local _cause_counter = nil
-local _consequence_limiter = nil
-
-local function _ensure_cause_counter()
-    if not _cause_counter then
-        _cause_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.CAUSE_WINDOW_SEC })
-    end
-    return _cause_counter
-end
-
-local function _ensure_consequence_limiter()
-    if not _consequence_limiter then
-        local max = cfg.consequence_max_events
-        local window = ap_core_const.CONSEQUENCE_WINDOW_SEC
-        _consequence_limiter = xttltable.create_token_bucket({ capacity = 1, rate = max / window })
-    end
-    return _consequence_limiter
-end
-
---- Check cause rate limit (true = allowed, false = blocked)
---- @return boolean allowed, number count, number max
-function check_cause_rate_limit(name)
-    local counter = _ensure_cause_counter()
-    local key = _get_cause_rate_key(name)
-    local count = counter:count(key)
-    local max = cfg.cause_max_events
-    if count >= max then
-        return false, count, max
-    end
-    return true, count, max
-end
-
---- Increment cause counter after publish
-function increment_cause_counter(name)
-    local counter = _ensure_cause_counter()
-    counter:add(_get_cause_rate_key(name))
-end
-
---- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
-function check_consequence_rate_limit(name)
-    local limiter = _ensure_consequence_limiter()
-    return limiter:peek(_get_consequence_rate_key(name))
-end
-
---- Acquire consequence token after success
-function increment_consequence_counter(name)
-    local limiter = _ensure_consequence_limiter()
-    limiter:acquire(_get_consequence_rate_key(name))
-end
-
 --- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)
 --- @param obj userdata|nil Game object or server entity
 --- @return number|nil Valid ID or nil
@@ -181,22 +119,6 @@ function get_entity_id(obj)
     local id = type(obj.id) == "function" and obj:id() or obj.id
     if not id or id == xconst.INVALID_ENTITY_ID then return nil end
     return id
-end
-
---- Create an isolated cooldown checker (each caller gets its own cache)
---- @param expire_ms number Cooldown duration in milliseconds
---- @return table { check = function(key, now), mark = function(key, now) }
-function create_cooldown(expire_ms)
-    local cache = {}
-    return {
-        check = function(key, now)
-            local exp = cache[key]
-            return exp and exp > now
-        end,
-        mark = function(key, now)
-            cache[key] = now + expire_ms
-        end,
-    }
 end
 
 local function _serialize_factions(factions)

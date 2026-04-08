@@ -1,4 +1,4 @@
---- ap_core_smart_mutator: Runtime modifiers for smart terrains
+--- ap_ext_conquest_mutator: Smart terrain faction control for area conquest
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 local math_huge = math.huge
@@ -56,14 +56,14 @@ function conquer_smart(smart_id, faction)
 end
 
 local function _on_save_state(m_data)
-    m_data.ap_core_smart_mutator = {
+    m_data.ap_ext_conquest_mutator = {
         conquered_smarts = _conquered_smarts,
         conquest_seq = _conquest_seq,
     }
 end
 
 local function _on_load_state(m_data)
-    local saved = m_data.ap_core_smart_mutator or {}
+    local saved = m_data.ap_ext_conquest_mutator or {}
     _conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
     _conquest_seq = saved.conquest_seq or 0

@@ -3,16 +3,16 @@
 local random = math.random
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
-local CAUSE = ap_core_const.CAUSE
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local REASON = ap_ext_const.REASON
+local CAUSE = ap_ext_const.CAUSE
+local CONSEQUENCE = ap_ext_const.CONSEQUENCE
+local ACTION = ap_ext_const.ACTION
 
 local cfg = ap_core_mcm.cfg
-local community_stalker = ap_ext_data.community_stalker
+local community_stalker = ap_ext_const.community_stalker
 
 local function _pick_random_items(count)
-    local pool = ap_ext_data.stash_fill_items
+    local pool = ap_ext_const.stash_fill_items
     local items = {}
     for i = 1, count do
         items[i] = pool[random(#pool)]
@@ -34,7 +34,7 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.STASH_FILL, function()
         if not cfg.consequence_stash_fill_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not community_stalker[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.community } end
-        if not xmath.prd_chance("stash_fill", cfg.consequence_stash_fill_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_stash_fill_chance } end
+        if not xmath.chance(cfg.consequence_stash_fill_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_stash_fill_chance } end
 
         local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
         if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end

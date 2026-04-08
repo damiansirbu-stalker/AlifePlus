@@ -1,11 +1,11 @@
 --- ap_ext_consequence_wounded_help: Faction sends help when member is wounded
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
+local REASON = ap_ext_const.REASON
 local ipairs = ipairs
-local CAUSE = ap_core_const.CAUSE
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local CAUSE = ap_ext_const.CAUSE
+local CONSEQUENCE = ap_ext_const.CONSEQUENCE
+local ACTION = ap_ext_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 
@@ -20,7 +20,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.WOUNDED_HELP, function()
         if not cfg.consequence_wounded_help_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.prd_chance("wounded_help", cfg.consequence_wounded_help_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_wounded_help_chance } end
+        if not xmath.chance(cfg.consequence_wounded_help_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_wounded_help_chance } end
 
         local npc_id, is_player = event_data.npc_id, event_data.is_player
         local position, level_id = event_data.position, event_data.level_id
@@ -29,12 +29,12 @@ local function _handler(event_data)
         local faction = _get_faction(npc_id, is_player)
         if not faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_ext_const.RADIUS_DISTANT_MAX })
         if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [faction] = true },
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_ext_const.RADIUS_CLOSE_MAX, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_wounded_help_max_squads,
             exclude_at_smart_id = target_smart.id,
             exclude_squad_id = event_data.squad_id,

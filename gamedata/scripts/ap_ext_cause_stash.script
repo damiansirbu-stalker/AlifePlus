@@ -1,13 +1,13 @@
 --- ap_ext_cause_stash: Squad near stash (stalker or ambusher communities only)
 
-local CAUSE = ap_core_const.CAUSE
+local CAUSE = ap_ext_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
+local REASON = ap_ext_const.REASON
 
 local cfg = ap_core_mcm.cfg
-local community_stalker = ap_ext_data.community_stalker
-local community_ambusher = ap_ext_data.community_ambusher
+local community_stalker = ap_ext_const.community_stalker
+local community_ambusher = ap_ext_const.community_ambusher
 
 local function _on_smart(trace, squad)
     if not cfg.cause_stash_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -21,7 +21,7 @@ local function _on_smart(trace, squad)
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
 
     local stashes = xstash.find_stashes(squad.position, {
-        max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+        max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
         level_id = level_id,
         max_count = 1,
     })

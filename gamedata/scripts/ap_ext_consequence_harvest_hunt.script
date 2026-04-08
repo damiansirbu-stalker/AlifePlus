@@ -3,14 +3,14 @@
 local ipairs = ipairs
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
-local CAUSE = ap_core_const.CAUSE
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local REASON = ap_ext_const.REASON
+local CAUSE = ap_ext_const.CAUSE
+local CONSEQUENCE = ap_ext_const.CONSEQUENCE
+local ACTION = ap_ext_const.ACTION
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
-local community_harvest = ap_ext_data.community_harvest
+local community_harvest = ap_ext_const.community_harvest
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
@@ -51,7 +51,7 @@ local function _on_arrive(squad, args)
     end
     ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
         local smart = ap_core_utils.find_smart(target_squad.position, {
-            level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            level_id = level_id, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
         })
         if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
@@ -72,7 +72,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.HARVEST_HUNT, function()
         if not cfg.consequence_harvest_hunt_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.prd_chance("harvest_hunt", cfg.consequence_harvest_hunt_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_harvest_hunt_chance } end
+        if not xmath.chance(cfg.consequence_harvest_hunt_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_harvest_hunt_chance } end
 
         local taker_is_player = event_data.taker_is_player
         local taker_squad_id = event_data.taker_squad_id
@@ -81,7 +81,7 @@ local function _handler(event_data)
 
         local chasers = ap_core_utils.find_squads_observed(trace, position, {
             factions = community_harvest,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_ext_const.RADIUS_CLOSE_MAX, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_harvest_hunt_max_squads,
             exclude_squad_id = event_data.taker_squad_id,
         })
@@ -102,7 +102,7 @@ local function _handler(event_data)
                 _move_actor_chasers(chasers, moved)
             else
                 local smart = ap_core_utils.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+                    level_id = level_id, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id

@@ -27,12 +27,28 @@ end
 
 --- v1.3.0: delete deprecated save keys after core/ext file rename
 --- Old keys: ap_squad, ap_alife_tracker, ap_smart_mutator, ap_conquest
---- New keys: ap_core_squad, ap_ext_tracker, ap_core_smart_mutator
+--- New keys: ap_core_squad, ap_ext_tracker, ap_ext_conquest_mutator
 local function _v130_delete_old_save_keys(m_data)
     m_data.ap_squad = nil
     m_data.ap_alife_tracker = nil
     m_data.ap_smart_mutator = nil
     m_data.ap_conquest = nil
+end
+
+--- v1.4.0: migrate conquest save key after core->ext rename
+--- Old key: ap_core_smart_mutator. New key: ap_ext_conquest_mutator.
+--- Moves data if old key present and new key absent, then deletes old key.
+local function _v140_migrate_conquest_key(m_data)
+    local old = m_data.ap_core_smart_mutator
+    if not old then return end
+    if type(old) ~= "table" then
+        m_data.ap_core_smart_mutator = nil
+        return
+    end
+    if not m_data.ap_ext_conquest_mutator then
+        m_data.ap_ext_conquest_mutator = old
+    end
+    m_data.ap_core_smart_mutator = nil
 end
 
 --- Run all migrations on load_state.
@@ -42,6 +58,7 @@ local function _on_load_state(m_data)
     if not m_data then return end
     _v130_release_orphaned_squads(m_data)
     _v130_delete_old_save_keys(m_data)
+    _v140_migrate_conquest_key(m_data)
 end
 
 function on_game_start()

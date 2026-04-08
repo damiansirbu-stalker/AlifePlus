@@ -202,7 +202,7 @@ local function _try_publish(on_map, name, result, trace, cause_type)
     result._trace = trace
     result.cause_type = cause_type
     ap_core_utils.event_publish(result.cause, result)
-    ap_core_utils.increment_cause_counter(name)
+    ap_core_limiter.increment_cause_counter(name)
     ap_core_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
         result.cause, result.squad_id, on_map, result.level_id)
 end
@@ -215,7 +215,7 @@ local function _eval_handlers(handlers, on_map, squad_id, ...)
     local args = {...}
     for name, entry in pairs(handlers) do
         if not _scripted_during_eval(squad_id) then break end
-        if not ap_core_utils.check_cause_rate_limit(name) then goto continue end
+        if not ap_core_limiter.check_cause_rate_limit(name) then goto continue end
 
         local trace = ap_core_debug.trace()
         local result = ap_core_debug.observe(trace, entry.label, entry.handler, unpack(args))

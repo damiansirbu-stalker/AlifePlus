@@ -1,4 +1,4 @@
---- ap_core_object_mutator: Runtime modifiers for NPCs and mutants
+--- ap_ext_elite_mutator: Runtime modifiers for elite NPCs (grenades, AP ammo, rank boost)
 
 local ipairs, os_clock = ipairs, os.clock
 local math_ceil, RegisterScriptCallback = math.ceil, RegisterScriptCallback
@@ -12,7 +12,7 @@ local RANK_THRESHOLDS = { 10000, 10000, 20000, 20000, 25000, 25000, 35000, 35000
 local _kap_cache = {}
 
 local function _has_grenade(npc)
-    for _, sec in ipairs(ap_ext_data.grenades) do
+    for _, sec in ipairs(ap_ext_const.grenades) do
         if npc:object(sec) then return true end
     end
     return false
@@ -21,7 +21,7 @@ end
 local function _give_grenades(npc_id, count)
     local given = 0
     for _ = 1, count do
-        if xobject.create_item(xmath.sample(ap_ext_data.grenades), npc_id) then given = given + 1 end
+        if xobject.create_item(xmath.sample(ap_ext_const.grenades), npc_id) then given = given + 1 end
     end
     return given
 end
@@ -121,7 +121,7 @@ local function _try_rank_boost(npc, npc_id, level)
 end
 
 local function _on_before_hit(npc, shit, bone_id, flags)
-    if not xtable.acquire_lock(ap_core_const.LOCK_PREFIX.HIT_MODIFIER, ap_core_const.HIT_MODIFIER_LOCK_SEC) then
+    if not xtable.acquire_lock(ap_core_const.LOCK_PREFIX.HIT_MODIFIER, ap_ext_const.HIT_MODIFIER_LOCK_SEC) then
         return
     end
     local npc_id = npc and npc:id()

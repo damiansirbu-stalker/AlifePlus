@@ -3,14 +3,14 @@
 local alife_release_id, alife_create_item = alife_release_id, alife_create_item
 local math_random, string_sub = math.random, string.sub
 
-local CAUSE = ap_core_const.CAUSE
+local CAUSE = ap_ext_const.CAUSE
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local REASON = ap_ext_const.REASON
+local CONSEQUENCE = ap_ext_const.CONSEQUENCE
+local ACTION = ap_ext_const.ACTION
 local TRACE = ap_core_const.TRACE
-local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
-local NEEDS_SECTIONS = ap_core_const.NEEDS_SECTIONS
+local RADIUS_DISTANT_MAX = ap_ext_const.RADIUS_DISTANT_MAX
+local NEEDS_SECTIONS = ap_ext_const.NEEDS_SECTIONS
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 
 local cfg = ap_core_mcm.cfg
@@ -184,7 +184,7 @@ local function _make_handler(entry)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
-            if not xmath.prd_chance(entry.name, cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT, chance = cfg[chance_key] } end
+            if not xmath.chance(cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT, chance = cfg[chance_key] } end
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
