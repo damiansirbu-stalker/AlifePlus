@@ -82,13 +82,17 @@ next
     Added: migration v1.4.0 migrates conquest save key after core->ext rename
   Style:
     Removed: === banner comments from all AP and xlibs files
+  Protection:
+    Changed: is_protected delegates to xsquad.is_protected (shared commander context, eliminates redundant resolution)
+    Fixed: protection gate section_name() guarded behind enabled() (no string alloc at non-DEBUG log levels)
   Fixed:
     Fixed: needs scatter init clamp (math_max removed, negative timestamps valid for young saves)
     Fixed: PACER retries on protection reject (0.5s retry instead of burning full interval)
   xlibs (requires xlibs update):
+    Added: xsquad.is_protected(squad, opts) composite guard with shared commander context
+    Added: xlevel.get_level_id vertex-to-level cache (0 luabind on repeat lookups)
     Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
     Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)
-    Added: exclude_filter option in xsquad._check_protected (generic function filter, runs first)
     Changed: exclude_externally_scripted renamed to exclude_scripted in find_squad/find_squads
     Removed: find_online_squads (dead code, zero callers)
 

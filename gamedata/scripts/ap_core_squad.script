@@ -47,21 +47,23 @@ function get_owner(squad)
 end
 
 
---- Check all squad protection guards: permanent, active_role, task_target, ownership, scripted
+local _protection_opts = nil
+
+--- Check all squad protection guards via xsquad.is_protected
 --- @param squad se_squad Squad server object
 --- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
 function is_protected(squad)
-    local perm, perm_reason, perm_name = xsquad.is_permanent_squad(squad)
-    if perm then return true, REASON.IS_PERMANENT, perm_reason, perm_name end
-    local role, role_reason, role_name = xsquad.has_active_role(squad)
-    if role then return true, REASON.HAS_ACTIVE_ROLE, role_reason, role_name end
-    local task_tgt, task_detail = xsquad.is_task_target(squad)
-    if task_tgt then return true, REASON.IS_TASK_TARGET, task_detail end
-    local owner = get_owner(squad)
-    if owner then return true, REASON.IS_OWNED, owner end
-    local scripted, scripted_detail = xsquad.is_scripted(squad)
-    if scripted then return true, REASON.IS_SCRIPTED, scripted_detail end
-    return false
+    if not _protection_opts then
+        _protection_opts = {
+            exclude_filter = get_owner,
+            exclude_filter_reason = REASON.IS_OWNED,
+            exclude_scripted = true,
+            exclude_permanent = true,
+            exclude_active_role = true,
+            exclude_task_target = true,
+        }
+    end
+    return xsquad.is_protected(squad, _protection_opts)
 end
 
 

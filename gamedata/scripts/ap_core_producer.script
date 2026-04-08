@@ -116,7 +116,7 @@ end
 --- @return boolean true = allowed, false = blocked
 local function _protection_gate(squad)
     local protected, reason, detail, name = ap_core_squad.is_protected(squad)
-    if protected then
+    if protected and ap_core_debug.enabled() then
         if not name then name = squad:section_name() or "?" end
         ap_core_debug.debug("[PRODUCER.RADIANT] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name)
     end
