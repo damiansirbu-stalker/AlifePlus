@@ -193,11 +193,13 @@ local function _update_arrival_flags(squad_id, data)
     if data.arrived then return end
     local squad = xobject.se(squad_id)
     if not squad then
+        ap_core_debug.debug("[SQUAD] entity_lost: squad=%d target=%s", squad_id, data.scripted_target)
         _unscript_squad(squad_id)
         return
     end
     local smart = xobject.se(data.target_smart_id)
     if not smart then
+        ap_core_debug.debug("[SQUAD] smart_lost: squad=%d smart=%d target=%s", squad_id, data.target_smart_id, data.scripted_target)
         _unscript_squad(squad)
         return
     end
@@ -208,6 +210,7 @@ local function _update_arrival_flags(squad_id, data)
     if not key then
         data.arrived = true
         data.release_at = xtime.game_sec() + data.post_arrived_wait
+        ap_core_debug.debug("[SQUAD] arrived_no_handler: squad=%d target=%s wait=%ds", squad_id, data.scripted_target, data.post_arrived_wait)
         return
     end
     local handler = _arrival_handlers[key]
@@ -222,11 +225,13 @@ local function _update_arrival_flags(squad_id, data)
     if _ap_scripted_squads[squad_id] ~= data then return end
     data.arrived = true
     data.release_at = xtime.game_sec() + data.post_arrived_wait
+    ap_core_debug.debug("[SQUAD] wait_started: squad=%d target=%s wait=%ds", squad_id, data.scripted_target, data.post_arrived_wait)
 end
 
 local function _update_wait(squad_id, data)
     if not data.arrived then return end
     if xtime.game_sec() < data.release_at then return end
+    ap_core_debug.debug("[SQUAD] wait_expired: squad=%d target=%s", squad_id, data.scripted_target)
     _unscript_squad(squad_id)
 end
 
@@ -234,6 +239,7 @@ local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
     if (xtime.game_sec() - (data.tracked_at or 0)) > SCRIPTED_SQUAD_TTL then
+        ap_core_debug.debug("[SQUAD] ttl_expired: squad=%d target=%s age=%ds", squad_id, data.scripted_target, xtime.game_sec() - (data.tracked_at or 0))
         _unscript_squad(squad_id)
         return
     end
@@ -254,6 +260,7 @@ local function _update_scripted_squads()
         _update_scripted_squad(_pending_buf[i])
         _pending_buf[i] = nil
     end
+    ap_core_debug.debug("[SQUAD] update_scan: tracked=%d", count)
 end
 
 
