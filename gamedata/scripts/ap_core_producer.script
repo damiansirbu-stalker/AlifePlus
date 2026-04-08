@@ -34,6 +34,7 @@ local _pacer_rejected = 0
 local _pacer_accepted = 0
 local _pacer_last_log = 0
 local PACER_LOG_INTERVAL = 30
+local PACER_RETRY_INTERVAL = 0.5
 
 --- GATE: RATIO (radiant 3/5, reactive 2/3)
 --- Cost: local table read + arithmetic on module-level counters
@@ -239,7 +240,7 @@ local function _on_radiant_update(squad)
         end
         return
     end
-    if not _protection_gate(squad) then return end
+    if not _protection_gate(squad) then _next_radiant = clock() + PACER_RETRY_INTERVAL return end
     _eval_handlers(_radiant_handlers, on_map, squad_id, squad)
 end
 

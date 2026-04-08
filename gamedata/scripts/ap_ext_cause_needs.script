@@ -1,6 +1,6 @@
 --- ap_ext_cause_needs: Timer-based human needs evaluation on smart terrain transitions
 
-local math_random, math_max, math_floor = math.random, math.max, math.floor
+local math_random, math_floor = math.random, math.floor
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local RESULT = ap_core_const.RESULT
@@ -72,7 +72,7 @@ local function _on_smart(trace, squad)
             local need = NEEDS[i]
             if not cfg[need.enabled_key] then goto init_next end
             local scatter = math_floor(cfg[need.threshold_key] * HOURS_TO_SECONDS * 2)
-            dto[need.field] = math_max(0, now - math_random(0, scatter))
+            dto[need.field] = now - math_random(0, scatter)
             ::init_next::
         end
     end
