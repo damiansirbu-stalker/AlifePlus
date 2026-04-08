@@ -1,11 +1,11 @@
 --- ap_ext_consequence_squadkill_flee: Nearby same-faction squads flee to base when squad wiped
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 local ipairs = ipairs
-local CAUSE = ap_ext_const.CAUSE
-local CONSEQUENCE = ap_ext_const.CONSEQUENCE
-local ACTION = ap_ext_const.ACTION
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 
@@ -25,7 +25,7 @@ local function _handler(event_data)
 
         local fleeing = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
-            min_distance = ap_ext_const.RADIUS_CLOSE_MAX, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_squadkill_flee_max_squads,
             exclude_at_smart_id = base.id,
             exclude_squad_id = event_data.squad_id,

@@ -109,7 +109,7 @@ local function _radiant_pacer_gate()
     _pacer_accepted = _pacer_accepted + 1
     _next_radiant = now + cfg.distributor_interval_sec
     if (now - _pacer_last_log) >= PACER_LOG_INTERVAL then
-        ap_core_debug.debug("[PRODUCER.REACTIVE] PACER_SUMMARY accepted=%d rejected=%d interval=%ds",
+        ap_core_debug.debug("[PRODUCER.RADIANT] PACER_SUMMARY accepted=%d rejected=%d interval=%ds",
             _pacer_accepted, _pacer_rejected, PACER_LOG_INTERVAL)
         _pacer_accepted = 0
         _pacer_rejected = 0
@@ -144,7 +144,7 @@ local function _protection_gate(squad)
     local protected, reason, detail, name = ap_core_squad.is_protected(squad)
     if protected then
         if not name then name = squad:section_name() or "?" end
-        ap_core_debug.debug("[PRODUCER.REACTIVE] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name)
+        ap_core_debug.debug("[PRODUCER.RADIANT] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name)
     end
     return not protected
 end
@@ -169,21 +169,21 @@ end
 --- @param handler function(trace, ...) Handler function
 function register(name, config, handler)
     if not name or not config or not handler then
-        ap_core_debug.err("[PRODUCER.REACTIVE] register: missing name, config, or handler")
+        ap_core_debug.err("[PRODUCER] register: missing name, config, or handler")
         return false
     end
     local callback = config.callback
     if not callback then
-        ap_core_debug.err("[PRODUCER.REACTIVE] register '%s': missing callback", name)
+        ap_core_debug.err("[PRODUCER] register '%s': missing callback", name)
         return false
     end
     local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
     if cause_type == CAUSE_TYPE.REACTIVE and _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER.REACTIVE] register '%s': reactive cause on radiant callback '%s'", name, callback)
+        ap_core_debug.err("[PRODUCER] register '%s': reactive cause on radiant callback '%s'", name, callback)
         return false
     end
     if cause_type == CAUSE_TYPE.RADIANT and _handlers[callback] and not _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER.REACTIVE] register '%s': radiant cause on reactive callback '%s'", name, callback)
+        ap_core_debug.err("[PRODUCER] register '%s': radiant cause on reactive callback '%s'", name, callback)
         return false
     end
     if not _handlers[callback] then
@@ -193,7 +193,7 @@ function register(name, config, handler)
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true
     end
-    ap_core_debug.info("[PRODUCER.REACTIVE] registered: %s callback=%s type=%s", name, callback, cause_type)
+    ap_core_debug.info("[PRODUCER] registered: %s callback=%s type=%s", name, callback, cause_type)
     return true
 end
 
@@ -203,7 +203,7 @@ local function _try_publish(on_map, name, result, trace, cause_type)
     result.cause_type = cause_type
     ap_core_utils.event_publish(result.cause, result)
     ap_core_limiter.increment_cause_counter(name)
-    ap_core_debug.debug("[PRODUCER.REACTIVE] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
+    ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
         result.cause, result.squad_id, on_map, result.level_id)
 end
 
@@ -235,7 +235,7 @@ local function _on_radiant_update(squad)
     local on_map = squad.online
     if not _alife_ratio_gate(on_map) then
         if ap_core_debug.enabled() then
-            ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
+            ap_core_debug.debug("[PRODUCER.RADIANT] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
                 tostring(on_map), cfg.alife_ratio, _on_count, _off_count, squad_id)
         end
         return
@@ -284,7 +284,7 @@ local function _init_subscriptions()
         if _subscribed[callback] then goto continue end
         RegisterScriptCallback(callback, _on_radiant_update)
         _subscribed[callback] = true
-        ap_core_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s (radiant)", callback)
+        ap_core_debug.debug("[PRODUCER.RADIANT] subscribed to callback=%s", callback)
         ::continue::
     end
     for callback in pairs(_handlers) do
@@ -341,5 +341,5 @@ function on_game_start()
     _next_radiant = 0
     _reactive_event_limiter = nil
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
-    ap_core_debug.info("[PRODUCER.REACTIVE] Initialized")
+    ap_core_debug.info("[PRODUCER] Initialized")
 end

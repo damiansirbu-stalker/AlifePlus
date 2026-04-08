@@ -4,7 +4,7 @@ local RegisterScriptCallback = RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 local SQUAD_ACTION = ap_core_const.SQUAD_ACTION
 
 local SCRIPTED_SQUAD_TTL = ap_core_const.SCRIPTED_SQUAD_TTL
@@ -269,7 +269,7 @@ local function _apply_markers()
         local se = xobject.se(squad_id)
         if not se then goto continue end
         local full_label = entry.label .. ": " .. xsquad.get_community_name(se)
-        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_ext_const.MARKER_TYPE })
+        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_core_const.MARKER_TYPE })
         entry.is_marked = true
         ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
         ::continue::

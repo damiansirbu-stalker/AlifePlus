@@ -1,9 +1,9 @@
 --- ap_ext_cause_area: Squad near empty smart terrain (stalker factions only)
 
-local CAUSE = ap_ext_const.CAUSE
+local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
 
@@ -22,7 +22,7 @@ local function _on_smart(trace, squad)
 
     local target = xsmart.find_smart(squad.position, {
         level_id = level_id,
-        max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
+        max_distance = ap_core_const.RADIUS_DISTANT_MAX,
         filter = function(smart)
             if not xsmart.is_smart_empty(smart) then return false end
             if xsmart.is_base(smart) then return false end

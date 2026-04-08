@@ -1,9 +1,9 @@
 --- ap_ext_cause_harvest: Artefact pickup by player or NPC
-local CAUSE = ap_ext_const.CAUSE
+local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
 local os_clock = os.clock
@@ -18,7 +18,7 @@ local function _evaluate(_trace, item, npc)
     if not IsArtefact(item) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ARTEFACT, section = section } end
 
     local now = os_clock()
-    if _pickup_at[section] and now - _pickup_at[section] < ap_ext_const.HARVEST_COOLDOWN_SEC then
+    if _pickup_at[section] and now - _pickup_at[section] < ap_core_const.HARVEST_COOLDOWN_SEC then
         return { code = RESULT.THROTTLED_NEXT }
     end
 

@@ -121,7 +121,7 @@ local function _try_rank_boost(npc, npc_id, level)
 end
 
 local function _on_before_hit(npc, shit, bone_id, flags)
-    if not xtable.acquire_lock(ap_core_const.LOCK_PREFIX.HIT_MODIFIER, ap_ext_const.HIT_MODIFIER_LOCK_SEC) then
+    if not xtable.acquire_lock(ap_core_const.LOCK_PREFIX.HIT_MODIFIER, ap_core_const.HIT_MODIFIER_LOCK_SEC) then
         return
     end
     local npc_id = npc and npc:id()

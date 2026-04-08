@@ -1,11 +1,11 @@
 --- ap_ext_consequence_wounded_hunt: Predator mutants investigate wounded stalker/player
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 local ipairs = ipairs
-local CAUSE = ap_ext_const.CAUSE
-local CONSEQUENCE = ap_ext_const.CONSEQUENCE
-local ACTION = ap_ext_const.ACTION
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 
@@ -18,11 +18,11 @@ local function _handler(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_ext_const.RADIUS_DISTANT_MAX })
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
         if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
-            factions = ap_ext_const.community_predator, min_distance = ap_ext_const.RADIUS_CLOSE_MAX, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
+            factions = ap_ext_const.community_predator, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
             exclude_at_smart_id = target_smart.id,
         })

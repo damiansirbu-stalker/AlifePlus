@@ -1,11 +1,11 @@
 --- ap_ext_consequence_massacre_scavenge: Moves outlaws and necrophile mutants to scavenge massacre corpses
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_ext_const.REASON
+local REASON = ap_core_const.REASON
 local ipairs = ipairs
-local CAUSE = ap_ext_const.CAUSE
-local CONSEQUENCE = ap_ext_const.CONSEQUENCE
-local ACTION = ap_ext_const.ACTION
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 local community_scavenger = ap_ext_const.community_scavenger
@@ -20,7 +20,7 @@ local function _handler(event_data)
         if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
-            factions = community_scavenger, min_distance = ap_ext_const.RADIUS_CLOSE_MAX, max_distance = ap_ext_const.RADIUS_DISTANT_MAX,
+            factions = community_scavenger, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
             exclude_at_smart_id = smart.id,
         })

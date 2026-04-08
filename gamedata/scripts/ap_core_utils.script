@@ -1,7 +1,7 @@
 --- ap_core_utils: Event pub/sub, PDA dispatch, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
 local IsStalker, get_object_story_id, math_random = IsStalker, get_object_story_id, math.random
-local ACTION = ap_ext_const.ACTION
+local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
 -- Pick a random online stalker as PDA sender (A/S pattern: db.OnlineStalkers inline)
@@ -98,16 +98,16 @@ function send_pda(chance, key, params)
     return { code = TRACE.SENT, key = key, sender = sender.name }
 end
 
---- Increment death count at key, check threshold, reset on fire. Returns count or nil.
---- @param deaths table TTL table instance (xttltable.create_ttl_table)
---- @param key number Smart terrain ID
---- @param threshold number Minimum deaths to fire
+--- Increment TTL counter by key, return count when threshold reached (then reset)
+--- @param counter table TTL table instance (xttltable.create_ttl_table)
+--- @param key any Counter key
+--- @param threshold number Minimum count to fire
 --- @return number|nil Count if threshold reached, nil otherwise
-function count_deaths_massacre(deaths, key, threshold)
-    local count = (deaths:get(key) or 0) + 1
-    deaths:set(key, count)
+function count_until_threshold(counter, key, threshold)
+    local count = (counter:get(key) or 0) + 1
+    counter:set(key, count)
     if count < threshold then return nil end
-    deaths:remove(key)
+    counter:remove(key)
     return count
 end
 
