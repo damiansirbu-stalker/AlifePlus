@@ -1,4 +1,4 @@
---- ap_ext_conquest_mutator: Smart terrain faction control for area conquest
+--- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, faction control)
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 local math_huge = math.huge
@@ -56,14 +56,14 @@ function conquer_smart(smart_id, faction)
 end
 
 local function _on_save_state(m_data)
-    m_data.ap_ext_conquest_mutator = {
+    m_data.ap_ext_smart_mutator = {
         conquered_smarts = _conquered_smarts,
         conquest_seq = _conquest_seq,
     }
 end
 
 local function _on_load_state(m_data)
-    local saved = m_data.ap_ext_conquest_mutator or {}
+    local saved = m_data.ap_ext_smart_mutator or {}
     _conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
     _conquest_seq = saved.conquest_seq or 0
@@ -71,8 +71,9 @@ end
 
 local function _on_game_load()
     if not _conquered_pending then return end
-    if not cfg or not cfg.area_conquest_enabled then
+    if not cfg or not cfg.area_conquest_enabled or not cfg.area_conquest_mutate_smart then
         _conquered_pending = nil
+        ap_core_debug.info("[MUTATOR.SMART] on_game_load: mutate disabled, skipped restore")
         return
     end
     local restored = 0

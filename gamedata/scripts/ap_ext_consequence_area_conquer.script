@@ -11,7 +11,7 @@ local cfg = ap_core_mcm.cfg
 local function _on_arrive(squad, args)
     if not args then return end
     ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
-    ap_ext_conquest_mutator.conquer_smart(args.target_smart_id, squad.player_id)
+    ap_ext_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
     ap_core_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
         "text_pda_consequence_area_conquer", { smart = args.smart_name })
 end
