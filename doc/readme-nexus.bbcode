@@ -1,10 +1,10 @@
-[url=https://github.com/damiansirbu-stalker/AlifePlus]GitHub[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md]Integration Guide[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog]Changelog[/url]
+[url=https://github.com/damiansirbu-stalker/AlifePlus]GitHub[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md]Integration Guide[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md]Design Manifesto[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog]Changelog[/url]
 
 [b]! Please use the RESET button in MCM when updating to a new version ![/b]
 
 [b]You are not special.[/b]
 
-AlifePlus is a reactive framework for STALKER Anomaly. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects that persist whether the player is present or not.
+AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulation layer that replaces passive A-Life with event-driven emergent behavior. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects that persist whether the player is present or not. Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs - whether you are there or not. Everything that happens to the player happens to NPCs and mutants alike. Nothing is random - every action traces back to a cause in the simulation.
 
 Inspired by Roadside Picnic and the original STALKER vision: the Zone runs on its own rules, and the actor is just another entity inside it.
 
@@ -17,6 +17,45 @@ The mod is built around two invariants:
 [/list]
 
 The economy uses real inventory items, and real needs drive real decisions.
+
+[line]
+
+[size=3][b]Example scenario (systemic interaction)[/b][/size]
+[list]
+[*]A stalker reaches a location. AlifePlus intercepts that event.
+[*]He spots a stash ("stash" cause) and decides to loot it ("loot" consequence), not knowing if anything is inside.
+[*]He walks the whole distance to the stash but gets ambushed by another stalker who saw it first and decided to rob people ("ambush" consequence).
+[*]The player was heading to that stash and sees the fight, so he snipes both of them.
+[*]This mass killing ("massacre" cause) draws scavengers to the bodies ("scavenge" consequence) and the victims' faction sends squads to investigate ("investigate" consequence).
+[*]On the way there, the scavengers get killed by loners who were out hunting ("job" consequence).
+[*]Those loners are now tired ("needs" cause) and head back to base to smoke a cigarette and tell the story ("social" consequence).
+[*]None of this was scripted. The player walked into something already in motion.
+[/list]
+
+[size=3][b]Example scenario (escalation chain)[/b][/size]
+[list]
+[*]An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).
+[*]On the road he fights creatures and gains enough kills to become an elite ("elite promote" consequence).
+[*]Now stronger but wounded, he bleeds ("wounded" cause) and a chimaera senses weakness and chases him down ("wounded hunt" consequence).
+[*]The chimaera kills him and gains enough kills to become an elite itself ("elite promote" consequence), a real problem in the area.
+[*]If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs).
+[*]The cycle continues, the Zone does not care.
+[/list]
+
+[size=3][b]What you'll notice[/b][/size]
+[list]
+[*]Squads rerouting after nearby combat deaths
+[*]Scavengers and investigators converging on massacre sites
+[*]Stash traffic: NPCs walking to stashes, looting, ambushing, filling
+[*]Outlaws hunting whoever picked up an artefact
+[*]Retaliation and retreat loops after squad wipes
+[*]Territory flipping as squads claim empty outposts
+[*]Elite NPCs emerging from combat, accumulating kills and better gear
+[*]Predators closing in on wounded targets, allies rushing to help
+[*]NPCs trading real items at traders - artefacts for ammo, grenades, medkits
+[*]Campfire and base behavior driven by hunger, fatigue, social needs
+[*]Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted
+[/list]
 
 [line]
 
@@ -49,7 +88,7 @@ Other mods can integrate with AlifePlus at any level, from passively listening t
 [list]
 [*]Rate-limited event pipeline with token budgets, cooldowns, and separate pacing for radiant and reactive streams. Designed to prevent the ghosting and save corruption caused by squad hijacking and engine API spam.
 [*]Protection gates at every pipeline layer: permanent NPCs, task targets, companions, and externally scripted squads are never touched. Squads owned by other mods (warfare, BAO) are excluded via an ownership registry.
-[*]All engine interaction through [url=https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001]xlibs[/url], a shared library reverse-engineered from X-Ray Monolith C++ source covering squad and smart terrain APIs, event bus, synthetic callbacks, crash-safe object resolution, and microsecond profiling.
+[*]All engine interaction through [url=https://www.nexusmods.com/stalkeranomaly/mods/102]xlibs[/url], a shared library reverse-engineered from X-Ray Monolith C++ source covering squad and smart terrain APIs, event bus, synthetic callbacks, crash-safe object resolution, and microsecond profiling.
 [*]No base script edits, no engine patches. Runtime callbacks and hooks only. Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts.
 [*]Operates above the action planner at the simulation layer, routing squads to the correct smart terrain through SIMBOARD. The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination. AlifePlus provides the intent, the engine provides the behavior.
 [/list]
@@ -64,33 +103,14 @@ Other mods can integrate with AlifePlus at any level, from passively listening t
 
 [line]
 
-[size=3][b]Example scenario (systemic interaction)[/b][/size]
-[list]
-[*]A stalker reaches a location. AlifePlus intercepts that event.
-[*]He spots a stash ("stash" cause) and decides to loot it ("loot" consequence), not knowing if anything is inside.
-[*]He walks the whole distance to the stash but gets ambushed by another stalker who saw it first and decided to rob people ("ambush" consequence).
-[*]The player was heading to that stash and sees the fight, so he snipes both of them.
-[*]This mass killing ("massacre" cause) draws scavengers to the bodies ("scavenge" consequence) and the victims' faction sends squads to investigate ("investigate" consequence).
-[*]On the way there, the scavengers get killed by loners who were out hunting ("job" consequence).
-[*]Those loners are now tired ("needs" cause) and head back to base to smoke a cigarette and tell the story ("social" consequence).
-[*]None of this was scripted. The player walked into something already in motion.
-[/list]
-
-[size=3][b]Example scenario (escalation chain)[/b][/size]
-[list]
-[*]An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).
-[*]On the road he fights creatures and gains enough kills to become an elite ("elite promote" consequence).
-[*]Now stronger but wounded, he bleeds ("wounded" cause) and a chimaera senses weakness and chases him down ("wounded hunt" consequence).
-[*]The chimaera kills him and gains enough kills to become an elite itself ("elite promote" consequence), a real problem in the area.
-[*]If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs).
-[*]The cycle continues, the Zone does not care.
-[/list]
-
-[line]
-
 [size=3][b]Configuration[/b][/size]
 Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (item consumption, stash looting, artefact trading, rank progression) each have their own toggle and tunable values - chances, cooldowns, thresholds, quantities, rate limits, and budgets.
 Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
+
+[b]Presets:[/b]
+Calm Zone: A-Life Interval 10-15, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
+Vanilla+: A-Life Interval 5, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)
+Chaotic: A-Life Interval 1-2, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+, raise individual chances
 
 [line]
 
@@ -168,10 +188,25 @@ A supply run costs some trophies, booze, an artefact and returns usables, medkit
 
 [line]
 
+[size=3][b]Compatibility & Safety[/b][/size]
+[list]
+[*]Built and tested with GAMMA, also tested with Zona and EFP
+[*]No base script edits, no engine patches
+[*]Works mid-save
+[*]Story NPCs, companions, task givers, and quest squads are never touched
+[*]Squads owned by other mods (warfare, BAO) excluded automatically via ownership registry
+[*]No permanent squad hijacking - all scripted squads have TTL and auto-release
+[*]Other mods can integrate at any level: listen to events, register new behaviors, or coordinate squad control
+[*]Uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs) - compatible with any mod that respects the engine's own APIs
+[*]AlifePlus does not need third-party "bridge" or "synergy" patches. The framework's own integration layer handles mod coordination natively. Mods that adopt the AP framework through the official API (see [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md]integration-guide.md[/url]) are supported. Unauthorized patches that claim compatibility are not endorsed and will cause instability, save corruption, and conflicts with both AP and the mods they claim to bridge.
+[/list]
+
+[line]
+
 [size=3][b]Requirements[/b][/size]
 Anomaly 1.5.3
 Modded exes
-[url=https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001]xlibs[/url]
+[url=https://www.nexusmods.com/stalkeranomaly/mods/102]xlibs[/url]
 MCM
 
 [size=3][b]Install (MO2)[/b][/size]
@@ -182,6 +217,8 @@ MCM
 [*]Configure via MCM
 [/list]
 
+Note: press RESET in MCM when updating. Most upgrade issues come from stale MCM state or outdated xlibs.
+
 [size=3][b]Uninstall (MO2)[/b][/size]
 Disable or remove in MO2.
 
@@ -190,9 +227,7 @@ Disable or remove in MO2.
 [size=3][b]FAQ[/b][/size]
 
 [b]How do I make events occur faster or slower?[/b]
-Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1, raise Radiant Cooldown to 15-20.
-Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4, lower Radiant Cooldown to 5.
-Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, raise consequence chances to 50+, set Radiant Cooldown to 0. Good luck!
+See the Presets section above, or fine-tune individual sliders in MCM.
 
 [b]Does it conflict with the vanilla task system?[/b]
 No. AlifePlus validates every entity through protection gates at every pipeline layer. Task givers, companions, active quest squads, and externally scripted squads are protected.

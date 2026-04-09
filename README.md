@@ -2,7 +2,7 @@
 
 You are not special.
 
-AlifePlus is a reactive framework for STALKER Anomaly. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. The simulation runs independent of the player: engine callbacks fire causes, causes dispatch consequences, consequences chain into new causes. Without spawning, teleporting, or faking.
+AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulation layer that replaces passive A-Life with event-driven emergent behavior. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. The simulation runs independent of the player: engine callbacks fire causes, causes dispatch consequences, consequences chain into new causes. Without spawning, teleporting, or faking.
 
 Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause and a consequence. See the [integration guide](doc/integration-guide.md) for examples, API reference, and a two-mod collaboration scenario.
 
