@@ -18,7 +18,7 @@ Built on xlibs. See `conventions.md` for naming rules, result codes, MCM setting
 | Consequence | Handler subscribed to a cause; executes response logic + side effects |
 | Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or nil |
 | Producer | Dispatches callbacks through gate chain, evaluates predicates, publishes to xbus |
-| Consumer | Receives cause events from xbus, dispatches to consequences by priority |
+| Consumer | Receives cause events from xbus, dispatches to consequences via round-robin |
 | xbus | Pub/sub event bus (xlibs). Causes publish, consequences subscribe |
 | Core | Framework modules (ap_core_*). Pipeline, lifecycle, protection, rate limiting |
 | Ext | Domain modules (ap_ext_*). Causes, consequences, data, messages |
@@ -116,7 +116,7 @@ Reactive causes fire on world events: `squad_on_npc_death`, `x_npc_medkit_use`, 
 
 ### Dispatch Pipeline
 
-After a cause publishes to xbus, the consumer routes the event to registered consequence handlers in priority order (lower number = first).
+After a cause publishes to xbus, the consumer routes the event to registered consequence handlers via round-robin. Each cause event type maintains a cursor that rotates which consequence gets tried first, ensuring equal distribution across all handlers in a chain.
 
 **Global rate limit.** Sliding window TTL counter across all consequences (`cfg.global_consequence_max_events`, 60s window). When the global budget is exhausted, the entire consequence loop breaks.
 
@@ -301,7 +301,6 @@ Register a cause predicate with `ap_core_producer.register(name, config, predica
 | config.callback | Engine callback name | - |
 | config.cause_type | RADIANT or REACTIVE | - |
 | config.event | - | Cause event to subscribe to |
-| config.priority | - | Execution order (lower = first) |
 | config.on_arrive | - | Optional arrival handler function |
 | handler | Predicate function | Consequence handler function |
 

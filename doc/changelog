@@ -4,6 +4,10 @@ next
     Changed: codebase split into core (ap_core_*) and ext (ap_ext_*). Other mods can register causes and consequences without modifying core.
     Added: squad ownership registry (register_owner/get_owner). Warfare and BAO excluded automatically.
     Added: automatic save data migrations on version upgrade (orphaned squads released, deprecated keys cleaned)
+    Changed: consequence dispatch uses round-robin instead of fixed priority. Equal first-shot distribution across all handlers in a chain.
+    Removed: priority field from consequence registration. All consequences in a chain are equal peers.
+    Removed: per-consequence chance gates (xmath.chance). Rate limiters (per-consequence 2/60s, global 5/60s) are the sole throttle. Consequence firing is deterministic given world state, not RNG.
+    Removed: MCM chance sliders for all 30 consequences. PDA chance sliders remain.
   Performance:
     Changed: radiant pipeline rejects ~99% of calls at first gate (os.clock timestamp, near-zero cost)
     Changed: on-map vs off-map detection uses squad.online field (zero luabind)
@@ -17,7 +21,6 @@ next
     Fixed: needs scatter init allows negative timestamps for young saves
     Changed: post-arrival wait uses game time (advances during time skips, survives save/load)
     Changed: arrival scan runs every 10s (was 30s), faster squad release
-    Changed: consequence chances use plain random (PRD removed)
     Added: persistent map markers for elite promote (marks elite's squad until death)
   Compatibility:
     Fixed: warfare/BAO ownership filters false positive (false ~= nil is true in Lua)

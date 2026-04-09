@@ -111,14 +111,13 @@ end
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.AMBUSH_SETUP, {
         event = CAUSE.AMBUSH,
-        priority = 20,
     }, _handler)
 end
 ```
 
 Rules:
 - Always return `{ code = RESULT.X }`
-- Gate order: enabled -> chance -> data validation -> logic -> result
+- Gate order: enabled -> data validation -> logic -> result
 - OK_STOP = exclusive (stops chain), OK_NEXT = non-exclusive (continues)
 - Use `find_squads_observed` for traced search (protections applied automatically)
 - Add `CONSEQUENCE.AMBUSH_SETUP = "consequence:ambush_setup"` to ap_core_const
@@ -137,7 +136,6 @@ end
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.AMBUSH_SETUP, {
         event = CAUSE.AMBUSH,
-        priority = 20,
         on_arrive = _on_arrive,
     }, _handler)
 end
