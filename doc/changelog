@@ -1,102 +1,32 @@
 
 next
-  Fixed:
-    Fixed: area_conquest_mutate_smart toggle had no effect on previously conquered smarts (old conquests restored every load regardless of setting)
-  Pipeline:
-    Changed: single squad_on_update tick source replaces enter/leave_smart dependency (no modded exe required)
-    Changed: radiant pipeline gate chain: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
-    Changed: reactive pipeline gate chain: PACER(1/3) -> RATIO(2/3) -> EVAL(3/3)
-    Changed: all gates extracted into named local functions with cost/complexity/order/rationale headers
-    Changed: uniform gate polarity (true=allowed, if-not chain)
-    Added: _scripted_during_eval mid-chain guard prevents competing consequences from overriding each other's squad destinations
-    Changed: radiant PACER uses os.clock timestamp comparison (default 5s, MCM 1-30s), rejects ~99%+ of squad_on_update calls
-    Changed: reactive PACER renamed from _check_reactive_event_limiter to _reactive_pacer_gate
-    Changed: on-map vs off-map detection uses squad.online field instead of level comparison (eliminates luabind call)
-    Removed: global radiant cooldown MCM setting (redundant with PACER gate)
-    Removed: _last_interaction_squad dedup cache (redundant with SCRIPTED gate)
-    Removed: _radiant_event_limiter token bucket (replaced by timestamp PACER)
-  Arrival:
-    Changed: post_arrived_wait uses game time (advances during time skips, survives save/load)
-    Changed: housekeeping arrival scan runs every 10s via CreateTimeEvent (was 30s)
-    Changed: on_arrive registered via consumer.register opts (no separate register_arrival_handler call needed)
-    Changed: consequence name IS the arrival handler key (one identity: trace key, rate limit key, arrival key)
-    Changed: arrival keys use CONSEQUENCE constants (stash_loot -> CONSEQUENCE.STASH_LOOT, etc.)
-    Changed: chase arrival logic inlined into each chase consequence (squadkill_revenge, elitekill_targeted, harvest_hunt)
-    Removed: chase_register/chase_start from ap_utils (~115 lines)
-    Fixed: shelter_outdoor missing from ap_test NEEDS_ARRIVE_KEYS
-  Architecture:
-    Added: ap_squad.script - squad ownership, scripting lifecycle, arrival detection, protection, PDA markers
-    Changed: ap_alife_tracker stripped to domain logic only (kills, elites, needs, death handler)
-    Changed: is_protected moved from ap_utils to ap_squad
-    Changed: scripted_squads, arrival handlers, consequence squads, marker sync extracted from tracker to ap_squad
-    Changed: all module-local collections prefixed with _ (private convention)
-    Changed: save/load split - ap_squad saves to m_data.ap_core_squad, tracker saves to m_data.ap_ext_tracker
-    Removed: _validate_script_target from script_squad (protection is upstream: pipeline gates + find_squads exclusions)
-  Ownership:
-    Added: squad ownership registry - register_owner(name, filter_fn) / get_owner(squad) in ap_squad
-    Added: proxy ownership filters for Warfare (registered_with_warfare) and BAO (__lock), registered at init
-    Added: MCM toggle allow_external_ownership (default true)
-    Changed: is_protected checks ownership registry before is_scripted fallback
-    Changed: find_squads uses get_owner as exclude_filter (runs before luabind checks in xsquad)
-  Constants:
-    Changed: all inline magic strings replaced with ap_const constants (CALLBACK, REASON, TRACE, CAUSE) across 17 files
-    Added: TRACE table in ap_const -13 diagnostic result codes for observe closures (OK, NO_SMART, CO_LOCATED, etc.)
-  File structure:
-    Changed: all files renamed to ap_core_* (framework) and ap_ext_* (domain extensions)
-    Changed: ap_producer_reactive renamed to ap_core_producer
-    Changed: ap_alife_tracker renamed to ap_ext_tracker
-    Changed: all private locals/functions prefixed with _ across all files (21 renames)
-    Changed: producer.unregister made local (never called externally)
-    Added: ap_core_migration.script - one-time save data migrations on load_state
-    Changed: save keys renamed to match new module names (ap_core_squad, ap_ext_tracker, ap_core_smart_mutator)
-    Added: migration v1.3.0 releases orphaned scripted squads, deletes all deprecated save keys (ap_squad, ap_alife_tracker, ap_smart_mutator, ap_conquest)
-  Review fixes:
-    Fixed: radiant causes dead on first session -_rebuild_radiant_set ran before causes registered (alphabetical on_game_start order)
-    Fixed: debug log level read MCM before config loaded (same alphabetical order issue)
-    Fixed: warfare ownership filter ~= nil caught false as owned (false ~= nil is true in Lua)
-    Fixed: bao ownership filter same ~= nil issue
-    Changed: producer/debug init split into declare (on_game_start) + aggregate (actor_on_first_update)
-    Changed: chase consequence move loops extracted to _move_actor_chasers/_move_smart_chasers (fixes 3-level nesting)
-    Changed: debug args with xtable.count/tostring wrapped in enabled() guard (5 locations)
-    Changed: arrival scan uses cached _pending_buf instead of per-call allocation
-    Changed: needs _dispatch_arrive guard clause flattened
-    Removed: unused cached globals (error, time_global, math_huge, ipairs, tostring, RESULT, REASON, CALLBACK, RegisterScriptCallback across 3 files)
-  Markers:
-    Changed: marker system redesigned - one collection (_ap_marked_squads) with is_marked flag replaces two collections (_ap_consequence_squads + _ap_marked_squads)
-    Changed: marker update split into _apply_markers (5s, flag-based) and _validate_markers (60s, entity checks)
-    Changed: marker alive check reads entity directly (se.scripted_target) instead of _ap_scripted_squads lookup
-    Added: persistent markers for non-movement consequences (elite_promote marks elite's squad until death)
-    Added: add_marked_squad(squad_id, label, opts) replaces register_consequence_squad
-    Changed: scripted squad lifecycle functions renamed (_update_scripted_squads, _update_scripted_squad, _update_arrival_flags, _update_wait)
-    Fixed: logger prefix in producer registration errors ([PRODUCER] -> [PRODUCER.REACTIVE])
-  Rate limiting:
-    Added: global consequence rate limit (sliding window, cfg.global_consequence_max_events default 5/60s)
-    Changed: consequence per-type rate limit uses token bucket (cfg.consequence_max_events default 2/60s)
-    Removed: PRD (pseudo-random distribution) from all consequence chance rolls, replaced with plain xmath.chance
-  Debugging:
-    Added: community field to all consequence wrong_community trace returns
-    Added: chance field to all consequence chance_next trace returns
-    Added: PACER_SUMMARY periodic log (accepted/rejected counts per 30s window)
-    Changed: name resolution uses section_name for blocked squads in protection gate log
+  Framework:
+    Changed: codebase split into core (ap_core_*) and ext (ap_ext_*). Other mods can register causes and consequences without modifying core.
+    Added: squad ownership registry (register_owner/get_owner). Warfare and BAO excluded automatically.
+    Added: automatic save data migrations on version upgrade (orphaned squads released, deprecated keys cleaned)
+  Performance:
+    Changed: radiant pipeline rejects ~99% of calls at first gate (os.clock timestamp, near-zero cost)
+    Changed: on-map vs off-map detection uses squad.online field (zero luabind)
+    Changed: global rate limiting reworked - PACER gate replaces radiant cooldown, sliding window limits per-consequence and globally (MCM configurable)
+    Changed: protection gate string allocation guarded behind debug level
+    Changed: arrival scan uses cached buffer instead of per-call allocation
+  Gameplay:
+    Fixed: area_conquest_mutate_smart toggle had no effect on previously conquered smarts
+    Fixed: radiant causes dead on first session (deferred init to actor_on_first_update)
+    Fixed: PACER retries on protection reject (0.5s instead of burning full interval)
+    Fixed: needs scatter init allows negative timestamps for young saves
+    Changed: post-arrival wait uses game time (advances during time skips, survives save/load)
+    Changed: arrival scan runs every 10s (was 30s), faster squad release
+    Changed: consequence chances use plain random (PRD removed)
+    Added: persistent map markers for elite promote (marks elite's squad until death)
   Compatibility:
-    Added: ap_core_compat.script - save data migrations + proxy ownership registrations (warfare, bao)
-    Changed: warfare/bao proxy registrations moved from ap_core_squad to ap_core_compat (compatibility glue separate from core)
-    Added: migration v1.4.0 migrates conquest save key after core->ext rename
-  Style:
-    Removed: === banner comments from all AP and xlibs files
-  Protection:
-    Changed: is_protected delegates to xsquad.is_protected (shared commander context, eliminates redundant resolution)
-    Fixed: protection gate section_name() guarded behind enabled() (no string alloc at non-DEBUG log levels)
-  Fixed:
-    Fixed: needs scatter init clamp (math_max removed, negative timestamps valid for young saves)
-    Fixed: PACER retries on protection reject (0.5s retry instead of burning full interval)
+    Fixed: warfare/BAO ownership filters false positive (false ~= nil is true in Lua)
+    Changed: is_protected delegates to xsquad.is_protected (shared commander context)
   xlibs (requires xlibs update):
-    Added: xsquad.is_protected(squad, opts) composite guard with shared commander context
-    Added: xlevel.get_level_id vertex-to-level cache (0 luabind on repeat lookups)
-    Changed: is_externally_scripted renamed to is_scripted, drops __lock and registered_with_warfare (mod-specific fields handled by AP ownership registry)
-    Changed: is_scripted checks engine/vanilla fields only (scripted_target, action_condlist, random_targets)
-    Changed: exclude_externally_scripted renamed to exclude_scripted in find_squad/find_squads
-    Removed: find_online_squads (dead code, zero callers)
+    Added: xsquad.is_protected(squad, opts) composite guard
+    Added: xlevel.get_level_id vertex-to-level cache (zero luabind on repeat lookups)
+    Changed: is_scripted checks engine fields only (mod-specific fields handled by AP ownership registry)
+    Removed: find_online_squads (dead code)
 
 1.2.3
   Core:

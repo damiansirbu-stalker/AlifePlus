@@ -2,7 +2,9 @@
 
 You are not special.
 
-AlifePlus is a behavior mod loyal to GSC's original A-Life vision. Event-driven architecture: no timers, iteration, or idle cost. The simulation runs independent of the player: engine callbacks fire causes, causes dispatch consequences, consequences chain into new causes. Without spawning, teleporting, or faking.
+AlifePlus is a reactive framework for STALKER Anomaly. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. The simulation runs independent of the player: engine callbacks fire causes, causes dispatch consequences, consequences chain into new causes. Without spawning, teleporting, or faking.
+
+Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause and a consequence. See the [integration guide](doc/integration-guide.md) for examples, API reference, and a two-mod collaboration scenario.
 
 [ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus) | [Releases](https://github.com/damiansirbu-stalker/AlifePlus/releases)
 
@@ -10,11 +12,12 @@ Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.2.0](https://www.moddb.com/mods/s
 
 ## Documentation
 
-- [readme.txt](doc/readme.txt) -- full description, features
-- [changelog](https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog) -- version history
-- [manifesto.md](doc/manifesto.md) -- design rationale with GSC developer quotes and engine source evidence defending every mechanic
-- [architecture.md](doc/architecture.md) -- technical reference: core/ext split, pipeline gates, protection, ownership, lifecycle
-- [integration-guide.md](doc/integration-guide.md) -- how to build on AlifePlus: three integration levels with examples
+- [readme.txt](doc/readme.txt) - full description, features
+- [changelog](https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog) - version history
+- [manifesto.md](doc/manifesto.md) - design rationale with GSC developer quotes and engine source evidence
+- [architecture.md](doc/architecture.md) - system internals: event pipeline, dispatch pipeline, protection, ownership, lifecycle
+- [integration-guide.md](doc/integration-guide.md) - how to build on AlifePlus: register causes/consequences, mod collaboration, API reference
+- [conventions.md](doc/conventions.md) - naming rules, result codes, MCM settings, logging format
 
 ## License
 

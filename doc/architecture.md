@@ -1,6 +1,6 @@
 # AlifePlus Architecture
 
-AlifePlus is a reactive framework for STALKER Anomaly. It intercepts X-Ray engine callbacks, classifies them into causes through world-state predicates, and dispatches consequences through two pipelines: an **Event Pipeline** that filters engine noise into meaningful cause events, and a **Dispatch Pipeline** that routes causes to consequence handlers. The framework owns throttling, protection, rate limiting, squad ownership, lifecycle management, and structured tracing. Domain logic registers a predicate and a handler. The framework runs the pipeline.
+AlifePlus is a reactive framework for STALKER Anomaly. It intercepts X-Ray engine callbacks, classifies them into causes through world-state predicates, and dispatches consequences through two pipelines: an **Event Pipeline** that filters engine noise into meaningful cause events, and a **Dispatch Pipeline** that routes causes to consequence handlers. The framework owns protection, rate limiting, squad ownership, lifecycle management, and structured tracing. Domain logic registers a predicate and a handler. The framework runs the pipeline.
 
 The architecture splits into **core** (pipeline infrastructure) and **ext** (domain logic). Core never imports ext. All domain logic reaches the framework through registered function references.
 
@@ -163,6 +163,8 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 3. **Wait** - `release_at = game_sec() + post_arrived_wait` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
 **Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_squad`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
+
+**Coordination.** `scripted_target` is the engine's built-in coordination mechanism between alife mods. Any mod that sets `scripted_target` signals "I control this squad." AP checks this at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
 **Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 5s timer applies new marks; a 60s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `elite_promote`).
 
