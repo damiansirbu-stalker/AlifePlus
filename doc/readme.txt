@@ -64,7 +64,7 @@ The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavi
 [BENCHMARKS: two screenshots side by side]
 
 Configuration:
-Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (item consumption, stash looting, artefact trading, rank progression) each have their own toggle and tunable values -- chances, cooldowns, thresholds, quantities, rate limits, and budgets.
+Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (item consumption, stash looting, artefact trading, rank progression) each have their own toggle and tunable values - chances, cooldowns, thresholds, quantities, rate limits, and budgets.
 Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
 
 Features: causes and consequences that aggregate into hundreds of combinations

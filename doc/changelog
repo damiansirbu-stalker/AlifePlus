@@ -25,33 +25,33 @@ next
     Removed: chase_register/chase_start from ap_utils (~115 lines)
     Fixed: shelter_outdoor missing from ap_test NEEDS_ARRIVE_KEYS
   Architecture:
-    Added: ap_squad.script -- squad ownership, scripting lifecycle, arrival detection, protection, PDA markers
+    Added: ap_squad.script - squad ownership, scripting lifecycle, arrival detection, protection, PDA markers
     Changed: ap_alife_tracker stripped to domain logic only (kills, elites, needs, death handler)
     Changed: is_protected moved from ap_utils to ap_squad
     Changed: scripted_squads, arrival handlers, consequence squads, marker sync extracted from tracker to ap_squad
     Changed: all module-local collections prefixed with _ (private convention)
-    Changed: save/load split -- ap_squad saves to m_data.ap_core_squad, tracker saves to m_data.ap_ext_tracker
+    Changed: save/load split - ap_squad saves to m_data.ap_core_squad, tracker saves to m_data.ap_ext_tracker
     Removed: _validate_script_target from script_squad (protection is upstream: pipeline gates + find_squads exclusions)
   Ownership:
-    Added: squad ownership registry -- register_owner(name, filter_fn) / get_owner(squad) in ap_squad
+    Added: squad ownership registry - register_owner(name, filter_fn) / get_owner(squad) in ap_squad
     Added: proxy ownership filters for Warfare (registered_with_warfare) and BAO (__lock), registered at init
     Added: MCM toggle allow_external_ownership (default true)
     Changed: is_protected checks ownership registry before is_scripted fallback
     Changed: find_squads uses get_owner as exclude_filter (runs before luabind checks in xsquad)
   Constants:
     Changed: all inline magic strings replaced with ap_const constants (CALLBACK, REASON, TRACE, CAUSE) across 17 files
-    Added: TRACE table in ap_const -- 13 diagnostic result codes for observe closures (OK, NO_SMART, CO_LOCATED, etc.)
+    Added: TRACE table in ap_const -13 diagnostic result codes for observe closures (OK, NO_SMART, CO_LOCATED, etc.)
   File structure:
     Changed: all files renamed to ap_core_* (framework) and ap_ext_* (domain extensions)
     Changed: ap_producer_reactive renamed to ap_core_producer
     Changed: ap_alife_tracker renamed to ap_ext_tracker
     Changed: all private locals/functions prefixed with _ across all files (21 renames)
     Changed: producer.unregister made local (never called externally)
-    Added: ap_core_migration.script -- one-time save data migrations on load_state
+    Added: ap_core_migration.script - one-time save data migrations on load_state
     Changed: save keys renamed to match new module names (ap_core_squad, ap_ext_tracker, ap_core_smart_mutator)
     Added: migration v1.3.0 releases orphaned scripted squads, deletes all deprecated save keys (ap_squad, ap_alife_tracker, ap_smart_mutator, ap_conquest)
   Review fixes:
-    Fixed: radiant causes dead on first session -- _rebuild_radiant_set ran before causes registered (alphabetical on_game_start order)
+    Fixed: radiant causes dead on first session -_rebuild_radiant_set ran before causes registered (alphabetical on_game_start order)
     Fixed: debug log level read MCM before config loaded (same alphabetical order issue)
     Fixed: warfare ownership filter ~= nil caught false as owned (false ~= nil is true in Lua)
     Fixed: bao ownership filter same ~= nil issue
@@ -62,7 +62,7 @@ next
     Changed: needs _dispatch_arrive guard clause flattened
     Removed: unused cached globals (error, time_global, math_huge, ipairs, tostring, RESULT, REASON, CALLBACK, RegisterScriptCallback across 3 files)
   Markers:
-    Changed: marker system redesigned -- one collection (_ap_marked_squads) with is_marked flag replaces two collections (_ap_consequence_squads + _ap_marked_squads)
+    Changed: marker system redesigned - one collection (_ap_marked_squads) with is_marked flag replaces two collections (_ap_consequence_squads + _ap_marked_squads)
     Changed: marker update split into _apply_markers (5s, flag-based) and _validate_markers (60s, entity checks)
     Changed: marker alive check reads entity directly (se.scripted_target) instead of _ap_scripted_squads lookup
     Added: persistent markers for non-movement consequences (elite_promote marks elite's squad until death)
@@ -79,7 +79,7 @@ next
     Added: PACER_SUMMARY periodic log (accepted/rejected counts per 30s window)
     Changed: name resolution uses section_name for blocked squads in protection gate log
   Compatibility:
-    Added: ap_core_compat.script -- save data migrations + proxy ownership registrations (warfare, bao)
+    Added: ap_core_compat.script - save data migrations + proxy ownership registrations (warfare, bao)
     Changed: warfare/bao proxy registrations moved from ap_core_squad to ap_core_compat (compatibility glue separate from core)
     Added: migration v1.4.0 migrates conquest save key after core->ext rename
   Style:

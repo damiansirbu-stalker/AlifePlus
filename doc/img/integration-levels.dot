@@ -1,0 +1,59 @@
+digraph integration_levels {
+    // Layout
+    rankdir=LR
+    splines=ortho
+    nodesep=0.4
+    ranksep=0.8
+
+    // Defaults
+    node [shape=box, style="rounded,filled", fillcolor=white,
+          fontsize=14, fontname="Arial", margin="0.15,0.1"]
+    edge [fontsize=11, fontname="Arial"]
+    graph [fontsize=16, fontname="Arial"]
+
+    // Title
+    label="Integration Levels"
+    labelloc=t
+
+    // --- Level 1 ---
+    subgraph cluster_l1 {
+        label="Level 1: Listen (xlibs only)"
+        style=rounded
+        color=gray50
+
+        l1_mod [label="Your mod", style="rounded,dashed"]
+        l1_call [label="xbus.subscribe\n(cause_event, handler)", fontsize=12, fillcolor=gray95]
+        l1_target [label="xbus\ncause events", shape=hexagon, fillcolor=gray95, style=filled]
+        l1_gets [label="cause data:\nposition, level_id,\nsquad_id, payload", fontsize=11, style="rounded,dashed"]
+
+        l1_mod -> l1_call -> l1_target -> l1_gets
+    }
+
+    // --- Level 2 ---
+    subgraph cluster_l2 {
+        label="Level 2: Register (core API)"
+        style=rounded
+        color=gray50
+
+        l2_mod [label="Your mod", style="rounded,dashed"]
+        l2_call [label="producer.register(predicate)\nconsumer.register(handler)", fontsize=12, fillcolor=gray95]
+        l2_target [label="Event Pipeline +\nDispatch Pipeline"]
+        l2_gets [label="throttling, protection,\nrate limiting, tracing,\nPDA, markers", fontsize=11, style="rounded,dashed"]
+
+        l2_mod -> l2_call -> l2_target -> l2_gets
+    }
+
+    // --- Level 3 ---
+    subgraph cluster_l3 {
+        label="Level 3: Coordinate (core + ext API)"
+        style=rounded
+        color=gray50
+
+        l3_mod [label="Your mod", style="rounded,dashed"]
+        l3_call [label="squad.register_owner(filter)\ntracker.get_elite()\nmutator.conquer_smart()", fontsize=12, fillcolor=gray95]
+        l3_target [label="Squad + Ownership\nTracker + Mutators"]
+        l3_gets [label="squad exclusion,\ndomain state queries,\nterritory control", fontsize=11, style="rounded,dashed"]
+
+        l3_mod -> l3_call -> l3_target -> l3_gets
+    }
+}

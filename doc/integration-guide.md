@@ -20,7 +20,7 @@ See `architecture.md` for system internals. See `conventions.md` for naming rule
 
 ## Level 1: Listen to Events
 
-Subscribe to cause events via xbus. No AP code dependency -- xlibs only.
+Subscribe to cause events via xbus. No AP code dependency - xlibs only.
 
 ```lua
 -- my_mod.script
@@ -106,7 +106,7 @@ end
 
 **Rules:**
 - Predicate returns `{ cause = CAUSE.X, ...payload }` or nil. Nothing else.
-- Never call observe(), publish(), or manipulate counters -- producer handles all of it.
+- Never call observe(), publish(), or manipulate counters - producer handles all of it.
 - Include `level_id` from the event source entity, never from the actor.
 - Add `CAUSE.MYEVENT = "cause:myevent"` to ap_core_const.
 - Add MCM `cause_myevent_enabled` to ap_core_mcm.defaults.
@@ -271,31 +271,31 @@ ap_core_producer.register(CAUSE.WARFARE_CAPTURE, {
 
 ## Level 3: Coordinate
 
-Deep integration with AP domain systems. Contact the author before using these -- APIs may change.
+Deep integration with AP domain systems. Contact the author before using these - APIs may change.
 
 ### Tracker (ap_ext_tracker)
 
-- `get_elite(entity_id)` -- elite data table (level, kills, name) or nil
-- `get_elite_level(entity_id)` -- integer level or 0
-- `is_elite(entity_id)` -- boolean
-- `get_elites()` -- all elites table
-- `get_elites_on_level(level_id)` -- elites on a specific map
-- `get_stalker_needs(squad_id)` -- needs DTO timestamps (last_hunger_at, etc.)
-- `projected_kill_count(killer_id, victim_id)` -- kill count if this kill were registered
+- `get_elite(entity_id)` - elite data table (level, kills, name) or nil
+- `get_elite_level(entity_id)` - integer level or 0
+- `is_elite(entity_id)` - boolean
+- `get_elites()` - all elites table
+- `get_elites_on_level(level_id)` - elites on a specific map
+- `get_stalker_needs(squad_id)` - needs DTO timestamps (last_hunger_at, etc.)
+- `projected_kill_count(killer_id, victim_id)` - kill count if this kill were registered
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-- `conquer_smart(smart_id, faction)` -- set faction ownership with FIFO eviction
+- `conquer_smart(smart_id, faction)` - set faction ownership with FIFO eviction
 
 ### Squad (ap_core_squad)
 
-- `script_squad(squad, smart, opts)` -- script with lifecycle
-- `script_actor_target(squad)` -- pursue player
-- `is_protected(squad)` -- check all guards
-- `get_owner(squad)` -- ownership query
-- `register_owner(name, filter_fn)` -- register ownership filter
-- `add_marked_squad(squad_id, label, opts)` -- PDA map marker
-- `get_scripted_ids()` -- read-only scripted squads table
+- `script_squad(squad, smart, opts)` - script with lifecycle
+- `script_actor_target(squad)` - pursue player
+- `is_protected(squad)` - check all guards
+- `get_owner(squad)` - ownership query
+- `register_owner(name, filter_fn)` - register ownership filter
+- `add_marked_squad(squad_id, label, opts)` - PDA map marker
+- `get_scripted_ids()` - read-only scripted squads table
 
 ### Important: script_squad has no inline protection
 
