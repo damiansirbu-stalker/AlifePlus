@@ -7,8 +7,13 @@ next
     Changed: consequence dispatch uses round-robin instead of fixed priority. Equal first-shot distribution across all handlers in a chain.
     Removed: priority field from consequence registration. All consequences in a chain are equal peers.
     Removed: per-consequence chance gates (xmath.chance) and all MCM chance sliders (30 keys). PDA chance sliders remain.
-    Added: faction disposition system (6 behavioral axes, 13 factions). Consequence handlers check faction disposition instead of rolling dice. No RNG in the consequence path.
     Removed: RESULT.CHANCE_NEXT from result codes.
+    Added: personality system (7 traits, 20 factions including mutants). Derived from GSC design documents. Radiant consequences gated by personality roll (average of relevant traits, 5-95% range). Reactive consequences use hard community tables only.
+    Changed: DISPOSITION renamed to PERSONALITY. CATEGORY enum replaced by PERSONALITY field constants. check_disposition removed from all consequence handlers, personality check moved to consumer dispatch.
+    Added: mutant faction entries in PERSONALITY table (7 factions: monster, vegetarian, predatory day/night, zombied day/night, special).
+    Added: community field to AREA cause payload (was missing, blocked personality gate).
+    Removed: job_worship and job_exercise consequences, MCM entries, PDA messages, and item sections.
+    Changed: each needs consequence maps to specific personality traits instead of generic discipline gate. Hunger/sleep use survival, money uses greed+perception, jobs use territory/perception, social uses relation.
   Performance:
     Changed: radiant pipeline PACER gate uses os.clock timestamp as first filter, skips all downstream evaluation when interval not elapsed
     Changed: on-map vs off-map detection uses squad.online field (zero luabind)
@@ -23,6 +28,7 @@ next
     Changed: post-arrival wait uses game time (advances during time skips, survives save/load)
     Changed: arrival scan runs every 10s (was 30s), faster squad release
     Added: persistent map markers for elite promote (marks elite's squad until death)
+    Changed: map markers transition on squad state: red (active), green (arrived), corpse (dead). Expired markers stay visible 5 minutes before removal.
   Compatibility:
     Fixed: warfare/BAO ownership filters false positive (false ~= nil is true in Lua)
     Changed: is_protected delegates to xsquad.is_protected (shared commander context)

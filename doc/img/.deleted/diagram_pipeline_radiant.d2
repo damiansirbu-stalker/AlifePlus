@@ -1,0 +1,33 @@
+direction: down
+style.font-size: 16
+
+entry: "X-Ray Event (radiant)\nsquad_on_update\n(other sources possible: enter_smart, leave_smart)"
+
+pacer: "PACER\ntimestamp comparison"
+
+scripted: "SCRIPTED\nhash lookup"
+
+ratio: "RATIO\nBresenham integer admission"
+
+protection: "PROTECTION\ncomposite guard (xsquad.is_protected)\n+ ownership registry"
+
+eval: "EVAL\nsliding window rate limit\npredicate evaluation"
+
+publish: "xbus.publish(cause)"
+
+reject: "reject" {
+  shape: diamond
+}
+
+entry -> pacer
+pacer -> scripted
+scripted -> ratio
+ratio -> protection
+protection -> eval
+eval -> publish
+
+pacer -> reject: {style.stroke-dash: 3}
+scripted -> reject: {style.stroke-dash: 3}
+ratio -> reject: {style.stroke-dash: 3}
+protection -> reject: {style.stroke-dash: 3}
+eval -> reject: {style.stroke-dash: 3}

@@ -13,8 +13,8 @@ local UPDATE_SCRIPTED_SQUADS_SEC = ap_core_const.UPDATE_SCRIPTED_SQUADS_SEC
 local TIMER_EV = "ap_core_squad"
 local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
 local UPDATE_MARKERS = "update_markers"
-local UPDATE_MARKERS_SEC = 5
-local VALIDATE_MARKERS_SEC = 60
+local UPDATE_MARKERS_SEC = 10
+local VALIDATE_MARKERS_SEC = 20
 
 local cfg = ap_core_mcm.cfg
 
@@ -53,6 +53,7 @@ local _protection_opts = nil
 --- @param squad se_squad Squad server object
 --- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
 function is_protected(squad)
+    if not squad then return false end
     if not _protection_opts then
         _protection_opts = {
             exclude_filter = get_owner,
@@ -258,11 +259,12 @@ local function _update_scripted_squads()
         count = count + 1
         _pending_buf[count] = squad_id
     end
+    local t0 = ap_core_debug.enabled() and os.clock() or nil
     for i = 1, count do
         _update_scripted_squad(_pending_buf[i])
         _pending_buf[i] = nil
     end
-    ap_core_debug.debug("[SQUAD] update_scan: tracked=%d", count)
+    if t0 then ap_core_debug.debug("[SQUAD] update_scan: tracked=%d [%.2fms]", count, (os.clock() - t0) * 1000) end
 end
 
 

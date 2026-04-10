@@ -81,10 +81,6 @@ local function _handler(event_data)
     if not cfg.consequence_ambush_setup_enabled then
         return { code = RESULT.DISABLED_NEXT }
     end
-    if not xmath.chance(cfg.consequence_ambush_setup_chance) then
-        return { code = RESULT.CHANCE_NEXT }
-    end
-
     local smart = xobject.se(event_data.smart_id)
     if not smart then
         return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART }
@@ -111,13 +107,15 @@ end
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.AMBUSH_SETUP, {
         event = CAUSE.AMBUSH,
+        personality = { PERSONALITY.AGGRESSION, PERSONALITY.GREED },
     }, _handler)
 end
 ```
 
 Rules:
 - Always return `{ code = RESULT.X }`
-- Gate order: enabled -> data validation -> logic -> result
+- Gate order: enabled -> personality -> data validation -> logic -> result
+- `personality` declares which faction traits gate this consequence (average of traits rolled per evaluation)
 - OK_STOP = exclusive (stops chain), OK_NEXT = non-exclusive (continues)
 - Use `find_squads_observed` for traced search (protections applied automatically)
 - Add `CONSEQUENCE.AMBUSH_SETUP = "consequence:ambush_setup"` to ap_core_const
@@ -136,6 +134,7 @@ end
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.AMBUSH_SETUP, {
         event = CAUSE.AMBUSH,
+        personality = { PERSONALITY.AGGRESSION, PERSONALITY.GREED },
         on_arrive = _on_arrive,
     }, _handler)
 end

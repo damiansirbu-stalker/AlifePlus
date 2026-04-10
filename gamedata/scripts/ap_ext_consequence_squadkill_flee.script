@@ -7,8 +7,6 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
-local CATEGORY = ap_ext_const.CATEGORY
-
 local cfg = ap_core_mcm.cfg
 
 local function _handler(event_data)
@@ -16,7 +14,6 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
         if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not ap_ext_const.community_stalker[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction } end
-        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.INTELLIGENCE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 

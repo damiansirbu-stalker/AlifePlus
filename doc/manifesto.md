@@ -1,6 +1,6 @@
 # Manifesto
 
-AlifePlus is loyal to GSC's original A-Life vision and the X-Ray engine architecture it was built on. The original A-Life was an event-driven simulation where NPCs lived autonomous lives -found items, traded, responded to threats, and pursued goals independently of the player. Most of it was cut before Shadow of Chernobyl shipped. What remained was smart terrains and campfires.
+AlifePlus is aligned with GSC's original A-Life vision and the X-Ray engine architecture it was built on. The original A-Life was an event-driven simulation where NPCs lived autonomous lives -- found items, traded, responded to threats, and pursued goals independently of the player. Most of it was cut before Shadow of Chernobyl shipped. What remained was smart terrains and campfires.
 
 Every design choice traces back to the original engine architecture or to documented GSC developer intent. Nothing is invented and nothing is faked.
 
@@ -237,60 +237,53 @@ NPCs consume inventory items on arrival -food, cigarettes, drinks, medkits, or a
 
 ---
 
-### Faction Disposition
+### Personality
 
-GSC designed per-NPC personality through independent attribute axes that fed multi-dimensional probability lookup tables for behavioral decisions. This system was never shipped.
+GSC modeled personality with independent attribute axes that fed probability lookup tables for behavior decisions. Five axes from the design documents [8], a moral axis with eight character types, and faction-level personality as a core concept. None of it shipped.
 
-The axes from GSC's original AI design documents [8]:
+GSC's five personality axes [8]:
 
-- **PersonalAggressiveness** (1-5) -- willingness to engage targets. Input to the `Expediency` function alongside PersonalGreed, PersonalRelation, and EntityCost. A stalker with aggression=1 has 5% expediency against a low-value target; aggression=5 pushes it to 65%. Same stalker, same target, deterministic outcome.
-- **PersonalGreed** (1-5) -- profit-driven action selection. The `Expediency` function combines greed with aggression: high greed + low aggression = rob when safe; high greed + high aggression = attack for loot. The `EntityCost` function evaluates targets by equipment value (`EnemyEquipmentCost`), backpack weight (`EnemyRukzakWeight`), and anomalous value (`EnemyAnomality`) -- greed determines whether the NPC acts on that assessment.
-- **PersonalIntelligence** (1-5) -- retreat decision quality. The `EnemyRetreatProbability` function takes intelligence and enemy detectability as inputs. High intelligence (5) + high enemy visibility (5) = 40% retreat probability (knows when outmatched). Low intelligence (1) + low visibility (1) = 40% (panics easily). Low intelligence (1) + high visibility (5) = 20% (too dumb to flee even when clearly losing).
-- **PersonalEyeRange** (1-5) -- perception and awareness. The `EnemyDetectProbability` function combines eye range with enemy detectability. Low eye range means the NPC misses threats and opportunities that are right in front of them. High eye range means nothing nearby goes unnoticed.
-- **PersonalRelation** (1-2) -- friend or enemy stance. Binary input to `Expediency`. Relation=1 (friend) caps expediency at 45% even with maximum greed and aggression -- betrayal is possible but unlikely. Relation=2 (enemy) allows expediency up to 65%.
+- **PersonalAggressiveness** (1-5) -- willingness to engage. `Expediency` function input: aggression=1 yields 5% action probability, aggression=5 yields 65%
+- **PersonalGreed** (1-5) -- profit motivation. Combined with aggression in `Expediency`: high greed + low aggression = rob when safe; both high = attack for loot
+- **PersonalIntelligence** (1-5) -- retreat decision quality. `EnemyRetreatProbability = f(detectability, intelligence)` -> 20-65%
+- **PersonalEyeRange** (1-5) -- awareness. `EnemyDetectProbability = f(detectability, eye_range)` -> 1-90%
+- **PersonalRelation** (1-2) -- friend/enemy. Caps `Expediency` at 45% for friends, 65% for enemies
 
-GSC also designed a moral axis that classified characters into eight types [8]:
+GSC's moral axis classified characters into eight types (principled/neutral/unprincipled x good/cold/evil) [8]. Each type defines specific behaviors: looting, betrayal, revenge pursuit, flee distance, mutant attitude, SOS response.
 
-- **Principled Good** -- saves everyone, never loots, never betrays, lets enemies escape
-- **Principled Cold-blooded** -- saves only for profit, seeks revenge when favorable
-- **Principled Evil** -- kills and robs the distressed, pursues revenge relentlessly, never betrays friends
-- **Neutral Good** -- saves nearby allies, avoids combat, forgives stray bullets
-- **Neutral Cold-blooded** -- saves for profit, revenge when favorable
-- **Neutral Evil** -- kills for profit, betrays friends for substantial gain, uses PDA signals as traps
-- **Unprincipled Good** -- sometimes saves, occasionally betrays, low commitment
-- **Unprincipled Cold-blooded** -- saves for profit, betrays for significant gain
+> "Each faction possesses a distinct 'personality' (either pre-assigned or randomly generated); based on this personality, the faction determines which other factions it will initially treat as allies or enemies." [8]
 
-GSC designed faction-level personality as a first-class concept:
+> "Based on distance, potential gain, and the character's personality, a course of action is selected: (a) Ignore the signal. (b) Kill and loot the sender. (c) Rescue the sender." [8]
 
-> "Each faction possesses a distinct 'personality' (either pre-assigned or randomly generated); based on this personality, the faction determines which other factions it will initially treat as allies or enemies."
-> -- GSC AI design documents [8]
+> "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)." [8]
 
-And personality-driven consequence selection for SOS signals:
+The `Expediency` function is the strongest evidence: a 4D lookup table `f(Relation, Cost, Greed, Aggression)` -> action probability (5-65%). The decision is a function of who you are, not a coin flip. GSC also treated mutants as actors in the same system -- the eight personality types define mutant-related behavior explicitly: "Tries to avoid killing mutant animals whenever possible" (Principled Good), "Ignores mutant animals unless they display aggression" (Cold-blooded), "Deliberately eliminates humanoid mutants" (Principled Good) [8].
 
-> "Based on distance, potential gain, and the character's personality, a course of action is selected: (a) Ignore the signal. (b) Kill and loot the sender. (c) Rescue the sender."
-> -- GSC AI design documents [8]
+AlifePlus implements this at faction level. Seven personality fields with per-faction multipliers replace random chance gates. Both stalker and mutant factions share the same table, same lookup, same gate. The decision is deterministic given the faction and the event.
 
-Character personality determined priorities:
+| Field | GSC design docs | X-Ray engine | AP consequences |
+|-------|----------------|--------------|-----------------|
+| aggression | PersonalAggressiveness, `Expediency` [8] | `m_bAggressive`, `base_monster_misc.cpp` | revenge, elite hunt, wounded hunt, harvest hunt |
+| greed | PersonalGreed, `Expediency` [8] | -- | stash loot, stash ambush, stash fill, massacre scavenge |
+| survival | `EnemyRetreatProbability` [8] | `panic_threshold`, `CMonsterMorale`, `monster_morale.cpp` | flee from squad kill, flee from base kill |
+| perception | PersonalEyeRange, `EnemyDetectProbability` [8] | -- | massacre investigate |
+| territory | Faction territorial expansion, `Faction_settings.htm` [8] | `CMonsterHome`, `monster_home.cpp` | area conquer |
+| relation | PersonalRelation, `Expediency` [8] | -- | base kill support, wounded help |
+| discipline | Principled/unprincipled moral axis [8] | -- | all 16 needs consequences |
 
-> "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)."
-> -- GSC AI design documents [8]
+**aggression** -- engine mirrors GSC's axis with `m_bAggressive`, set from enemy count, sounds, and hits. For mutants, maps to inverted `panic_threshold`: chimera=0.0 (cannot panic), boar=0.5, rat=0.9 (flees easily).
 
-AlifePlus implements GSC's PersonalAggressiveness, PersonalGreed, PersonalIntelligence, PersonalEyeRange, and PersonalRelation at faction level, plus a discipline axis derived from GSC's principled/unprincipled moral classification. Six disposition fields with per-faction multipliers replace random chance gates. The decision is deterministic given the faction and the event -- different factions respond differently to the same cause, exactly as GSC intended.
+**greed** -- profit-driven action selection via GSC's `Expediency`. Gates resource-acquisition: looting, ambushing, stash filling, massacre scavenging.
 
-A robbery/checkpoint scheme (`sr_robbery`) with PDA warnings, weapon-down checks, and faction-specific confiscation probabilities was also designed and documented [8] but never fully connected to the simulation layer.
+**survival** -- GSC's retreat probability + engine morale system (`monster_morale.cpp`): morale drops on hits, triggers `eStatePanic` below `panic_threshold`. High survival = faction retreats when losing.
 
-The six disposition fields and what they gate:
+**perception** -- GSC's eye range fed detection probability (1-90%). Gates investigation and awareness consequences.
 
-| Field | GSC source | Consequences |
-|-------|-----------|--------------|
-| aggression | PersonalAggressiveness | revenge, elite hunt, wounded hunt, harvest hunt |
-| greed | PersonalGreed | stash loot, stash ambush, stash fill, massacre scavenge |
-| intelligence | PersonalIntelligence | flee from squad kill, flee from base kill |
-| perception | PersonalEyeRange | massacre investigate, area conquer |
-| relation | PersonalRelation | base kill support, wounded help |
-| discipline | Principled/unprincipled moral axis | all 16 needs consequences |
+**territory** -- engine `CMonsterHome`: three concentric radii, `m_aggressive` flag for home defense. Gates area conquest.
 
-`perception` maps to GSC's `PersonalEyeRange` -- renamed for readability. The function is identical: how likely the NPC is to notice opportunities and threats in their surroundings.
+**relation** -- GSC's binary friend/enemy input capped `Expediency` for friends. Gates solidarity: base reinforcement, wounded aid.
+
+**discipline** -- from GSC's principled/unprincipled axis. Gates all 16 needs consequences: routine behavior (eating, sleeping, guarding, socializing).
 
 ---
 
@@ -310,4 +303,7 @@ The six disposition fields and what they gate:
   https://github.com/OpenXRay/xray-16
 - [7] xray-monolith (Anomaly engine, modded exes)
   https://github.com/themrdemonized/xray-monolith
-- [8] GSC Game World internal AI design documents (pre-release design phase, circa 2002-2006). Ai.rar, Help.rar, Tools.rar -- NPC personality system, faction personality concept, offline AI FSM, behavioral probability lookup tables (Expediency, EnemyRetreatProbability, EnemyDetectProbability), sr_robbery scheme, trader system design. Obtained through private STALKER community channels.
+- [8] GSC Game World internal AI design documents (pre-release design phase, circa 2002-2006). Three archives: Ai.rar (main AI design doc, monster FSMs, combat spreadsheets), Help.rar (A-Life help system, faction settings, Data.save lookup tables), Tools.rar (offline simulation spreadsheets, trader design). Obtained through private STALKER community channels.
+  - **Reached engine:** morale system (`CMonsterMorale`), monster home/territory (`CMonsterHome`), monster FSM states (`state_defs.h`), squad coordination (`ai_monster_squad`), `monster_community` relation tables, `EnemyDetectability` in creature configs. Partially: `eStatePanic` exists but suppressed by near-zero `panic_threshold` configs; `eStateEat` exists but `GetSatiety()` returns hardcoded 0.5.
+  - **Reached engine as dead code:** NPC-NPC encounter hook (`alife_monster_abstract.cpp`, marked `#pragma todo("Do not forget to uncomment here!!!")`), `spawn_artefacts` in alife objects (commented out), anti-aim ability (implemented but counterproductive).
+  - **Design docs only, never coded:** personality axes (PersonalAggressiveness/Greed/Intelligence/EyeRange/Relation), `Expediency` function, 8-type moral classification, SOS response logic, offline stalker FSM (task selection, equipment calculation, murder/witness/bounty chain), faction personality concept, sr_robbery scheme, trader reputation/blacklist system.

@@ -9,7 +9,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
-local CATEGORY = ap_ext_const.CATEGORY
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local community_stalker = ap_ext_const.community_stalker
@@ -73,8 +73,6 @@ local function _handler(event_data)
         if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
         if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
 
-        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.GREED) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
-
         local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
         if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end
 
@@ -98,6 +96,7 @@ function on_game_start()
         event = CAUSE.STASH,
         condition = function() return cfg.consequence_stash_loot_enabled end,
         on_arrive = _on_arrive,
+        personality = { PERSONALITY.GREED },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.STASH_LOOT] Initialized")
 end

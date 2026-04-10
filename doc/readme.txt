@@ -53,6 +53,10 @@ What you'll notice:
 - NPCs trading real items at traders - artefacts for ammo, grenades, medkits
 - Campfire and base behavior driven by hunger, fatigue, social needs
 - Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted
+- Bandits looting and ambushing while Duty patrols and holds the line
+- Loners chasing artefacts while Military stays close to base
+- Monolith pushing into territory while Renegades scatter at first contact
+- Factions responding to the same event based on personality, not random chance
 
 ---
 
@@ -165,9 +169,16 @@ Needs (radiant)
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.
   A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.
 
+Personality
+  Seven behavioral traits per faction, derived from GSC's original AI design
+  documents. Aggression, greed, survival, perception, territory, relation,
+  discipline. Both stalker and mutant factions share the same system.
+  Traits influence how likely a faction is to engage in each consequence.
+
 ---
 
 Compatibility & Safety:
+- Compatible with all modded exe variants (Demonized, AOE, MT)
 - Built and tested with GAMMA, also tested with Zona and EFP
 - No base script edits, no engine patches
 - Works mid-save
@@ -245,6 +256,7 @@ Full report in doc/test-report.log.
 
 Credits:
 Stalker_Boss - Russian translation
+Altogolik - support, ideas, source materials
 
 ---
 

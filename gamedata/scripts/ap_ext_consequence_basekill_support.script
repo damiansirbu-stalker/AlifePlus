@@ -8,15 +8,12 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
-local CATEGORY = ap_ext_const.CATEGORY
-
 local cfg = ap_core_mcm.cfg
 
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.BASEKILL_SUPPORT, function()
         if not cfg.consequence_basekill_support_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.RELATION) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local smart = event_data.smart
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id

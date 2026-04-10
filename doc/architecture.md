@@ -81,7 +81,7 @@ Radiant causes are an open collection. New causes can be added by registering a 
 
 The triggering squad is both sensor and responder - it evaluates its own surroundings and acts on what it finds (stashes, empty territory, unmet needs).
 
-**Gate 1: PACER.** `os.clock` timestamp comparison. Rejects all calls within `cfg.distributor_interval_sec` (default 5s, MCM 1-30s) of the last accepted call. Rejects ~99% of `squad_on_update` volume at near-zero cost (one number comparison, no luabind). On protection reject (gate 4), the pacer retries after 0.5s instead of burning the full interval.
+**Gate 1: PACER.** `os.clock` timestamp comparison. Rejects all calls within `cfg.distributor_interval_sec` of the last accepted call. Rejects ~99% of `squad_on_update` volume at near-zero cost (one number comparison, no luabind). On protection reject (gate 4), the pacer retries after a shorter interval instead of burning the full cooldown.
 
 **Gate 2: SCRIPTED.** Hash lookup in `_ap_scripted_squads`. Skips squads already under AP control - a squad executing a consequence should not trigger new causes until released. O(1), no luabind.
 
@@ -118,13 +118,13 @@ Reactive causes fire on world events: `squad_on_npc_death`, `x_npc_medkit_use`, 
 
 After a cause publishes to xbus, the consumer routes the event to registered consequence handlers via round-robin. Each cause event type maintains a cursor that rotates which consequence gets tried first, ensuring equal distribution across all handlers in a chain.
 
-**Global rate limit.** Sliding window TTL counter across all consequences (`cfg.global_consequence_max_events`, 60s window). When the global budget is exhausted, the entire consequence loop breaks.
+**Global rate limit.** Sliding window TTL counter across radiant consequences only (`cfg.global_consequence_max_events`, 60s window). When the global budget is exhausted, the radiant consequence loop breaks. Reactive consequences (from deaths, wounds, pickups) bypass the global limit entirely -- they are rare, high-significance events that should never be starved by ambient radiant activity.
 
 **Per-type rate limit.** Token bucket with peek-then-acquire. Each consequence type has its own budget (`cfg.consequence_max_events`, 60s window). Peek checks availability without consuming; acquire happens only after the handler succeeds.
 
 **Handler execution.** Optional condition pre-filter (from registration). Then the handler function runs and returns a result code.
 
-**Chain control.** Two stop codes: `OK_STOP` (success, exclusive - this consequence claimed the event) and `ERROR_STOP` (failure, abort chain). All other codes propagate: `OK_NEXT` (success, non-exclusive), `RULES_NEXT` (conditions unmet), `CHANCE_NEXT` (roll failed), `DISABLED_NEXT` (MCM off), `THROTTLED_NEXT` (rate limited). On success (`OK_STOP` or `OK_NEXT`), both global and per-type counters increment.
+**Chain control.** Two stop codes: `OK_STOP` (success, exclusive - this consequence claimed the event) and `ERROR_STOP` (failure, abort chain). All other codes propagate: `OK_NEXT` (success, non-exclusive), `RULES_NEXT` (conditions unmet), `DISABLED_NEXT` (MCM off), `THROTTLED_NEXT` (rate limited). On success (`OK_STOP` or `OK_NEXT`), the per-type counter increments, and the global counter increments for radiant events only.
 
 ### Rate Limiting
 
@@ -132,11 +132,11 @@ All rate limiting lives in `ap_core_limiter`. Five independent limiters operate 
 
 | Limiter | Mechanism | Scope | Default | Config |
 |---------|-----------|-------|---------|--------|
-| Radiant pacer | os.clock timestamp | global | 5s | MCM distributor_interval_sec |
+| Radiant pacer | os.clock timestamp | global | 10s | MCM distributor_interval_sec |
 | Reactive pacer | token bucket | per-callback-type | 1/sec | constant |
 | Cause budget | TTL counter, sliding window | per-cause | 10/60s | MCM cause_max_events |
-| Consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
-| Global consequence | TTL counter | global | 5/60s | MCM global_consequence_max_events |
+| Consequence budget | token bucket (peek/acquire) | per-consequence | 3/60s | MCM consequence_max_events |
+| Global consequence | TTL counter | radiant only | 7/60s | MCM global_consequence_max_events |
 
 ### Tracing
 
@@ -156,7 +156,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 **Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` via `xsquad.control_squad`, which causes the squad to enter `specific_update` (direct A->B movement) instead of `generic_update` (simulation re-evaluation). The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
-**Scripted squad scan.** `_update_scripted_squads` runs every 10s via `CreateTimeEvent`. For each tracked squad:
+**Scripted squad scan.** `_update_scripted_squads` runs every 20s via `CreateTimeEvent`. For each tracked squad:
 
 1. **TTL** - 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
 2. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
@@ -166,7 +166,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 **Coordination.** `scripted_target` is the engine's built-in coordination mechanism between alife mods. Any mod that sets `scripted_target` signals "I control this squad." AP checks this at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
-**Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 5s timer applies new marks; a 60s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `elite_promote`).
+**Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `elite_promote`).
 
 ### Initialization Lifecycle
 
@@ -181,7 +181,7 @@ Four phases. Each requires the previous to complete.
 - `ap_core_debug` registers `actor_on_first_update` for deferred log level init.
 - `ap_core_producer` resets dispatch state, registers `actor_on_first_update`. Does NOT subscribe to callbacks yet.
 - `ap_core_consumer` registers `actor_on_first_update`. Does NOT subscribe to xbus yet.
-- `ap_core_squad` registers save/load/first_update callbacks, creates the 10s scripted squad scan timer.
+- `ap_core_squad` registers save/load/first_update callbacks, creates the 20s scripted squad scan timer.
 - `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxies (warfare, bao).
 - `ap_ext_cause_*` register predicates with producer via `register()`.
 - `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.

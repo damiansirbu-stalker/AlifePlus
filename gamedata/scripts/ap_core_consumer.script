@@ -1,7 +1,9 @@
 --- ap_core_consumer: Routes cause events to consequence handlers via round-robin
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
+local math_random, math_min, math_max = math.random, math.min, math.max
 
 local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
 local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
@@ -34,6 +36,7 @@ function register(name, config, handler)
         name = name,
         condition = config.condition,
         handler = handler,
+        personality = config.personality,
         label = name,
     }
 
@@ -51,8 +54,30 @@ function register(name, config, handler)
     return true
 end
 
+local function _check_personality(traits, community, consequence_name)
+    if not traits or not community then return true end
+    local faction_traits = ap_ext_const.PERSONALITY[community]
+    if not faction_traits then return true end
+    local sum, count = 0, 0
+    for i = 1, #traits do
+        sum = sum + (faction_traits[traits[i]] or 0.5)
+        count = count + 1
+    end
+    if count == 0 then return true end
+    local chance = math_min(0.95, math_max(0.05, sum / count))
+    local roll = math_random()
+    local passed = roll < chance
+    if not passed then
+        ap_core_debug.debug("[CONSUMER] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
+    end
+    return passed
+end
+
 local function _run_handler(entry, event_data)
     if entry.condition and not entry.condition() then return { code = RESULT.DISABLED_NEXT } end
+    if entry.personality and not _check_personality(entry.personality, event_data.community, entry.name) then
+        return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY }
+    end
     return entry.handler(event_data)
 end
 
@@ -69,11 +94,13 @@ local function _process(event_type, event_data)
     ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s cursor=%d",
         event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type, cursor)
 
+    local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
+
     for offset = 0, total - 1 do
         local i = ((cursor - 1 + offset) % total) + 1
         local entry = consequences[i]
 
-        if not ap_core_limiter.check_global_consequence_rate_limit() then
+        if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
             ap_core_debug.debug("[CONSUMER] GLOBAL_CONSEQUENCE_RATE_BLOCKED consequence=%s cause=%s", entry.name, event_type)
             break
         end
@@ -88,7 +115,7 @@ local function _process(event_type, event_data)
 
         local code = result.code
         if code == RESULT.OK_NEXT or code == RESULT.OK_STOP then
-            ap_core_limiter.increment_global_consequence_counter()
+            if is_radiant then ap_core_limiter.increment_global_consequence_counter() end
             ap_core_limiter.increment_consequence_counter(entry.name)
         end
         if code == RESULT.OK_STOP or code == RESULT.ERROR_STOP then break end

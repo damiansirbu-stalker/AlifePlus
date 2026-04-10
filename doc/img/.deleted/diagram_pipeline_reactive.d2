@@ -1,0 +1,29 @@
+direction: down
+style.font-size: 16
+
+entry: "X-Ray Event (reactive)\ndeath | medkit | item pickup"
+
+pacer: "PACER\ntoken bucket per callback type"
+
+ratio: "RATIO\nBresenham integer admission"
+
+eval: "EVAL\nsliding window rate limit\npredicate evaluation"
+
+publish: "xbus.publish(cause)"
+
+reject: "reject" {
+  shape: diamond
+}
+
+note: "No SCRIPTED or PROTECTION gate\nProtection applied downstream\nin causes and consequences" {
+  shape: page
+}
+
+entry -> pacer
+pacer -> ratio
+ratio -> eval
+eval -> publish
+
+pacer -> reject: {style.stroke-dash: 3}
+ratio -> reject: {style.stroke-dash: 3}
+eval -> reject: {style.stroke-dash: 3}

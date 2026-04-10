@@ -4,11 +4,11 @@ local type, RegisterScriptCallback = type, RegisterScriptCallback
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
-    distributor_interval_sec = 5,
+    distributor_interval_sec = 10,
     allow_external_ownership = true,
     cause_max_events = 10,
-    consequence_max_events = 2,
-    global_consequence_max_events = 5,
+    consequence_max_events = 3,
+    global_consequence_max_events = 7,
 
     -- Cause: Elite
     cause_elite_enabled = true,
@@ -54,7 +54,7 @@ defaults = {
     cause_sleep_threshold = 16,
     cause_rest_threshold = 4,
     cause_heal_threshold = 12,
-    cause_shelter_threshold = 24,
+    cause_shelter_threshold = 48,
     cause_money_threshold = 24,
     cause_supply_threshold = 48,
     cause_job_threshold = 18,
@@ -239,17 +239,6 @@ defaults = {
     consequence_social_campfire_arrive_action_enabled = true,
 
 
-    -- Consequence: Job Worship
-    consequence_job_worship_enabled = true,
-    consequence_job_worship_rush = false,
-    consequence_job_worship_pda_chance = 20,
-
-    -- Consequence: Job Exercise
-    consequence_job_exercise_enabled = true,
-    consequence_job_exercise_rush = false,
-    consequence_job_exercise_pda_chance = 20,
-    consequence_job_exercise_arrive_action_enabled = true,
-
     -- Consequence: Social Base
     consequence_social_base_enabled = true,
     consequence_social_base_rush = false,
@@ -400,11 +389,6 @@ local _key_to_tab = {
     consequence_social_campfire_enabled = "consequences/social_campfire",
     consequence_social_campfire_rush = "consequences/social_campfire",
     consequence_social_campfire_arrive_action_enabled = "consequences/social_campfire",
-    consequence_job_worship_enabled = "consequences/job_worship",
-    consequence_job_worship_rush = "consequences/job_worship",
-    consequence_job_exercise_enabled = "consequences/job_exercise",
-    consequence_job_exercise_rush = "consequences/job_exercise",
-    consequence_job_exercise_arrive_action_enabled = "consequences/job_exercise",
     consequence_social_base_enabled = "consequences/social_base",
     consequence_social_base_rush = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
@@ -437,8 +421,6 @@ local _key_to_tab = {
     consequence_job_explore_pda_chance = "consequences/job_explore",
     consequence_job_research_pda_chance = "consequences/job_research",
     consequence_social_campfire_pda_chance = "consequences/social_campfire",
-    consequence_job_worship_pda_chance = "consequences/job_worship",
-    consequence_job_exercise_pda_chance = "consequences/job_exercise",
     consequence_social_base_pda_chance = "consequences/social_base",
     btn_reset_all = "general",
 }
@@ -625,7 +607,7 @@ function on_mcm_load()
                             _track("cause_sleep_threshold", 0.1, 48, 0.1),
                             _track("cause_rest_threshold", 0.1, 48, 0.1),
                             _track("cause_heal_threshold", 0.1, 48, 0.1),
-                            _track("cause_shelter_threshold", 0.1, 48, 0.1),
+                            _track("cause_shelter_threshold", 0.1, 96, 0.1),
                             _track("cause_money_threshold", 0.1, 48, 0.1),
                             _track("cause_supply_threshold", 0.1, 48, 0.1),
                             _track("cause_job_threshold", 0.1, 48, 0.1),
@@ -974,29 +956,6 @@ function on_mcm_load()
                             _check("consequence_job_research_enabled"),
                             _check("consequence_job_research_rush"),
                             _track("consequence_job_research_pda_chance", 0, 100, 5),
-                        },
-                    },
-                    {
-                        id = "job_worship",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_consequences_job_worship_title"),
-                            _desc("ui_mcm_ap_consequences_job_worship_desc"),
-                            _check("consequence_job_worship_enabled"),
-                            _check("consequence_job_worship_rush"),
-                            _track("consequence_job_worship_pda_chance", 0, 100, 5),
-                        },
-                    },
-                    {
-                        id = "job_exercise",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_consequences_job_exercise_title"),
-                            _desc("ui_mcm_ap_consequences_job_exercise_desc"),
-                            _check("consequence_job_exercise_enabled"),
-                            _check("consequence_job_exercise_rush"),
-                            _check("consequence_job_exercise_arrive_action_enabled"),
-                            _track("consequence_job_exercise_pda_chance", 0, 100, 5),
                         },
                     },
                     {

@@ -1,0 +1,50 @@
+digraph event_pipeline_reactive {
+    // Layout
+    rankdir=TB
+    splines=ortho
+    nodesep=0.6
+    ranksep=0.5
+
+    // Defaults
+    node [shape=box, style="rounded,filled", fillcolor=white,
+          fontsize=14, fontname="Arial", margin="0.12,0.08"]
+    edge [fontsize=12, fontname="Arial"]
+    graph [fontsize=16, fontname="Arial"]
+
+    // Title
+    label="Event Pipeline: Reactive Variant"
+    labelloc=t
+
+    // Entry
+    entry [label="Reactive Callbacks\ndeath | medkit | item use | item take", style="rounded,dashed"]
+
+    // Gates
+    g1 [label="PACER\ntoken bucket (1/sec per callback type)"]
+    g2 [label="RATIO\nBresenham admission (on/off-map)"]
+    g3 [label="EVAL\nsliding window + predicate evaluation"]
+
+    // Reject labels
+    r1 [label="reject", shape=plaintext, fontsize=11, fontcolor=gray40]
+    r2 [label="reject", shape=plaintext, fontsize=11, fontcolor=gray40]
+    r3 [label="reject", shape=plaintext, fontsize=11, fontcolor=gray40]
+
+    // Exit
+    publish [label="cause published to xbus", style="rounded,filled", fillcolor=gray95]
+
+
+    // Main chain
+    entry -> g1
+    g1 -> g2
+    g2 -> g3
+    g3 -> publish
+
+    // Reject paths
+    {rank=same; g1; r1}
+    {rank=same; g2; r2}
+    {rank=same; g3; r3}
+
+    g1 -> r1 [style=dashed, color=gray50]
+    g2 -> r2 [style=dashed, color=gray50]
+    g3 -> r3 [style=dashed, color=gray50]
+
+}

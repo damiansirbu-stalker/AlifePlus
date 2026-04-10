@@ -7,8 +7,6 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
-local CATEGORY = ap_ext_const.CATEGORY
-
 local cfg = ap_core_mcm.cfg
 local community_scavenger = ap_ext_const.community_scavenger
 
@@ -16,7 +14,6 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_SCAVENGE, function()
         if not cfg.consequence_massacre_scavenge_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.GREED) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
         if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
