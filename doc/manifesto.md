@@ -237,6 +237,63 @@ NPCs consume inventory items on arrival -food, cigarettes, drinks, medkits, or a
 
 ---
 
+### Faction Disposition
+
+GSC designed per-NPC personality through independent attribute axes that fed multi-dimensional probability lookup tables for behavioral decisions. This system was never shipped.
+
+The axes from GSC's original AI design documents [8]:
+
+- **PersonalAggressiveness** (1-5) -- willingness to engage targets. Input to the `Expediency` function alongside PersonalGreed, PersonalRelation, and EntityCost. A stalker with aggression=1 has 5% expediency against a low-value target; aggression=5 pushes it to 65%. Same stalker, same target, deterministic outcome.
+- **PersonalGreed** (1-5) -- profit-driven action selection. The `Expediency` function combines greed with aggression: high greed + low aggression = rob when safe; high greed + high aggression = attack for loot. The `EntityCost` function evaluates targets by equipment value (`EnemyEquipmentCost`), backpack weight (`EnemyRukzakWeight`), and anomalous value (`EnemyAnomality`) -- greed determines whether the NPC acts on that assessment.
+- **PersonalIntelligence** (1-5) -- retreat decision quality. The `EnemyRetreatProbability` function takes intelligence and enemy detectability as inputs. High intelligence (5) + high enemy visibility (5) = 40% retreat probability (knows when outmatched). Low intelligence (1) + low visibility (1) = 40% (panics easily). Low intelligence (1) + high visibility (5) = 20% (too dumb to flee even when clearly losing).
+- **PersonalEyeRange** (1-5) -- perception and awareness. The `EnemyDetectProbability` function combines eye range with enemy detectability. Low eye range means the NPC misses threats and opportunities that are right in front of them. High eye range means nothing nearby goes unnoticed.
+- **PersonalRelation** (1-2) -- friend or enemy stance. Binary input to `Expediency`. Relation=1 (friend) caps expediency at 45% even with maximum greed and aggression -- betrayal is possible but unlikely. Relation=2 (enemy) allows expediency up to 65%.
+
+GSC also designed a moral axis that classified characters into eight types [8]:
+
+- **Principled Good** -- saves everyone, never loots, never betrays, lets enemies escape
+- **Principled Cold-blooded** -- saves only for profit, seeks revenge when favorable
+- **Principled Evil** -- kills and robs the distressed, pursues revenge relentlessly, never betrays friends
+- **Neutral Good** -- saves nearby allies, avoids combat, forgives stray bullets
+- **Neutral Cold-blooded** -- saves for profit, revenge when favorable
+- **Neutral Evil** -- kills for profit, betrays friends for substantial gain, uses PDA signals as traps
+- **Unprincipled Good** -- sometimes saves, occasionally betrays, low commitment
+- **Unprincipled Cold-blooded** -- saves for profit, betrays for significant gain
+
+GSC designed faction-level personality as a first-class concept:
+
+> "Each faction possesses a distinct 'personality' (either pre-assigned or randomly generated); based on this personality, the faction determines which other factions it will initially treat as allies or enemies."
+> -- GSC AI design documents [8]
+
+And personality-driven consequence selection for SOS signals:
+
+> "Based on distance, potential gain, and the character's personality, a course of action is selected: (a) Ignore the signal. (b) Kill and loot the sender. (c) Rescue the sender."
+> -- GSC AI design documents [8]
+
+Character personality determined priorities:
+
+> "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)."
+> -- GSC AI design documents [8]
+
+AlifePlus implements GSC's PersonalAggressiveness, PersonalGreed, PersonalIntelligence, PersonalEyeRange, and PersonalRelation at faction level, plus a discipline axis derived from GSC's principled/unprincipled moral classification. Six disposition fields with per-faction multipliers replace random chance gates. The decision is deterministic given the faction and the event -- different factions respond differently to the same cause, exactly as GSC intended.
+
+A robbery/checkpoint scheme (`sr_robbery`) with PDA warnings, weapon-down checks, and faction-specific confiscation probabilities was also designed and documented [8] but never fully connected to the simulation layer.
+
+The six disposition fields and what they gate:
+
+| Field | GSC source | Consequences |
+|-------|-----------|--------------|
+| aggression | PersonalAggressiveness | revenge, elite hunt, wounded hunt, harvest hunt |
+| greed | PersonalGreed | stash loot, stash ambush, stash fill, massacre scavenge |
+| intelligence | PersonalIntelligence | flee from squad kill, flee from base kill |
+| perception | PersonalEyeRange | massacre investigate, area conquer |
+| relation | PersonalRelation | base kill support, wounded help |
+| discipline | Principled/unprincipled moral axis | all 16 needs consequences |
+
+`perception` maps to GSC's `PersonalEyeRange` -- renamed for readability. The function is identical: how likely the NPC is to notice opportunities and threats in their surroundings.
+
+---
+
 ## Sources
 
 - [1] Dmitriy Iassenev (AI programmer, SoC/CS), Game Developer (2008)
@@ -253,3 +310,4 @@ NPCs consume inventory items on arrival -food, cigarettes, drinks, medkits, or a
   https://github.com/OpenXRay/xray-16
 - [7] xray-monolith (Anomaly engine, modded exes)
   https://github.com/themrdemonized/xray-monolith
+- [8] GSC Game World internal AI design documents (pre-release design phase, circa 2002-2006). Ai.rar, Help.rar, Tools.rar -- NPC personality system, faction personality concept, offline AI FSM, behavioral probability lookup tables (Expediency, EnemyRetreatProbability, EnemyDetectProbability), sr_robbery scheme, trader system design. Obtained through private STALKER community channels.

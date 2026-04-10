@@ -9,6 +9,8 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
+local CATEGORY = ap_ext_const.CATEGORY
+
 local cfg = ap_core_mcm.cfg
 
 local function _move_actor_chasers(squads, moved)
@@ -74,7 +76,7 @@ local function _handler(event_data)
         if not ap_ext_const.community_stalker[event_data.victim_faction] then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction }
         end
-        if not xmath.chance(cfg.consequence_squadkill_revenge_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_squadkill_revenge_chance } end
+        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.AGGRESSION) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0

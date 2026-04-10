@@ -11,6 +11,7 @@ local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
 local NEEDS_SECTIONS = ap_ext_const.NEEDS_SECTIONS
+local CATEGORY = ap_ext_const.CATEGORY
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 
 local cfg = ap_core_mcm.cfg
@@ -177,14 +178,13 @@ end
 --- Build consequence handler closure for one config row
 local function _make_handler(entry)
     local enabled_key = "consequence_" .. entry.name .. "_enabled"
-    local chance_key = "consequence_" .. entry.name .. "_chance"
 
     return function(event_data)
         if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
-            if not xmath.chance(cfg[chance_key]) then return { code = RESULT.CHANCE_NEXT, chance = cfg[chance_key] } end
+            if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.DISCIPLINE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end

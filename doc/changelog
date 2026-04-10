@@ -6,10 +6,11 @@ next
     Added: automatic save data migrations on version upgrade (orphaned squads released, deprecated keys cleaned)
     Changed: consequence dispatch uses round-robin instead of fixed priority. Equal first-shot distribution across all handlers in a chain.
     Removed: priority field from consequence registration. All consequences in a chain are equal peers.
-    Removed: per-consequence chance gates (xmath.chance). Rate limiters (per-consequence 2/60s, global 5/60s) are the sole throttle. Consequence firing is deterministic given world state, not RNG.
-    Removed: MCM chance sliders for all 30 consequences. PDA chance sliders remain.
+    Removed: per-consequence chance gates (xmath.chance) and all MCM chance sliders (30 keys). PDA chance sliders remain.
+    Added: faction disposition system (6 behavioral axes, 13 factions). Consequence handlers check faction disposition instead of rolling dice. No RNG in the consequence path.
+    Removed: RESULT.CHANCE_NEXT from result codes.
   Performance:
-    Changed: radiant pipeline rejects ~99% of calls at first gate (os.clock timestamp, near-zero cost)
+    Changed: radiant pipeline PACER gate uses os.clock timestamp as first filter, skips all downstream evaluation when interval not elapsed
     Changed: on-map vs off-map detection uses squad.online field (zero luabind)
     Changed: global rate limiting reworked - PACER gate replaces radiant cooldown, sliding window limits per-consequence and globally (MCM configurable)
     Changed: protection gate string allocation guarded behind debug level

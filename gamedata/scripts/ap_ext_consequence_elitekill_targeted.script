@@ -9,6 +9,8 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
+local CATEGORY = ap_ext_const.CATEGORY
+
 local cfg = ap_core_mcm.cfg
 
 local function _move_actor_chasers(squads, moved)
@@ -109,7 +111,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.ELITEKILL_TARGETED, function()
         if not cfg.consequence_elitekill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_elitekill_targeted_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_elitekill_targeted_chance } end
+        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.AGGRESSION) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local killer_id, level_id = event_data.killer_id, event_data.level_id
         local victim_name = event_data.name or "unknown"

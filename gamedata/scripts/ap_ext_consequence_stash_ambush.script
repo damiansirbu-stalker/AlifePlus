@@ -6,6 +6,8 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
+local CATEGORY = ap_ext_const.CATEGORY
+
 local cfg = ap_core_mcm.cfg
 local community_ambusher = ap_ext_const.community_ambusher
 
@@ -14,7 +16,7 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.STASH_AMBUSH, function()
         if not cfg.consequence_stash_ambush_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not community_ambusher[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.community } end
-        if not xmath.chance(cfg.consequence_stash_ambush_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_stash_ambush_chance } end
+        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.GREED) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
         if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end

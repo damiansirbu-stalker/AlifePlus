@@ -7,6 +7,8 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
+local CATEGORY = ap_ext_const.CATEGORY
+
 local cfg = ap_core_mcm.cfg
 
 local function _get_faction(npc_id, is_player)
@@ -20,7 +22,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.WOUNDED_HELP, function()
         if not cfg.consequence_wounded_help_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not xmath.chance(cfg.consequence_wounded_help_chance) then return { code = RESULT.CHANCE_NEXT, chance = cfg.consequence_wounded_help_chance } end
+        if not ap_ext_object_mutator.check_disposition(event_data.community, CATEGORY.RELATION) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_DISPOSITION } end
 
         local npc_id, is_player = event_data.npc_id, event_data.is_player
         local position, level_id = event_data.position, event_data.level_id

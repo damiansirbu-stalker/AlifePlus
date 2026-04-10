@@ -1,7 +1,6 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- GitHub: https://github.com/damiansirbu-stalker/AlifePlus
+- Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md
-- Design manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 
 ! Please use the RESET button in MCM when updating to a new version !
@@ -10,7 +9,7 @@ You are not special.
 
 AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulation layer that replaces passive A-Life with event-driven emergent behavior. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects that persist whether the player is present or not. Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs - whether you are there or not. Everything that happens to the player happens to NPCs and mutants alike. Nothing is random - every action traces back to a cause in the simulation.
 
-Inspired by Roadside Picnic and the original STALKER vision: the Zone runs on its own rules, and the actor is just another entity inside it.
+Inspired by Roadside Picnic, the original STALKER vision, and GSC's unshipped AI design documents: the Zone runs on its own rules, and the actor is just another entity inside it. Factions behave according to their identity -- Duty holds ground, bandits ambush and loot, ecologists flee, monolith never retreats. These are not random dice rolls but deterministic behavioral profiles implementing GSC's original PersonalAggressiveness, PersonalGreed, PersonalIntelligence, PersonalEyeRange, and PersonalRelation axes at faction level, plus a discipline axis from their principled/unprincipled moral classification. See the manifesto for proof and source references.
 
 Every action has a systemic cause. Nothing moves without a reason. The simulation runs whether you are there or not.
 
