@@ -187,12 +187,13 @@ function kit()
         if not ini_sys:section_exist(item.sec) then
             ap_core_debug.debug("[TEST] kit SKIP missing section=%s", item.sec)
             skipped = skipped + 1
-        else
-            for n = 1, item.count do
-                alife_create_item(item.sec, alife():object(id))
-            end
-            spawned = spawned + 1
+            goto continue
         end
+        for idx = 1, item.count do
+            xobject.create_item(item.sec, id)
+        end
+        spawned = spawned + 1
+        ::continue::
     end
     _tip(string_format("Kit: %d items, %d skipped", spawned, skipped))
     ap_core_debug.debug("[TEST] kit OK spawned=%d skipped=%d", spawned, skipped)

@@ -1,0 +1,176 @@
+--- ap_ext_consequence_stash: Config-table-driven consequences for stash interactions
+
+local table_concat, random = table.concat, math.random
+
+local CAUSE = ap_core_const.CAUSE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
+local TRACE = ap_core_const.TRACE
+local PERSONALITY = ap_ext_const.PERSONALITY
+
+local cfg = ap_core_mcm.cfg
+local community_stalker = ap_ext_const.community_stalker
+local community_ambusher = ap_ext_const.community_ambusher
+
+local LOOT_PROTECT_SET = {
+    ["toolkit_1"] = true, ["toolkit_2"] = true, ["toolkit_3"] = true,
+    ["toolkit_p"] = true, ["toolkit_s"] = true, ["toolkit_r5"] = true, ["toolkit_r7"] = true,
+    ["light_repair_kit"] = true, ["medium_repair_kit"] = true, ["heavy_repair_kit"] = true,
+    ["exo_repair_kit"] = true, ["helmet_repair_kit"] = true,
+    ["itm_gunsmith_toolkit"] = true, ["itm_outfit_toolkit"] = true,
+    ["itm_drugkit"] = true, ["itm_ammokit"] = true,
+    ["itm_basickit"] = true, ["itm_advancedkit"] = true, ["itm_expertkit"] = true,
+}
+
+local CONFIGS = {
+    { consequence = CONSEQUENCE.STASH_LOOT, name = "stash_loot",
+        community = community_stalker, exclude_at_base = true,
+        arrive_fn = "loot",
+        personality = { PERSONALITY.GREED } },
+    { consequence = CONSEQUENCE.STASH_AMBUSH, name = "stash_ambush",
+        community = community_ambusher, exclude_at_base = true,
+        personality = { PERSONALITY.GREED } },
+    { consequence = CONSEQUENCE.STASH_FILL, name = "stash_fill",
+        community = community_stalker, require_empty = true,
+        arrive_fn = "fill",
+        personality = { PERSONALITY.GREED } },
+}
+
+local function _is_protected_stash(stash_id)
+    local items = xstash.get_stash_items(stash_id)
+    if not items then return false end
+    for i = 1, #items do
+        if LOOT_PROTECT_SET[items[i]] then return true end
+    end
+    return false
+end
+
+local function _pick_random_items(count)
+    local pool = ap_ext_const.stash_fill_items
+    local items = {}
+    for i = 1, count do
+        items[i] = pool[random(#pool)]
+    end
+    return items
+end
+
+local function _arrive_loot(squad, stash_id)
+    if xstash.is_stash_looted(stash_id) then
+        ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_loot: stash=%d already looted", stash_id)
+        return
+    end
+    if cfg.consequence_stash_loot_protect_toolkits and _is_protected_stash(stash_id) then
+        ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_loot: stash=%d protected", stash_id)
+        return
+    end
+    ap_core_debug.observe(nil, ACTION.COMPLETE_STASH_LOOT, function(trace)
+        local items = ap_core_debug.observe(trace, ACTION.LOOT_STASH, function()
+            return xstash.loot_stash(stash_id)
+        end)
+        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
+            local notable = xstash.filter_notable_stash_items(items, 2)
+            if #notable == 0 then return { code = TRACE.NO_ITEMS } end
+            local names = {}
+            for i = 1, #notable do names[i] = ui_item.get_sec_name(notable[i]) end
+            return ap_core_utils.send_pda(cfg.consequence_stash_loot_pda_chance,
+                "text_pda_consequence_stash_loot_success", { items = table_concat(names, ", ") })
+        end)
+        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
+    end)
+end
+
+local function _arrive_fill(_squad, stash_id, items)
+    if not xstash.fill_stash(stash_id, items, false) then
+        ap_core_debug.warn("[CONSEQUENCE.STASH] arrive_fill: stash=%d failed", stash_id)
+        return
+    end
+    ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_fill: stash=%d items=%d", stash_id, #items)
+    ap_core_debug.observe(nil, ACTION.SEND_PDA, function()
+        return ap_core_utils.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
+    end)
+end
+
+local function _on_arrive(squad, args)
+    if not args then return end
+    if args.arrive_fn == "loot" then return _arrive_loot(squad, args.stash_id) end
+    if args.arrive_fn == "fill" then return _arrive_fill(squad, args.stash_id, args.items) end
+end
+
+--- Build arrive args for script_squad based on config arrive_fn
+-- @complexity O(1) | 0 luabind
+local function _build_arrive_args(arrive_fn, stash_id)
+    if arrive_fn == "loot" then
+        return { arrive_fn = "loot", stash_id = stash_id }
+    end
+    if arrive_fn == "fill" then
+        return { arrive_fn = "fill", stash_id = stash_id,
+            items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items)) }
+    end
+    return nil
+end
+
+local function _make_handler(entry)
+    local enabled_key = "consequence_" .. entry.name .. "_enabled"
+    local rush_key = "consequence_" .. entry.name .. "_rush"
+    local pda_key = "consequence_" .. entry.name .. "_pda_chance"
+
+    return function(event_data)
+        local trace = event_data._trace
+        return ap_core_debug.observe(trace, entry.consequence, function()
+            if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
+            if not entry.community[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.community } end
+
+            local squad = xobject.se(event_data.squad_id)
+            if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+            if entry.exclude_at_base and xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+
+            local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
+            if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end
+            if entry.require_empty and xstash.get_stash_items(stash_id) then return { code = RESULT.RULES_NEXT, reason = REASON.STASH_NOT_EMPTY } end
+
+            local smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id })
+            if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+
+            local arrive_args = _build_arrive_args(entry.arrive_fn, stash_id)
+            local res
+            ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+                res = ap_core_squad.script_squad(squad, smart, {
+                    rush = cfg[rush_key],
+                    on_arrive = arrive_args and entry.consequence or nil,
+                    on_arrive_args = arrive_args,
+                })
+                return res
+            end)
+            if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
+            ap_core_squad.add_marked_squad(event_data.squad_id, entry.consequence)
+
+            if not entry.arrive_fn then
+                ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
+                    return ap_core_utils.send_pda(cfg[pda_key], "text_pda_consequence_" .. entry.name)
+                end)
+            end
+
+            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, stash_id = stash_id }
+        end)
+    end
+end
+
+local function _make_condition(enabled_key)
+    return function() return cfg[enabled_key] end
+end
+
+function on_game_start()
+    for i = 1, #CONFIGS do
+        local entry = CONFIGS[i]
+        local enabled_key = "consequence_" .. entry.name .. "_enabled"
+        ap_core_consumer.register(entry.consequence, {
+            event = CAUSE.STASH,
+            condition = _make_condition(enabled_key),
+            on_arrive = entry.arrive_fn and _on_arrive or nil,
+            personality = entry.personality,
+        }, _make_handler(entry))
+    end
+    ap_core_debug.info("[CONSEQUENCE.STASH] Initialized: %d consequences", #CONFIGS)
+end

@@ -24,9 +24,10 @@ local _always_on_map = {
     [CALLBACK.X_NPC_MEDKIT_USE] = true,
 }
 
---- Weighted fair share counters for on-map vs off-map ratio enforcement
-local _on_count = 0
-local _off_count = 0
+--- Weighted fair share counters for on-map vs off-map ratio enforcement (separate per pipeline)
+--- Tables used as mutable ref containers: [1] = count. Allocated once, no GC pressure.
+local _radiant_ct = { on = 0, off = 0 }
+local _reactive_ct = { on = 0, off = 0 }
 
 --- PACER state: next allowed radiant evaluation (os.clock timestamp)
 local _next_radiant = 0
@@ -49,22 +50,24 @@ local _reactive_published = 0
 --- GATE: RATIO (radiant 3/5, reactive 2/3)
 --- @complexity O(1) | 0 luabind
 --- @param on_map boolean true = on-map, false = off-map
+--- @param on_map boolean true = on-map, false = off-map
+--- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
 --- @return boolean true = allowed, false = blocked
-local function _alife_ratio_gate(on_map)
-    if _on_count + _off_count >= 32768 then
-        _on_count = 0
-        _off_count = 0
+local function _alife_ratio_gate(on_map, ct)
+    if ct.on + ct.off >= 32768 then
+        ct.on = 0
+        ct.off = 0
     end
     local gs = cfg.alife_ratio
     if gs == 0 then return true end
 
     if gs > 0 then
         if on_map then
-            _on_count = _on_count + 1
+            ct.on = ct.on + 1
             return true
         end
-        if _off_count * gs <= (10 - gs) * _on_count then
-            _off_count = _off_count + 1
+        if ct.off * gs <= (10 - gs) * ct.on then
+            ct.off = ct.off + 1
             return true
         end
         return false
@@ -72,11 +75,11 @@ local function _alife_ratio_gate(on_map)
 
     local ags = -gs
     if not on_map then
-        _off_count = _off_count + 1
+        ct.off = ct.off + 1
         return true
     end
-    if _on_count * ags <= (10 - ags) * _off_count then
-        _on_count = _on_count + 1
+    if ct.on * ags <= (10 - ags) * ct.off then
+        ct.on = ct.on + 1
         return true
     end
     return false
@@ -236,10 +239,10 @@ local function _on_radiant_update(squad)
     if not _scripted_gate(squad_id) then return end
     if debug then _radiant_scripted = _radiant_scripted + 1 end
     local on_map = squad.online
-    if not _alife_ratio_gate(on_map) then
+    if not _alife_ratio_gate(on_map, _radiant_ct) then
         if debug then
             ap_core_debug.debug("[PRODUCER.RADIANT] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
-                tostring(on_map), cfg.alife_ratio, _on_count, _off_count, squad_id)
+                tostring(on_map), cfg.alife_ratio, _radiant_ct.on, _radiant_ct.off, squad_id)
         end
         return
     end
@@ -247,6 +250,25 @@ local function _on_radiant_update(squad)
     if not _protection_gate(squad) then _next_radiant = clock() + PACER_RETRY_INTERVAL return end
     if debug then _radiant_protection = _radiant_protection + 1 end
     _eval_handlers(_radiant_handlers, on_map, squad_id, squad)
+end
+
+--- Resolve on-map status for a reactive callback from known-online callbacks or squad.online
+-- @complexity O(1) | 0 luabind
+local function _resolve_on_map(callback_type, first_arg)
+    local on_map = _always_on_map[callback_type]
+    if on_map ~= nil then return on_map end
+    if first_arg then return first_arg.online end
+    return nil
+end
+
+--- Extract squad_id from first callback arg when applicable
+-- @complexity O(1) | 0 luabind
+local function _resolve_squad_id(callback_type, first_arg)
+    if _always_on_map[callback_type] then return nil end
+    if type(first_arg) ~= "userdata" then return nil end
+    local id = first_arg.id
+    if type(id) == "number" then return id end
+    return nil
 end
 
 --- Reactive entry point (~6.5/sec)
@@ -261,26 +283,17 @@ local function _dispatch_reactive(callback_type, ...)
     if debug then _reactive_pacer = _reactive_pacer + 1 end
 
     local first_arg = select(1, ...)
-    local on_map = _always_on_map[callback_type]
-    if on_map == nil and first_arg then
-        on_map = first_arg.online
-    end
-    if on_map ~= nil and not _alife_ratio_gate(on_map) then
+    local on_map = _resolve_on_map(callback_type, first_arg)
+    if on_map ~= nil and not _alife_ratio_gate(on_map, _reactive_ct) then
         if debug then
             ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d sq=%s",
-                callback_type, cfg.alife_ratio, _on_count, _off_count, type(first_arg) == "userdata" and first_arg.id or "?")
+                callback_type, cfg.alife_ratio, _reactive_ct.on, _reactive_ct.off, type(first_arg) == "userdata" and first_arg.id or "?")
         end
         return
     end
     if debug then _reactive_ratio = _reactive_ratio + 1 end
 
-    local squad_id
-    if not _always_on_map[callback_type] and type(first_arg) == "userdata" then
-        local id = first_arg.id
-        if type(id) == "number" then squad_id = id end
-    end
-
-    _eval_handlers(handlers, on_map, squad_id, ...)
+    _eval_handlers(handlers, on_map, _resolve_squad_id(callback_type, first_arg), ...)
 end
 
 local function _create_reactive_dispatcher(callback)
@@ -347,8 +360,10 @@ end
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}
-    _on_count = 0
-    _off_count = 0
+    _radiant_ct.on = 0
+    _radiant_ct.off = 0
+    _reactive_ct.on = 0
+    _reactive_ct.off = 0
     _next_radiant = 0
     _pacer_rejected = 0
     _pacer_accepted = 0

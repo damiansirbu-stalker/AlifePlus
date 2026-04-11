@@ -81,6 +81,16 @@ local function _run_handler(entry, event_data)
     return entry.handler(event_data)
 end
 
+--- Apply rate limit accounting on success and return true if the chain should stop
+-- @complexity O(1) | 0 luabind
+local function _apply_result(code, entry_name, is_radiant)
+    if code == RESULT.OK_NEXT or code == RESULT.OK_STOP then
+        if is_radiant then ap_core_limiter.increment_global_consequence_counter() end
+        ap_core_limiter.increment_consequence_counter(entry_name)
+    end
+    return code == RESULT.OK_STOP or code == RESULT.ERROR_STOP
+end
+
 local function _process(event_type, event_data)
     local consequences = _registry[event_type]
     if not consequences then return end
@@ -112,13 +122,7 @@ local function _process(event_type, event_data)
 
         local result = _run_handler(entry, event_data)
         if not result then goto continue end
-
-        local code = result.code
-        if code == RESULT.OK_NEXT or code == RESULT.OK_STOP then
-            if is_radiant then ap_core_limiter.increment_global_consequence_counter() end
-            ap_core_limiter.increment_consequence_counter(entry.name)
-        end
-        if code == RESULT.OK_STOP or code == RESULT.ERROR_STOP then break end
+        if _apply_result(result.code, entry.name, is_radiant) then break end
 
         ::continue::
     end
