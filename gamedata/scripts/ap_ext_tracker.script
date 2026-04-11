@@ -1,34 +1,34 @@
---- ap_ext_tracker: Kill registry, elite system, stalker needs DTO
+--- ap_ext_tracker: Kill registry, alpha system, stalker needs DTO
 local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_core_const.CALLBACK
 local TRACE = ap_core_const.TRACE
-local ELITE_MAX_LEVEL = 10
+local ALPHA_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_ext_const.NEED_FIELDS
 
 local _ap_killers = {}
-local _ap_elites = {}
+local _ap_alphas = {}
 local _last_victim_id
-local _ap_elite_dead
+local _ap_alpha_dead
 local cfg = ap_core_mcm.cfg
 local _ap_stalker_needs = {}
 
 local function _on_save_state(m_data)
     m_data.ap_ext_tracker = {
         killers = _ap_killers,
-        elites = _ap_elites,
+        alphas = _ap_alphas,
         stalker_needs = _ap_stalker_needs,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[TRACKER] save: killers=%d elites=%d needs=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_elites), xtable.count(_ap_stalker_needs))
+        ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs))
     end
 end
 
-local function _validate_elites(loaded)
+local function _validate_alphas(loaded)
     local result = {}
     for id, data in pairs(loaded) do
         if data.level and data.kills then result[id] = data end
@@ -50,16 +50,16 @@ local function _validate_stalker_needs(loaded)
 end
 
 local function _on_load_state(m_data)
-    _ap_elite_dead:clear()
+    _ap_alpha_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
     _ap_killers = saved.killers or {}
-    _ap_elites = _validate_elites(saved.elites or {})
+    _ap_alphas = _validate_alphas(saved.alphas or {})
     _ap_stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
     if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
-    if not saved.elites then ap_core_debug.warn("[TRACKER] load: missing elites, fresh init") end
+    if not saved.alphas then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[TRACKER] load: killers=%d elites=%d needs=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_elites), xtable.count(_ap_stalker_needs))
+        ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d needs=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs))
     end
 end
 
@@ -99,90 +99,80 @@ function projected_kill_count(killer_id, victim_id)
     return count
 end
 
---- Compute elite level from kill count (0 if below threshold)
+--- Compute alpha level from kill count (0 if below threshold)
 function compute_level(kills)
-    local kpl = cfg.elite_kills_per_level
+    local kpl = cfg.alpha_kills_per_level
     if not kills or kills < kpl then return 0 end
-    return math_min(ELITE_MAX_LEVEL, math_floor(kills / kpl))
+    return math_min(ALPHA_MAX_LEVEL, math_floor(kills / kpl))
 end
 
---- Check if entity is an elite (returns true even if dead, for cause queries)
-function is_elite(id)
-    return id and (_ap_elites[id] ~= nil or _ap_elite_dead:has(id))
+--- Check if entity is an alpha (returns true even if dead, for cause queries)
+function is_alpha(id)
+    return id and (_ap_alphas[id] ~= nil or _ap_alpha_dead:has(id))
 end
 
---- Get elite data (returns data even if dead, for cause queries)
-function get_elite(id)
+--- Get alpha data (returns data even if dead, for cause queries)
+function get_alpha(id)
     if not id then return nil end
-    return _ap_elites[id] or _ap_elite_dead:get(id)
+    return _ap_alphas[id] or _ap_alpha_dead:get(id)
 end
 
---- Get elite level for entity (0 if not elite)
-function get_elite_level(id)
+--- Get alpha level for entity (0 if not alpha)
+function get_alpha_level(id)
     if not id then return 0 end
-    local data = _ap_elites[id]
+    local data = _ap_alphas[id]
     if data then return data.level end
-    local dead_data = _ap_elite_dead:get(id)
+    local dead_data = _ap_alpha_dead:get(id)
     if dead_data then return dead_data.level end
     return 0
 end
 
---- Update elite status (computes level from kills, upserts entry)
-function update_elite(id, data)
+--- Update alpha status (computes level from kills, upserts entry)
+function update_alpha(id, data)
     if not id or not data or not data.kills then return nil end
     local level = compute_level(data.kills)
     if level < 1 then return nil end
-    local existing = _ap_elites[id]
-    local name = data.name or (existing and existing.name) or "Elite"
+    local existing = _ap_alphas[id]
+    local name = data.name or (existing and existing.name) or "Alpha"
     local level_id = data.level_id or (existing and existing.level_id)
     if not level_id then
-        ap_core_debug.warn("[TRACKER] update_elite: missing level_id for id=%d", id)
+        ap_core_debug.warn("[TRACKER] update_alpha: missing level_id for id=%d", id)
         return nil
     end
-    local is_stalker = data.is_stalker
-    if is_stalker == nil then is_stalker = (existing and existing.is_stalker) or false end
-    _ap_elites[id] = { level = level, kills = data.kills, level_id = level_id, name = name, is_stalker = is_stalker }
-    ap_core_debug.debug("[TRACKER] update_elite: id=%d kills=%d level=%d name=%s", id, data.kills, level, name)
-    return _ap_elites[id]
+    _ap_alphas[id] = { level = level, kills = data.kills, level_id = level_id, name = name }
+    ap_core_debug.debug("[TRACKER] update_alpha: id=%d kills=%d level=%d name=%s", id, data.kills, level, name)
+    return _ap_alphas[id]
 end
 
---- Move elite to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC)
-local function _unregister_elite(id)
+--- Move alpha to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC)
+local function _unregister_alpha(id)
     if not id then return false end
-    local data = _ap_elites[id]
+    local data = _ap_alphas[id]
     if not data then return false end
-    _ap_elite_dead:set(id, data)
-    _ap_elites[id] = nil
-    ap_core_debug.debug("[TRACKER] _unregister_elite: name=%s id=%d level=%d (dead)", data.name or "?", id, data.level or 0)
+    _ap_alpha_dead:set(id, data)
+    _ap_alphas[id] = nil
+    ap_ext_object_mutator.clear_alpha_damage(id)
+    ap_core_debug.debug("[TRACKER] _unregister_alpha: name=%s id=%d level=%d (dead)", data.name or "?", id, data.level or 0)
     return true
 end
 
---- Get all alive elites as {id = data}
-function get_elites()
+--- Get all alive alphas as {id = data}
+function get_alphas()
     local result = {}
-    for id, data in pairs(_ap_elites) do result[id] = data end
+    for id, data in pairs(_ap_alphas) do result[id] = data end
     return result
 end
 
---- Get elites on specific level as {id = data}
-function get_elites_on_level(level_id)
-    if not level_id then return {} end
-    local result = {}
-    for id, data in pairs(_ap_elites) do
-        if data.level_id == level_id then result[id] = data end
-    end
-    return result
-end
 
 --- Unregister entity from all tracking (on death or unregister)
 local function _unregister_entity(id)
     if not id then return end
     local had_kills = _ap_killers[id] ~= nil
-    local had_elite = _unregister_elite(id)
+    local had_alpha = _unregister_alpha(id)
     _ap_killers[id] = nil
-    if had_kills or had_elite then
-        ap_core_debug.debug("[TRACKER] _unregister_entity: id=%d kills=%s elite=%s",
-            id, tostring(had_kills), tostring(had_elite))
+    if had_kills or had_alpha then
+        ap_core_debug.debug("[TRACKER] _unregister_entity: id=%d kills=%s alpha=%s",
+            id, tostring(had_kills), tostring(had_alpha))
     end
 end
 
@@ -250,7 +240,7 @@ local function _on_squad_npc_death(squad, npc, killer)
 end
 
 function on_game_start()
-    _ap_elite_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
+    _ap_alpha_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

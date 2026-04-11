@@ -4,18 +4,18 @@ local type, RegisterScriptCallback = type, RegisterScriptCallback
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
-    distributor_interval_sec = 12,
+    distributor_interval_sec = 10,
     allow_external_ownership = true,
     cause_max_events = 10,
     consequence_max_events = 2,
     global_consequence_max_events = 5,
 
-    -- Cause: Elite
-    cause_elite_enabled = true,
-    elite_kills_per_level = 2,
+    -- Cause: Alpha
+    cause_alpha_enabled = true,
+    alpha_kills_per_level = 3,
 
-    -- Cause: Elitekill
-    cause_elitekill_enabled = true,
+    -- Cause: Alphakill
+    cause_alphakill_enabled = true,
 
     -- Cause: Massacre
     cause_massacre_enabled = true,
@@ -64,30 +64,29 @@ defaults = {
     cause_area_enabled = true,
     cause_area_smart_cooldown_sec = 120,
 
-    -- Consequence: Elite Promote
-    consequence_elite_promote_enabled = true,
-    consequence_elite_promote_pda_chance = 20,
-    max_elites = 40,
+    -- Consequence: Alpha Promote
+    consequence_alpha_promote_enabled = true,
+    consequence_alpha_promote_pda_chance = 20,
+    max_alphas = 40,
 
-    -- Elite Buffs
-    rank_boost_enabled = true,
-    elite_grenade_restock_enabled = true,
-    elite_grenade_restock_cooldown_hours = 4,
-    elite_ap_ammo_enabled = true,
-    elite_ap_ammo_cooldown_hours = 4,
+    -- Consequence: Alphakill Targeted
+    consequence_alphakill_targeted_enabled = true,
+    consequence_alphakill_targeted_rush = true,
+    consequence_alphakill_targeted_max_squads = 3,
+    consequence_alphakill_targeted_max_chases = 5,
+    consequence_alphakill_targeted_pda_chance = 20,
 
-    -- Consequence: Elitekill Bounty
-    consequence_elitekill_bounty_enabled = true,
-    consequence_elitekill_bounty_base = 1000,
-    consequence_elitekill_bounty_max = 20000,
-    consequence_elitekill_bounty_pda_chance = 20,
+    -- Mutators: Alpha
+    alpha_damage_increase_enabled = true,
+    alpha_damage_increase_per_level = 0.05,
+    alpha_damage_reduction_enabled = true,
+    alpha_damage_reduction_per_level = 0.05,
 
-    -- Consequence: Elitekill Targeted
-    consequence_elitekill_targeted_enabled = true,
-    consequence_elitekill_targeted_rush = true,
-    consequence_elitekill_targeted_max_squads = 3,
-    consequence_elitekill_targeted_max_chases = 5,
-    consequence_elitekill_targeted_pda_chance = 20,
+    -- Mutators: Stalker Rank (veteran+)
+    rank_damage_increase_enabled = true,
+    rank_damage_increase_mult = 0.15,
+    rank_damage_reduction_enabled = true,
+    rank_damage_reduction_mult = 0.15,
 
     -- Consequence: Massacre Scavenge
     consequence_massacre_scavenge_enabled = true,
@@ -268,9 +267,9 @@ local _key_to_tab = {
     cause_max_events = "general",
     consequence_max_events = "general",
     global_consequence_max_events = "general",
-    cause_elite_enabled = "causes/elite",
-    elite_kills_per_level = "causes/elite",
-    cause_elitekill_enabled = "causes/elitekill",
+    cause_alpha_enabled = "causes/alpha",
+    alpha_kills_per_level = "causes/alpha",
+    cause_alphakill_enabled = "causes/alphakill",
     cause_massacre_enabled = "causes/massacre",
     cause_massacre_threshold = "causes/massacre",
     cause_massacre_decay_time = "causes/massacre",
@@ -302,20 +301,20 @@ local _key_to_tab = {
     cause_social_threshold = "causes/needs",
     cause_area_enabled = "causes/area",
     cause_area_smart_cooldown_sec = "causes/area",
-    consequence_elite_promote_enabled = "consequences/elite_promote",
-    max_elites = "consequences/elite_promote",
-    rank_boost_enabled = "consequences/elite_promote",
-    elite_grenade_restock_enabled = "consequences/elite_promote",
-    elite_grenade_restock_cooldown_hours = "consequences/elite_promote",
-    elite_ap_ammo_enabled = "consequences/elite_promote",
-    elite_ap_ammo_cooldown_hours = "consequences/elite_promote",
-    consequence_elitekill_bounty_enabled = "consequences/elitekill_bounty",
-    consequence_elitekill_bounty_base = "consequences/elitekill_bounty",
-    consequence_elitekill_bounty_max = "consequences/elitekill_bounty",
-    consequence_elitekill_targeted_enabled = "consequences/elitekill_targeted",
-    consequence_elitekill_targeted_rush = "consequences/elitekill_targeted",
-    consequence_elitekill_targeted_max_squads = "consequences/elitekill_targeted",
-    consequence_elitekill_targeted_max_chases = "consequences/elitekill_targeted",
+    consequence_alpha_promote_enabled = "consequences/alpha_promote",
+    max_alphas = "consequences/alpha_promote",
+    consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
+    consequence_alphakill_targeted_rush = "consequences/alphakill_targeted",
+    consequence_alphakill_targeted_max_squads = "consequences/alphakill_targeted",
+    consequence_alphakill_targeted_max_chases = "consequences/alphakill_targeted",
+    alpha_damage_increase_enabled = "mutators/alpha",
+    alpha_damage_increase_per_level = "mutators/alpha",
+    alpha_damage_reduction_enabled = "mutators/alpha",
+    alpha_damage_reduction_per_level = "mutators/alpha",
+    rank_damage_increase_enabled = "mutators/rank",
+    rank_damage_increase_mult = "mutators/rank",
+    rank_damage_reduction_enabled = "mutators/rank",
+    rank_damage_reduction_mult = "mutators/rank",
     consequence_massacre_scavenge_enabled = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_rush = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_max_squads = "consequences/massacre_scavenge",
@@ -396,9 +395,8 @@ local _key_to_tab = {
     consequence_social_base_enabled = "consequences/social_base",
     consequence_social_base_rush = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
-    consequence_elite_promote_pda_chance = "consequences/elite_promote",
-    consequence_elitekill_bounty_pda_chance = "consequences/elitekill_bounty",
-    consequence_elitekill_targeted_pda_chance = "consequences/elitekill_targeted",
+    consequence_alpha_promote_pda_chance = "consequences/alpha_promote",
+    consequence_alphakill_targeted_pda_chance = "consequences/alphakill_targeted",
     consequence_massacre_scavenge_pda_chance = "consequences/massacre_scavenge",
     consequence_massacre_investigate_pda_chance = "consequences/massacre_investigate",
     consequence_stash_ambush_pda_chance = "consequences/stash_ambush",
@@ -504,22 +502,22 @@ function on_mcm_load()
                 id = "causes",
                 gr = {
                     {
-                        id = "elite",
+                        id = "alpha",
                         sh = true,
                         gr = {
-                            _slide("ui_mcm_ap_causes_elite_title"),
-                            _desc("ui_mcm_ap_causes_elite_desc"),
-                            _check("cause_elite_enabled"),
-                            _track("elite_kills_per_level", 1, 10, 1),
+                            _slide("ui_mcm_ap_causes_alpha_title"),
+                            _desc("ui_mcm_ap_causes_alpha_desc"),
+                            _check("cause_alpha_enabled"),
+                            _track("alpha_kills_per_level", 1, 10, 1),
                         },
                     },
                     {
-                        id = "elitekill",
+                        id = "alphakill",
                         sh = true,
                         gr = {
-                            _slide("ui_mcm_ap_causes_elitekill_title"),
-                            _desc("ui_mcm_ap_causes_elitekill_desc"),
-                            _check("cause_elitekill_enabled"),
+                            _slide("ui_mcm_ap_causes_alphakill_title"),
+                            _desc("ui_mcm_ap_causes_alphakill_desc"),
+                            _check("cause_alphakill_enabled"),
                         },
                     },
                     {
@@ -625,44 +623,27 @@ function on_mcm_load()
                 id = "consequences",
                 gr = {
                     {
-                        id = "elite_promote",
+                        id = "alpha_promote",
                         sh = true,
                         gr = {
-                            _slide("ui_mcm_ap_consequences_elite_promote_title"),
-                            _desc("ui_mcm_ap_consequences_elite_promote_desc"),
-                            _check("consequence_elite_promote_enabled"),
-                            _track("max_elites", 0, 300, 5),
-                            _track("consequence_elite_promote_pda_chance", 0, 100, 5),
-                            _check("rank_boost_enabled"),
-                            _check("elite_grenade_restock_enabled"),
-                            _track("elite_grenade_restock_cooldown_hours", 1, 48, 1),
-                            _check("elite_ap_ammo_enabled"),
-                            _track("elite_ap_ammo_cooldown_hours", 1, 48, 1),
+                            _slide("ui_mcm_ap_consequences_alpha_promote_title"),
+                            _desc("ui_mcm_ap_consequences_alpha_promote_desc"),
+                            _check("consequence_alpha_promote_enabled"),
+                            _track("max_alphas", 0, 300, 5),
+                            _track("consequence_alpha_promote_pda_chance", 0, 100, 5),
                         },
                     },
                     {
-                        id = "elitekill_bounty",
+                        id = "alphakill_targeted",
                         sh = true,
                         gr = {
-                            _slide("ui_mcm_ap_consequences_elitekill_bounty_title"),
-                            _desc("ui_mcm_ap_consequences_elitekill_bounty_desc"),
-                            _check("consequence_elitekill_bounty_enabled"),
-                            _track("consequence_elitekill_bounty_base", 100, 5000, 100),
-                            _track("consequence_elitekill_bounty_max", 5000, 50000, 1000),
-                            _track("consequence_elitekill_bounty_pda_chance", 0, 100, 5),
-                        },
-                    },
-                    {
-                        id = "elitekill_targeted",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_consequences_elitekill_targeted_title"),
-                            _desc("ui_mcm_ap_consequences_elitekill_targeted_desc"),
-                            _check("consequence_elitekill_targeted_enabled"),
-                            _check("consequence_elitekill_targeted_rush"),
-                            _track("consequence_elitekill_targeted_max_squads", 1, 10, 1),
-                            _track("consequence_elitekill_targeted_max_chases", 0, 10, 1),
-                            _track("consequence_elitekill_targeted_pda_chance", 0, 100, 5),
+                            _slide("ui_mcm_ap_consequences_alphakill_targeted_title"),
+                            _desc("ui_mcm_ap_consequences_alphakill_targeted_desc"),
+                            _check("consequence_alphakill_targeted_enabled"),
+                            _check("consequence_alphakill_targeted_rush"),
+                            _track("consequence_alphakill_targeted_max_squads", 1, 10, 1),
+                            _track("consequence_alphakill_targeted_max_chases", 0, 10, 1),
+                            _track("consequence_alphakill_targeted_pda_chance", 0, 100, 5),
                         },
                     },
                     {
@@ -986,6 +967,35 @@ function on_mcm_load()
                             _check("consequence_social_base_rush"),
                             _check("consequence_social_base_arrive_action_enabled"),
                             _track("consequence_social_base_pda_chance", 0, 100, 5),
+                        },
+                    },
+                },
+            },
+            {
+                id = "mutators",
+                gr = {
+                    {
+                        id = "alpha",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_mutators_alpha_title"),
+                            _desc("ui_mcm_ap_mutators_alpha_desc"),
+                            _check("alpha_damage_increase_enabled"),
+                            _track("alpha_damage_increase_per_level", 0.01, 0.20, 0.01),
+                            _check("alpha_damage_reduction_enabled"),
+                            _track("alpha_damage_reduction_per_level", 0.01, 0.20, 0.01),
+                        },
+                    },
+                    {
+                        id = "rank",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_mutators_rank_title"),
+                            _desc("ui_mcm_ap_mutators_rank_desc"),
+                            _check("rank_damage_increase_enabled"),
+                            _track("rank_damage_increase_mult", 0.05, 0.50, 0.05),
+                            _check("rank_damage_reduction_enabled"),
+                            _track("rank_damage_reduction_mult", 0.05, 0.50, 0.05),
                         },
                     },
                 },

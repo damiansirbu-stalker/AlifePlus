@@ -1,6 +1,6 @@
---- ap_ext_consequence_elitekill_targeted: Other elites on same level pursue the elite killer
+--- ap_ext_consequence_alphakill_targeted: Same-species mutants hunt the alpha's killer
 
-local pairs, ipairs = pairs, ipairs
+local ipairs = ipairs
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -21,69 +21,31 @@ end
 local function _move_smart_chasers(squads, smart, target_squad_id, moved)
     for _, chaser in ipairs(squads) do
         local res = ap_core_squad.script_squad(chaser, smart, {
-            rush = cfg.consequence_elitekill_targeted_rush,
-            on_arrive = CONSEQUENCE.ELITEKILL_TARGETED,
+            rush = cfg.consequence_alphakill_targeted_rush,
+            on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
             on_arrive_args = { target_squad_id = target_squad_id },
         })
         if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
     end
 end
 
--- TODO: remove is_protected check if elite refactoring ends up only mutants being elites
-local function _is_avenger_eligible(id, squad)
-    local protected, reason, detail, name = ap_core_squad.is_protected(squad)
-    if protected then
-        ap_core_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] skipped avenger=%d reason=%s detail=%s name=%s", id, reason or "?", detail or "?", name or "?")
-        return false
-    end
-    return true
-end
-
-local function _find_elite_avengers(trace, level_id, victim_id, killer_id, skip_friendly)
-    local hunters
-    ap_core_debug.observe(trace, ACTION.FIND_TARGETS, function()
-        hunters = {}
-        local skipped = 0
-        local elites = ap_ext_tracker.get_elites_on_level(level_id)
-        for id in pairs(elites) do
-            if id == victim_id or id == killer_id then goto continue end
-            local squad = xsquad.get_squad_by_member(id)
-            if not squad then goto continue end
-            if not _is_avenger_eligible(id, squad) then
-                skipped = skipped + 1
-                goto continue
-            end
-            if skip_friendly then
-                local comm = squad.get_squad_community and squad:get_squad_community()
-                if not comm or not game_relations.is_factions_enemies(comm, "actor_stalker") then goto continue end
-            end
-            hunters[#hunters + 1] = squad
-            ::continue::
-        end
-        local res = ap_core_debug.result_squads(hunters)
-        res.skipped_protected = skipped
-        return res
-    end)
-    return hunters
-end
-
 local function _on_arrive(squad, args)
     local target_squad_id = args.target_squad_id
     if not target_squad_id then return end
     local chase_count = (args.chase_count or 0) + 1
-    if chase_count > cfg.consequence_elitekill_targeted_max_chases then
-        ap_core_debug.debug("[CONSEQUENCE.ELITEKILL_TARGETED] chase_limit: squad=%d chases=%d", squad.id, chase_count)
+    if chase_count > cfg.consequence_alphakill_targeted_max_chases then
+        ap_core_debug.debug("[CONSEQUENCE.ALPHAKILL_TARGETED] chase_limit: squad=%d chases=%d", squad.id, chase_count)
         return
     end
     local target_squad = xobject.se(target_squad_id)
     if not target_squad then
-        ap_core_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance, "text_pda_consequence_elitekill_targeted_lost")
+        ap_core_utils.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_lost")
         return
     end
     local level_id = xlevel.get_level_id(target_squad)
     if not level_id then return end
     if xlevel.get_level_id(squad) ~= level_id then
-        ap_core_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance, "text_pda_consequence_elitekill_targeted_lost")
+        ap_core_utils.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_lost")
         return
     end
     ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
@@ -92,12 +54,12 @@ local function _on_arrive(squad, args)
         })
         if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
-            ap_core_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance, "text_pda_consequence_elitekill_targeted_found")
+            ap_core_utils.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_found")
             return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
         end
         local res = ap_core_squad.script_squad(squad, smart, {
-            rush = cfg.consequence_elitekill_targeted_rush,
-            on_arrive = CONSEQUENCE.ELITEKILL_TARGETED,
+            rush = cfg.consequence_alphakill_targeted_rush,
+            on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
         })
         if res.code ~= RESULT.OK_NEXT then return { code = res.code, reason = res.reason } end
@@ -107,13 +69,15 @@ end
 
 local function _handler(event_data)
     local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.ELITEKILL_TARGETED, function()
-        if not cfg.consequence_elitekill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
+    return ap_core_debug.observe(trace, CONSEQUENCE.ALPHAKILL_TARGETED, function()
+        if not cfg.consequence_alphakill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
         local killer_id, level_id = event_data.killer_id, event_data.level_id
+        local community = event_data.community
         local victim_name = event_data.name or "unknown"
 
         if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
         if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+        if not community then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
 
         local is_player_kill = killer_id == 0
         local killer_squad
@@ -122,24 +86,21 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        local hunters = _find_elite_avengers(trace, level_id, event_data.id, killer_id, is_player_kill)
-        if #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        local victim_se = xobject.se(event_data.id)
+        local search_pos = victim_se and victim_se.position or (killer_squad and killer_squad.position)
+        if not search_pos then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
 
-        local max_hunters = cfg.consequence_elitekill_targeted_max_squads
-        if #hunters > max_hunters then
-            local trimmed = {}
-            for i = 1, max_hunters do trimmed[i] = hunters[i] end
-            hunters = trimmed
-        end
+        local hunters = ap_core_utils.find_squads_observed(trace, search_pos, {
+            factions = community, level_id = level_id,
+            max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            max_count = cfg.consequence_alphakill_targeted_max_squads,
+        })
+        if not hunters or #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local dst_id = 0
         local location = ap_core_utils.get_location_description(nil, nil, level_id)
-        local pda_key = event_data.is_stalker
-            and "text_pda_consequence_elitekill_targeted"
-            or "text_pda_consequence_elitekill_targeted_mutant"
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            if not hunters then return { code = TRACE.NO_SQUADS } end
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else
@@ -155,10 +116,10 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_core_utils.send_pda(cfg.consequence_elitekill_targeted_pda_chance,
-                pda_key, { name = victim_name, location = location })
+            return ap_core_utils.send_pda(cfg.consequence_alphakill_targeted_pda_chance,
+                "text_pda_consequence_alphakill_targeted", { name = victim_name, location = location })
         end)
-        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.ELITEKILL_TARGETED) end
+        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.ALPHAKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.OK_STOP, reason = #moved .. "_hunters",
@@ -168,10 +129,10 @@ local function _handler(event_data)
 end
 
 function on_game_start()
-    ap_core_consumer.register(CONSEQUENCE.ELITEKILL_TARGETED, {
-        event = CAUSE.ELITEKILL,
-        condition = function() return cfg.consequence_elitekill_targeted_enabled end,
+    ap_core_consumer.register(CONSEQUENCE.ALPHAKILL_TARGETED, {
+        event = CAUSE.ALPHAKILL,
+        condition = function() return cfg.consequence_alphakill_targeted_enabled end,
         on_arrive = _on_arrive,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.ELITEKILL_TARGETED] Initialized")
+    ap_core_debug.info("[CONSEQUENCE.ALPHAKILL_TARGETED] Initialized")
 end

@@ -44,6 +44,14 @@ local function _v130_reset_smart_mutator(m_data)
     m_data.ap_ext_smart_mutator = nil
 end
 
+--- v1.4.0: clear old elite data (renamed to alpha, stalker elites dropped)
+--- Old elites key deleted, tracker repopulates as alphas from scratch.
+local function _v140_clear_elite_data(m_data)
+    local tracker = m_data.ap_ext_tracker
+    if not tracker then return end
+    if tracker.elites then tracker.elites = nil end
+end
+
 --- Run all migrations on load_state.
 --- Alphabetical load order (ap_core_compat < ap_core_squad < ap_ext_tracker)
 --- ensures this runs before any module reads m_data.
@@ -52,6 +60,7 @@ local function _on_load_state(m_data)
     _v130_release_orphaned_squads(m_data)
     _v130_delete_old_save_keys(m_data)
     _v130_reset_smart_mutator(m_data)
+    _v140_clear_elite_data(m_data)
 end
 
 function on_game_start()

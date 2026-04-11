@@ -34,17 +34,13 @@ CALLBACK = {
     LOAD_STATE = "load_state",
     ON_GAME_LOAD = "on_game_load",
     ON_OPTION_CHANGE = "on_option_change",
-    -- Behavior (elite buffs)
+    -- Behavior (mutators)
     NPC_ON_BEFORE_HIT = "npc_on_before_hit",
+    MONSTER_ON_BEFORE_HIT = "monster_on_before_hit",
     -- External / non-AP callbacks
     SERVER_ENTITY_ON_UNREGISTER = "server_entity_on_unregister",
     MCM_OPTION_RESTORE_DEFAULT = "mcm_option_restore_default",
     ACTOR_ON_UPDATE = "actor_on_update",
-}
-
---- Lock key prefixes for rate limiting
-LOCK_PREFIX = {
-    HIT_MODIFIER = "lock:hit_modifier",
 }
 
 --- Cause type classification (radiant = ambient A-Life, reactive = world event response)
@@ -87,9 +83,6 @@ TRACE = {
 RADIUS_CLOSE_MAX = 50
 RADIUS_DISTANT_MAX = 500
 
---- Lock durations (seconds)
-HIT_MODIFIER_LOCK_SEC = 1
-
 --- Harvest pickup cooldown per artefact section (os.clock seconds, 2 hours)
 HARVEST_COOLDOWN_SEC = 7200
 
@@ -98,8 +91,8 @@ MARKER_TYPE = "red_location"
 
 --- Cause event names
 CAUSE = {
-    ELITE = "cause:elite",
-    ELITEKILL = "cause:elitekill",
+    ALPHA = "cause:alpha",
+    ALPHAKILL = "cause:alphakill",
     MASSACRE = "cause:massacre",
     SQUADKILL = "cause:squadkill",
     BASEKILL = "cause:basekill",
@@ -140,7 +133,7 @@ REASON = {
     IS_TASK_TARGET          = "is_task_target",
     IS_OWNED                = "is_owned",
     IS_SCRIPTED             = "is_scripted",
-    NOT_ELITE         = "not_elite",
+    NOT_ALPHA         = "not_alpha",
     NOT_HEALING       = "not_healing",
     NOT_ARTEFACT      = "not_artefact",
     -- squad lookup
@@ -152,20 +145,20 @@ REASON = {
     -- consequence
     NO_STASH_DATA     = "no_stash_data",
     NO_KILLER_SQUAD   = "no_killer_squad",
-    MAX_ELITES        = "max_elites",
+    MAX_ALPHAS        = "max_alphas",
     NO_BASE           = "no_base",
     NO_TARGET_SQUAD   = "no_target_squad",
     STASH_NOT_EMPTY   = "stash_not_empty",
     FRIENDLY_FACTION  = "friendly_faction",
     LOW_PERSONALITY   = "low_personality",
     NEED_MISMATCH     = "need_mismatch",
+    STALKER_EXCLUDED  = "stalker_excluded",
 }
 
 --- Consequence identifiers (trace operations + rate-limit keys)
 CONSEQUENCE = {
-    ELITE_PROMOTE = "consequence:elite_promote",
-    ELITEKILL_BOUNTY = "consequence:elitekill_bounty",
-    ELITEKILL_TARGETED = "consequence:elitekill_targeted",
+    ALPHA_PROMOTE = "consequence:alpha_promote",
+    ALPHAKILL_TARGETED = "consequence:alphakill_targeted",
     MASSACRE_SCAVENGE = "consequence:massacre_scavenge",
     MASSACRE_INVESTIGATE = "consequence:massacre_investigate",
     STASH_AMBUSH = "consequence:stash_ambush",
@@ -202,7 +195,7 @@ ACTION = {
     MOVE_SQUAD = "action:move_squad",
     SEND_PDA = "action:send_pda",
     GIVE_MONEY = "action:give_money",
-    UPDATE_ELITE = "action:update_elite",
+    UPDATE_ALPHA = "action:update_alpha",
     LOOT_STASH = "action:loot_stash",
     COMPLETE_STASH_LOOT = "action:complete_stash_loot",
     COMPLETE_NEEDS = "action:complete_needs",

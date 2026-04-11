@@ -1,4 +1,4 @@
---- ap_ext_cause_elite: Publishes cause:elite when NPC reaches a new elite level
+--- ap_ext_cause_alpha: Publishes cause:alpha when mutant reaches a new alpha level
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -8,10 +8,11 @@ local REASON = ap_core_const.REASON
 local cfg = ap_core_mcm.cfg
 
 local function _on_death(trace, squad, se_victim, se_killer)
-    if not cfg.cause_elite_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not cfg.cause_alpha_enabled then return { code = RESULT.DISABLED_NEXT } end
 
     local killer_id = ap_core_utils.get_entity_id(se_killer)
     if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+    if xcreature.is_stalker(se_killer) then return { code = RESULT.RULES_NEXT, reason = REASON.STALKER_EXCLUDED } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
     local protected, reason, detail, pname = ap_core_squad.is_protected(killer_squad)
     if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
@@ -24,25 +25,24 @@ local function _on_death(trace, squad, se_victim, se_killer)
             killer_id = killer_id, kills = kills }
     end
 
-    local current_level = ap_ext_tracker.get_elite_level(killer_id)
+    local current_level = ap_ext_tracker.get_alpha_level(killer_id)
     if level <= current_level then
         return { code = RESULT.RULES_NEXT, reason = REASON.NO_PROMOTION,
             killer_id = killer_id, kills = kills, level = level }
     end
 
     return {
-        cause = CAUSE.ELITE,
+        cause = CAUSE.ALPHA,
         killer_id = killer_id,
         kills = kills,
         level = level,
         level_id = xlevel.get_level_id(se_killer),
-        is_stalker = xcreature.is_stalker(se_killer),
     }
 end
 
 function on_game_start()
-    ap_core_producer.register(CAUSE.ELITE, {
+    ap_core_producer.register(CAUSE.ALPHA, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_death)
-    ap_core_debug.info("[CAUSE.ELITE] Initialized")
+    ap_core_debug.info("[CAUSE.ALPHA] Initialized")
 end

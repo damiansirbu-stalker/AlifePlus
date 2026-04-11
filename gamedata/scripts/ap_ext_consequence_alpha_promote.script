@@ -1,4 +1,4 @@
---- ap_ext_consequence_elite_promote: Registers new elites and updates elite level
+--- ap_ext_consequence_alpha_promote: Registers new alpha mutants and updates alpha level
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -11,15 +11,15 @@ local cfg = ap_core_mcm.cfg
 
 local function _handler(event_data)
     local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.ELITE_PROMOTE, function()
-        if not cfg.consequence_elite_promote_enabled then return { code = RESULT.DISABLED_NEXT } end
+    return ap_core_debug.observe(trace, CONSEQUENCE.ALPHA_PROMOTE, function()
+        if not cfg.consequence_alpha_promote_enabled then return { code = RESULT.DISABLED_NEXT } end
 
         local killer_id = event_data.killer_id
         if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
 
-        local is_new = not ap_ext_tracker.is_elite(killer_id)
-        if is_new and xtable.count(ap_ext_tracker.get_elites()) >= cfg.max_elites then
-            return { code = RESULT.RULES_NEXT, reason = REASON.MAX_ELITES }
+        local is_new = not ap_ext_tracker.is_alpha(killer_id)
+        if is_new and xtable.count(ap_ext_tracker.get_alphas()) >= cfg.max_alphas then
+            return { code = RESULT.RULES_NEXT, reason = REASON.MAX_ALPHAS }
         end
 
         local name = xcreature.get_name(killer_id)
@@ -28,40 +28,39 @@ local function _handler(event_data)
         local kills = event_data.kills
 
         local updated
-        ap_core_debug.observe(trace, ACTION.UPDATE_ELITE, function()
-            updated = ap_ext_tracker.update_elite(killer_id, {
-                kills = kills, name = name, level_id = level_id, is_stalker = event_data.is_stalker,
+        ap_core_debug.observe(trace, ACTION.UPDATE_ALPHA, function()
+            updated = ap_ext_tracker.update_alpha(killer_id, {
+                kills = kills, name = name, level_id = level_id,
             })
             if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
             return { code = TRACE.OK, id = killer_id, level = level }
         end)
         if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
 
+        ap_ext_object_mutator.set_alpha_damage(killer_id, level)
+
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then
-            ap_core_squad.add_marked_squad(killer_squad.id, CONSEQUENCE.ELITE_PROMOTE, { persistent = true })
+            ap_core_squad.add_marked_squad(killer_squad.id, CONSEQUENCE.ALPHA_PROMOTE, { persistent = true })
         end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
             if not se then return { code = TRACE.NO_ENTITY } end
             local location = ap_core_utils.get_location_description(se, nil, level_id)
-            local pda_key = event_data.is_stalker
-                and "text_pda_consequence_elite_promote"
-                or "text_pda_consequence_elite_promote_mutant"
-            return ap_core_utils.send_pda(cfg.consequence_elite_promote_pda_chance, pda_key, {
+            return ap_core_utils.send_pda(cfg.consequence_alpha_promote_pda_chance, "text_pda_consequence_alpha_promote", {
                 name = name, location = location, level = level,
             })
         end)
 
-        return { code = RESULT.OK_STOP, reason = "elite=" .. killer_id, id = killer_id, level = level, level_id = level_id }
+        return { code = RESULT.OK_STOP, reason = "alpha=" .. killer_id, id = killer_id, level = level, level_id = level_id }
     end)
 end
 
 function on_game_start()
-    ap_core_consumer.register(CONSEQUENCE.ELITE_PROMOTE, {
-        event = CAUSE.ELITE,
-        condition = function() return cfg.consequence_elite_promote_enabled end,
+    ap_core_consumer.register(CONSEQUENCE.ALPHA_PROMOTE, {
+        event = CAUSE.ALPHA,
+        condition = function() return cfg.consequence_alpha_promote_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.ELITE_PROMOTE] Initialized")
+    ap_core_debug.info("[CONSEQUENCE.ALPHA_PROMOTE] Initialized")
 end
