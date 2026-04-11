@@ -85,7 +85,7 @@ The triggering squad is both sensor and responder - it evaluates its own surroun
 
 **Gate 2: SCRIPTED.** Hash lookup in `_ap_scripted_squads`. Skips squads already under AP control - a squad executing a consequence should not trigger new causes until released. O(1), no luabind.
 
-**Gate 3: RATIO.** Bresenham integer admission gate. Off-map events outnumber on-map ~50-100:1 per squad because online squads fire at frame rate while offline squads fire via scheduler round-robin. The ratio gate restores balance using integer cross-multiplication: `throttled_count * |r| <= (10 - |r|) * favored_count`. At the default ratio of 8, this admits ~4 on-map events per 1 off-map. The `squad.online` field (C++ `m_bOnline`, refreshed by `check_online_status()` immediately before the callback) determines on-map status with zero luabind cost. Counters reset at 32768 to prevent overflow.
+**Gate 3: RATIO.** Bresenham integer admission gate. Off-map events outnumber on-map ~50-100:1 per squad because online squads fire at frame rate while offline squads fire via scheduler round-robin. The ratio gate restores balance using integer cross-multiplication: `throttled_count * |r| <= (10 - |r|) * favored_count`. At the default ratio of 8, this admits ~4 on-map events per 1 off-map. The `squad.online` field (C++ `m_bOnline`, refreshed by `check_online_status()` immediately before the callback) determines on-map status with zero luabind cost. Radiant and reactive pipelines maintain separate counter pairs (`_radiant_ct`, `_reactive_ct`) so high-volume radiant traffic does not bias reactive admission. Counters reset at 32768 to prevent overflow.
 
 **Gate 4: PROTECTION.** Calls `xsquad.is_protected()` with the ownership registry. Rejects squads that are permanent (story NPCs, traders, named characters), have an active role (task giver, companion), are task targets (assault, bounty, delivery squads), are owned by another mod (warfare, BAO), or are already scripted (engine `scripted_target`, condlist, random_targets). Static checks are cached per squad with weak keys (O(1) after first call).
 
@@ -110,7 +110,7 @@ Reactive causes fire on world events: `squad_on_npc_death`, `x_npc_medkit_use`, 
 
 **Gate 1: PACER.** Token bucket with per-callback-type keys, 1 token/sec per type. Independent from the radiant pacer.
 
-**Gate 2: RATIO.** Same Bresenham gate as radiant. Some reactive callbacks (`actor_on_item_use`, `actor_on_item_take`) are always on-map (they require a game_object which only exists online).
+**Gate 2: RATIO.** Same Bresenham algorithm as radiant but with its own counter pair (`_reactive_ct`). Some reactive callbacks (`actor_on_item_use`, `actor_on_item_take`) are always on-map (they require a game_object which only exists online).
 
 **Gate 3: EVAL.** Same as radiant gate 5 - per-cause rate limit, predicate evaluation, xbus publish.
 
@@ -135,8 +135,8 @@ All rate limiting lives in `ap_core_limiter`. Five independent limiters operate 
 | Radiant pacer | os.clock timestamp | global | 10s | MCM distributor_interval_sec |
 | Reactive pacer | token bucket | per-callback-type | 1/sec | constant |
 | Cause budget | TTL counter, sliding window | per-cause | 10/60s | MCM cause_max_events |
-| Consequence budget | token bucket (peek/acquire) | per-consequence | 3/60s | MCM consequence_max_events |
-| Global consequence | TTL counter | radiant only | 7/60s | MCM global_consequence_max_events |
+| Consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
+| Global consequence | TTL counter | radiant only | 6/60s | MCM global_consequence_max_events |
 
 ### Tracing
 
@@ -239,27 +239,27 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 
 ### Consequences
 
-| Cause | Consequence | p | Effect |
-|-------|-------------|---|--------|
-| MASSACRE | massacre_scavenge | 10 | scavenger factions converge on massacre site |
-| MASSACRE | massacre_investigate | 20 | victim faction investigates |
-| SQUADKILL | squadkill_revenge | 15 | victim faction pursues killer (chase) |
-| SQUADKILL | squadkill_flee | 25 | victim faction retreats to base |
-| BASEKILL | basekill_support | 15 | friendly squads reinforce attacked base |
-| BASEKILL | basekill_flee | 25 | squads at base evacuate |
-| ELITE | elite_promote | 15 | update elite level, apply buffs |
-| ELITEKILL | elitekill_bounty | 0 | give money (base * level, capped) |
-| ELITEKILL | elitekill_targeted | 10 | elite hunters pursue killer (chase) |
-| WOUNDED | wounded_hunt | 15 | predator mutants close in |
-| WOUNDED | wounded_help | 25 | same-faction squads rush to help |
-| HARVEST | harvest_hunt | 15 | outlaws pursue artefact taker (chase) |
-| STASH | stash_loot | 10 | loot stash to NPC inventory |
-| STASH | stash_ambush | 20 | camp at stash (passive) |
-| STASH | stash_fill | 30 | fill stash with items |
-| AREA | area_conquer | 20 | claim empty smart terrain |
-| NEEDS | (16 entries) | 10-40 | hunger, sleep, rest, heal, shelter, money, supply, job, social |
+| Cause | Consequence | Effect |
+|-------|-------------|--------|
+| MASSACRE | massacre_scavenge | scavenger factions converge on massacre site |
+| MASSACRE | massacre_investigate | victim faction investigates |
+| SQUADKILL | squadkill_revenge | victim faction pursues killer (chase) |
+| SQUADKILL | squadkill_flee | victim faction retreats to base |
+| BASEKILL | basekill_support | friendly squads reinforce attacked base |
+| BASEKILL | basekill_flee | squads at base evacuate |
+| ELITE | elite_promote | update elite level, apply buffs |
+| ELITEKILL | elitekill_bounty | give money (base * level, capped) |
+| ELITEKILL | elitekill_targeted | elite hunters pursue killer (chase) |
+| WOUNDED | wounded_hunt | predator mutants close in |
+| WOUNDED | wounded_help | same-faction squads rush to help |
+| HARVEST | harvest_hunt | outlaws pursue artefact taker (chase) |
+| STASH | stash_loot | loot stash to NPC inventory (CONFIGS-driven) |
+| STASH | stash_ambush | camp at stash, passive (CONFIGS-driven) |
+| STASH | stash_fill | fill stash with items (CONFIGS-driven) |
+| AREA | area_conquer | claim empty smart terrain |
+| NEEDS | (14 entries) | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
 
-Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> chance roll -> data validation -> logic -> result code.
+Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> community check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type.
 
 ### Invariants
 
