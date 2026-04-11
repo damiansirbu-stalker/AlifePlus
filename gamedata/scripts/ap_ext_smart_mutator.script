@@ -83,9 +83,19 @@ local function _check_monster_faction(smart_id, data)
     end
 end
 
---- Periodic scan: decay expired conquests, re-apply monster faction for online smarts.
+--- Re-apply respawn params if engine wiped them (STATE_Read rebuilds from LTX)
+-- @complexity O(1) | 1 luabind (xobject.se)
+local function _check_respawn(smart_id, data)
+    if not cfg.area_conquest_mutate_smart then return end
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    xsmart.set_faction_controlled(smart, data.faction, cfg.area_conquest_spawn_num)
+end
+
+--- Update all conquered smarts: re-apply faction + respawn, decay expired entries.
+--- Called once on game load and every 60s during gameplay.
 -- @complexity O(n) conquered smarts (max area_conquest_max_smarts)
-local function _scan_conquered()
+local function _update_conquered()
     local now = xtime.game_sec()
     local decay_sec = cfg.area_conquest_decay_hours * 3600
     local count = 0
@@ -95,6 +105,7 @@ local function _scan_conquered()
             _decay_collector[count] = smart_id
         else
             _check_monster_faction(smart_id, data)
+            _check_respawn(smart_id, data)
         end
     end
     for i = 1, count do
@@ -118,30 +129,28 @@ end
 
 local function _on_game_load()
     if not _conquered_pending then return end
-    if not cfg or not cfg.area_conquest_enabled or not cfg.area_conquest_mutate_smart then
+    if not cfg or not cfg.area_conquest_enabled then
         _conquered_pending = nil
-        ap_core_debug.info("[MUTATOR.SMART] on_game_load: mutate disabled, skipped restore")
+        ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
         return
     end
     local now = xtime.game_sec()
     local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
         if not data.faction then goto continue end
-        local smart = xobject.se(smart_id)
-        if not smart then goto continue end
-        if not xsmart.set_faction_controlled(smart, data.faction, cfg.area_conquest_spawn_num) then goto continue end
         _conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or now }
         restored = restored + 1
         ::continue::
     end
     _conquered_pending = nil
     ap_core_debug.debug("[MUTATOR.SMART] on_game_load: restored=%d", restored)
+    _update_conquered()
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
-    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan_conquered)
+    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _update_conquered)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end

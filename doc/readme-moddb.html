@@ -39,12 +39,16 @@
 <li>Stash traffic: NPCs walking to stashes, looting, ambushing, filling</li>
 <li>Outlaws hunting whoever picked up an artefact</li>
 <li>Retaliation and retreat loops after squad wipes</li>
-<li>Territory flipping as squads claim empty outposts</li>
+<li>Territory flipping as stalkers and mutants claim empty outposts. Predators infest abandoned buildings. Conquests decay if not held. The Zone rebalances itself.</li>
 <li>Elite NPCs emerging from combat, accumulating kills and better gear</li>
 <li>Predators closing in on wounded targets, allies rushing to help</li>
 <li>NPCs trading real items at traders - artefacts for ammo, grenades, medkits</li>
 <li>Campfire and base behavior driven by hunger, fatigue, social needs</li>
 <li>Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted</li>
+<li>Bandits looting and ambushing while Duty patrols and holds the line</li>
+<li>Loners chasing artefacts while Military stays close to base</li>
+<li>Monolith pushing into territory while Renegades scatter at first contact</li>
+<li>Factions responding to the same event based on personality, not random chance</li>
 </ul>
 <h2>Why this mod exists</h2>
 <p>A-Life modding is hard. The engine exposes limited APIs, documentation is scarce, and most of the knowledge comes from trial and error.</p>
@@ -119,7 +123,7 @@
 </ul>
 <h3>Area (radiant)</h3>
 <ul>
-<li><b>Conquer</b> - Squad claims the empty smart terrain. Engine spawns their faction there.</li>
+<li><b>Conquer</b> - Any faction claims empty territory based on personality traits. Duty and predators conquer aggressively, ecologists and passive mutants rarely do. Conquered territory decays over time if not held (decay hours configurable in MCM).</li>
 </ul>
 <h3>Needs (radiant)</h3>
 <p>Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation. The strongest unmet need wins.</p>
@@ -135,6 +139,8 @@
 <li><b>Social</b> - Finds a campfire or a safe location. Shares cigarettes and drinks.</li>
 </ul>
 <p>NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.<br />A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.</p>
+<h3>Personality</h3>
+<p>Seven behavioral traits per faction, derived from GSC's original AI design documents. Aggression, greed, survival, perception, territory, relation, discipline. Both stalker and mutant factions share the same system. Traits gate how likely a faction is to engage in each consequence. Duty holds ground, bandits ambush and loot, ecologists flee, monolith never retreats. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">manifesto</a> for full GSC evidence and source references.</p>
 <h2>Compatibility &amp; Safety</h2>
 <ul>
 <li>Built and tested with GAMMA, also tested with Zona and EFP</li>
@@ -177,6 +183,6 @@
 <li>lua54 integration testing with X-Ray engine stubs</li>
 <li>gitleaks, trufflehog (secret scanning)</li>
 </ul>
-<p>Credits:<br />Stalker_Boss - Russian translation</p>
+<p>Credits:<br />Stalker_Boss - Russian translation<br />Altogolik - support, ideas, source materials</p>
 <h2>Usage and License</h2>
 <p>Modpacks: allowed and encouraged. Keep the readme and license files.<br />Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.<br />Reproducing the implementation in other software: not allowed, even with credit.<br />Full license in LICENSE file and on GitHub.</p>

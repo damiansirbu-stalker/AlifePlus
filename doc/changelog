@@ -1,20 +1,28 @@
 
 1.3.0
+  Requires xlibs update.
+
+  Highlights:
+    Personality system replaces all random chance gates. Every faction has a behavioral profile derived from GSC's original AI design documents. Consequences fire based on faction trait scores, not dice rolls. Stalker and mutant factions share the same system.
+    Any faction can now claim empty territory. Predator mutants infest abandoned locations, passive mutants stay away. Conquered territory decays over time if not reconquered. Per-smart cooldown prevents the same location from being targeted repeatedly.
+    Consequence dispatch uses round-robin rotation instead of fixed priority. More varied NPC behavior across the board.
+    Framework split into core and ext. Core owns the pipeline, protection, rate limiting, and squad lifecycle. All domain logic reaches the framework through registered function references. External mods integrate at three levels: listen to events via the bus, register custom causes and consequences into the pipeline, or coordinate squad ownership through a public registry.
+
   Gameplay:
-    Changed: random chance rolls replaced by personality system. Every faction has a behavioral profile derived from GSC design documents. Consequences fire based on business rules like trait scores, all random chances removed.
-    Added: personality profiles for all stalker and mutant factions. Stalker factions use trait-driven consequence selection. Mutant factions defined but unused until mutant instincts are added.
-    Changed: consequence dispatch uses round-robin. Every consequence type gets equal first-shot instead of fixed priority. Produces more consistent distribution across all consequence types in a session.
-    Changed: each needs consequence tied to specific personality traits. Hunger and sleep use survival, money uses greed, jobs use territory and perception, social uses relation.
-    Changed: per-consequence rate budget tightened. The same consequence type cannot dominate a session. More varied NPC behavior across the board.
-    Changed: post-arrival wait uses game time. Advances during time skips, survives save and load.
-    Changed: squads detected as arrived faster (scan every 20s, was 30s).
-    Added: persistent map markers for elite promote. Marks the elite's squad on the PDA until death.
-    Added: squad ownership registry. Alife mods register an ownership filter, AP skips squads they own. Warfare and BAO registered as legacy proxies until they integrate natively.
-    Added: integration API for external mods. Register custom causes and consequences without modifying AP code.
+    Added: personality profiles for all stalker and mutant factions with trait-driven consequence selection.
+    Added: persistent map markers for elite promotion. Marks the elite's squad on the PDA until death.
+    Added: squad ownership registry. Alife mods register an ownership filter, AlifePlus skips squads they own. Warfare and BAO registered via legacy proxies.
+    Added: integration API for external mods. Register custom causes and consequences without modifying AlifePlus code.
     Added: automatic save data cleanup on version upgrade. Orphaned squads released, stale keys removed.
+    Added: conquered territory decays after configurable game hours if not reconquered.
+    Added: per-smart cooldown on area cause. Same location cannot trigger conquest repeatedly.
+    Changed: each needs consequence tied to specific personality traits. Hunger and sleep use survival, money uses greed, jobs use territory and perception, social uses relation.
+    Changed: per-consequence rate budget tightened. The same consequence type cannot dominate a session.
+    Changed: post-arrival wait uses game time. Advances during time skips, survives save and load.
+    Changed: squads detected as arrived faster (scan interval reduced).
     Changed: stash consequences (loot, ambush, fill) harmonized into the same config-driven pattern as needs.
-    Changed: any faction can claim empty territory, not just stalkers. Predators infest locations, passive mutants stay away. Personality trait (aggression) determines which factions conquer.
-    Added: conquered territory decays after 48 game hours if not reconquered (configurable in MCM).
+    Changed: smart terrain mutation and load restore unified into a single periodic update.
+    Changed: radiant interval and global consequence budget defaults adjusted for less frequent, more varied activity.
     Removed: job_worship and job_exercise consequences, MCM entries, PDA messages, and item sections.
     Removed: per-consequence chance sliders. Replaced by personality system. PDA chance sliders remain.
   Compatibility:
@@ -25,17 +33,17 @@
     Fixed: needs thresholds broke on young saves with low game time.
   Internal:
     Changed: codebase restructured into core (pipeline) and ext (domain).
-    Changed: chance gate removal eliminates per-consequence xmath.chance calls from every dispatch cycle.
+    Changed: chance gate removal eliminates per-consequence random rolls from every dispatch cycle.
     Changed: protection gate no longer allocates strings below DEBUG log level.
-    Changed: producer luabind crossings reduced. Global caching for xlibs functions.
-    Changed: pacer retries after 0.5s on protection reject instead of burning the full interval.
+    Changed: producer luabind crossings reduced via global xlibs caching.
+    Changed: pacer retries faster on protection reject instead of burning the full interval.
     Changed: radiant and reactive pipelines use independent Bresenham counters. Reactive events no longer biased by radiant traffic volume.
     Changed: rate limiting reworked with sliding window counters and per-pipeline pacing.
   xlibs (requires xlibs update):
     Added: composite squad protection guard with shared commander context.
-    Added: vertex-to-level cache, zero luabind on repeat lookups.
+    Added: vertex-to-level cache with zero luabind on repeat lookups.
     Changed: scripted check uses engine fields only. Mod-specific fields handled by AP ownership registry.
-    Removed: dead code cleanup.
+    Removed: dead code in squad and smart terrain modules.
 
 1.2.3
   Core:

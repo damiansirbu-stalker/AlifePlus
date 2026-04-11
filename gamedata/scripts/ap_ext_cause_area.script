@@ -6,6 +6,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
+local _smart_cooldown = nil
 
 local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
@@ -19,6 +20,7 @@ local function _on_smart(trace, squad)
         level_id = level_id,
         max_distance = ap_core_const.RADIUS_DISTANT_MAX,
         filter = function(smart)
+            if _smart_cooldown:get(smart.id) then return false end
             if not xsmart.is_smart_empty(smart) then return false end
             if xsmart.is_base(smart) then return false end
             local fac = xsmart.get_smart_faction(smart)
@@ -26,6 +28,8 @@ local function _on_smart(trace, squad)
         end,
     })
     if not target then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+
+    _smart_cooldown:set(target.id, true)
 
     return {
         cause = CAUSE.AREA,
@@ -40,6 +44,8 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
+    _smart_cooldown = xttltable.create_ttl_table({ default_ttl = cfg.cause_area_smart_cooldown_sec })
+
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
