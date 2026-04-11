@@ -109,7 +109,7 @@ Log level goes from silent to full tracing with pathing, performance timing, and
 
 Presets:
   Calm Zone: A-Life Interval 10-15, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
-  Vanilla+: A-Life Interval 5, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)
+  Vanilla+: A-Life Interval 10, Cause Budget 10, Consequence Budget 2, Global Rate Limit 6 (defaults)
   Chaotic: A-Life Interval 1-2, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+, raise individual chances
 
 ---
@@ -163,7 +163,7 @@ Needs (radiant)
   - Shelter - Finds a safe location when exposed too long.
   - Money - Searches anomaly fields for artefacts, or hunts mutant lairs.
   - Supply - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.
-  - Job - Guards outposts and checkpoints. Explores the Zone. Researches anomalies. Loners hunt. Monolith and Sin worship at remote sites. Military and Duty drill at forward positions.
+  - Job - Guards outposts and checkpoints. Explores the Zone. Researches anomalies.
   - Social - Finds a campfire or a safe location. Shares cigarettes and drinks.
 
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.
@@ -216,7 +216,7 @@ FAQ:
 How do I make events occur faster or slower?
   Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1, raise Radiant Cooldown to 15-20.
   Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4, lower Radiant Cooldown to 5.
-  Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, raise consequence chances to 50+, set Radiant Cooldown to 0. Good luck!
+  Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, set Radiant Cooldown to 0. Good luck!
 
 Does it conflict with the vanilla task system?
   No. AlifePlus validates every entity through protection gates at every pipeline layer.

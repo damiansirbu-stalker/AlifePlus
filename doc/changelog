@@ -1,42 +1,39 @@
 
-next
-  Framework:
-    Changed: codebase split into core (ap_core_*) and ext (ap_ext_*). Other mods can register causes and consequences without modifying core.
-    Added: squad ownership registry (register_owner/get_owner). Warfare and BAO excluded automatically.
-    Added: automatic save data migrations on version upgrade (orphaned squads released, deprecated keys cleaned)
-    Changed: consequence dispatch uses round-robin instead of fixed priority. Equal first-shot distribution across all handlers in a chain.
-    Removed: priority field from consequence registration. All consequences in a chain are equal peers.
-    Removed: per-consequence chance gates (xmath.chance) and all MCM chance sliders (30 keys). PDA chance sliders remain.
-    Removed: RESULT.CHANCE_NEXT from result codes.
-    Added: personality system (7 traits, 20 factions including mutants). Derived from GSC design documents. Radiant consequences gated by personality roll (average of relevant traits, 5-95% range). Reactive consequences use hard community tables only.
-    Changed: DISPOSITION renamed to PERSONALITY. CATEGORY enum replaced by PERSONALITY field constants. check_disposition removed from all consequence handlers, personality check moved to consumer dispatch.
-    Added: mutant faction entries in PERSONALITY table (7 factions: monster, vegetarian, predatory day/night, zombied day/night, special).
-    Added: community field to AREA cause payload (was missing, blocked personality gate).
-    Removed: job_worship and job_exercise consequences, MCM entries, PDA messages, and item sections.
-    Changed: each needs consequence maps to specific personality traits instead of generic discipline gate. Hunger/sleep use survival, money uses greed+perception, jobs use territory/perception, social uses relation.
-  Performance:
-    Changed: radiant pipeline PACER gate uses os.clock timestamp as first filter, skips all downstream evaluation when interval not elapsed
-    Changed: on-map vs off-map detection uses squad.online field (zero luabind)
-    Changed: global rate limiting reworked - PACER gate replaces radiant cooldown, sliding window limits per-consequence and globally (MCM configurable)
-    Changed: protection gate string allocation guarded behind debug level
-    Changed: arrival scan uses cached buffer instead of per-call allocation
+1.3.0
   Gameplay:
-    Fixed: area_conquest_mutate_smart toggle had no effect on previously conquered smarts
-    Fixed: radiant causes dead on first session (deferred init to actor_on_first_update)
-    Fixed: PACER retries on protection reject (0.5s instead of burning full interval)
-    Fixed: needs scatter init allows negative timestamps for young saves
-    Changed: post-arrival wait uses game time (advances during time skips, survives save/load)
-    Changed: arrival scan runs every 10s (was 30s), faster squad release
-    Added: persistent map markers for elite promote (marks elite's squad until death)
-    Changed: map markers transition on squad state: red (active), green (arrived), corpse (dead). Expired markers stay visible 5 minutes before removal.
+    Changed: random chance rolls replaced by personality system. Every faction has a behavioral profile derived from GSC design documents. Consequences fire based on business rules like trait scores, all random chances removed.
+    Added: personality profiles for all stalker and mutant factions. Stalker factions use trait-driven consequence selection. Mutant factions defined but unused until mutant instincts are added.
+    Changed: consequence dispatch uses round-robin. Every consequence type gets equal first-shot instead of fixed priority. Produces more consistent distribution across all consequence types in a session.
+    Changed: each needs consequence tied to specific personality traits. Hunger and sleep use survival, money uses greed, jobs use territory and perception, social uses relation.
+    Changed: per-consequence rate budget tightened. The same consequence type cannot dominate a session. More varied NPC behavior across the board.
+    Changed: post-arrival wait uses game time. Advances during time skips, survives save and load.
+    Changed: squads detected as arrived faster (scan every 20s, was 30s).
+    Added: persistent map markers for elite promote. Marks the elite's squad on the PDA until death.
+    Added: squad ownership registry. Alife mods register an ownership filter, AP skips squads they own. Warfare and BAO registered as legacy proxies until they integrate natively.
+    Added: integration API for external mods. Register custom causes and consequences without modifying AP code.
+    Added: automatic save data cleanup on version upgrade. Orphaned squads released, stale keys removed.
+    Changed: stash consequences (loot, ambush, fill) harmonized into the same config-driven pattern as needs. Consistent behavior, consistent filtering, consistent arrival handling.
+    Removed: job_worship and job_exercise consequences, MCM entries, PDA messages, and item sections.
+    Removed: per-consequence chance sliders. Replaced by personality system. PDA chance sliders remain.
   Compatibility:
-    Fixed: warfare/BAO ownership filters false positive (false ~= nil is true in Lua)
-    Changed: is_protected delegates to xsquad.is_protected (shared commander context)
+    Fixed: warfare and BAO ownership filters gave false positives on squads without the expected field.
+  Fixed:
+    Fixed: area conquest MCM toggle had no effect on previously conquered smart terrains.
+    Fixed: radiant causes did not fire on first session after game start.
+    Fixed: needs thresholds broke on young saves with low game time.
+  Internal:
+    Changed: codebase restructured into core (pipeline) and ext (domain).
+    Changed: chance gate removal eliminates per-consequence xmath.chance calls from every dispatch cycle.
+    Changed: protection gate no longer allocates strings below DEBUG log level.
+    Changed: producer luabind crossings reduced. Global caching for xlibs functions.
+    Changed: pacer retries after 0.5s on protection reject instead of burning the full interval.
+    Changed: radiant and reactive pipelines use independent Bresenham counters. Reactive events no longer biased by radiant traffic volume.
+    Changed: rate limiting reworked with sliding window counters and per-pipeline pacing.
   xlibs (requires xlibs update):
-    Added: xsquad.is_protected(squad, opts) composite guard
-    Added: xlevel.get_level_id vertex-to-level cache (zero luabind on repeat lookups)
-    Changed: is_scripted checks engine fields only (mod-specific fields handled by AP ownership registry)
-    Removed: find_online_squads (dead code)
+    Added: composite squad protection guard with shared commander context.
+    Added: vertex-to-level cache, zero luabind on repeat lookups.
+    Changed: scripted check uses engine fields only. Mod-specific fields handled by AP ownership registry.
+    Removed: dead code cleanup.
 
 1.2.3
   Core:

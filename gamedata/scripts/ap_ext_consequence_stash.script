@@ -81,12 +81,12 @@ local function _arrive_loot(squad, stash_id)
     end)
 end
 
-local function _arrive_fill(_squad, stash_id, items)
+local function _arrive_fill(squad, stash_id, items)
     if not xstash.fill_stash(stash_id, items, false) then
-        ap_core_debug.warn("[CONSEQUENCE.STASH] arrive_fill: stash=%d failed", stash_id)
+        ap_core_debug.warn("[CONSEQUENCE.STASH] arrive_fill: stash=%d squad=%d failed", stash_id, squad.id)
         return
     end
-    ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_fill: stash=%d items=%d", stash_id, #items)
+    ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_fill: stash=%d squad=%d items=%d", stash_id, squad.id, #items)
     ap_core_debug.observe(nil, ACTION.SEND_PDA, function()
         return ap_core_utils.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
     end)
