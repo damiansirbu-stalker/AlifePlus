@@ -214,7 +214,17 @@ Domain state manager. Tracks kill counts per entity (`_ap_killers`), elite statu
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-Runtime smart terrain mutations. Currently handles territory conquest: sets `faction_controlled` and `respawn_params` on a smart terrain so the engine's `try_respawn` spawns the conqueror's faction. Mutations are volatile - the engine rebuilds smart config from LTX on every load (`STATE_Read`), so the mutator uses two-phase restore (`load_state` saves to pending, `on_game_load` re-applies). FIFO eviction at `cfg.area_conquest_max_smarts` (default 50) with monotonic sequence counter. Same-faction re-conquest refreshes the sequence (LRU), different-faction overwrites without eviction.
+Runtime smart terrain mutations for territory conquest. Both stalker and mutant factions can conquer smart terrains.
+
+**Mechanism.** `conquer_smart(smart_id, faction)` calls `xsmart.set_faction_controlled` which writes `respawn_params` entries for all 19 factions (12 stalker + 7 mutant) and sets `smart.faction` to the conqueror. The engine's `try_respawn` (smart_terrain.script:1665) only spawns entries where `v.faction == self.faction`, so only the conqueror's squads appear. Stalker factions spawn `*_sim_squad_novice/advanced/veteran` sections. Mutant factions spawn `simulation_*` sections mapped by species (e.g. `monster_predatory_day` spawns dogs and pseudodogs).
+
+**Volatility.** The engine rebuilds smart config from LTX on every load (`STATE_Read`), so the mutator uses two-phase restore (`load_state` reads to pending, `on_game_load` re-applies).
+
+**Monster faction revert.** `check_smart_faction` (smart_terrain.script:1209) only counts `IsStalker` NPCs. When only monsters occupy an online smart, `smart.faction` reverts to `default_faction`. A 60s periodic scanner (`_scan_conquered`) re-applies `smart.faction` for monster-conquered smarts.
+
+**Decay.** Conquered smarts revert to their original faction after `cfg.area_conquest_decay_hours` game hours (default 48). The scanner checks `xtime.game_sec() - conquered_at` and calls `clear_faction_controlled` on expired entries. Decay creates a natural territorial cycle: factions conquer, territory decays, other factions reconquer.
+
+**Eviction.** FIFO at `cfg.area_conquest_max_smarts` (default 50). Oldest conquest by game time is evicted when the cap is reached. Same-faction re-conquest refreshes the timestamp (LRU). Different-faction overwrites without eviction.
 
 ### Object Mutator (ap_ext_object_mutator)
 
@@ -232,7 +242,7 @@ Runtime combat modifiers for elite NPCs, triggered on `npc_on_before_hit`. Elite
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
 | STASH | radiant | squad_on_update | not protected, stash within 500m |
-| AREA | radiant | squad_on_update | not protected, community_stalker, empty smart, not is_base |
+| AREA | radiant | squad_on_update | not protected, empty smart, not is_base |
 | NEEDS | radiant | squad_on_update | not protected, community_stalker, level.present(), Hull drive scoring |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
@@ -256,7 +266,7 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 | STASH | stash_loot | loot stash to NPC inventory (CONFIGS-driven) |
 | STASH | stash_ambush | camp at stash, passive (CONFIGS-driven) |
 | STASH | stash_fill | fill stash with items (CONFIGS-driven) |
-| AREA | area_conquer | claim empty smart terrain |
+| AREA | area_conquer | claim empty smart terrain (stalkers and mutants, decays after 48h) |
 | NEEDS | (14 entries) | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> community check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type.
@@ -269,7 +279,7 @@ Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`.
 
 3. **Scripted bypass.** `scripted_target` overrides `SIMBOARD:get_squad_target()`. Engine `target_precondition` (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in consequence filters. Capacity is handled by arrival overflow.
 
-4. **Mutation volatility.** Runtime smart terrain mutations are rebuilt from LTX on every load. The smart mutator saves and restores independently using two-phase restore.
+4. **Mutation volatility.** Runtime smart terrain mutations are rebuilt from LTX on every load. The smart mutator saves and restores independently using two-phase restore. A 60s periodic scanner re-applies monster faction ownership (engine's `check_smart_faction` ignores monsters) and decays expired conquests.
 
 5. **Core/ext boundary.** Core never imports ext. All domain logic reaches core through registered function references.
 

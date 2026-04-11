@@ -47,7 +47,7 @@ What you'll notice:
 - Stash traffic: NPCs walking to stashes, looting, ambushing, filling
 - Outlaws hunting whoever picked up an artefact
 - Retaliation and retreat loops after squad wipes
-- Territory flipping as squads claim empty outposts
+- Territory flipping as stalkers and mutants claim empty outposts. Predators infest abandoned buildings. Conquests decay if not held. The Zone rebalances itself.
 - Elite NPCs emerging from combat, accumulating kills and better gear
 - Predators closing in on wounded targets, allies rushing to help
 - NPCs trading real items at traders - artefacts for ammo, grenades, medkits
@@ -151,7 +151,7 @@ Stash (radiant)
   - Fill - Stalker squad spots the stash and hides supplies inside.
 
 Area (radiant)
-  - Conquer - Squad claims the empty smart terrain. Engine spawns their faction there.
+  - Conquer - Any faction claims empty territory based on personality traits. Duty and predators conquer aggressively, ecologists and passive mutants rarely do. Conquered territory decays over time if not held (decay hours configurable in MCM).
 
 Needs (radiant)
   Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation.

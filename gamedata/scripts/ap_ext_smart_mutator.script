@@ -1,13 +1,16 @@
---- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, faction control)
+--- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, faction control, decay)
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
-local math_huge = math.huge
+local math_huge, math_floor = math.huge, math.floor
 local CALLBACK = ap_core_const.CALLBACK
 
 local cfg = ap_core_mcm.cfg
 local _conquered_smarts = {}
 local _conquered_pending = nil
-local _conquest_seq = 0
+
+local TIMER_EV = "ap_ext_smart_mutator"
+local SCAN_ID = "conquest_scan"
+local SCAN_INTERVAL_SEC = 60
 
 local function _find_oldest()
     local oldest_id, oldest_at = nil, math_huge
@@ -34,10 +37,10 @@ function conquer_smart(smart_id, faction)
     if not cfg.area_conquest_mutate_smart then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
+    local now = xtime.game_sec()
     local existing = _conquered_smarts[smart_id]
     if existing and existing.faction == faction then
-        _conquest_seq = _conquest_seq + 1
-        existing.conquered_at = _conquest_seq
+        existing.conquered_at = now
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
         return true
     end
@@ -47,18 +50,63 @@ function conquer_smart(smart_id, faction)
         end
     end
     if not xsmart.set_faction_controlled(smart, faction, cfg.area_conquest_spawn_num) then
+        ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
-    _conquest_seq = _conquest_seq + 1
-    _conquered_smarts[smart_id] = { faction = faction, conquered_at = _conquest_seq }
+    _conquered_smarts[smart_id] = { faction = faction, conquered_at = now }
     ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s", smart_id, faction)
     return true
+end
+
+local _decay_collector = {}
+
+--- Check if a single conquest entry has decayed
+-- @complexity O(1) | 1 luabind (xobject.se) if decayed
+local function _check_decay(smart_id, data, now, decay_sec)
+    if decay_sec <= 0 then return false end
+    if not data.conquered_at then return false end
+    if (now - data.conquered_at) <= decay_sec then return false end
+    local smart = xobject.se(smart_id)
+    if smart then xsmart.clear_faction_controlled(smart) end
+    ap_core_debug.debug("[MUTATOR.SMART] decay: smart=%d faction=%s age=%dh",
+        smart_id, data.faction, math_floor((now - data.conquered_at) / 3600))
+    return true
+end
+
+--- Re-apply monster faction if check_smart_faction reverted it
+-- @complexity O(1) | 1 luabind (xobject.se)
+local function _check_monster_faction(smart_id, data)
+    if not is_squad_monster[data.faction] then return end
+    local smart = xobject.se(smart_id)
+    if smart and smart.faction ~= data.faction then
+        smart.faction = data.faction
+    end
+end
+
+--- Periodic scan: decay expired conquests, re-apply monster faction for online smarts.
+-- @complexity O(n) conquered smarts (max area_conquest_max_smarts)
+local function _scan_conquered()
+    local now = xtime.game_sec()
+    local decay_sec = cfg.area_conquest_decay_hours * 3600
+    local count = 0
+    for smart_id, data in pairs(_conquered_smarts) do
+        if _check_decay(smart_id, data, now, decay_sec) then
+            count = count + 1
+            _decay_collector[count] = smart_id
+        else
+            _check_monster_faction(smart_id, data)
+        end
+    end
+    for i = 1, count do
+        _conquered_smarts[_decay_collector[i]] = nil
+        _decay_collector[i] = nil
+    end
+    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
 end
 
 local function _on_save_state(m_data)
     m_data.ap_ext_smart_mutator = {
         conquered_smarts = _conquered_smarts,
-        conquest_seq = _conquest_seq,
     }
 end
 
@@ -66,7 +114,6 @@ local function _on_load_state(m_data)
     local saved = m_data.ap_ext_smart_mutator or {}
     _conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
-    _conquest_seq = saved.conquest_seq or 0
 end
 
 local function _on_game_load()
@@ -76,22 +123,25 @@ local function _on_game_load()
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: mutate disabled, skipped restore")
         return
     end
+    local now = xtime.game_sec()
     local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
+        if not data.faction then goto continue end
         local smart = xobject.se(smart_id)
-        if not smart or not data.faction then goto continue end
+        if not smart then goto continue end
         if not xsmart.set_faction_controlled(smart, data.faction, cfg.area_conquest_spawn_num) then goto continue end
-        _conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or 0 }
+        _conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or now }
         restored = restored + 1
         ::continue::
     end
     _conquered_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: restored %d conquered smarts", restored)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: restored=%d", restored)
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
+    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan_conquered)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end

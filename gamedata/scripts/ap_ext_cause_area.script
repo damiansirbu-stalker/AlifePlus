@@ -1,4 +1,4 @@
---- ap_ext_cause_area: Squad near empty smart terrain (stalker factions only)
+--- ap_ext_cause_area: Squad near empty smart terrain (any faction)
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -7,15 +7,10 @@ local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
 
-local community_stalker = ap_ext_const.community_stalker
-
 local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
     local squad_faction = squad.player_id
-    if not community_stalker[squad_faction] then
-        return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = squad_faction }
-    end
 
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
