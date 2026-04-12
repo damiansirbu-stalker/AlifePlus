@@ -274,11 +274,9 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> alignment check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type, personality chance evaluated by consumer before handler runs.
 
-### Alignment and Personality
+### Alignment
 
-Two systems gate consequence eligibility. Alignment is a hard filter: can this faction do this at all. Personality is a probability: how likely is an eligible faction to act. Alignment runs first. Personality runs only if alignment passes.
-
-**Alignment** tables are static hash sets defined in `ap_ext_const`. Each consequence declares which alignment table it uses. The check is O(1) per faction.
+Hard filter: can this faction do this consequence at all. Static hash sets in `ap_ext_const`, O(1) per check. Zombied is excluded from alignment_human and therefore from all human consequences globally.
 
 Human factions follow GSC's moral axis (Ai.doc:65-76, тип характера):
 
@@ -298,13 +296,17 @@ Mutant factions follow GSC's creature groups (monstry.doc:4):
 | alignment_predator | monster_predatory_day, monster_predatory_night | Roaming pack hunters |
 | alignment_territorial | monster_predatory_night, monster_special | Hold ground, defend territory |
 
-Consequences compose alignment tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load. The result is a flat hash table checked at O(1) per event.
+Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load.
 
 For radiant consequences (stash, area, needs), the alignment check is on `event_data.community` -- the triggering squad's faction. For reactive same-faction consequences (investigate, revenge, flee, support, help), the check is on the event faction (victim or wounded). For reactive cross-faction consequences (scavenge, hunt), the alignment table is the `factions` parameter to `find_squads`.
 
-**Personality** traits (aggression, greed, survival, perception, territory, relation, discipline) remain unchanged. Each consequence declares which traits matter at registration. The consumer averages the relevant traits for the event faction, clamps to 0.05-0.95, and rolls. Personality modulates behavior within the set of factions that alignment already approved.
+### Personality
 
-Zombied is excluded from alignment_human and therefore from all human consequences globally.
+Probability layer: how likely is an eligible faction to act. Runs only after alignment passes. Seven traits (aggression, greed, survival, perception, territory, relation, discipline) declared per consequence at registration. The consumer averages the relevant traits for the event faction, clamps to 0.05-0.95, and rolls.
+
+### Emergence
+
+Per-level perceptron that observes consequence outcomes and adjusts consequence probability in real-time. Each map develops its own behavioral profile. Reads AP saturation, consequence throughput, and faction disposition. Weights adapt every session. See `ap_core_consumer` for integration.
 
 ### Invariants
 

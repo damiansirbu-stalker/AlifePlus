@@ -167,16 +167,23 @@ Needs (radiant)
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.
   A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.
 
-Alignment and Personality
-  Two layers decide what factions do. Alignment is the hard gate: GSC classified
-  characters as principled, self-serving, or unprincipled. AlifePlus maps this
-  to factions. Military never flees. Ecologists never conquer. Renegades never
-  investigate. These are structural, not tunable.
-  Personality is the probability: seven traits per faction (aggression, greed,
-  survival, perception, territory, relation, discipline) derived from GSC's
-  original AI design documents. A faction that passes the alignment gate rolls
-  against its personality score for the relevant traits. Both stalker and mutant
-  factions share the same system.
+Alignment
+  GSC classified characters as principled, self-serving, or unprincipled.
+  AlifePlus maps this to factions as a hard gate. Military never flees.
+  Ecologists never conquer. Renegades never investigate. Outlaws never help
+  the wounded. These are structural, not tunable.
+
+Personality
+  Seven traits per faction (aggression, greed, survival, perception, territory,
+  relation, discipline) derived from GSC's original AI design documents. A faction
+  that passes the alignment gate rolls against its personality score for the
+  relevant traits. Both stalker and mutant factions share the same system.
+
+Emergence
+  Each map develops its own behavioral profile through a perceptron that learns
+  from consequence outcomes in real-time. Rostok under faction warfare develops
+  differently than a quiet Cordon. The patterns are not designed -- they arise
+  from alignment constraints, personality probabilities, and consequence results.
 
 ---
 

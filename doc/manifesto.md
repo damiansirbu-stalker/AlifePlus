@@ -521,25 +521,11 @@ Free items from a trader is a spawn, not a trade.
 
 ---
 
-## Personality: Who You Are Decides
+## Alignment
 
-GSC modeled personality with independent attribute axes that fed probability lookup tables for behavioral decisions.
-Five axes from the design documents, a moral axis with eight character types, and faction-level personality as a core concept.
+GSC classified characters along a moral axis with nine types across two dimensions: principled, self-serving, or unprincipled crossed with good, cold-blooded, or evil (Ai.doc:65-76, тип характера).
+Each type defines specific behavioral rules.
 None of it shipped.
-
-GSC's five personality axes [8]:
-
-- **PersonalAggressiveness** (1-5): willingness to engage. Feeds the Expediency function where aggression=1 yields 5% action probability and aggression=5 yields 65%.
-- **PersonalGreed** (1-5): profit motivation. Combined with aggression in Expediency: high greed with low aggression means rob when safe, both high means attack for loot.
-- **PersonalIntelligence** (1-5): retreat decision quality. Feeds EnemyRetreatProbability as a function of detectability and intelligence, producing 20-65%.
-- **PersonalEyeRange** (1-5): awareness radius. Feeds EnemyDetectProbability as a function of detectability and eye range, producing 1-90%.
-- **PersonalRelation** (1-2): friend or enemy. Caps Expediency at 45% for friends and 65% for enemies.
-
-The Expediency function is the strongest evidence: a four-dimensional lookup table mapping Relation, Cost, Greed, and Aggression to an action probability between 5% and 65% [8].
-The decision is a function of who you are, not a coin flip.
-
-GSC's moral axis classified characters into eight types across two dimensions: principled, neutral, or unprincipled crossed with good, cold-blooded, or evil [8].
-Each type defines specific behavioral rules:
 
 > "Principled Good: Saves everyone, with the exception of enemies. Tries to avoid killing mutant animals whenever possible. Deliberately eliminates humanoid mutants. Would never commit an act of betrayal. Does not loot abandoned equipment. Does not seek revenge, though does not forgive enemies."
 > [8]
@@ -551,8 +537,35 @@ Each type defines specific behavioral rules:
 > [8]
 
 Three character types, three completely different responses to the same event.
-GSC also treated mutants as actors in the same personality system: Principled Good "tries to avoid killing mutant animals whenever possible," Cold-blooded "ignores mutant animals unless they display aggression," and Principled Good "deliberately eliminates humanoid mutants" [8].
-Mutants were not special cases.
+GSC treated mutants as actors in the same system and classified creatures into four groups by nature: ordinary animals, animal mutants, humanoid mutants, and aberrations (monstry.doc:4).
+
+AlifePlus maps GSC's moral axis to factions as a hard filter.
+Principled factions (Duty, Military, Monolith, ISG) follow orders and hold positions.
+Self-serving factions (Loners, Clear Sky, Ecologists, Freedom, Mercs) act on their own goals.
+Outlaw factions (Bandits, Renegades, Sin) operate outside any code.
+Mutant factions split by nature: predators roam and hunt, territorial creatures hold ground and defend.
+
+Alignment determines what a faction can do at all.
+Military never flees a base attack.
+Ecologists never conquer territory.
+Renegades never investigate massacres.
+Outlaws never help the wounded.
+These are structural constraints, not tunable probabilities.
+
+---
+
+## Personality
+
+GSC modeled personality with five independent attribute axes that fed probability lookup tables [8]:
+
+- **PersonalAggressiveness** (1-5): willingness to engage.
+- **PersonalGreed** (1-5): profit motivation.
+- **PersonalIntelligence** (1-5): retreat decision quality.
+- **PersonalEyeRange** (1-5): awareness radius.
+- **PersonalRelation** (1-2): friend or enemy.
+
+The Expediency function combined these into a four-dimensional lookup: Relation x Cost x Greed x Aggressiveness -> action probability between 5% and 65% [8].
+The decision is a function of who you are, not a coin flip.
 
 > "Each faction possesses a distinct 'personality' (either pre-assigned or randomly generated); based on this personality, the faction determines which other factions it will initially treat as allies or enemies."
 > [8]
@@ -560,74 +573,38 @@ Mutants were not special cases.
 > "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)."
 > [8]
 
-AlifePlus implements this with two layers: alignment and personality.
+AlifePlus implements personality as a probability layer that runs after alignment.
+Seven traits per faction, each tracing to a GSC design axis.
+Both stalker and mutant factions share the same table and the same gate.
+The decision is probabilistic given the faction and the event, but only within the set of actions alignment permits.
 
-Alignment is the hard filter. GSC classified characters along a moral axis: principled, self-serving (neutral), and unprincipled (Ai.doc:65-76, тип характера). AlifePlus maps this to factions: principled factions (Duty, Military, Monolith, ISG) follow orders and hold positions. Self-serving factions (Loners, Clear Sky, Ecologists, Freedom, Mercs) act on their own goals. Outlaw factions (Bandits, Renegades, Sin) operate outside any code. Alignment determines what a faction can do at all. Military never flees a base attack. Ecologists never conquer territory. Renegades never investigate massacres. These are not tunable probabilities but structural constraints from GSC's character type system.
-
-Personality is the probability layer. Seven traits per faction, each tracing to a GSC design axis or engine system. Both stalker and mutant factions share the same table, the same lookup, the same gate. The decision is probabilistic given the faction and the event, but only within the set of actions alignment permits.
-
-Aggression traces to GSC's PersonalAggressiveness and the Expediency function, and mirrors the engine's `m_bAggressive` flag (`base_monster_misc.cpp`) which is set from enemy count, sounds, and hits.
-For mutants, it maps to inverted `panic_threshold`: chimera at 0.0 cannot panic, boar at 0.5 is moderate, and rat at 0.9 flees easily.
-Aggression gates the revenge, alpha hunt, wounded hunt, and harvest hunt consequences.
-
-Greed traces to GSC's PersonalGreed and the Expediency function, where GSC's EntityCost table quantifies target value across a 5x3x3 matrix of equipment cost, backpack weight, and anomaly exposure [8].
-Greed gates resource acquisition: the stash loot, stash ambush, stash fill, and massacre scavenge consequences.
-
-Survival traces to GSC's EnemyRetreatProbability and the engine's morale system (`monster_morale.cpp`), where morale drops on hits and triggers panic below the threshold.
-Survival gates the flee consequences from squad kill and base kill.
-
-Perception traces to GSC's PersonalEyeRange and the EnemyDetectProbability table, which ranges from 1% to 90% across a 10x5 lookup [8].
-Perception gates the massacre investigate consequence.
-
-Territory traces to GSC's faction expansion levels with per-faction sim_prior tables [8] and the engine's `CMonsterHome` (`monster_home.cpp`) with three concentric radii and an aggressive flag for home defense.
-Territory combined with aggression gates the area conquer consequence: a faction needs both the drive to hold ground and the willingness to take it.
-
-Relation traces to GSC's PersonalRelation, which capped Expediency at 45% for friends.
-Relation gates solidarity: the base kill support and wounded help consequences.
-
-Discipline traces to GSC's principled/unprincipled moral axis, where principled characters "would never commit an act of betrayal" and unprincipled ones "will betray others if the gain is significant" [8].
-Discipline gates all needs consequences: routine behavior like eating, sleeping, guarding, and socializing.
+Aggression gates revenge, alpha hunt, wounded hunt, and harvest hunt.
+Greed gates stash loot, stash ambush, stash fill, and massacre scavenge.
+Survival gates the flee consequences.
+Perception gates massacre investigate.
+Territory combined with aggression gates area conquer.
+Relation gates base kill support and wounded help.
+Discipline gates needs consequences: eating, sleeping, guarding, socializing.
 
 ---
 
-## Zone Will: Learned Expediency
+## Emergence
 
-GSC's evaluation function storage (`ef_storage.h`) computed per-NPC behavioral decisions from personality inputs.
-Six personal evaluation functions fed the decision pipeline:
-
-- `CPersonalMoraleFunction`: dynamic combat state, rises on successful attacks, drops on hits
-- `CPersonalCreatureTypeFunction`: species classification for threat assessment
-- `CPersonalIntelligenceFunction`: retreat decision quality
-- `CPersonalRelationFunction`: friend/enemy classification
-- `CPersonalGreedFunction`: profit motivation
-- `CPersonalAggressivenessFunction`: willingness to engage
-
-These functions evaluated a multi-dimensional lookup to produce an expediency score: is this action worth doing given who I am and what I see.
-The Altogolik design documents define the Expediency function explicitly as `Relation x EntityCost x Greed x Aggressiveness -> Expediency` [8].
-The morale system (`CMonsterMorale`, `monster_morale.cpp`) tracked a per-entity 0-1 value that changed on hits and successful attacks, with three states: stable, taking heart, and despondent.
-All of this was per-NPC.
+GSC's Expediency function was a static lookup table: fixed inputs, fixed outputs, designed once.
+It answered the question "is this action worth doing given who I am and what I see" but the answer never changed.
 
 > "The gist of the A-Life is that the characters in the game live their own lives and exist all the time, not only when they are in the player's field of view."
 > Dmitriy Iassenev, AI programmer, 2008 [1]
 
-AlifePlus extends expediency from the NPC to the zone.
-Each level runs a perceptron (single-neuron online learner, sigmoid activation, delta rule) that observes consequence outcomes and adjusts consequence probability in real-time.
-The perceptron reads AP saturation, consequence throughput, and faction disposition.
-When a consequence succeeds, the delta rule shifts weights toward the input pattern that produced the success.
+AlifePlus extends expediency from the NPC to the zone and from static lookup to learned function.
+Each level runs a perceptron that observes consequence outcomes and adjusts consequence probability in real-time.
+When a consequence succeeds, the weights shift toward the pattern that produced the success.
 When it fails, the weights shift away.
-Each map develops its own personality from actual gameplay outcomes, shaping how events chain and which situations emerge.
+Each map develops its own behavioral profile from actual gameplay, shaping how events chain and which situations emerge.
 
-GSC's expediency was a static lookup table: fixed inputs, fixed outputs, designed once.
-Zone will learns the same function from gameplay.
-The perceptron discovers what the designer would have encoded, per level, per session, from actual success and failure rates.
-
-Rostok under sustained faction warfare develops a different will than a quiet Cordon with three loners.
+Rostok under sustained faction warfare develops differently than a quiet Cordon with three loners.
 The weights adapt every session.
-
-The perceptron is ~40 lines of Lua, costs less than a single luabind call per evaluation, and fires 2-5 times per minute.
-The evaluation function pattern is GSC's (`ef_storage.h`).
-The morale pattern is GSC's (`monster_morale.cpp`).
-The extension from NPC to zone, and from static lookup to learned function, is AlifePlus.
+Nobody designs the specific patterns -- they arise from the interaction between alignment constraints, personality probabilities, and consequence outcomes.
 
 ---
 
