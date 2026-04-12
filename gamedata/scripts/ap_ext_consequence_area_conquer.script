@@ -13,12 +13,13 @@ local _alignment_conquer = xtable.subtract(
     xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_predator, ap_ext_const.alignment_territorial),
     { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true }
 )
+local _personality = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
 
 local function _on_arrive(squad, args)
     if not args then return end
     ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
     ap_ext_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
-    ap_core_utils.send_pda(cfg.consequence_area_conquer_pda_chance,
+    ap_ext_news.send_pda(cfg.consequence_area_conquer_pda_chance,
         "text_pda_consequence_area_conquer", { smart = args.smart_name })
 end
 
@@ -26,7 +27,10 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
         if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not _alignment_conquer[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community } end
+        if not ap_ext_dispatch.check_alignment(_alignment_conquer, event_data.community) then
+            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+        end
+        if not ap_ext_dispatch.check_personality(_personality, event_data.community, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
         local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
         if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
 
@@ -57,7 +61,6 @@ function on_game_start()
         event = CAUSE.AREA,
         condition = function() return cfg.consequence_area_conquer_enabled end,
         on_arrive = _on_arrive,
-        personality = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.AREA_CONQUER] Initialized")
 end

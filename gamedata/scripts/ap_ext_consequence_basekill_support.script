@@ -11,6 +11,7 @@ local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 local _alignment_support = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
+local _personality = { PERSONALITY.TERRITORY, PERSONALITY.RELATION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -20,7 +21,8 @@ local function _handler(event_data)
         local smart = event_data.smart
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
         if not smart or not factions or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-        if not _alignment_support[event_data.faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
+        if not ap_ext_dispatch.check_alignment(_alignment_support, event_data.faction) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
+        if not ap_ext_dispatch.check_personality(_personality, event_data.faction, CONSEQUENCE.BASEKILL_SUPPORT) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = factions,
@@ -43,8 +45,8 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.BASEKILL_SUPPORT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_core_utils.get_location_description(nil, position, level_id)
-            return ap_core_utils.send_pda(cfg.consequence_basekill_support_pda_chance, "text_pda_consequence_basekill_support", { location = location })
+            local location = ap_ext_news.get_location_description(nil, position, level_id)
+            return ap_ext_news.send_pda(cfg.consequence_basekill_support_pda_chance, "text_pda_consequence_basekill_support", { location = location })
         end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_squads", dst_id = smart.id, faction = event_data.faction })
@@ -55,7 +57,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.BASEKILL_SUPPORT, {
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_support_enabled end,
-        personality = { PERSONALITY.TERRITORY, PERSONALITY.RELATION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.BASEKILL_SUPPORT] Initialized")
 end

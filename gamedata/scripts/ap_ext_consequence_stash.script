@@ -75,7 +75,7 @@ local function _arrive_loot(squad, stash_id)
             if #notable == 0 then return { code = TRACE.NO_ITEMS } end
             local names = {}
             for i = 1, #notable do names[i] = ui_item.get_sec_name(notable[i]) end
-            return ap_core_utils.send_pda(cfg.consequence_stash_loot_pda_chance,
+            return ap_ext_news.send_pda(cfg.consequence_stash_loot_pda_chance,
                 "text_pda_consequence_stash_loot_success", { items = table_concat(names, ", ") })
         end)
         return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
@@ -89,7 +89,7 @@ local function _arrive_fill(squad, stash_id, items)
     end
     ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_fill: stash=%d squad=%d items=%d", stash_id, squad.id, #items)
     ap_core_debug.observe(nil, ACTION.SEND_PDA, function()
-        return ap_core_utils.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
+        return ap_ext_news.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
     end)
 end
 
@@ -121,7 +121,12 @@ local function _make_handler(entry)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
-            if not entry.community[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community } end
+            if not ap_ext_dispatch.check_alignment(entry.community, event_data.community) then
+                return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+            end
+            if entry.personality and not ap_ext_dispatch.check_personality(entry.personality, event_data.community, entry.name) then
+                return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY }
+            end
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
@@ -149,7 +154,7 @@ local function _make_handler(entry)
 
             if not entry.arrive_fn then
                 ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-                    return ap_core_utils.send_pda(cfg[pda_key], "text_pda_consequence_" .. entry.name)
+                    return ap_ext_news.send_pda(cfg[pda_key], "text_pda_consequence_" .. entry.name)
                 end)
             end
 
@@ -170,7 +175,6 @@ function on_game_start()
             event = CAUSE.STASH,
             condition = _make_condition(enabled_key),
             on_arrive = entry.arrive_fn and _on_arrive or nil,
-            personality = entry.personality,
         }, _make_handler(entry))
     end
     ap_core_debug.info("[CONSEQUENCE.STASH] Initialized: %d consequences", #CONFIGS)

@@ -1,0 +1,78 @@
+--- ap_ext_news: PDA message dispatch, sender selection, location description
+local IsStalker, get_object_story_id, math_random = IsStalker, get_object_story_id, math.random
+local TRACE = ap_core_const.TRACE
+
+local alignment_human = ap_ext_const.alignment_human
+
+--- Pick a random online stalker as PDA sender
+--- Filters: alive stalker, not story NPC, human faction, not enemy of player
+local function _pick_pda_sender()
+    local online = db.OnlineStalkers
+    if not online then return nil end
+    local actor = db.actor
+    if not actor then return nil end
+    local actor_community = actor:character_community()
+    local storage = db.storage
+    local candidates = {}
+    for i = 1, #online do
+        local id = online[i]
+        local st = storage[id]
+        local npc = st and st.object
+        if not npc or not IsStalker(npc) or not npc:alive() then goto continue end
+        if get_object_story_id(id) then goto continue end
+        local community = npc:character_community()
+        if not alignment_human[community] then goto continue end
+        if game_relations.is_factions_enemies(actor_community, community) then goto continue end
+        candidates[#candidates + 1] = npc
+        ::continue::
+    end
+    local count = #candidates
+    ap_core_debug.debug("[PDA_SENDER] candidates=%d online=%d", count, #online)
+    if count > 0 then
+        local npc = candidates[math_random(count)]
+        return { name = npc:character_name(), icon = npc:character_icon() }
+    end
+end
+
+--- Get human-readable location description for an entity
+--- @param se_obj userdata|nil Server entity (extracts position and level_id if provided)
+--- @param pos vector|nil Position override
+--- @param level_id number|nil Level ID override (use this for event-based locations)
+function get_location_description(se_obj, pos, level_id)
+    local entity_pos = pos
+    local entity_lvl = level_id
+
+    if se_obj then
+        entity_pos = entity_pos or se_obj.position
+        entity_lvl = entity_lvl or xlevel.get_level_id(se_obj)
+    end
+
+    if not entity_lvl then
+        entity_lvl = xlevel.get_actor_level_id()
+    end
+
+    return xlevel.get_location_name(entity_pos, entity_lvl)
+end
+
+--- Send a PDA message as zone gossip (chance gated, message resolved from key)
+--- @param chance number PDA chance (0-100), 100 = always
+--- @param key string ap_ext_messages key
+--- @param params table|nil Substitution parameters for ap_ext_messages.get
+function send_pda(chance, key, params)
+    if not xmath.chance(chance) then
+        return { code = TRACE.CHANCE, key = key }
+    end
+    local msg = ap_ext_messages and ap_ext_messages.get(key, params)
+    if not msg then
+        ap_core_debug.debug("[SEND_PDA] no message: key=%s", key)
+        return { code = TRACE.NO_MSG, key = key }
+    end
+    local sender = _pick_pda_sender()
+    if not sender then
+        ap_core_debug.debug("[SEND_PDA] no sender available")
+        return { code = TRACE.NO_SENDER, key = key }
+    end
+    xpda.send(sender.name, msg, sender.icon)
+    ap_core_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
+    return { code = TRACE.SENT, key = key, sender = sender.name }
+end

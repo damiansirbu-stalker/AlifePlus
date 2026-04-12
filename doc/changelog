@@ -13,6 +13,9 @@ next
     Changed: reactive consequences chain independently. A massacre triggers both scavengers and investigators. A squad wipe triggers both revenge and retreat.
     Changed: radiant consequences remain exclusive. One squad, one action.
     Changed: alphakill sends same-species mutants to hunt the killer.
+    Added: snork, controller, burer, and karlik packs participate in alignment system (predator + territorial). Previously invisible to AP.
+    Changed: mutant squadkill triggers revenge from predator and territorial packs, and flee from herbivores and trash mobs.
+    Changed: personality chance narrowed to 10-50% range. Factions act less randomly, more according to identity.
     Removed: stalker elites. Engine rank already tracks stalker progression.
     Removed: grenade restock, AP ammo restock, engine rank boost.
     Removed: elite kill bounty.
@@ -58,6 +61,11 @@ next
     Changed: producer luabind crossings reduced via global xlibs caching.
     Changed: pacer retries faster on protection reject instead of burning the full interval.
     Changed: radiant and reactive pipelines use independent Bresenham counters. Reactive events no longer biased by radiant traffic volume.
+    Added: consumer statistics (PIPELINE, CAUSES, DISPATCH, LIFECYCLE) logged every 60s at DEBUG. Zero cost above DEBUG.
+    Changed: alignment and personality checks moved from core consumer to ap_ext_dispatch. Core pipeline has zero domain knowledge.
+    Changed: PDA sender selection and message dispatch moved from core to ap_ext_news. Core has zero ext references.
+    Changed: all consequence gates (alignment, personality) run inside observe() with full tid/path tracing.
+    Changed: guard clause detector recognizes multi-line guards and counts guards throughout the function body.
     Changed: rate limiting reworked with sliding window counters and per-pipeline pacing.
   xlibs (requires xlibs update):
     Added: composite squad protection guard with shared commander context.

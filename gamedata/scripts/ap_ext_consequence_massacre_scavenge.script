@@ -6,7 +6,6 @@ local ipairs = ipairs
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
-local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_predator)
@@ -38,8 +37,8 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.MASSACRE_SCAVENGE) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_core_utils.get_location_description(nil, position, level_id)
-            return ap_core_utils.send_pda(cfg.consequence_massacre_scavenge_pda_chance, "text_pda_consequence_massacre_scavenge", { location = location })
+            local location = ap_ext_news.get_location_description(nil, position, level_id)
+            return ap_ext_news.send_pda(cfg.consequence_massacre_scavenge_pda_chance, "text_pda_consequence_massacre_scavenge", { location = location })
         end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_squads", dst_id = smart.id })
@@ -50,7 +49,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_SCAVENGE, {
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_scavenge_enabled end,
-        personality = { PERSONALITY.GREED },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.MASSACRE_SCAVENGE] Initialized")
 end

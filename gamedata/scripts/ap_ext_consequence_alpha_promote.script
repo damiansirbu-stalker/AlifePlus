@@ -64,8 +64,8 @@ local function _handler(event_data)
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
             if not se then return { code = TRACE.NO_ENTITY } end
-            local location = ap_core_utils.get_location_description(se, nil, level_id)
-            return ap_core_utils.send_pda(cfg.consequence_alpha_promote_pda_chance, "text_pda_consequence_alpha_promote", {
+            local location = ap_ext_news.get_location_description(se, nil, level_id)
+            return ap_ext_news.send_pda(cfg.consequence_alpha_promote_pda_chance, "text_pda_consequence_alpha_promote", {
                 name = name, location = location, level = level,
             })
         end)

@@ -293,8 +293,8 @@ Mutant factions follow GSC's creature groups (monstry.doc:4):
 
 | Table | Factions | GSC origin |
 |-------|----------|------------|
-| alignment_predator | monster_predatory_day, monster_predatory_night | Roaming pack hunters |
-| alignment_territorial | monster_predatory_night, monster_special | Hold ground, defend territory |
+| alignment_predator | monster_predatory_day, monster_predatory_night, monster_zombied_day, monster_zombied_night | Roaming pack hunters |
+| alignment_territorial | monster_predatory_night, monster_special, monster_zombied_day, monster_zombied_night | Hold ground, defend territory |
 
 Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load.
 

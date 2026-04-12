@@ -197,11 +197,14 @@ local function _make_handler(entry)
     local enabled_key = "consequence_" .. entry.name .. "_enabled"
 
     return function(event_data)
-        if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
-        if entry.alignment and not entry.alignment[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community } end
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
+            if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
+            if not ap_ext_dispatch.check_alignment(entry.alignment, event_data.community) then
+                return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+            end
+            if not ap_ext_dispatch.check_personality(entry.personality, event_data.community, entry.name) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
             local filter = _build_filter(entry, event_data.community)
@@ -234,9 +237,9 @@ local function _make_handler(entry)
                 local cmd_se = xobject.se(cmd_id)
                 local cmd_name = "A stalker"
                 if cmd_se then cmd_name = cmd_se:character_name() end
-                local location = ap_core_utils.get_location_description(nil, smart.position, event_data.level_id)
+                local location = ap_ext_news.get_location_description(nil, smart.position, event_data.level_id)
                 local pda_chance = cfg["consequence_" .. entry.name .. "_pda_chance"]
-                return ap_core_utils.send_pda(pda_chance,
+                return ap_ext_news.send_pda(pda_chance,
                     "text_pda_consequence_" .. entry.name, {
                         name = cmd_name,
                         location = location,
@@ -255,7 +258,6 @@ function on_game_start()
             event = CAUSE.NEEDS,
             condition = _make_condition(enabled_key),
             on_arrive = _on_arrive,
-            personality = entry.personality,
         }, _make_handler(entry))
     end
     ap_core_debug.info("[CONSEQUENCE.NEEDS] Initialized: %d consequences", #CONFIGS)

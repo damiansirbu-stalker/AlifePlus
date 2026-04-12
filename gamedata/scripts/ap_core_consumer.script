@@ -1,6 +1,5 @@
 --- ap_core_consumer: Routes cause events to consequence handlers via round-robin
 local pairs, RegisterScriptCallback, table_concat = pairs, RegisterScriptCallback, table.concat
-local math_random, math_min, math_max = math.random, math.min, math.max
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -45,7 +44,6 @@ function register(name, config, handler)
         name = name,
         condition = config.condition,
         handler = handler,
-        personality = config.personality,
         label = name,
     }
 
@@ -63,32 +61,8 @@ function register(name, config, handler)
     return true
 end
 
-local function _check_personality(traits, community, consequence_name)
-    if not traits or not community then return true end
-    local faction_traits = ap_ext_const.PERSONALITY[community]
-    if not faction_traits then return true end
-    local sum, count = 0, 0
-    for i = 1, #traits do
-        sum = sum + (faction_traits[traits[i]] or 0.5)
-        count = count + 1
-    end
-    if count == 0 then return true end
-    local chance = math_min(0.50, math_max(0.10, sum / count))
-    local roll = math_random()
-    local passed = roll < chance
-    if passed then
-        ap_core_debug.debug("[CONSUMER] PERSONALITY_PASSED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
-    else
-        ap_core_debug.debug("[CONSUMER] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
-    end
-    return passed
-end
-
 local function _run_handler(entry, event_data)
     if entry.condition and not entry.condition() then return { code = RESULT.DISABLED_NEXT } end
-    if entry.personality and not _check_personality(entry.personality, event_data.community, entry.name) then
-        return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY }
-    end
     return entry.handler(event_data)
 end
 

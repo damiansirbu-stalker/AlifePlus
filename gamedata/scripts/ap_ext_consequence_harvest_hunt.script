@@ -6,7 +6,6 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local PERSONALITY = ap_ext_const.PERSONALITY
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
@@ -42,13 +41,13 @@ local function _on_arrive(squad, args)
     end
     local target_squad = xobject.se(target_squad_id)
     if not target_squad then
-        ap_core_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_lost")
+        ap_ext_news.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_lost")
         return
     end
     local level_id = xlevel.get_level_id(target_squad)
     if not level_id then return end
     if xlevel.get_level_id(squad) ~= level_id then
-        ap_core_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_lost")
+        ap_ext_news.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_lost")
         return
     end
     ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
@@ -57,7 +56,7 @@ local function _on_arrive(squad, args)
         })
         if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
-            ap_core_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_found")
+            ap_ext_news.send_pda(cfg.consequence_harvest_hunt_pda_chance, "text_pda_consequence_harvest_hunt_found")
             return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
         end
         local res = ap_core_squad.script_squad(squad, smart, {
@@ -95,7 +94,7 @@ local function _handler(event_data)
 
         local moved = {}
         local dst_id = 0
-        local location = ap_core_utils.get_location_description(nil, position, level_id)
+        local location = ap_ext_news.get_location_description(nil, position, level_id)
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             if not chasers then return { code = TRACE.NO_SQUADS } end
             if taker_is_player then
@@ -113,7 +112,7 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_core_utils.send_pda(cfg.consequence_harvest_hunt_pda_chance,
+            return ap_ext_news.send_pda(cfg.consequence_harvest_hunt_pda_chance,
                 "text_pda_consequence_harvest_hunt", { location = location })
         end)
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.HARVEST_HUNT) end
@@ -128,7 +127,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.HARVEST_HUNT, {
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_hunt_enabled end,
-        personality = { PERSONALITY.GREED, PERSONALITY.AGGRESSION },
         on_arrive = _on_arrive,
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.HARVEST_HUNT] Initialized")

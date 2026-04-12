@@ -11,6 +11,7 @@ local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
 local _alignment_investigate = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
+local _personality = { PERSONALITY.PERCEPTION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -22,7 +23,10 @@ local function _handler(event_data)
 
         local investigate_faction = event_data.faction
         if not investigate_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
-        if not _alignment_investigate[investigate_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction } end
+        if not ap_ext_dispatch.check_alignment(_alignment_investigate, investigate_faction) then
+            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
+        end
+        if not ap_ext_dispatch.check_personality(_personality, investigate_faction, CONSEQUENCE.MASSACRE_INVESTIGATE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
@@ -43,8 +47,8 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.MASSACRE_INVESTIGATE) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_core_utils.get_location_description(nil, position, level_id)
-            return ap_core_utils.send_pda(cfg.consequence_massacre_investigate_pda_chance, "text_pda_consequence_massacre_investigate", { location = location })
+            local location = ap_ext_news.get_location_description(nil, position, level_id)
+            return ap_ext_news.send_pda(cfg.consequence_massacre_investigate_pda_chance, "text_pda_consequence_massacre_investigate", { location = location })
         end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_" .. investigate_faction, dst_id = smart.id, faction = investigate_faction })
@@ -55,7 +59,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_INVESTIGATE, {
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_investigate_enabled end,
-        personality = { PERSONALITY.PERCEPTION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.MASSACRE_INVESTIGATE] Initialized")
 end

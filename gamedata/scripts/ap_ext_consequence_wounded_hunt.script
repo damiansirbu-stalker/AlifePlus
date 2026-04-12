@@ -6,7 +6,6 @@ local ipairs = ipairs
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
-local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local _alignment_wounded_hunt = xtable.merge(ap_ext_const.alignment_predator, ap_ext_const.alignment_outlaw)
@@ -41,7 +40,7 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.WOUNDED_HUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_core_utils.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
+            return ap_ext_news.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
         end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_predators", dst_id = target_smart.id })
@@ -52,7 +51,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.WOUNDED_HUNT, {
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_hunt_enabled end,
-        personality = { PERSONALITY.AGGRESSION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.WOUNDED_HUNT] Initialized")
 end

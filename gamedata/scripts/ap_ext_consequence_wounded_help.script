@@ -10,6 +10,7 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local _alignment_help = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_outlaw)
+local _personality = { PERSONALITY.RELATION, PERSONALITY.DISCIPLINE }
 
 local function _get_faction(npc_id, is_player)
     if is_player then
@@ -28,7 +29,8 @@ local function _handler(event_data)
 
         local faction = _get_faction(npc_id, is_player)
         if not faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
-        if not _alignment_help[faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = faction } end
+        if not ap_ext_dispatch.check_alignment(_alignment_help, faction) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = faction } end
+        if not ap_ext_dispatch.check_personality(_personality, faction, CONSEQUENCE.WOUNDED_HELP) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
         if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
@@ -54,8 +56,8 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.WOUNDED_HELP) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_core_utils.get_location_description(nil, position, level_id)
-            return ap_core_utils.send_pda(cfg.consequence_wounded_help_pda_chance, "text_pda_consequence_wounded_help", { location = location })
+            local location = ap_ext_news.get_location_description(nil, position, level_id)
+            return ap_ext_news.send_pda(cfg.consequence_wounded_help_pda_chance, "text_pda_consequence_wounded_help", { location = location })
         end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_squads", dst_id = target_smart.id, faction = faction })
@@ -66,7 +68,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.WOUNDED_HELP, {
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_help_enabled end,
-        personality = { PERSONALITY.RELATION, PERSONALITY.DISCIPLINE },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.WOUNDED_HELP] Initialized")
 end
