@@ -12,6 +12,7 @@ local THROTTLE_SEC = 0.5
 
 local _alpha_damage_increase = {}
 local _alpha_damage_reduction = {}
+local _panic_applied = {}
 local _last_monster_hit = 0
 local _last_npc_hit = 0
 
@@ -31,6 +32,7 @@ function clear_alpha_damage(npc_id)
     if not npc_id then return end
     _alpha_damage_increase[npc_id] = nil
     _alpha_damage_reduction[npc_id] = nil
+    _panic_applied[npc_id] = nil
 end
 
 local function _rank_factor(rank)
@@ -56,7 +58,13 @@ local function _on_monster_hit(monster, shit, bone_id, flags)
         if not increase and not reduction then return { code = TRACE.NONE } end
 
         if increase then shit.power = shit.power * increase end
-        if reduction then shit.power = shit.power * reduction end
+        if reduction then
+            shit.power = shit.power * reduction
+            if cfg.alpha_panic_immunity_enabled and not _panic_applied[victim_id] then
+                monster:set_custom_panic_threshold(0)
+                _panic_applied[victim_id] = true
+            end
+        end
 
         return { code = TRACE.OK, victim = victim_id, attacker = attacker_id,
             increase = increase, reduction = reduction }

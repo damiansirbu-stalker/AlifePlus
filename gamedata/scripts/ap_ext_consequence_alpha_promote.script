@@ -1,11 +1,13 @@
 --- ap_ext_consequence_alpha_promote: Registers new alpha mutants and updates alpha level
 
+local math_random, math_min = math.random, math.min
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
+local ALPHA_LOOT = ap_ext_const.ALPHA_LOOT
 
 local cfg = ap_core_mcm.cfg
 
@@ -38,6 +40,21 @@ local function _handler(event_data)
         if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
 
         ap_ext_object_mutator.set_alpha_damage(killer_id, level)
+
+        if cfg.alpha_loot_enabled then
+            ap_core_debug.observe(trace, ACTION.GRANT_LOOT, function()
+                local pool
+                if level >= 7 then pool = ALPHA_LOOT.HIGH
+                elseif level >= 4 then pool = ALPHA_LOOT.MID
+                else pool = ALPHA_LOOT.LOW
+                end
+                local count = math_min(level, 4)
+                for i = 1, count do
+                    xobject.create_item(pool[math_random(#pool)], killer_id)
+                end
+                return { code = TRACE.OK, items = count, pool = level >= 7 and "HIGH" or level >= 4 and "MID" or "LOW" }
+            end)
+        end
 
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then

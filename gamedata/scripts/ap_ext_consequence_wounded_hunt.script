@@ -6,6 +6,7 @@ local ipairs = ipairs
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 
@@ -50,6 +51,7 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.WOUNDED_HUNT, {
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_hunt_enabled end,
+        personality = { PERSONALITY.AGGRESSION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.WOUNDED_HUNT] Initialized")
 end

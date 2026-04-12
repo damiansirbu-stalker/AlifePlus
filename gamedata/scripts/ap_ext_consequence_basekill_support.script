@@ -6,6 +6,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local PERSONALITY = ap_ext_const.PERSONALITY
 local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
@@ -52,6 +53,7 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.BASEKILL_SUPPORT, {
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_support_enabled end,
+        personality = { PERSONALITY.TERRITORY, PERSONALITY.RELATION },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.BASEKILL_SUPPORT] Initialized")
 end

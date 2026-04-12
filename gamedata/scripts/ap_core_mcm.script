@@ -81,6 +81,8 @@ defaults = {
     alpha_damage_increase_per_level = 0.05,
     alpha_damage_reduction_enabled = true,
     alpha_damage_reduction_per_level = 0.05,
+    alpha_panic_immunity_enabled = true,
+    alpha_loot_enabled = true,
 
     -- Mutators: Stalker Rank (veteran+)
     rank_damage_increase_enabled = true,
@@ -303,6 +305,7 @@ local _key_to_tab = {
     cause_area_smart_cooldown_sec = "causes/area",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
     max_alphas = "consequences/alpha_promote",
+    alpha_loot_enabled = "consequences/alpha_promote",
     consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_rush = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_max_squads = "consequences/alphakill_targeted",
@@ -311,6 +314,7 @@ local _key_to_tab = {
     alpha_damage_increase_per_level = "mutators/alpha",
     alpha_damage_reduction_enabled = "mutators/alpha",
     alpha_damage_reduction_per_level = "mutators/alpha",
+    alpha_panic_immunity_enabled = "mutators/alpha",
     rank_damage_increase_enabled = "mutators/rank",
     rank_damage_increase_mult = "mutators/rank",
     rank_damage_reduction_enabled = "mutators/rank",
@@ -630,6 +634,7 @@ function on_mcm_load()
                             _desc("ui_mcm_ap_consequences_alpha_promote_desc"),
                             _check("consequence_alpha_promote_enabled"),
                             _track("max_alphas", 0, 300, 5),
+                            _check("alpha_loot_enabled"),
                             _track("consequence_alpha_promote_pda_chance", 0, 100, 5),
                         },
                     },
@@ -984,6 +989,7 @@ function on_mcm_load()
                             _track("alpha_damage_increase_per_level", 0.01, 0.20, 0.01),
                             _check("alpha_damage_reduction_enabled"),
                             _track("alpha_damage_reduction_per_level", 0.01, 0.20, 0.01),
+                            _check("alpha_panic_immunity_enabled"),
                         },
                     },
                     {

@@ -35,10 +35,9 @@ Example scenario (systemic interaction):
 Example scenario (escalation chain):
 
 - An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).
-- On the road he fights creatures and gains enough kills to become an elite ("elite promote" consequence).
-- Now stronger but wounded, he bleeds ("wounded" cause) and a chimaera senses weakness. Predators have high aggression, so the hunt consequence fires and the chimaera chases him down ("wounded hunt" consequence).
-- The chimaera kills him and gains enough kills to become an elite itself ("elite promote" consequence), a real problem in the area.
-- If the player kills it, he collects a bounty ("elite bounty" rewards the player). If an NPC kills it, the NPC may become an elite ("elite bounty" also rewards NPCs).
+- On the road he fights creatures and they fight back. A chimaera accumulates kills and becomes an alpha ("alpha promote" consequence) - the dominant predator in the area, hitting harder, taking less, and never fleeing.
+- The player wounds it but it keeps fighting (panic immunity). When he finally kills it, he finds valuable mutant parts and an artefact in its inventory - the alpha's accumulated trophies.
+- Another chimaera on the same tier senses the kill and pursues the player ("alphakill targeted" consequence).
 - The cycle continues, the Zone does not care.
 
 What you'll notice:
@@ -48,7 +47,7 @@ What you'll notice:
 - Outlaws hunting whoever picked up an artefact
 - Retaliation and retreat loops after squad wipes
 - Territory flipping as stalkers and mutants claim empty outposts. Predators infest abandoned buildings. Conquests decay if not held. The Zone rebalances itself.
-- Elite NPCs emerging from combat, accumulating kills and better gear
+- Alpha mutants emerging from combat, accumulating kills, hit power buffs, and valuable loot
 - Predators closing in on wounded targets, allies rushing to help
 - NPCs trading real items at traders - artefacts for ammo, grenades, medkits
 - Campfire and base behavior driven by hunger, fatigue, social needs
@@ -130,13 +129,12 @@ BaseKill (reactive)
   - Support - Nearby friendly squads rush to reinforce the base under attack.
   - Flee - Squads at the base evacuate to the nearest friendly position.
 
-Elite (reactive)
-  - Promote - NPCs accumulate kills to level up. 10 levels, each requiring more kills.
-    Rank boost, grenades, and AP ammo scale with level.
+Alpha (reactive)
+  - Promote - Mutants accumulate kills to level up. 10 levels. Hit power bonus/reduction
+    scales with level, panic immunity, valuable loot injected into inventory.
 
-EliteKill (reactive)
-  - Bounty - Killer receives rubles scaled by the elite's level.
-  - Targeted - Other elites on the same tier hunt the killer across the map.
+AlphaKill (reactive)
+  - Targeted - Other alphas on the same tier hunt the killer across the map.
 
 Wounded (reactive)
   - Hunt - Predator mutants sense weakness and close in.

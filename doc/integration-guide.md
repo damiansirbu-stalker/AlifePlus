@@ -262,8 +262,8 @@ end
 | cause:massacre | reactive | position, level_id, smart_id, total_deaths, faction |
 | cause:squadkill | reactive | position, level_id, squad_id, killer_id |
 | cause:basekill | reactive | position, level_id, smart_id, total_deaths, faction |
-| cause:elite | reactive | killer_id, kills, level |
-| cause:elitekill | reactive | victim_id, killer_id, elite_level |
+| cause:alpha | reactive | killer_id, kills, level |
+| cause:alphakill | reactive | victim_id, killer_id, alpha_level |
 | cause:wounded | reactive | position, level_id, squad_id |
 | cause:harvest | reactive | position, level_id, squad_id, item_section |
 | cause:stash | radiant | position, level_id, squad_id, stash_id |
@@ -294,11 +294,10 @@ Direct access to AP domain systems. APIs may change between versions.
 
 | Function | Returns |
 |----------|---------|
-| `get_elite(entity_id)` | elite data table (level, kills, name) or nil |
-| `get_elite_level(entity_id)` | integer level or 0 |
-| `is_elite(entity_id)` | boolean |
-| `get_elites()` | all elites table |
-| `get_elites_on_level(level_id)` | elites on a specific map |
+| `get_alpha(entity_id)` | alpha data table (level, kills, name) or nil |
+| `get_alpha_level(entity_id)` | integer level or 0 |
+| `is_alpha(entity_id)` | boolean |
+| `get_alphas()` | all alphas table |
 | `get_stalker_needs(squad_id)` | needs DTO timestamps |
 | `projected_kill_count(killer_id, victim_id)` | kill count if this kill were registered |
 

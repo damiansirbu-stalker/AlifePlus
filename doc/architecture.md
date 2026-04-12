@@ -27,7 +27,7 @@ Built on xlibs. See `conventions.md` for naming rules, result codes, MCM setting
 
 ## System Layers
 
-AlifePlus is split into two layers: **core** and **ext**. Core is the framework - it knows nothing about massacres, stashes, or elites. Ext is the domain - it knows nothing about gate chains, rate limiting, or squad lifecycle. The boundary is enforced by a hard rule: **core never imports ext**. All domain logic reaches the framework through registered function references (predicates, handlers, arrival callbacks).
+AlifePlus is split into two layers: **core** and **ext**. Core is the framework - it knows nothing about massacres, stashes, or alphas. Ext is the domain - it knows nothing about gate chains, rate limiting, or squad lifecycle. The boundary is enforced by a hard rule: **core never imports ext**. All domain logic reaches the framework through registered function references (predicates, handlers, arrival callbacks).
 
 ### Core
 
@@ -54,9 +54,9 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 |------|------|
 | ap_ext_cause_* | Cause predicates (one file per cause group) |
 | ap_ext_consequence_* | Consequence handlers (one or more files per cause) |
-| ap_ext_tracker | Domain state: kill counts, elites, stalker needs DTO |
+| ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest) |
-| ap_ext_object_mutator | Runtime combat modifiers for elite NPCs (grenades, AP ammo, rank boost) |
+| ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
 | ap_ext_const | Community sets, faction lists, item pools |
 | ap_ext_messages | PDA message templates |
 | ap_ext_test | In-game debug commands |
@@ -98,7 +98,7 @@ Protection is not a single gate - it is applied at four layers across the pipeli
 | Consequence | `ap_core_utils.find_squads` | Every candidate responder squad |
 | Squad | `ap_core_squad.script_squad` | No inline check - protection is upstream |
 
-Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the predicate itself: `elite` and `elitekill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
+Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the predicate itself: `alpha` and `alphakill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
 
 `script_squad` does not check protection. It assumes all upstream layers have already verified the squad. Direct callers outside the pipeline must check `is_protected` themselves.
 
@@ -166,7 +166,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 **Coordination.** `scripted_target` is the engine's built-in coordination mechanism between alife mods. Any mod that sets `scripted_target` signals "I control this squad." AP checks this at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
-**Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `elite_promote`).
+**Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
 
 ### Initialization Lifecycle
 
@@ -210,7 +210,7 @@ Critical timing from the engine load sequence:
 
 ### Tracker (ap_ext_tracker)
 
-Domain state manager. Tracks kill counts per entity (`_ap_killers`), elite status with level/kills/name (`_ap_elites`), elite death grace period (`elite_dead`, xttltable TTL, 3600s), and stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 drives). Registers the `squad_on_npc_death` handler for kill/elite tracking. Save/load to `m_data.ap_ext_tracker`.
+Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), and stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 drives). Only mutants become alphas -- stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
@@ -228,7 +228,11 @@ Runtime smart terrain mutations for territory conquest. Both stalker and mutant 
 
 ### Object Mutator (ap_ext_object_mutator)
 
-Runtime combat modifiers for elite NPCs, triggered on `npc_on_before_hit`. Elite level: `min(10, floor(kills / elite_kills_per_level))`. Grenades restocked (count = level), best AP ammo for equipped weapon (boxes = ceil(level/2)), engine rank boosted (threshold table, one-way). Each buff has its own MCM toggle and cooldown. Gated by `acquire_lock` (1s mutex) to prevent spam from high-frequency hit callbacks.
+Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independent systems on `monster_on_before_hit` and `npc_on_before_hit`.
+
+**Alpha mutants** (`monster_on_before_hit`): outgoing hit power bonus and incoming hit power reduction via `_alpha_damage_increase[npc_id]` / `_alpha_damage_reduction[npc_id]` hash tables, populated at promote time. Panic immunity (`set_custom_panic_threshold(0)`) applied lazily on first hit. O(1) lookup, 0.5s throttle, early exit when tables empty. Alpha level: `min(10, floor(kills / alpha_kills_per_level))`. Loot items injected at promote time via `xobject.create_item` from tiered pools (LOW/MID/HIGH), managed in `alpha_promote` consequence.
+
+**Stalker rank** (`npc_on_before_hit`): outgoing hit power bonus and incoming hit power reduction for veteran+ stalkers (rank 12000+). Linear scaling from veteran to legend. Reads engine `character_rank()`, never manipulates it.
 
 ### Causes
 
@@ -237,8 +241,8 @@ Runtime combat modifiers for elite NPCs, triggered on `npc_on_before_hit`. Elite
 | MASSACRE | reactive | squad_on_npc_death | IsStalker(victim), at smart, not is_base, kill_count >= threshold |
 | SQUADKILL | reactive | squad_on_npc_death | last member dead, not is_base |
 | BASEKILL | reactive | squad_on_npc_death | IsStalker(victim), at is_base, kill_count >= threshold |
-| ELITE | reactive | squad_on_npc_death | killer not protected, projected kills cross new level |
-| ELITEKILL | reactive | squad_on_npc_death | victim is elite, killer not protected, cooldown clear |
+| ALPHA | reactive | squad_on_npc_death | killer is mutant, not protected, projected kills cross new level |
+| ALPHAKILL | reactive | squad_on_npc_death | victim is alpha, killer not protected, cooldown clear |
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
 | STASH | radiant | squad_on_update | not protected, stash within 500m |
@@ -257,9 +261,8 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 | SQUADKILL | squadkill_flee | victim faction retreats to base |
 | BASEKILL | basekill_support | friendly squads reinforce attacked base |
 | BASEKILL | basekill_flee | squads at base evacuate |
-| ELITE | elite_promote | update elite level, apply buffs |
-| ELITEKILL | elitekill_bounty | give money (base * level, capped) |
-| ELITEKILL | elitekill_targeted | elite hunters pursue killer (chase) |
+| ALPHA | alpha_promote | update alpha level, apply hit power/panic buffs, grant loot |
+| ALPHAKILL | alphakill_targeted | other alphas pursue killer (chase) |
 | WOUNDED | wounded_hunt | predator mutants close in |
 | WOUNDED | wounded_help | same-faction squads rush to help |
 | HARVEST | harvest_hunt | outlaws pursue artefact taker (chase) |

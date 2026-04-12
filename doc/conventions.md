@@ -20,10 +20,10 @@ CONSEQUENCE = CAUSE + VERB
 | ACTION | verb | Atomic operation (tracing only) |
 
 Do NOT confuse causes with consequences:
-- Cause = noun. What happened. WOUNDED, MASSACRE, ELITESPOT.
-- Consequence = cause + verb. What to do about it. WOUNDED_HUNT, MASSACRE_SCAVENGE, ELITESPOT_FLEE.
+- Cause = noun. What happened. WOUNDED, MASSACRE, ALPHASPOT.
+- Consequence = cause + verb. What to do about it. WOUNDED_HUNT, MASSACRE_SCAVENGE, ALPHASPOT_FLEE.
 - Verbs (REINFORCE, FLEE, CONQUER) are consequence suffixes, never causes.
-- States (WOUNDED, ELITE) are causes, never consequences.
+- States (WOUNDED, ALPHA) are causes, never consequences.
 
 ### Cause Names
 
@@ -31,10 +31,10 @@ Single word preferred. UPPER_SNAKE in constants.
 
 | Rule | Detail | Examples |
 |------|--------|----------|
-| Single word | Default, always preferred | MASSACRE, WOUNDED, HARVEST, STASH, AREA, ELITE |
+| Single word | Default, always preferred | MASSACRE, WOUNDED, HARVEST, STASH, AREA, ALPHA |
 | Plural for variant | Same subject, different scope | AREA (one) vs AREAS (multiple) |
-| Compound + KILL | Death event | BASEKILL, ELITEKILL, SQUADKILL |
-| Compound + SPOT | Perception event | ELITESPOT |
+| Compound + KILL | Death event | BASEKILL, ALPHAKILL, SQUADKILL |
+| Compound + SPOT | Perception event | ALPHASPOT |
 | Single word | Timer-based human need | HUNGER, SLEEP, JOB |
 | Closed suffix set | KILL and SPOT | New suffixes require convention update |
 
@@ -42,8 +42,8 @@ Single word preferred. UPPER_SNAKE in constants.
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
-| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.ELITEKILL` |
-| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:elitekill"` |
+| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.ALPHAKILL` |
+| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:alphakill"` |
 | Consequence const | `CONSEQUENCE.{CAUSE}_{VERB}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
 | Consequence value | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
 | Action ID | `action:{verb}` | `action:find_targets`, `action:move_squad` |
@@ -63,11 +63,11 @@ Single word preferred. UPPER_SNAKE in constants.
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
-| MCM menu ID | `{name}` (lowercase) | `elite`, `massacre_scavenge` |
-| MCM sidebar | 1 word per line (underscore = newline) | `Elite\nKill\nBounty` |
+| MCM menu ID | `{name}` (lowercase) | `alpha_promote`, `massacre_scavenge` |
+| MCM sidebar | 1 word per line (underscore = newline) | `Alpha\nKill\nTargeted` |
 | XML title (cause) | `ui_mcm_ap_causes_{name}_title` | `ui_mcm_ap_causes_massacre_title` |
 | XML title (consequence) | `ui_mcm_ap_consequences_{name}_title` | `ui_mcm_ap_consequences_massacre_scavenge_title` |
-| Chase handler key | `{cause}_chase` | `squadkill_chase`, `elitekill_chase` |
+| Chase handler key | `{cause}_chase` | `squadkill_chase`, `alphakill_chase` |
 | Arrival handler key | consequence name (1:1) | `stash_loot`, `stash_fill` |
 | DTO table | `stalker_needs[squad_id]` | future: `mutant_needs[squad_id]` |
 | DTO field | `last_{short}_at` | `last_hunger_at`, `last_sleep_at` |

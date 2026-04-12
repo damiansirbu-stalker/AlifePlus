@@ -326,44 +326,37 @@ Bases were worth defending because they anchored the faction's economy and comma
 
 ---
 
-### Elite: Promote
+### Alpha: Promote
 
-An NPC accumulates kills and levels up through 10 tiers, gaining armor-penetrating ammunition, grenades, and engine rank boosts.
+A mutant accumulates kills and levels up through 10 tiers, gaining hit power buffs, panic immunity, and valuable loot in its inventory.
 
-AlifePlus fires the elite cause when a killer's projected kill count crosses a new level threshold.
-The promote consequence updates the elite's combat loadout: best available AP ammo for their weapon class, grenade restocks scaling with level, and an engine rank boost that improves accuracy through the dispersion interpolation system.
+AlifePlus fires the alpha cause when a mutant killer's projected kill count crosses a new level threshold.
+Stalkers are excluded at the cause level -- the engine's native rank system already handles stalker progression (kills award `rank_kill_points`, rank interpolates dispersion).
+The promote consequence applies hit power multipliers (outgoing bonus and incoming reduction), sets panic threshold to zero so the alpha never flees, and injects loot items from tiered pools so killing an alpha is worth the risk.
 
-X-Ray tracks kill-based rank progression per NPC (`rank_kill_points` in `relation_registry_actions.cpp`), awarding 5 points for a novice kill up to 20 for a legend.
-Rank 0-100 interpolates dispersion, immunity, and visibility (`ai_stalker.cpp`), with a Russian comment: "compute immunities depending on rank."
-Anomaly disables immunity and visibility scaling but keeps dispersion at 1.0 to 0.8, giving max-rank NPCs 20% better accuracy.
-Combat AI has grenade usage built in, but NPCs exhaust their initial supply permanently and no NPC throws a grenade past early game without restocking.
+Monster rank in X-Ray is fixed at spawn from the `clsid` multiplier (`sim_offline_combat.script`).
+A dog that kills fifty stalkers has the same combat power as one that never fought.
+The engine's creature effectiveness tables prove GSC intended a hierarchy: their `creature_courage.txt` assigns per-species Attack scores (rats 60, bloodsucker 40, chimera 20) and Defend scores, feeding a 21x21 `CreatureEffectiveness` matrix that models outcomes across all creature type pairs [8].
+Their `Monster_expedience.txt` models predation as a function of starvation and prey edibility: a starving predator encountering edible prey hunts with 100% probability [8].
+GSC designed creatures as active predators with individual combat ratings and hunger-driven motivation, but the combat hierarchy was static by species, never by individual experience.
+AlifePlus adds the individual axis: a mutant that survives and kills becomes an alpha, the dominant individual of its species.
 
-GSC designed rank as a measure of combat experience with real consequences.
-Their design documents state that faction membership requires "Experienced" status [8].
-The engine's rank value definition reads: "from 0 (completely inexperienced) to over 100 (very experienced)" (`character_info_defs.h`).
-Their weapon effectiveness tables model combat outcomes across a 12x12x3 matrix of attacker weapon type, defender weapon type, and distance [8].
-AlifePlus makes rank matter by giving experienced NPCs the tools the engine already supports but never replenishes.
-
-> "The engine defines `CHARACTER_RANK_VALUE` with the comment: 'from 0 (completely inexperienced) to over 100 (very experienced).' Kill-based progression awards `rank_kill_points` from 5 (novice) to 20 (legend). Rank interpolates dispersion, immunity, and visibility."
-> `character_info_defs.h`, `relation_registry_actions.cpp`, `ai_stalker.cpp` [6]
+> "GSC's `creature_courage.txt` assigns per-species Attack and Defend ratings across 21 creature types. The 21x21 `CreatureEffectiveness` matrix models combat outcomes for every creature pair. `Monster_expedience.txt` maps Starvation x Edibility to hunt probability (3x3 = 100% for hungry predator + edible prey). The hierarchy was designed but static by species."
+> creature_courage.txt, CreatureEffectiveness, Monster_expedience.txt [8]
 
 ---
 
-### Elite Kill: Bounty, Targeted
+### Alpha Kill: Targeted
 
-When an elite dies, the killer receives rubles scaled by the elite's level and other elites on the same tier pursue the killer.
+When an alpha dies, other alphas on the same tier pursue the killer through real movement.
 
-AlifePlus fires the elitekill cause when an elite NPC is killed.
-Two consequences dispatch: bounty pays the killer in rubles proportional to the elite's level, and targeted sends same-tier elites after the killer through real movement.
-
-In shipped code, kills reward rank points (`rank_kill_points`) but there is no consequence for killing high-rank entities.
-AlifePlus adds that consequence.
+AlifePlus fires the alphakill cause when an alpha mutant is killed.
+The targeted consequence sends same-tier alphas after the killer.
 
 GSC designed a trader bounty system where kills had escalating repercussions.
 A trader evaluates the victim's reputation and relationship before deciding whether to issue a contract on the killer [8].
 After three to five unwitnessed murders, the killer is placed on the trader's blacklist [8].
-The suspect system designates anyone spotted within 50 meters of the murder site within 30 to 60 seconds [8].
-AlifePlus implements the same escalation: killing a veteran is not free, and the response scales with the victim's standing.
+AlifePlus applies the same escalation principle to mutants: killing an alpha is not free, and the pack responds.
 
 > "The more unwitnessed murders a player commits, the more their standing with the Trader deteriorates. After 3-5 such murders, the player is placed on the blacklist."
 > [8]
@@ -574,7 +567,7 @@ The decision is deterministic given the faction and the event.
 
 Aggression traces to GSC's PersonalAggressiveness and the Expediency function, and mirrors the engine's `m_bAggressive` flag (`base_monster_misc.cpp`) which is set from enemy count, sounds, and hits.
 For mutants, it maps to inverted `panic_threshold`: chimera at 0.0 cannot panic, boar at 0.5 is moderate, and rat at 0.9 flees easily.
-Aggression gates the revenge, elite hunt, wounded hunt, and harvest hunt consequences.
+Aggression gates the revenge, alpha hunt, wounded hunt, and harvest hunt consequences.
 
 Greed traces to GSC's PersonalGreed and the Expediency function, where GSC's EntityCost table quantifies target value across a 5x3x3 matrix of equipment cost, backpack weight, and anomaly exposure [8].
 Greed gates resource acquisition: the stash loot, stash ambush, stash fill, and massacre scavenge consequences.
@@ -615,4 +608,4 @@ Discipline gates all needs consequences: routine behavior like eating, sleeping,
 - [8] GSC Game World internal AI design documents (pre-release design phase, circa 2002-2006). Three archives: Ai.rar (main AI design doc, monster FSMs, combat spreadsheets), Help.rar (A-Life help system, faction settings, Data.save lookup tables), Tools.rar (offline simulation spreadsheets, trader design). Originally preserved on the OLR (Oblivion Lost Remake) forums and publicly circulated within the STALKER modding community.
   - **Reached engine:** morale system (`CMonsterMorale`), monster home/territory (`CMonsterHome`), monster FSM states (`state_defs.h`), squad coordination (`ai_monster_squad`), `monster_community` relation tables, `EnemyDetectability` in creature configs. Partially: `eStatePanic` exists but suppressed by near-zero `panic_threshold` configs, `eStateEat` exists but `GetSatiety()` returns hardcoded 0.5.
   - **Reached engine as dead code:** NPC-NPC encounter hook (`alife_monster_abstract.cpp`, marked `#pragma todo("Do not forget to uncomment here!!!")`), `spawn_artefacts` in alife objects (commented out), anti-aim ability (implemented but counterproductive).
-  - **Design docs only, never coded:** personality axes (PersonalAggressiveness/Greed/Intelligence/EyeRange/Relation), Expediency 4D function, 8-type moral classification, SOS response logic, offline stalker FSM (task selection, equipment calculation, personal status management), murder/witness/bounty chain (suspect system, 50m radius, trader blacklist), faction personality concept, sr_robbery confiscation scheme, trader reputation/blacklist system, creature reproduction tables (BirthProbability, BirthSpeed per species), 21x21 creature effectiveness matrix, anomaly encounter pipeline (3-stage probability calculation), surge death probability by terrain type, EntityCost valuation matrix, faction expansion levels with sim_prior tables.
+  - **Design docs only, never coded:** personality axes (PersonalAggressiveness/Greed/Intelligence/EyeRange/Relation), Expediency 4D function, 8-type moral classification, SOS response logic, offline stalker FSM (task selection, equipment calculation, personal status management), murder/witness/bounty chain (suspect system, 50m radius, trader blacklist), faction personality concept, sr_robbery confiscation scheme, trader reputation/blacklist system, creature reproduction tables (BirthProbability, BirthSpeed per species), 21x21 creature effectiveness matrix, creature courage ratings (per-species Attack/Defend scores), monster expedience function (Starvation x Edibility -> hunt probability), anomaly encounter pipeline (3-stage probability calculation), surge death probability by terrain type, EntityCost valuation matrix, faction expansion levels with sim_prior tables.

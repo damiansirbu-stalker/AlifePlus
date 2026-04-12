@@ -6,6 +6,7 @@ local ipairs = ipairs
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 
@@ -55,6 +56,7 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.SQUADKILL_FLEE, {
         event = CAUSE.SQUADKILL,
         condition = function() return cfg.consequence_squadkill_flee_enabled end,
+        personality = { PERSONALITY.SURVIVAL, PERSONALITY.GREED },
     }, _handler)
     ap_core_debug.info("[CONSEQUENCE.SQUADKILL_FLEE] Initialized")
 end
