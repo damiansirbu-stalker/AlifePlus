@@ -154,6 +154,13 @@ function get_scripted_ids()
     return _ap_scripted_squads
 end
 
+--- Get count of active PDA map markers
+function get_marked_count()
+    local count = 0
+    for _ in pairs(_ap_marked_squads) do count = count + 1 end
+    return count
+end
+
 --- Register an arrival handler by key (called from consumer on_game_start)
 function register_arrival_handler(key, fn)
     _arrival_handlers[key] = fn

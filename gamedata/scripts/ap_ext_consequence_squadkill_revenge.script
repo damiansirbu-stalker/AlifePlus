@@ -11,7 +11,7 @@ local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
-local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
+local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw, ap_ext_const.alignment_predator, ap_ext_const.alignment_territorial)
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
@@ -74,7 +74,7 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_REVENGE, function()
         if not cfg.consequence_squadkill_revenge_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not _alignment_revenge[event_data.victim_faction] then
-            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction }
+            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0
@@ -126,7 +126,7 @@ local function _handler(event_data)
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.SQUADKILL_REVENGE) end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.OK_STOP, reason = #moved .. "_avengers",
+            code = RESULT.OK_NEXT, reason = #moved .. "_avengers",
             dst_id = dst_id, faction = victim_faction,
         })
     end)

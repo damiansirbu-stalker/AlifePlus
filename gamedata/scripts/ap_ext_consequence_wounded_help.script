@@ -28,7 +28,7 @@ local function _handler(event_data)
 
         local faction = _get_faction(npc_id, is_player)
         if not faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
-        if not _alignment_help[faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = faction } end
+        if not _alignment_help[faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = faction } end
 
         local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
         if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
@@ -58,7 +58,7 @@ local function _handler(event_data)
             return ap_core_utils.send_pda(cfg.consequence_wounded_help_pda_chance, "text_pda_consequence_wounded_help", { location = location })
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_squads", dst_id = target_smart.id, faction = faction })
+        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_squads", dst_id = target_smart.id, faction = faction })
     end)
 end
 

@@ -20,7 +20,7 @@ local function _handler(event_data)
         local smart = event_data.smart
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
         if not smart or not factions or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-        if not _alignment_support[event_data.faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.faction } end
+        if not _alignment_support[event_data.faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = factions,
@@ -47,7 +47,7 @@ local function _handler(event_data)
             return ap_core_utils.send_pda(cfg.consequence_basekill_support_pda_chance, "text_pda_consequence_basekill_support", { location = location })
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_squads", dst_id = smart.id, faction = event_data.faction })
+        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_squads", dst_id = smart.id, faction = event_data.faction })
     end)
 end
 

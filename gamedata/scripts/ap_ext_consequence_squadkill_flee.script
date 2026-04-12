@@ -9,13 +9,16 @@ local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
-local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
+local _alignment_flee = xtable.merge(
+    xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled),
+    { ["monster"] = true, ["monster_vegetarian"] = true }
+)
 
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
         if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not _alignment_flee[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction } end
+        if not _alignment_flee[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 
@@ -49,7 +52,7 @@ local function _handler(event_data)
             return ap_core_utils.send_pda(cfg.consequence_squadkill_flee_pda_chance, "text_pda_consequence_squadkill_flee", { location = location })
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_STOP, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
+        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
     end)
 end
 

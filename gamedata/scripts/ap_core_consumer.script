@@ -1,5 +1,5 @@
 --- ap_core_consumer: Routes cause events to consequence handlers via round-robin
-local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
+local pairs, RegisterScriptCallback, table_concat = pairs, RegisterScriptCallback, table.concat
 local math_random, math_min, math_max = math.random, math.min, math.max
 
 local RESULT = ap_core_const.RESULT
@@ -8,6 +8,15 @@ local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
 local _cursor = {}
+
+-- Statistics counters (guarded by enabled(), reset every dump)
+local _stats = {}
+local _stats_fired = 0
+local _stats_alignment = 0
+local _stats_personality = 0
+local _stats_rules = 0
+local _stats_rate = 0
+local _stats_published = 0
 
 --- Register a consequence handler for an event
 --- @param name string Consequence name (used as trace key, rate limit key, arrival key)
@@ -64,10 +73,12 @@ local function _check_personality(traits, community, consequence_name)
         count = count + 1
     end
     if count == 0 then return true end
-    local chance = math_min(0.95, math_max(0.05, sum / count))
+    local chance = math_min(0.50, math_max(0.10, sum / count))
     local roll = math_random()
     local passed = roll < chance
-    if not passed then
+    if passed then
+        ap_core_debug.debug("[CONSUMER] PERSONALITY_PASSED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
+    else
         ap_core_debug.debug("[CONSUMER] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
     end
     return passed
@@ -91,6 +102,54 @@ local function _apply_result(code, entry_name, is_radiant)
     return code == RESULT.OK_STOP or code == RESULT.ERROR_STOP
 end
 
+local function _stat_inc(cause, field)
+    if not _stats[cause] then _stats[cause] = { fired = 0, alignment = 0, personality = 0, rules = 0, rate = 0 } end
+    _stats[cause][field] = _stats[cause][field] + 1
+end
+
+-- Classify result into stat bucket (called only when debug enabled)
+local function _stat_record(event_type, result)
+    local code = result.code
+    if code == RESULT.OK_STOP or code == RESULT.OK_NEXT then
+        _stats_fired = _stats_fired + 1
+        _stat_inc(event_type, "fired")
+    elseif result.reason == REASON.WRONG_ALIGNMENT then
+        _stats_alignment = _stats_alignment + 1
+        _stat_inc(event_type, "alignment")
+    elseif result.reason == REASON.LOW_PERSONALITY then
+        _stats_personality = _stats_personality + 1
+        _stat_inc(event_type, "personality")
+    else
+        _stats_rules = _stats_rules + 1
+        _stat_inc(event_type, "rules")
+    end
+end
+
+-- Record rate block (called only when debug enabled)
+local function _stat_rate(event_type)
+    _stats_rate = _stats_rate + 1
+    _stat_inc(event_type, "rate")
+end
+
+-- Dispatch one entry: rate check, run handler, record stats. Returns "break", "skip", or nil.
+local function _dispatch_entry(entry, event_type, event_data, is_radiant, debug)
+    if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
+        ap_core_debug.debug("[CONSUMER] GLOBAL_CONSEQUENCE_RATE_BLOCKED consequence=%s cause=%s", entry.name, event_type)
+        if debug then _stat_rate(event_type) end
+        return "break"
+    end
+    if not ap_core_limiter.check_consequence_rate_limit(entry.name) then
+        ap_core_debug.debug("[CONSUMER] RATE_BLOCKED consequence=%s", entry.name)
+        if debug then _stat_rate(event_type) end
+        return "skip"
+    end
+    local result = _run_handler(entry, event_data)
+    if not result then return "skip" end
+    if debug then _stat_record(event_type, result) end
+    if _apply_result(result.code, entry.name, is_radiant) then return "break" end
+    return nil
+end
+
 local function _process(event_type, event_data)
     local consequences = _registry[event_type]
     if not consequences then return end
@@ -101,31 +160,54 @@ local function _process(event_type, event_data)
     local cursor = ((_cursor[event_type] or 1) - 1) % total + 1
     _cursor[event_type] = cursor % total + 1
 
-    ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s cursor=%d",
-        event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type, cursor)
+    local debug = ap_core_debug.enabled()
+    if debug then
+        ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s cursor=%d",
+            event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type, cursor)
+        _stats_published = _stats_published + 1
+    end
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
 
     for offset = 0, total - 1 do
         local i = ((cursor - 1 + offset) % total) + 1
-        local entry = consequences[i]
-
-        if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
-            ap_core_debug.debug("[CONSUMER] GLOBAL_CONSEQUENCE_RATE_BLOCKED consequence=%s cause=%s", entry.name, event_type)
-            break
-        end
-
-        if not ap_core_limiter.check_consequence_rate_limit(entry.name) then
-            ap_core_debug.debug("[CONSUMER] RATE_BLOCKED consequence=%s", entry.name)
-            goto continue
-        end
-
-        local result = _run_handler(entry, event_data)
-        if not result then goto continue end
-        if _apply_result(result.code, entry.name, is_radiant) then break end
-
-        ::continue::
+        local action = _dispatch_entry(consequences[i], event_type, event_data, is_radiant, debug)
+        if action == "break" then break end
     end
+end
+
+--- Dump statistics and reset counters. Called by producer on the same timer as PIPELINE.
+function dump_statistics()
+    if not ap_core_debug.enabled() then return end
+    ap_core_debug.debug("[CONSUMER.CAUSES] published=%d fired=%d | alignment=%d personality=%d rules=%d rate=%d",
+        _stats_published, _stats_fired, _stats_alignment, _stats_personality, _stats_rules, _stats_rate)
+    local parts = {}
+    for cause, s in pairs(_stats) do
+        parts[#parts + 1] = cause .. ": fired=" .. s.fired .. " alignment=" .. s.alignment .. " personality=" .. s.personality .. " rules=" .. s.rules .. " rate=" .. s.rate
+    end
+    if #parts > 0 then
+        ap_core_debug.debug("[CONSUMER.DISPATCH] %s", table_concat(parts, " | "))
+    end
+    local scripted = ap_core_squad.get_scripted_ids()
+    local active, waiting, arrived_count = 0, 0, 0
+    for _, data in pairs(scripted) do
+        active = active + 1
+        if data.arrived then
+            if data.release_at then waiting = waiting + 1 end
+            arrived_count = arrived_count + 1
+        end
+    end
+    local marked = ap_core_squad.get_marked_count()
+    ap_core_debug.debug("[CONSUMER.LIFECYCLE] active=%d arrived=%d waiting=%d marked=%d",
+        active, arrived_count, waiting, marked)
+    -- Reset
+    _stats = {}
+    _stats_fired = 0
+    _stats_alignment = 0
+    _stats_personality = 0
+    _stats_rules = 0
+    _stats_rate = 0
+    _stats_published = 0
 end
 
 local function _make_handler(event)

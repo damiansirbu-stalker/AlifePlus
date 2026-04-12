@@ -34,7 +34,7 @@ local _next_radiant = 0
 local _pacer_rejected = 0
 local _pacer_accepted = 0
 local _pacer_last_log = 0
-local PACER_LOG_INTERVAL = 30
+local PACER_LOG_INTERVAL = 60
 local PACER_RETRY_INTERVAL = 0.5
 
 --- Pipeline trace counters (guarded by enabled(), dumped every PACER_LOG_INTERVAL)
@@ -107,12 +107,11 @@ local function _radiant_pacer_gate()
     _next_radiant = now + cfg.distributor_interval_sec
     if (now - _pacer_last_log) >= PACER_LOG_INTERVAL then
         ap_core_debug.debug(
-            "[PRODUCER] RADIANT_PIPELINE callbacks=%d pacer=%d scripted=%d ratio=%d protection=%d published=%d [%ds]",
+            "[PIPELINE] %ds | radiant: received=%d after_pacer=%d after_scripted=%d after_ratio=%d after_protection=%d published=%d | reactive: received=%d after_pacer=%d after_ratio=%d published=%d",
+            PACER_LOG_INTERVAL,
             _pacer_accepted + _pacer_rejected, _pacer_accepted, _radiant_scripted, _radiant_ratio,
-            _radiant_protection, _radiant_published, PACER_LOG_INTERVAL)
-        ap_core_debug.debug(
-            "[PRODUCER] REACTIVE_PIPELINE callbacks=%d pacer=%d ratio=%d published=%d [%ds]",
-            _reactive_callbacks, _reactive_pacer, _reactive_ratio, _reactive_published, PACER_LOG_INTERVAL)
+            _radiant_protection, _radiant_published,
+            _reactive_callbacks, _reactive_pacer, _reactive_ratio, _reactive_published)
         _pacer_accepted = 0
         _pacer_rejected = 0
         _radiant_scripted = 0
@@ -124,6 +123,7 @@ local function _radiant_pacer_gate()
         _reactive_ratio = 0
         _reactive_published = 0
         _pacer_last_log = now
+        ap_core_consumer.dump_statistics()
     end
     return true
 end

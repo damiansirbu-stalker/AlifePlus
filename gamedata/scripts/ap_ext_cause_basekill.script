@@ -12,7 +12,7 @@ local deaths = nil
 local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     if not cfg.cause_basekill_enabled then return { code = RESULT.DISABLED_NEXT } end
     if not se_victim then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
-    if not xcreature.is_stalker(se_victim) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY } end
+    if not xcreature.is_stalker(se_victim) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT } end
 
     local smart = xsquad.get_squad_smart(squad)
     if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
