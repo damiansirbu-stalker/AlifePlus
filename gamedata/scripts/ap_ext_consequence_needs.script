@@ -15,6 +15,10 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 
 local cfg = ap_core_mcm.cfg
+local alignment_selfserving = ap_ext_const.alignment_selfserving
+local alignment_naturalist = ap_ext_const.alignment_naturalist
+local alignment_principled = ap_ext_const.alignment_principled
+local _alignment_research = { ["ecolog"] = true }
 
 --- Try each section via npc:object, release first match. Returns consumed section or nil.
 local function _consume(go, sections)
@@ -88,9 +92,11 @@ local CONFIGS = {
         personality = { PERSONALITY.SURVIVAL } },
     { need = "money", consequence = CONSEQUENCE.MONEY_HARVEST, name = "money_harvest",
         dto_field = "last_money_at", filter = xsmart.has_anomaly,
+        alignment = alignment_selfserving,
         personality = { PERSONALITY.GREED } },
     { need = "money", consequence = CONSEQUENCE.MONEY_HUNT, name = "money_hunt",
         dto_field = "last_money_at", filter = xsmart.is_lair,
+        alignment = alignment_naturalist,
         personality = { PERSONALITY.PERCEPTION, PERSONALITY.RELATION } },
     { need = "supply", consequence = CONSEQUENCE.SUPPLY_TRADER, name = "supply_trader",
         dto_field = "last_supply_at", filter = xsmart.has_trader_job,
@@ -99,12 +105,15 @@ local CONFIGS = {
     { need = "job", consequence = CONSEQUENCE.JOB_OUTPOST, name = "job_outpost",
         dto_field = "last_job_at", filter = _is_not_base_or_lair,
         exclude_enemy = true, section_key = "GUARD",
+        alignment = alignment_principled,
         personality = { PERSONALITY.TERRITORY } },
     { need = "job", consequence = CONSEQUENCE.JOB_EXPLORE, name = "job_explore",
         dto_field = "last_job_at", filter = _is_unclaimed,
+        alignment = alignment_selfserving,
         personality = { PERSONALITY.PERCEPTION } },
     { need = "job", consequence = CONSEQUENCE.JOB_RESEARCH, name = "job_research",
         dto_field = "last_job_at", filter = xsmart.has_anomaly,
+        alignment = _alignment_research,
         personality = { PERSONALITY.PERCEPTION } },
     { need = "social", consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, name = "social_campfire",
         dto_field = "last_social_at", filter = xsmart.has_campfire,
@@ -113,6 +122,7 @@ local CONFIGS = {
     { need = "social", consequence = CONSEQUENCE.SOCIAL_BASE, name = "social_base",
         dto_field = "last_social_at", filter = xsmart.is_base,
         exclude_enemy = true, section_key = "SOCIAL",
+        alignment = alignment_principled,
         personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE } },
 }
 
@@ -188,6 +198,7 @@ local function _make_handler(entry)
 
     return function(event_data)
         if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
+        if entry.alignment and not entry.alignment[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.community } end
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end

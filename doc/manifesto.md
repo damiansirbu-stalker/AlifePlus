@@ -331,7 +331,7 @@ Bases were worth defending because they anchored the faction's economy and comma
 A mutant accumulates kills and levels up through 10 tiers, gaining hit power buffs, panic immunity, and valuable loot in its inventory.
 
 AlifePlus fires the alpha cause when a mutant killer's projected kill count crosses a new level threshold.
-Stalkers are excluded at the cause level -- the engine's native rank system already handles stalker progression (kills award `rank_kill_points`, rank interpolates dispersion).
+Stalkers are excluded at the cause level. The engine's native rank system already handles stalker progression (kills award `rank_kill_points`, rank interpolates dispersion).
 The promote consequence applies hit power multipliers (outgoing bonus and incoming reduction), sets panic threshold to zero so the alpha never flees, and injects loot items from tiered pools so killing an alpha is worth the risk.
 
 Monster rank in X-Ray is fixed at spawn from the `clsid` multiplier (`sim_offline_combat.script`).
@@ -560,10 +560,11 @@ Mutants were not special cases.
 > "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)."
 > [8]
 
-AlifePlus implements this at faction level with seven personality fields, each tracing directly to a GSC design axis or engine system.
-Per-faction multipliers replace random chance gates.
-Both stalker and mutant factions share the same table, the same lookup, the same gate.
-The decision is deterministic given the faction and the event.
+AlifePlus implements this with two layers: alignment and personality.
+
+Alignment is the hard filter. GSC classified characters along a moral axis: principled, self-serving (neutral), and unprincipled (Ai.doc:65-76, тип характера). AlifePlus maps this to factions: principled factions (Duty, Military, Monolith, ISG) follow orders and hold positions. Self-serving factions (Loners, Clear Sky, Ecologists, Freedom, Mercs) act on their own goals. Outlaw factions (Bandits, Renegades, Sin) operate outside any code. Alignment determines what a faction can do at all. Military never flees a base attack. Ecologists never conquer territory. Renegades never investigate massacres. These are not tunable probabilities but structural constraints from GSC's character type system.
+
+Personality is the probability layer. Seven traits per faction, each tracing to a GSC design axis or engine system. Both stalker and mutant factions share the same table, the same lookup, the same gate. The decision is probabilistic given the faction and the event, but only within the set of actions alignment permits.
 
 Aggression traces to GSC's PersonalAggressiveness and the Expediency function, and mirrors the engine's `m_bAggressive` flag (`base_monster_misc.cpp`) which is set from enemy count, sounds, and hits.
 For mutants, it maps to inverted `panic_threshold`: chimera at 0.0 cannot panic, boar at 0.5 is moderate, and rat at 0.9 flees easily.
@@ -586,6 +587,47 @@ Relation gates solidarity: the base kill support and wounded help consequences.
 
 Discipline traces to GSC's principled/unprincipled moral axis, where principled characters "would never commit an act of betrayal" and unprincipled ones "will betray others if the gain is significant" [8].
 Discipline gates all needs consequences: routine behavior like eating, sleeping, guarding, and socializing.
+
+---
+
+## Zone Will: Learned Expediency
+
+GSC's evaluation function storage (`ef_storage.h`) computed per-NPC behavioral decisions from personality inputs.
+Six personal evaluation functions fed the decision pipeline:
+
+- `CPersonalMoraleFunction`: dynamic combat state, rises on successful attacks, drops on hits
+- `CPersonalCreatureTypeFunction`: species classification for threat assessment
+- `CPersonalIntelligenceFunction`: retreat decision quality
+- `CPersonalRelationFunction`: friend/enemy classification
+- `CPersonalGreedFunction`: profit motivation
+- `CPersonalAggressivenessFunction`: willingness to engage
+
+These functions evaluated a multi-dimensional lookup to produce an expediency score: is this action worth doing given who I am and what I see.
+The Altogolik design documents define the Expediency function explicitly as `Relation x EntityCost x Greed x Aggressiveness -> Expediency` [8].
+The morale system (`CMonsterMorale`, `monster_morale.cpp`) tracked a per-entity 0-1 value that changed on hits and successful attacks, with three states: stable, taking heart, and despondent.
+All of this was per-NPC.
+
+> "The gist of the A-Life is that the characters in the game live their own lives and exist all the time, not only when they are in the player's field of view."
+> Dmitriy Iassenev, AI programmer, 2008 [1]
+
+AlifePlus extends expediency from the NPC to the zone.
+Each level runs a perceptron (single-neuron online learner, sigmoid activation, delta rule) that observes consequence outcomes and adjusts consequence probability in real-time.
+The perceptron reads AP saturation, consequence throughput, and faction disposition.
+When a consequence succeeds, the delta rule shifts weights toward the input pattern that produced the success.
+When it fails, the weights shift away.
+Each map develops its own personality from actual gameplay outcomes, shaping how events chain and which situations emerge.
+
+GSC's expediency was a static lookup table: fixed inputs, fixed outputs, designed once.
+Zone will learns the same function from gameplay.
+The perceptron discovers what the designer would have encoded, per level, per session, from actual success and failure rates.
+
+Rostok under sustained faction warfare develops a different will than a quiet Cordon with three loners.
+The weights adapt every session.
+
+The perceptron is ~40 lines of Lua, costs less than a single luabind call per evaluation, and fires 2-5 times per minute.
+The evaluation function pattern is GSC's (`ef_storage.h`).
+The morale pattern is GSC's (`monster_morale.cpp`).
+The extension from NPC to zone, and from static lookup to learned function, is AlifePlus.
 
 ---
 

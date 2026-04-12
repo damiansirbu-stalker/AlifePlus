@@ -5,7 +5,7 @@ local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
 -- Pick a random online stalker as PDA sender (A/S pattern: db.OnlineStalkers inline)
--- Filters: alive stalker, not story NPC, stalker faction, not enemy of player
+-- Filters: alive stalker, not story NPC, human faction, not enemy of player
 local function _pick_pda_sender()
     local online = db.OnlineStalkers
     if not online then return nil end
@@ -21,7 +21,7 @@ local function _pick_pda_sender()
         if not npc or not IsStalker(npc) or not npc:alive() then goto continue end
         if get_object_story_id(id) then goto continue end
         local community = npc:character_community()
-        if not ap_ext_const.community_stalker[community] then goto continue end
+        if not ap_ext_const.alignment_human[community] then goto continue end
         if game_relations.is_factions_enemies(actor_community, community) then goto continue end
         candidates[#candidates + 1] = npc
         ::continue::

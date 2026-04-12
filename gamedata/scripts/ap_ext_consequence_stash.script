@@ -11,8 +11,9 @@ local TRACE = ap_core_const.TRACE
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
-local community_stalker = ap_ext_const.community_stalker
-local community_ambusher = ap_ext_const.community_ambusher
+local _alignment_stash_loot = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
+local _alignment_stash_ambush = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_territorial)
+local alignment_human = ap_ext_const.alignment_human
 
 local LOOT_PROTECT_SET = {
     ["toolkit_1"] = true, ["toolkit_2"] = true, ["toolkit_3"] = true,
@@ -26,14 +27,14 @@ local LOOT_PROTECT_SET = {
 
 local CONFIGS = {
     { consequence = CONSEQUENCE.STASH_LOOT, name = "stash_loot",
-        community = community_stalker, exclude_at_base = true,
+        community = _alignment_stash_loot, exclude_at_base = true,
         arrive_fn = "loot",
         personality = { PERSONALITY.GREED } },
     { consequence = CONSEQUENCE.STASH_AMBUSH, name = "stash_ambush",
-        community = community_ambusher, exclude_at_base = true,
+        community = _alignment_stash_ambush, exclude_at_base = true,
         personality = { PERSONALITY.GREED } },
     { consequence = CONSEQUENCE.STASH_FILL, name = "stash_fill",
-        community = community_stalker, require_empty = true,
+        community = alignment_human, require_empty = true,
         arrive_fn = "fill",
         personality = { PERSONALITY.GREED } },
 }

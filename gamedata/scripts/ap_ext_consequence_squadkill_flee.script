@@ -9,12 +9,13 @@ local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
+local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
 
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
         if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_const.community_stalker[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction } end
+        if not _alignment_flee[event_data.victim_faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 

@@ -10,6 +10,7 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 local ACTION = ap_core_const.ACTION
 
 local cfg = ap_core_mcm.cfg
+local _alignment_support = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -19,6 +20,7 @@ local function _handler(event_data)
         local smart = event_data.smart
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
         if not smart or not factions or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+        if not _alignment_support[event_data.faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.faction } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = factions,

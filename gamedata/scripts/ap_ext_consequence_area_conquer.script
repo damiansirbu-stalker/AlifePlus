@@ -9,6 +9,10 @@ local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
+local _alignment_conquer = xtable.subtract(
+    xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_predator, ap_ext_const.alignment_territorial),
+    { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true }
+)
 
 local function _on_arrive(squad, args)
     if not args then return end
@@ -22,6 +26,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
         if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
+        if not _alignment_conquer[event_data.community] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.community } end
         local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
         if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
 

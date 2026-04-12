@@ -243,7 +243,7 @@ local function _find_demo_squads(max_count)
         local squad = xsquad.get_squad_by_member(npc_id)
         if not squad then goto skip end
         if seen[squad.id] then goto skip end
-        if not ap_ext_const.community_stalker[squad.player_id] then goto skip end
+        if not ap_ext_const.alignment_human[squad.player_id] then goto skip end
         seen[squad.id] = true
         candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
         ::skip::

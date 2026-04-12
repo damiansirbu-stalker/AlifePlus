@@ -9,6 +9,7 @@ local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
+local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -19,6 +20,7 @@ local function _handler(event_data)
         local position, level_id = event_data.position, event_data.level_id
 
         if not smart or not factions or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+        if not _alignment_flee[event_data.faction] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.faction } end
 
         local destination = ap_core_utils.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
         if not destination then

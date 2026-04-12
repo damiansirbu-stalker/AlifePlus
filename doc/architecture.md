@@ -245,9 +245,9 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 | ALPHAKILL | reactive | squad_on_npc_death | victim is alpha, killer not protected, cooldown clear |
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
-| STASH | radiant | squad_on_update | not protected, stash within 500m |
+| STASH | radiant | squad_on_update | not protected, stash within 500m (no cause-level alignment filter, consequences handle it) |
 | AREA | radiant | squad_on_update | not protected, empty smart, not is_base |
-| NEEDS | radiant | squad_on_update | not protected, community_stalker, level.present(), Hull drive scoring |
+| NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
 
@@ -272,7 +272,39 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 | AREA | area_conquer | claim empty smart terrain (stalkers and mutants, decays after 48h) |
 | NEEDS | (14 entries) | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
 
-Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> community check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type.
+Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> alignment check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type, personality chance evaluated by consumer before handler runs.
+
+### Alignment and Personality
+
+Two systems gate consequence eligibility. Alignment is a hard filter: can this faction do this at all. Personality is a probability: how likely is an eligible faction to act. Alignment runs first. Personality runs only if alignment passes.
+
+**Alignment** tables are static hash sets defined in `ap_ext_const`. Each consequence declares which alignment table it uses. The check is O(1) per faction.
+
+Human factions follow GSC's moral axis (Ai.doc:65-76, тип характера):
+
+| Table | Factions | GSC origin |
+|-------|----------|------------|
+| alignment_principled | dolg, army, monolith, isg | Principled: follows rules, organized |
+| alignment_selfserving | stalker, csky, ecolog, freedom, killer | Self-serving: independent, own goals |
+| alignment_unprincipled | stalker, freedom, killer, csky | Chaotic neutral: own rules, not criminal |
+| alignment_outlaw | bandit, renegade, greh | Chaotic evil: criminals |
+| alignment_human | all 12, no zombied | Union of principled + selfserving + outlaw |
+| alignment_naturalist | stalker, csky, freedom, ecolog | AP subset: zone dwellers |
+
+Mutant factions follow GSC's creature groups (monstry.doc:4):
+
+| Table | Factions | GSC origin |
+|-------|----------|------------|
+| alignment_predator | monster_predatory_day, monster_predatory_night | Roaming pack hunters |
+| alignment_territorial | monster_predatory_night, monster_special | Hold ground, defend territory |
+
+Consequences compose alignment tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load. The result is a flat hash table checked at O(1) per event.
+
+For radiant consequences (stash, area, needs), the alignment check is on `event_data.community` -- the triggering squad's faction. For reactive same-faction consequences (investigate, revenge, flee, support, help), the check is on the event faction (victim or wounded). For reactive cross-faction consequences (scavenge, hunt), the alignment table is the `factions` parameter to `find_squads`.
+
+**Personality** traits (aggression, greed, survival, perception, territory, relation, discipline) remain unchanged. Each consequence declares which traits matter at registration. The consumer averages the relevant traits for the event faction, clamps to 0.05-0.95, and rolls. Personality modulates behavior within the set of factions that alignment already approved.
+
+Zombied is excluded from alignment_human and therefore from all human consequences globally.
 
 ### Invariants
 

@@ -9,7 +9,7 @@ You are not special.
 
 AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulation layer that replaces passive A-Life with event-driven emergent behavior. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects that persist whether the player is present or not. Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs - whether you are there or not. Everything that happens to the player happens to NPCs and mutants alike. Nothing is random - every action traces back to a cause in the simulation.
 
-Inspired by Roadside Picnic, the original STALKER vision, and GSC's unshipped AI design documents: the Zone runs on its own rules, and the actor is just another entity inside it. Factions behave according to their identity -- Duty holds ground, bandits ambush and loot, ecologists flee, monolith never retreats. These are not random dice rolls but deterministic behavioral profiles implementing GSC's original PersonalAggressiveness, PersonalGreed, PersonalIntelligence, PersonalEyeRange, and PersonalRelation axes at faction level, plus a discipline axis from their principled/unprincipled moral classification. See the manifesto for proof and source references.
+Inspired by Roadside Picnic, the original STALKER vision, and GSC's unshipped AI design documents: the Zone runs on its own rules, and the actor is just another entity inside it. Factions behave according to their identity -- Duty holds ground, bandits ambush and loot, ecologists research, monolith never retreats. Two layers enforce this: an alignment system based on GSC's principled/self-serving/unprincipled moral classification determines what a faction can do at all, and a personality system implementing GSC's PersonalAggressiveness, PersonalGreed, PersonalIntelligence, PersonalEyeRange, and PersonalRelation axes determines how likely they are to act. See the manifesto for proof and source references.
 
 Every action has a systemic cause. Nothing moves without a reason. The simulation runs whether you are there or not.
 
@@ -149,7 +149,7 @@ Stash (radiant)
   - Fill - Stalker squad spots the stash and hides supplies inside.
 
 Area (radiant)
-  - Conquer - Any faction claims empty territory based on personality traits. Duty and predators conquer aggressively, ecologists and passive mutants rarely do. Conquered territory decays over time if not held (decay hours configurable in MCM).
+  - Conquer - Organized and aggressive factions claim empty territory. Ecologists, loners, and renegades never conquer. Conquered territory decays over time if not held (decay hours configurable in MCM).
 
 Needs (radiant)
   Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation.
@@ -167,11 +167,16 @@ Needs (radiant)
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.
   A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.
 
-Personality
-  Seven behavioral traits per faction, derived from GSC's original AI design
-  documents. Aggression, greed, survival, perception, territory, relation,
-  discipline. Both stalker and mutant factions share the same system.
-  Traits influence how likely a faction is to engage in each consequence.
+Alignment and Personality
+  Two layers decide what factions do. Alignment is the hard gate: GSC classified
+  characters as principled, self-serving, or unprincipled. AlifePlus maps this
+  to factions. Military never flees. Ecologists never conquer. Renegades never
+  investigate. These are structural, not tunable.
+  Personality is the probability: seven traits per faction (aggression, greed,
+  survival, perception, territory, relation, discipline) derived from GSC's
+  original AI design documents. A faction that passes the alignment gate rolls
+  against its personality score for the relevant traits. Both stalker and mutant
+  factions share the same system.
 
 ---
 

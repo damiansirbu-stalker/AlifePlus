@@ -11,6 +11,7 @@ local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
+local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
@@ -72,7 +73,7 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_REVENGE, function()
         if not cfg.consequence_squadkill_revenge_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_const.community_stalker[event_data.victim_faction] then
+        if not _alignment_revenge[event_data.victim_faction] then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_COMMUNITY, community = event_data.victim_faction }
         end
         local killer_squad_id = event_data.killer_squad_id

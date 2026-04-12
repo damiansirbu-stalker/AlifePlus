@@ -12,7 +12,7 @@ local TRACE = ap_core_const.TRACE
 
 
 local cfg = ap_core_mcm.cfg
-local community_harvest = ap_ext_const.community_harvest
+local alignment_outlaw = ap_ext_const.alignment_outlaw
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
@@ -80,7 +80,7 @@ local function _handler(event_data)
         if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
 
         local chasers = ap_core_utils.find_squads_observed(trace, position, {
-            factions = community_harvest,
+            factions = alignment_outlaw,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_harvest_hunt_max_squads,
             exclude_squad_id = event_data.taker_squad_id,

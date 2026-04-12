@@ -1,54 +1,76 @@
---- ap_ext_const: Static faction sets, item lists, community tables
---- VERIFIED: All faction values from pure Anomaly squad_descr_*.ltx
---- See: doc/library/xray-api/squad-factions.md
+--- ap_ext_const: Alignment categories, personality traits, item lists
+--- Alignment = hard filter (can/cannot do a consequence). Personality = chance (how likely).
+--- src: GSC AI design Ai.doc:65-76 (тип характера), monstry.doc:4 (creature groups)
+--- Faction values from pure Anomaly squad_descr_*.ltx
 
--- All human factions (stalkers, military, bandits, etc.)
--- src: squad_descr_default_stalkers.ltx
-community_stalker = {
-    ["stalker"] = true,
+--- Human alignment categories (GSC moral axis: Principled/Self-serving/Unprincipled)
+--- Principled = follows rules, organized, hierarchical
+alignment_principled = {
     ["dolg"] = true,
+    ["army"] = true,
+    ["monolith"] = true,
+    ["isg"] = true,
+}
+
+--- Self-serving = independent, own goals, adaptable
+alignment_selfserving = {
+    ["stalker"] = true,
+    ["csky"] = true,
+    ["ecolog"] = true,
+    ["freedom"] = true,
+    ["killer"] = true,
+}
+
+--- Unprincipled = chaotic neutral, own rules, not criminal
+alignment_unprincipled = {
+    ["stalker"] = true,
+    ["freedom"] = true,
+    ["killer"] = true,
+    ["csky"] = true,
+}
+
+--- Outlaw = chaotic evil, criminals, robbers
+alignment_outlaw = {
+    ["bandit"] = true,
+    ["renegade"] = true,
+    ["greh"] = true,
+}
+
+--- All human factions (union of principled + selfserving + outlaw, DAMIS watermark order)
+alignment_human = {
+    ["dolg"] = true,
+    ["army"] = true,
+    ["monolith"] = true,
+    ["isg"] = true,
+    ["stalker"] = true,
     ["freedom"] = true,
     ["csky"] = true,
     ["ecolog"] = true,
     ["killer"] = true,
-    ["army"] = true,
     ["bandit"] = true,
     ["renegade"] = true,
-    ["monolith"] = true,
     ["greh"] = true,
-    ["isg"] = true,
 }
 
--- Predator mutants that actively hunt prey
--- These are granular mutant factions (player_id). get_squad_community() collapses all to "monster".
--- xsquad.find_squads matches against these tables, so granular factions required.
--- src: squad_descr_default_mutants.ltx
-community_predator = {
+--- Zone dwellers who live off the land (AP subset of selfserving)
+alignment_naturalist = {
+    ["stalker"] = true,
+    ["csky"] = true,
+    ["freedom"] = true,
+    ["ecolog"] = true,
+}
+
+--- Mutant alignment categories (GSC creature groups, monstry.doc:4)
+--- Predator = roaming pack hunters (Животные мутанты)
+alignment_predator = {
     ["monster_predatory_day"] = true,
     ["monster_predatory_night"] = true,
-    ["monster_special"] = true,
 }
 
--- Sinister types that ambush at stashes
--- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
--- greh: Sin faction
--- monster_zombied_day: controller, snork, fracture
--- monster_zombied_night: burer, karlik
--- monster_special: poltergeist, chimera, pseudogiant
-community_ambusher = {
-    ["bandit"] = true,
-    ["renegade"] = true,
-    ["greh"] = true,
-    ["monster_zombied_day"] = true,
-    ["monster_zombied_night"] = true,
+--- Territorial = hold ground, defend territory (apex + nocturnal hunters)
+alignment_territorial = {
+    ["monster_predatory_night"] = true,
     ["monster_special"] = true,
-}
-
--- Scavengers: outlaws + necrophile mutants that converge on massacre sites
--- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
-community_scavenger = {
-    ["bandit"] = true, ["renegade"] = true, ["greh"] = true, ["isg"] = true,
-    ["monster_predatory_day"] = true, ["monster_zombied_day"] = true, ["zombied"] = true,
 }
 
 -- Stash fill item pool (medical, tools, artefacts)
@@ -85,13 +107,6 @@ stash_fill_items = {
 -- src: configs/items/weapons/m_f1.ltx, m_rgd5.ltx, m_gd5.ltx (base Anomaly)
 grenades = { "grenade_f1", "grenade_rgd5", "grenade_gd-05" }
 
--- Artefact hunters: outlaws + psy/anomaly mutants
--- Outlaws chase for profit, psy mutants drawn to anomalous energy
--- src: squad_descr_default_stalkers.ltx, squad_descr_default_mutants.ltx
-community_harvest = {
-    ["bandit"] = true, ["renegade"] = true, ["greh"] = true, ["isg"] = true,
-    ["monster_zombied_day"] = true, ["monster_zombied_night"] = true, ["monster_special"] = true,
-}
 
 --- Personality field constants (GSC AI design: PersonalAggressiveness, PersonalGreed,
 --- PersonalIntelligence/EnemyRetreatProbability, PersonalEyeRange, PersonalRelation,
