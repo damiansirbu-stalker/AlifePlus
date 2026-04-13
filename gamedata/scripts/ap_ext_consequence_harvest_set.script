@@ -186,8 +186,10 @@ local function _handler_haunt(event_data)
 
         local squads = {}
         for _, squad in ipairs(candidates) do
+            local species = ap_ext_util.get_species(squad.id)
+            local identity = species or squad.player_id
             local dominated = ap_ext_util.check_species_alignment(_species_haunt, squad.id)
-                and ap_ext_util.check_personality(_personality_haunt, ap_ext_util.get_species(squad.id), CONSEQUENCE.HARVEST_HAUNT)
+                and ap_ext_util.check_personality(_personality_haunt, identity, CONSEQUENCE.HARVEST_HAUNT)
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end

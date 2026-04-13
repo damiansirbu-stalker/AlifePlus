@@ -188,18 +188,31 @@ ModA controls squads for territorial warfare. AP controls squads for emergent be
 
 ### Squad coordination
 
-`scripted_target` is the engine's built-in coordination mechanism. When any mod sets `scripted_target` on a squad, the engine switches it from `generic_update` (simulation re-evaluation) to `specific_update` (direct A->B movement).
+Two fields form the squad control contract:
+
+- `scripted_target` - routes the squad to `specific_update` (direct A->B movement instead of simulation)
+- `__lock` - blocks `generic_update` as a fallback guard. If another mod clears `scripted_target` between ticks, the squad stays put instead of being reassigned by SIMBOARD.
+
+Every major alife mod (warfare, BAO, Vintar) sets both fields on squads it controls. `xsquad` provides three primitives:
+
+```lua
+xsquad.control_squad(squad, smart, rush)   -- acquire: sets scripted_target + __lock
+xsquad.release_squad(squad)                -- release: clears scripted_target + __lock
+xsquad.reassert_target(squad, target)      -- defend: restores both if overwritten
+```
 
 Both mods check `scripted_target` before claiming a squad. This is enough for basic non-interference:
 
 ```lua
 -- ModA before scripting:
 if se_squad.scripted_target then return end  -- AP (or anyone) has this squad
-se_squad.scripted_target = smart.id
+xsquad.control_squad(squad, smart)
 
 -- AP's PROTECTION gate already does this check automatically.
 -- No code change needed on AP's side.
 ```
+
+AP reasserts `scripted_target` + `__lock` on its squads every 20s. Squads that die or despawn between scans are removed from AP's tracking table automatically.
 
 ---
 

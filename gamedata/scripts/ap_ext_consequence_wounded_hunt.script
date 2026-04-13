@@ -33,8 +33,10 @@ local function _handler(event_data)
         if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
+            local species = ap_ext_util.get_species(squad.id)
+            local identity = species or squad.player_id
             local dominated = ap_ext_util.check_species_alignment(_species_wounded_hunt, squad.id)
-                and ap_ext_util.check_personality(_personality, ap_ext_util.get_species(squad.id), CONSEQUENCE.WOUNDED_HUNT)
+                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT)
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end

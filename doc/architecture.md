@@ -155,17 +155,19 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 `ap_core_squad` manages the full lifecycle of squads under AP control: scripting, arrival detection, post-arrival wait, and release.
 
-**Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` via `xsquad.control_squad`, which causes the squad to enter `specific_update` (direct A->B movement) instead of `generic_update` (simulation re-evaluation). The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
+**Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` + `__lock` via `xsquad.control_squad`. `scripted_target` routes the squad to `specific_update` (direct A->B movement). `__lock` blocks `generic_update` as a fallback guard - if another mod clears `scripted_target` between ticks, the squad stays put instead of being reassigned by SIMBOARD. The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
 **Scripted squad scan.** `_update_scripted_squads` runs every 20s via `CreateTimeEvent`. For each tracked squad:
 
-1. **TTL** - 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
-2. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
-3. **Wait** - `release_at = game_sec() + post_arrived_wait` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
+1. **Entity** - `xobject.se(squad_id)`. Gone -> remove from tracking table. Catches squads that died or despawned between scans.
+2. **Reassert** - `xsquad.reassert_target(squad, data.scripted_target)`. Restores `scripted_target` + `__lock` if another mod overwrote them. Every alife overhaul mod (warfare, BAO, Vintar) sets these fields every tick on its own squads; AP reasserts every 20s on its squads.
+3. **TTL** - 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
+4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
+5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
 **Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_squad`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
 
-**Coordination.** `scripted_target` is the engine's built-in coordination mechanism between alife mods. Any mod that sets `scripted_target` signals "I control this squad." AP checks this at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
+**Coordination.** Two fields form the squad control contract: `scripted_target` (routes to `specific_update`) and `__lock` (blocks `generic_update`). Setting both signals "I control this squad." AP checks these at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets both fields on acquire; `xsquad.release_squad` clears both on release; `xsquad.reassert_target` restores both if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
 **Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
 
