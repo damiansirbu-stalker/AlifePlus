@@ -33,28 +33,28 @@ local RANK_VETERAN = 12000
 local RANK_RANGE = 15000
 local THROTTLE_SEC = 0.5
 
-local _alpha_damage_increase = {}
-local _alpha_damage_reduction = {}
+local _alpha_hit_power_dealt = {}
+local _alpha_hit_power_taken = {}
 local _panic_applied = {}
 local _last_monster_hit = 0
 local _last_npc_hit = 0
 
---- Set alpha damage modifiers for entity (called from alpha_promote consequence)
-function set_alpha_damage(npc_id, level)
+--- Set alpha hit power modifiers for entity (called from alpha_promote consequence)
+function set_alpha_hit_power(npc_id, level)
     if not npc_id or not level or level < 1 then return end
-    if cfg.alpha_damage_increase_enabled then
-        _alpha_damage_increase[npc_id] = 1.0 + level * cfg.alpha_damage_increase_per_level
+    if cfg.alpha_hit_power_dealt_enabled then
+        _alpha_hit_power_dealt[npc_id] = 1.0 + level * cfg.alpha_hit_power_dealt_per_level
     end
-    if cfg.alpha_damage_reduction_enabled then
-        _alpha_damage_reduction[npc_id] = 1.0 - level * cfg.alpha_damage_reduction_per_level
+    if cfg.alpha_hit_power_taken_enabled then
+        _alpha_hit_power_taken[npc_id] = 1.0 - level * cfg.alpha_hit_power_taken_per_level
     end
 end
 
---- Clear alpha damage modifiers for entity (called from tracker on alpha death)
-function clear_alpha_damage(npc_id)
+--- Clear alpha hit power modifiers for entity (called from tracker on alpha death)
+function clear_alpha_hit_power(npc_id)
     if not npc_id then return end
-    _alpha_damage_increase[npc_id] = nil
-    _alpha_damage_reduction[npc_id] = nil
+    _alpha_hit_power_dealt[npc_id] = nil
+    _alpha_hit_power_taken[npc_id] = nil
     _panic_applied[npc_id] = nil
 end
 
@@ -70,14 +70,14 @@ local function _on_monster_hit(monster, shit, bone_id, flags)
     if now - _last_monster_hit < THROTTLE_SEC then return end
     _last_monster_hit = now
 
-    if not next(_alpha_damage_increase) and not next(_alpha_damage_reduction) then return end
+    if not next(_alpha_hit_power_dealt) and not next(_alpha_hit_power_taken) then return end
 
     ap_core_debug.observe(nil, "mutator:monster_hit", function()
         local victim_id = monster:id()
         local attacker_id = shit.draftsman and shit.draftsman:id()
 
-        local increase = attacker_id and _alpha_damage_increase[attacker_id]
-        local reduction = _alpha_damage_reduction[victim_id]
+        local increase = attacker_id and _alpha_hit_power_dealt[attacker_id]
+        local reduction = _alpha_hit_power_taken[victim_id]
         if not increase and not reduction then return { code = TRACE.NONE } end
 
         if increase then shit.power = shit.power * increase end
@@ -99,25 +99,25 @@ local function _on_npc_hit(npc, shit, bone_id, flags)
     if now - _last_npc_hit < THROTTLE_SEC then return end
     _last_npc_hit = now
 
-    if not cfg.rank_damage_increase_enabled and not cfg.rank_damage_reduction_enabled then return end
+    if not cfg.rank_hit_power_dealt_enabled and not cfg.rank_hit_power_taken_enabled then return end
 
     ap_core_debug.observe(nil, "mutator:npc_hit", function()
         local victim_id = npc:id()
         local victim_rank = npc:character_rank()
 
-        if cfg.rank_damage_reduction_enabled then
+        if cfg.rank_hit_power_taken_enabled then
             local factor = _rank_factor(victim_rank)
             if factor > 0 then
-                shit.power = shit.power * (1.0 - factor * cfg.rank_damage_reduction_mult)
+                shit.power = shit.power * (1.0 - factor * cfg.rank_hit_power_taken_mult)
             end
         end
 
         local attacker = shit.draftsman
-        if cfg.rank_damage_increase_enabled and attacker and xcreature.is_stalker(attacker) then
+        if cfg.rank_hit_power_dealt_enabled and attacker and xcreature.is_stalker(attacker) then
             local attacker_rank = attacker:character_rank()
             local factor = _rank_factor(attacker_rank)
             if factor > 0 then
-                shit.power = shit.power * (1.0 + factor * cfg.rank_damage_increase_mult)
+                shit.power = shit.power * (1.0 + factor * cfg.rank_hit_power_dealt_mult)
             end
         end
 
@@ -125,10 +125,10 @@ local function _on_npc_hit(npc, shit, bone_id, flags)
     end)
 end
 
-local function _rebuild_alpha_damage()
+local function _rebuild_alpha_hit_power()
     local alphas = ap_ext_tracker.get_alphas()
     for npc_id, data in pairs(alphas) do
-        set_alpha_damage(npc_id, data.level)
+        set_alpha_hit_power(npc_id, data.level)
     end
     ap_core_debug.debug("[MUTATOR] rebuild: %d alphas", xtable.count(alphas))
 end
@@ -155,7 +155,7 @@ end
 function on_game_start()
     RegisterScriptCallback(CALLBACK.MONSTER_ON_BEFORE_HIT, _on_monster_hit)
     RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_npc_hit)
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _rebuild_alpha_damage)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _rebuild_alpha_hit_power)
     RegisterScriptCallback(CALLBACK.MONSTER_ON_LOOT_INIT, _on_monster_loot_init)
     ap_core_debug.info("[MUTATOR] Initialized")
 end
