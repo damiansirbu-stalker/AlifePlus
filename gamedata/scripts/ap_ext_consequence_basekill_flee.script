@@ -6,6 +6,7 @@ local ipairs = ipairs
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
+local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
@@ -44,7 +45,7 @@ local function _handler(event_data)
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(fleeing) do
-                local res = ap_core_squad.script_squad(squad, destination, { rush = cfg.consequence_basekill_flee_rush })
+                local res = ap_core_squad.script_squad(squad, destination, { rush = cfg.consequence_basekill_flee_rush, pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_FLEE })
                 if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = destination.id, rejected = #fleeing - #moved })

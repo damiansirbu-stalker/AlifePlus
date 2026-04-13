@@ -7,6 +7,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
+local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -32,7 +33,7 @@ local CONFIGS = {
         personality = { PERSONALITY.GREED } },
     { consequence = CONSEQUENCE.STASH_AMBUSH, name = "stash_ambush",
         community = _alignment_stash_ambush, exclude_at_base = true,
-        personality = { PERSONALITY.GREED } },
+        personality = { PERSONALITY.GREED }, pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH },
     { consequence = CONSEQUENCE.STASH_FILL, name = "stash_fill",
         community = alignment_human, require_empty = true,
         arrive_fn = "fill",
@@ -146,6 +147,7 @@ local function _make_handler(entry)
                     rush = cfg[rush_key],
                     on_arrive = arrive_args and entry.consequence or nil,
                     on_arrive_args = arrive_args,
+                    pre_release_gulag = entry.pre_release_gulag,
                 })
                 return res
             end)

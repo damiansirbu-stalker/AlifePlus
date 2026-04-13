@@ -120,7 +120,7 @@ function script_squad(squad, smart, opts)
         tracked_at = xtime.game_sec(),
         on_arrive = opts.on_arrive,
         on_arrive_args = opts.on_arrive_args,
-        post_arrived_wait = opts.post_arrived_wait or ap_core_const.POST_ARRIVED_WAIT_SEC,
+        pre_release_gulag = opts.pre_release_gulag or ap_core_const.PRE_RELEASE_GULAG_DEFAULT,
     }
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
@@ -219,29 +219,29 @@ local function _update_arrival_flags(squad_id, data)
     local key = data.on_arrive
     if not key then
         data.arrived = true
-        data.release_at = xtime.game_sec() + data.post_arrived_wait
-        ap_core_debug.debug("[SQUAD] arrived_no_handler: squad=%d target=%s wait=%ds", squad_id, data.scripted_target, data.post_arrived_wait)
+        data.release_at = xtime.game_sec() + data.pre_release_gulag
+        ap_core_debug.debug("[SQUAD] gulag_started (no handler): squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
         return
     end
     local handler = _arrival_handlers[key]
     if not handler then
         ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
         data.arrived = true
-        data.release_at = xtime.game_sec() + data.post_arrived_wait
+        data.release_at = xtime.game_sec() + data.pre_release_gulag
         return
     end
     ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s", squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     if _ap_scripted_squads[squad_id] ~= data then return end
     data.arrived = true
-    data.release_at = xtime.game_sec() + data.post_arrived_wait
-    ap_core_debug.debug("[SQUAD] wait_started: squad=%d target=%s wait=%ds", squad_id, data.scripted_target, data.post_arrived_wait)
+    data.release_at = xtime.game_sec() + data.pre_release_gulag
+    ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
 end
 
-local function _update_wait(squad_id, data)
+local function _update_pre_release_gulag(squad_id, data)
     if not data.arrived then return end
     if xtime.game_sec() < data.release_at then return end
-    ap_core_debug.debug("[SQUAD] wait_expired: squad=%d target=%s", squad_id, data.scripted_target)
+    ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s", squad_id, data.scripted_target)
     _unscript_squad(squad_id)
 end
 
@@ -254,7 +254,7 @@ local function _update_scripted_squad(squad_id)
         return
     end
     _update_arrival_flags(squad_id, data)
-    _update_wait(squad_id, data)
+    _update_pre_release_gulag(squad_id, data)
 end
 
 local _pending_buf = {}

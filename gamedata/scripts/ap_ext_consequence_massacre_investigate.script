@@ -8,6 +8,7 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PERSONALITY = ap_ext_const.PERSONALITY
 local ACTION = ap_core_const.ACTION
+local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local cfg = ap_core_mcm.cfg
 local _alignment_investigate = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
@@ -39,7 +40,7 @@ local function _handler(event_data)
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_squad.script_squad(squad, smart, { rush = cfg.consequence_massacre_investigate_rush })
+                local res = ap_core_squad.script_squad(squad, smart, { rush = cfg.consequence_massacre_investigate_rush, pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_INVESTIGATE })
                 if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
