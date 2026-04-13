@@ -304,10 +304,6 @@ For radiant consequences (stash, area, needs), the alignment check is on `event_
 
 Probability layer: how likely is an eligible faction to act. Runs only after alignment passes. Seven traits (aggression, greed, survival, perception, territory, relation, discipline) declared per consequence at registration. The consumer averages the relevant traits for the event faction, clamps to 0.05-0.95, and rolls.
 
-### Emergence
-
-Per-level perceptron that observes consequence outcomes and adjusts consequence probability in real-time. Each map develops its own behavioral profile. Reads AP saturation, consequence throughput, and faction disposition. Weights adapt every session. See `ap_core_consumer` for integration.
-
 ### Invariants
 
 1. **Serialization boundary.** `m_data` accepts only primitives and tables of primitives. Functions, userdata, metatables are silently dropped on save. Arrival handler keys are strings; handler functions are transient, re-registered every load.

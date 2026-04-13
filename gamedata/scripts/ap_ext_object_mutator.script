@@ -1,10 +1,33 @@
 --- ap_ext_object_mutator: Runtime combat modifiers for alpha mutants and high-rank stalkers
 
-local os_clock, RegisterScriptCallback, pairs, next = os.clock, RegisterScriptCallback, pairs, next
+local os_clock, RegisterScriptCallback, pairs, next, math_random = os.clock, RegisterScriptCallback, pairs, next, math.random
 local CALLBACK = ap_core_const.CALLBACK
 local TRACE = ap_core_const.TRACE
+local ALPHA_LOOT = ap_ext_const.ALPHA_LOOT
 
 local cfg = ap_core_mcm.cfg
+
+local _clsid_to_species = {
+    [clsid.bloodsucker_s] = "bloodsucker",
+    [clsid.boar_s] = "boar",
+    [clsid.burer_s] = "burer",
+    [clsid.chimera_s] = "chimera",
+    [clsid.controller_s] = "controller",
+    [clsid.dog_s] = "dog",
+    [clsid.flesh_s] = "flesh",
+    [clsid.gigant_s] = "gigant",
+    [clsid.psy_dog_s] = "psy_dog",
+    [clsid.psy_dog_phantom_s] = "psy_dog",
+    [clsid.pseudodog_s] = "pseudodog",
+    [clsid.snork_s] = "snork",
+    [clsid.tushkano_s] = "tushkano",
+    [clsid.cat_s] = "cat",
+    [clsid.fracture_s] = "fracture",
+    [clsid.zombie_s] = "zombie",
+}
+if clsid.karlik_s then _clsid_to_species[clsid.karlik_s] = "karlik" end
+if clsid.psysucker_s then _clsid_to_species[clsid.psysucker_s] = "psysucker" end
+if clsid.lurker_s then _clsid_to_species[clsid.lurker_s] = "lurker" end
 
 local RANK_VETERAN = 12000
 local RANK_RANGE = 15000
@@ -110,9 +133,29 @@ local function _rebuild_alpha_damage()
     ap_core_debug.debug("[MUTATOR] rebuild: %d alphas", xtable.count(alphas))
 end
 
+--- Inject alpha bonus loot into mutant loot table (species-specific, scaled by alpha level)
+--- @src anomaly/ui_mutant_loot.script(167,463-470)
+local function _on_monster_loot_init(victim, loot_table)
+    if not victim or not loot_table then return end
+    if not cfg.alpha_loot_enabled then return end
+    local level = ap_ext_tracker.get_alpha_level(victim:id())
+    if level < 1 then return end
+    local species = _clsid_to_species[victim:clsid()]
+    if not species then return end
+    local pool = ALPHA_LOOT[species]
+    if not pool then return end
+    for i = 1, level do
+        local section = pool[math_random(#pool)]
+        if not loot_table[section] then loot_table[section] = { count = 0 } end
+        loot_table[section].count = loot_table[section].count + 1
+    end
+    ap_core_debug.debug("[MUTATOR] alpha_loot: id=%d species=%s level=%d items=%d", victim:id(), species, level, level)
+end
+
 function on_game_start()
     RegisterScriptCallback(CALLBACK.MONSTER_ON_BEFORE_HIT, _on_monster_hit)
     RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_npc_hit)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _rebuild_alpha_damage)
+    RegisterScriptCallback(CALLBACK.MONSTER_ON_LOOT_INIT, _on_monster_loot_init)
     ap_core_debug.info("[MUTATOR] Initialized")
 end

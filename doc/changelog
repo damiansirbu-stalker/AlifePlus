@@ -1,20 +1,21 @@
-next
-  Summary: Alpha system, alignment, reactive chaining, mutators, emergence, expanded mutant factions, drop stalker elites
+1.4.0
+  Summary: Alignment system, alpha mutants, reactive chaining, combat mutators, expanded mutant factions
   Gameplay:
-    Added: alpha system. Mutants that accumulate kills become alphas, the dominant individual in their territory. Alphas hit harder, take less damage, never flee, and drop rare loot on death. MCM toggles for each.
-    Added: mutators. Combat modifiers applied through the hit callback. Alpha mutant damage scales with kill level. Veteran+ stalker damage scales from veteran to legend rank. Separate MCM section with independent toggles for dealt and taken on both systems.
-    Added: alignment system. Faction behavior follows GSC's moral axis (principled, self-serving, unprincipled, outlaw). Military never flees a base attack. Ecologists never conquer territory. Renegades never investigate a massacre. Bandits never reinforce allies. Deterministic, not random.
-    Added: snork, controller, burer, and karlik packs conquer territory, avenge their dead, and hunt wounded stalkers. Previously invisible to AP.
-    Added: emergence. Each map develops its own behavioral profile through a perceptron that learns from consequence outcomes in real-time. Patterns arise from gameplay, not from design tables.
-    Changed: reactive consequences chain. A squad wipe fires both revenge and retreat. A medkit use sends predators and allies. A massacre draws scavengers and investigators. One event, multiple independent responses.
-    Changed: alphakill sends same-species mutants to hunt the killer. A dead pseudodog alpha sends pseudodog packs, not random predators.
-    Changed: mutant squadkill responses follow species identity. Predator and territorial packs avenge killed members. Herbivores and weak mobs scatter.
-    Changed: personality probability narrowed. Factions commit to their identity more often and hesitate less.
-    Removed: stalker elites. The engine tracks stalker progression natively through kill-to-rank points. No more periodic re-feeding of grenades, AP ammo, and rank boosts to already-promoted NPCs.
+    Added: alpha mutant system. Mutants that accumulate kills become alphas -- the dominant individual in their territory. Alphas deal more damage, take less damage, never flee, and drop bonus species-specific loot (extra hides and rare parts, scaling with alpha level). Each alpha feature has its own MCM toggle.
+    Added: alpha kill retaliation. Killing an alpha triggers same-species mutants to hunt the killer.
+    Added: species-based squad death responses. Predator and territorial packs avenge killed members. Herbivores and weak mobs scatter.
+    Added: combat mutators via hit callbacks. Alpha mutant damage scales with kill level. Veteran+ stalker damage scales from veteran to legend rank. Separate MCM toggles for dealt and taken on both systems.
+    Added: alignment system based on GSC's moral axis (principled, self-serving, unprincipled, outlaw). Military never flees during base attacks. Ecologists never conquer territory. Renegades never investigate massacres. Bandits never reinforce allies. Deterministic, not random.
+    Added: mutant territorial behavior. Mutants conquer territory, avenge their dead, and hunt wounded stalkers based on personality traits.
+    Changed: reactive consequences chain. A single event now triggers multiple independent responses. A squad wipe fires both revenge and retreat. A medkit use attracts predators and sends allies to help. A massacre draws scavengers and investigators.
+    Changed: personality probability narrowed. Factions commit to identity-consistent behavior more often and hesitate less.
+    Removed: stalker elites. The engine tracks stalker progression natively through kill-to-rank points. No action required.
     Removed: elite kill bounty.
   Core:
     Added: mutators MCM section with toggles for alpha and stalker combat modifiers.
-    Added: xlearn module in xlibs. Online-learning perceptron used by emergence.
+  i18n:
+    Added: full Russian description (doc/readme_ru.txt).
+    Fixed: Russian MCM synced with English.
   Fixed:
     Fixed: crash on fast travel when a scripted squad dies offline and the engine recycles its entity ID.
 

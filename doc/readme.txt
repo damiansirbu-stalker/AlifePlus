@@ -2,6 +2,7 @@ AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
+- Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
 
 ! Please use the RESET button in MCM when updating to a new version !
 
@@ -178,12 +179,6 @@ Personality
   relation, discipline) derived from GSC's original AI design documents. A faction
   that passes the alignment gate rolls against its personality score for the
   relevant traits. Both stalker and mutant factions share the same system.
-
-Emergence
-  Each map develops its own behavioral profile through a perceptron that learns
-  from consequence outcomes in real-time. Rostok under faction warfare develops
-  differently than a quiet Cordon. The patterns are not designed -- they arise
-  from alignment constraints, personality probabilities, and consequence results.
 
 ---
 

@@ -588,26 +588,6 @@ Discipline gates needs consequences: eating, sleeping, guarding, socializing.
 
 ---
 
-## Emergence
-
-GSC's Expediency function was a static lookup table: fixed inputs, fixed outputs, designed once.
-It answered the question "is this action worth doing given who I am and what I see" but the answer never changed.
-
-> "The gist of the A-Life is that the characters in the game live their own lives and exist all the time, not only when they are in the player's field of view."
-> Dmitriy Iassenev, AI programmer, 2008 [1]
-
-AlifePlus extends expediency from the NPC to the zone and from static lookup to learned function.
-Each level runs a perceptron that observes consequence outcomes and adjusts consequence probability in real-time.
-When a consequence succeeds, the weights shift toward the pattern that produced the success.
-When it fails, the weights shift away.
-Each map develops its own behavioral profile from actual gameplay, shaping how events chain and which situations emerge.
-
-Rostok under sustained faction warfare develops differently than a quiet Cordon with three loners.
-The weights adapt every session.
-Nobody designs the specific patterns -- they arise from the interaction between alignment constraints, personality probabilities, and consequence outcomes.
-
----
-
 ## Sources
 
 - [1] Dmitriy Iassenev (AI programmer, SoC/CS), Game Developer (2008)

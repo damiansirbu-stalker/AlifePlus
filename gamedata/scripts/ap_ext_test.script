@@ -142,36 +142,22 @@ function spawn_artefact()
 end
 
 local KIT_ITEMS = {
-    -- weapon
-    { sec = "wpn_ak74u", count = 1 },
-    { sec = "wpn_toz34", count = 1 },
-    -- armor + backpack
-    { sec = "svoboda_heavy_outfit", count = 1 },
-    { sec = "itm_backpack", count = 1 },
-    { sec = "equ_military_pack", count = 1 },
+    -- weapon + ammo + knife
+    { sec = "wpn_spas12", count = 1 },
+    { sec = "ammo_12x76_zhekan", count = 100 },
+    { sec = "wpn_knife5", count = 1 },
     -- meds
-    { sec = "medkit_scientic", count = 10 },
-    { sec = "medkit_army", count = 10 },
     { sec = "bandage", count = 10 },
-    { sec = "stimpack_scientic", count = 5 },
-    { sec = "drug_sleepingpills", count = 10 },
-    -- food
-    { sec = "tushonka", count = 10 },
+    { sec = "medkit_army", count = 10 },
+    { sec = "drug_sleepingpills", count = 30 },
+    { sec = "antirad", count = 10 },
+    { sec = "drug_radioprotector", count = 5 },
+    -- food + water
     { sec = "kolbasa", count = 10 },
-    { sec = "energy_drink", count = 10 },
+    { sec = "conserva", count = 10 },
+    { sec = "bread", count = 10 },
+    { sec = "water_drink", count = 20 },
     { sec = "vodka_quality", count = 5 },
-    { sec = "water_drink", count = 10 },
-    -- ammo
-    { sec = "ammo_5.45x39_ap", count = 50 },
-    { sec = "ammo_5.45x39_fmj", count = 50 },
-    { sec = "ammo_12x70_buck", count = 50 },
-    { sec = "ammo_12x76_zhekan", count = 50 },
-    { sec = "ammo_12x76_dart", count = 30 },
-    { sec = "ammo_9x18_ap", count = 30 },
-    { sec = "ammo_9x19_ap", count = 30 },
-    -- grenades
-    { sec = "grenade_rgd5", count = 10 },
-    { sec = "grenade_f1", count = 5 },
 }
 
 --- Spawn a playtest survival kit into actor inventory
@@ -197,6 +183,32 @@ function kit()
     end
     _tip(string_format("Kit: %d items, %d skipped", spawned, skipped))
     ap_core_debug.debug("[TEST] kit OK spawned=%d skipped=%d", spawned, skipped)
+end
+
+--- Spawn a mutant nearby and promote it to alpha for loot testing
+--- @export console
+function spawn_alpha()
+    ap_core_debug.debug("[TEST] spawn_alpha pressed")
+    local actor = xobject.go(0)
+    if not actor then return _tip("Not in game") end
+    local pos = actor:position()
+    local spawn_pos = vector():set(pos.x + 5, pos.y, pos.z + 5)
+    local lvid = actor:level_vertex_id()
+    local gvid = actor:game_vertex_id()
+    local section = "pseudodog_grey_strong"
+    if not ini_sys:section_exist(section) then section = "pseudodog_grey_weak" end
+    local se = alife():create(section, spawn_pos, lvid, gvid)
+    if not se then
+        ap_core_debug.debug("[TEST] spawn_alpha FAIL alife create")
+        return _tip("Failed to spawn mutant")
+    end
+    local npc_id = se.id
+    local test_level = 8
+    local test_kills = test_level * ap_core_mcm.cfg.alpha_kills_per_level
+    ap_ext_tracker.update_alpha(npc_id, { kills = test_kills, name = "Test Alpha", level_id = xlevel.get_level_id(se) })
+    ap_ext_object_mutator.set_alpha_damage(npc_id, test_level)
+    ap_core_debug.debug("[TEST] spawn_alpha OK id=%d section=%s level=%d kills=%d", npc_id, section, test_level, test_kills)
+    _tip(string_format("Spawned alpha L%d %s (id=%d)", test_level, section, npc_id))
 end
 
 --- NEEDS DEMO: integration test - fires real needs pipeline for nearby squads
