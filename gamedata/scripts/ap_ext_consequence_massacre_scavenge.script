@@ -8,9 +8,12 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
+local PERSONALITY = ap_ext_const.PERSONALITY
+
 local cfg = ap_core_mcm.cfg
 local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
-local _species_scavenge = ap_ext_const.alignment_mutant_necrophage
+local _species_scavenge = ap_ext_const.alignment_mutant_cowardly
+local _personality = { PERSONALITY.SURVIVAL }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -28,9 +31,9 @@ local function _handler(event_data)
         if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
-            if ap_ext_dispatch.check_species_alignment(_species_scavenge, squad.id) then
-                squads[#squads + 1] = squad
-            end
+            local dominated = ap_ext_util.check_species_alignment(_species_scavenge, squad.id)
+                and ap_ext_util.check_personality(_personality, ap_ext_util.get_species(squad.id), CONSEQUENCE.MASSACRE_SCAVENGE)
+            if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 

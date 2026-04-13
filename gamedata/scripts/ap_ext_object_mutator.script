@@ -7,28 +7,6 @@ local ALPHA_LOOT = ap_ext_const.ALPHA_LOOT
 
 local cfg = ap_core_mcm.cfg
 
-local _clsid_to_species = {
-    [clsid.bloodsucker_s] = "bloodsucker",
-    [clsid.boar_s] = "boar",
-    [clsid.burer_s] = "burer",
-    [clsid.chimera_s] = "chimera",
-    [clsid.controller_s] = "controller",
-    [clsid.dog_s] = "dog",
-    [clsid.flesh_s] = "flesh",
-    [clsid.gigant_s] = "gigant",
-    [clsid.psy_dog_s] = "psy_dog",
-    [clsid.psy_dog_phantom_s] = "psy_dog",
-    [clsid.pseudodog_s] = "pseudodog",
-    [clsid.snork_s] = "snork",
-    [clsid.tushkano_s] = "tushkano",
-    [clsid.cat_s] = "cat",
-    [clsid.fracture_s] = "fracture",
-    [clsid.zombie_s] = "zombie",
-}
-if clsid.karlik_s then _clsid_to_species[clsid.karlik_s] = "karlik" end
-if clsid.psysucker_s then _clsid_to_species[clsid.psysucker_s] = "psysucker" end
-if clsid.lurker_s then _clsid_to_species[clsid.lurker_s] = "lurker" end
-
 local RANK_VETERAN = 12000
 local RANK_RANGE = 15000
 local THROTTLE_SEC = 0.5
@@ -140,7 +118,7 @@ local function _on_monster_loot_init(victim, loot_table)
     if not cfg.alpha_loot_enabled then return end
     local level = ap_ext_tracker.get_alpha_level(victim:id())
     if level < 1 then return end
-    local species = _clsid_to_species[victim:clsid()]
+    local species = xcreature.get_mutant_species(victim:id())
     if not species then return end
     local pool = ALPHA_LOOT[species]
     if not pool then return end

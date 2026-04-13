@@ -1,6 +1,6 @@
---- ap_ext_consequence_alphakill_targeted: Same-species mutants hunt the alpha's killer
+--- ap_ext_consequence_alphakill_targeted: Other alpha mutants hunt the alpha's killer
 
-local ipairs = ipairs
+local ipairs, pairs = ipairs, pairs
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -77,13 +77,11 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.ALPHAKILL_TARGETED, function()
         if not cfg.consequence_alphakill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
         local killer_id, level_id = event_data.killer_id, event_data.level_id
-        local community = event_data.community
+        local victim_id = event_data.id
         local victim_name = event_data.name or "unknown"
 
         if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
         if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
-        if not community then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
-        if not ap_ext_dispatch.check_personality(_personality, community, CONSEQUENCE.ALPHAKILL_TARGETED) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local is_player_kill = killer_id == 0
         local killer_squad
@@ -92,16 +90,21 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        local victim_se = xobject.se(event_data.id)
-        local search_pos = victim_se and victim_se.position or (killer_squad and killer_squad.position)
-        if not search_pos then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
-
-        local hunters = ap_core_utils.find_squads_observed(trace, search_pos, {
-            factions = community, level_id = level_id,
-            max_distance = ap_core_const.RADIUS_DISTANT_MAX,
-            max_count = cfg.consequence_alphakill_targeted_max_squads,
-        })
-        if not hunters or #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        --- Collect other alpha squads on the same level
+        local alphas = ap_ext_tracker.get_alphas()
+        local hunters = {}
+        for npc_id, _ in pairs(alphas) do
+            if npc_id == victim_id then goto continue end
+            local squad = xsquad.get_squad_by_member(npc_id)
+            if not squad then goto continue end
+            if xlevel.get_level_id(squad) ~= level_id then goto continue end
+            local species = ap_ext_util.get_species(squad.id)
+            if not species then goto continue end
+            if not ap_ext_util.check_personality(_personality, species, CONSEQUENCE.ALPHAKILL_TARGETED) then goto continue end
+            hunters[#hunters + 1] = squad
+            ::continue::
+        end
+        if #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local dst_id = 0

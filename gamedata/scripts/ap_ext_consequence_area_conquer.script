@@ -29,14 +29,14 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
         if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_dispatch.check_alignment(_alignment_conquer, event_data.community) then
+        if not ap_ext_util.check_alignment(_alignment_conquer, event_data.community) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
-        if not ap_ext_dispatch.check_species_alignment(_species_conquer, event_data.squad_id) then
+        if not ap_ext_util.check_species_alignment(_species_conquer, event_data.squad_id) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
-        local identity = ap_ext_dispatch.get_species(event_data.squad_id) or event_data.community
-        if not ap_ext_dispatch.check_personality(_personality, identity, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        local identity = ap_ext_util.get_species(event_data.squad_id) or event_data.community
+        if not ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
         local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
         if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
 

@@ -3,6 +3,8 @@ local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
 local xobject, xsquad = xobject, xsquad
 local CALLBACK = ap_core_const.CALLBACK
 
+local _to_remove = {}
+
 local function _release_squad(squad_id)
     if type(squad_id) ~= "number" then return end
     local squad = xobject.se(squad_id)
@@ -59,12 +61,14 @@ local function _v135_release_old_scripted_squads(m_data)
     if not saved then return end
     local squads = saved.ap_scripted_squads
     if not squads or type(squads) ~= "table" then return end
+    for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, data in pairs(squads) do
         if not data.pre_release_gulag then
             _release_squad(squad_id)
-            squads[squad_id] = nil
+            _to_remove[#_to_remove + 1] = squad_id
         end
     end
+    for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
 --- Run all migrations on load_state.

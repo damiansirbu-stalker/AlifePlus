@@ -57,6 +57,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest) |
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
+| ap_ext_util | Domain gates: alignment, species alignment, personality checks, FIFO-cached species resolution |
 | ap_ext_const | Community sets, faction lists, item pools |
 | ap_ext_messages | PDA message templates |
 | ap_ext_test | In-game debug commands |
@@ -253,26 +254,45 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 
 ### Consequences
 
-| Cause | Consequence | Effect |
-|-------|-------------|--------|
-| MASSACRE | massacre_scavenge | scavenger factions converge on massacre site |
-| MASSACRE | massacre_investigate | victim faction investigates |
-| SQUADKILL | squadkill_revenge | victim faction pursues killer (chase) |
-| SQUADKILL | squadkill_flee | victim faction retreats to base |
-| BASEKILL | basekill_support | friendly squads reinforce attacked base |
-| BASEKILL | basekill_flee | squads at base evacuate |
-| ALPHA | alpha_promote | update alpha level, apply hit power/panic buffs, grant loot |
-| ALPHAKILL | alphakill_targeted | other alphas pursue killer (chase) |
-| WOUNDED | wounded_hunt | predator mutants close in |
-| WOUNDED | wounded_help | same-faction squads rush to help |
-| HARVEST | harvest_hunt | outlaws pursue artefact taker (chase) |
-| STASH | stash_loot | loot stash to NPC inventory (CONFIGS-driven) |
-| STASH | stash_ambush | camp at stash, passive (CONFIGS-driven) |
-| STASH | stash_fill | fill stash with items (CONFIGS-driven) |
-| AREA | area_conquer | claim empty smart terrain (stalkers and mutants, decays after 48h) |
-| NEEDS | (14 entries) | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
+| Cause | Consequence | Actor | Effect |
+|-------|-------------|-------|--------|
+| MASSACRE | massacre_investigate | stalker | victim faction investigates |
+| MASSACRE | massacre_scavenge | mutant | cowardly mutants converge on massacre site |
+| SQUADKILL | squadkill_revenge | stalker | victim faction pursues killer (chase) |
+| SQUADKILL | squadkill_flee | stalker | victim faction retreats to base |
+| BASEKILL | basekill_support | stalker | friendly squads reinforce attacked base |
+| BASEKILL | basekill_flee | stalker | squads at base evacuate |
+| ALPHA | alpha_promote | mutant | update alpha level, apply hit power/panic buffs, grant loot |
+| ALPHAKILL | alphakill_targeted | mutant | other alpha mutants on same level pursue killer (chase) |
+| WOUNDED | wounded_hunt | mutant | predator+aberrant mutants close in |
+| WOUNDED | wounded_help | stalker | same-faction squads rush to help |
+| HARVEST | harvest_rob | stalker | outlaws pursue artefact taker (chase) |
+| HARVEST | harvest_haunt | mutant | aberrant mutants converge on pickup site |
+| STASH | stash_loot | stalker | loot stash to NPC inventory (CONFIGS-driven) |
+| STASH | stash_ambush | stalker | camp at stash, passive (CONFIGS-driven) |
+| STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
+| AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h) |
+| NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
 
-Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled check -> alignment check -> data validation -> logic -> result code. Dispatch order: round-robin cursor per cause type, personality chance evaluated by consumer before handler runs.
+Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled -> alignment -> species alignment -> personality -> data validation -> logic -> result code. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
+
+### Domain Gates
+
+Alignment, species alignment, and personality are domain-level gates. They live exclusively in ext consequence code (`ap_ext_util`), never in core. Core knows nothing about factions, species, or personality traits.
+
+**Gate order inside every consequence handler:**
+
+1. **Alignment** (hard filter, deterministic). Can this faction participate at all? Static hash set lookup, O(1). Checked via `ap_ext_util.check_alignment`.
+2. **Species alignment** (hard filter, deterministic). For mutants: is this the right kind of mutant? Stalkers pass through. Checked via `ap_ext_util.check_species_alignment`. Uses FIFO-cached species resolution (`ap_ext_util.get_species` -> `xcreature.get_mutant_species`).
+3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits, clamps to 0.10-0.50, rolls. Target range: roughly 20-50% pass rate. Checked via `ap_ext_util.check_personality`. For mutants, the identity key is the species string (not engine faction). Resolved via `ap_ext_util.get_species`.
+
+Not every consequence uses all three gates. Human-only consequences skip species alignment. Some consequences (alpha_promote) have no gates beyond enabled check. But when gates are present, the order is always alignment -> species -> personality.
+
+**Where gates apply depends on cause type:**
+
+- **Radiant:** the ticking squad is both sensor and responder. Gates check `event_data.community` (the squad's faction) and `event_data.squad_id` (for species).
+- **Reactive, same-faction:** gates check the event faction (victim faction, wounded faction). Responders are found via `find_squads` with that faction.
+- **Reactive, cross-faction:** the alignment set IS the `factions` parameter to `find_squads`. Species and personality are checked per-squad on the found candidates, inside the find loop.
 
 ### Alignment
 
@@ -289,20 +309,23 @@ Human factions follow GSC's moral axis (Ai.doc:65-76, тип характера)
 | alignment_human | all 12, no zombied | Union of principled + selfserving + outlaw |
 | alignment_naturalist | stalker, csky, freedom, ecolog | AP subset: zone dwellers |
 
-Mutant factions follow GSC's creature groups (monstry.doc:4):
+Mutant species alignments follow GSC's creature groups (monstry.doc:4). Keyed by species string (`xcreature.get_mutant_species`), not engine faction:
 
-| Table | Factions | GSC origin |
-|-------|----------|------------|
-| alignment_predator | monster_predatory_day, monster_predatory_night, monster_zombied_day, monster_zombied_night | Roaming pack hunters |
-| alignment_territorial | monster_predatory_night, monster_special, monster_zombied_day, monster_zombied_night | Hold ground, defend territory |
+| Table | Species | GSC origin |
+|-------|---------|------------|
+| alignment_mutant | all 7 monster factions | Fast gate for find_squads (engine player_id) |
+| alignment_mutant_cowardly | flesh, zombie, tushkano, rat, karlik | Timid, flees danger, bottom of food chain |
+| alignment_mutant_feral | dog, pseudodog, boar, snork, cat | Pack/herd, reactive aggression |
+| alignment_mutant_predator | lurker, bloodsucker, psysucker, chimera, fracture | Solitary hunters, ambush, pursue wounded |
+| alignment_mutant_aberrant | controller, burer, poltergeist, psy_dog, gigant | Psychic, lair-bound, supernatural |
 
 Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load.
 
-For radiant consequences (stash, area, needs), the alignment check is on `event_data.community` -- the triggering squad's faction. For reactive same-faction consequences (investigate, revenge, flee, support, help), the check is on the event faction (victim or wounded). For reactive cross-faction consequences (scavenge, hunt), the alignment table is the `factions` parameter to `find_squads`.
-
 ### Personality
 
-Probability layer: how likely is an eligible faction to act. Runs only after alignment passes. Seven traits (aggression, greed, survival, perception, territory, relation, discipline) declared per consequence at registration. The consumer averages the relevant traits for the event faction, clamps to 0.05-0.95, and rolls.
+Probability layer: how likely is an eligible faction/species to act. Runs only after alignment passes. All checks happen in ext consequence code via `ap_ext_util.check_personality`, never in core.
+
+Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares which traits matter. The check averages those traits for the faction/species, clamps to 0.10-0.50, and rolls. Target pass rate: 20-50%.
 
 ### Invariants
 
@@ -319,6 +342,18 @@ Probability layer: how likely is an eligible faction to act. Runs only after ali
 6. **Stalker/mutant consequence separation.** When stalkers and mutants respond to the same cause, they get separate consequences. A massacre triggers `massacre_investigate` (stalkers) and `massacre_scavenge` (mutants) independently. Separation exists because the behaviors differ (stalkers investigate, mutants feed) and because simultaneous responses create emergent interactions (stalkers arrive to investigate, mutant pack is already feeding, conflict erupts). Both consequences subscribe to the same cause through the event bus. Neither references the other.
 
 7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation. When multiple behaviors are possible for the same cause (stalker conquer vs mutant conquer vs mutant lair), they go into a config table as alternative entries with alignment, species, and smart filter gates. First match wins. Reactive causes have no such constraint because the event happens in the world and multiple squads respond independently.
+
+8. **Domain gates in ext only.** Alignment, species alignment, and personality checks live exclusively in ext consequence code (`ap_ext_util`). Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
+
+### Consequence File Patterns
+
+Three patterns for organizing consequences under a cause:
+
+**CONFIGS (one file, alternatives).** Multiple behaviors for the same cause where only one fires per evaluation. A config table lists entries with alignment, species, personality, and smart filter gates. First match wins. Suited for radiant causes where the ticking squad picks one action. Examples: `stash` (loot/ambush/fill), `needs` (14 entries).
+
+**Separate files (cascading).** Multiple consequences that fire independently on the same cause event. Each subscribes to the cause via xbus and runs its own gate chain. Multiple can trigger from the same event. Suited for reactive causes where different actor types respond simultaneously. Examples: `massacre_investigate` + `massacre_scavenge`, `wounded_hunt` + `wounded_help`.
+
+**_set file (grouped similar).** Multiple similar consequences in one file, each registered separately. Used when consequences share helper functions and chase/arrive logic but differ in alignment, species, or personality gates. The file is named `*_set.script`. Examples: `harvest_set` (harvest_rob + harvest_haunt).
 
 ---
 

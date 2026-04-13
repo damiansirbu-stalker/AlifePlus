@@ -24,10 +24,10 @@ local function _handler(event_data)
 
         local investigate_faction = event_data.faction
         if not investigate_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_FACTION } end
-        if not ap_ext_dispatch.check_alignment(_alignment_investigate, investigate_faction) then
+        if not ap_ext_util.check_alignment(_alignment_investigate, investigate_faction) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
-        if not ap_ext_dispatch.check_personality(_personality, investigate_faction, CONSEQUENCE.MASSACRE_INVESTIGATE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, investigate_faction, CONSEQUENCE.MASSACRE_INVESTIGATE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,

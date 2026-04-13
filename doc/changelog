@@ -3,10 +3,19 @@ next
   Refactor:
     Changed: mutant alignment from engine faction (monster_predatory_day) to species (dog, bloodsucker). 4 behavioral categories: cowardly, feral, predator, aberrant. 5 species per category.
     Changed: mutant personality from 7 faction entries to 20 per-species entries. 5 traits: aggression, survival, territory, perception, relation.
-    Added: species dispatch helpers in ap_ext_dispatch (FIFO-cached species resolution via xcreature.get_mutant_species).
+    Added: species helpers in ap_ext_util (FIFO-cached species resolution via xcreature.get_mutant_species).
+    Renamed: ap_ext_dispatch -> ap_ext_util (ext-layer utilities, not dispatch-specific).
     Added: alignment_mutant_necrophage cross-cut set for corpse site attraction.
-    Changed: consequence species gates (squadkill_revenge=feral, massacre_scavenge=necrophage, wounded_hunt=predator+aberrant, area_conquer=feral+predator+aberrant).
+    Changed: consequence species gates (massacre_scavenge=cowardly, wounded_hunt=predator+aberrant, area_conquer=feral+predator+aberrant).
     Changed: stash_ambush mutants removed (human concept).
+    Changed: squadkill_revenge and squadkill_flee are now stalker-only (removed mutant factions).
+    Changed: alphakill_targeted rewritten: iterates tracker alphas on same level, personality per species.
+    Added: personality gates to massacre_scavenge (survival), wounded_hunt (aggression+perception).
+    Changed: zombie survival personality 0.05 -> 0.35 (scavenger behavior).
+    Replaced: harvest_hunt split into harvest_rob (outlaws chase taker) + harvest_haunt (aberrant mutants converge on pickup site). New _set file pattern.
+    Added: include_ids parameter to xsquad.find_squads (restrict iteration to specific squad IDs).
+    Changed: ap_ext_cause_alpha resolves species via ap_ext_util.get_species, adds species to payload.
+    Changed: ap_ext_object_mutator uses xcreature.get_mutant_species (deleted duplicate _clsid_to_species table).
     Deleted: alignment_predator, alignment_territorial, 7 monster_* PERSONALITY entries.
 
 1.3.6
@@ -71,7 +80,7 @@ next
     Changed: pacer retries faster on protection reject instead of burning the full interval.
     Changed: radiant and reactive pipelines use independent Bresenham counters. Reactive events no longer biased by radiant traffic volume.
     Added: consumer statistics (PIPELINE, CAUSES, DISPATCH, LIFECYCLE) logged every 60s at DEBUG. Zero cost above DEBUG.
-    Changed: alignment and personality checks moved from core consumer to ap_ext_dispatch. Core pipeline has zero domain knowledge.
+    Changed: alignment and personality checks moved from core consumer to ap_ext_util. Core pipeline has zero domain knowledge.
     Changed: PDA sender selection and message dispatch moved from core to ap_ext_news. Core has zero ext references.
     Changed: all consequence gates (alignment, personality) run inside observe() with full tid/path tracing.
     Changed: guard clause detector recognizes multi-line guards and counts guards throughout the function body.

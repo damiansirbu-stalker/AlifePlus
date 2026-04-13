@@ -10,20 +10,17 @@ local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
-local _alignment_flee = xtable.merge(
-    xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled),
-    { ["monster"] = true, ["monster_vegetarian"] = true }
-)
+local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
 local _personality = { PERSONALITY.SURVIVAL, PERSONALITY.GREED }
 
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
         if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
-        if not ap_ext_dispatch.check_alignment(_alignment_flee, event_data.victim_faction) then
+        if not ap_ext_util.check_alignment(_alignment_flee, event_data.victim_faction) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_dispatch.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_FLEE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_FLEE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 

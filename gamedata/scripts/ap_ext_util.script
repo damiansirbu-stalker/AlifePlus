@@ -1,4 +1,4 @@
---- ap_ext_dispatch: Consequence dispatch gates (alignment, personality, species)
+--- ap_ext_util: Ext-layer utilities (alignment gates, personality gates, species resolution)
 local math_random, math_min, math_max = math.random, math.min, math.max
 
 local PERSONALITY = ap_ext_const.PERSONALITY
@@ -34,9 +34,9 @@ function check_personality(traits, community, consequence_name)
     local roll = math_random()
     local passed = roll < chance
     if passed then
-        ap_core_debug.debug("[DISPATCH] PERSONALITY_PASSED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
+        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
     else
-        ap_core_debug.debug("[DISPATCH] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
+        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
     end
     return passed
 end
@@ -52,17 +52,6 @@ function get_species(squad_id)
     local species = xcreature.get_mutant_species(squad_id)
     _species_cache:set(squad_id, species or false)
     return species
-end
-
---- Resolve identity key for alignment/personality checks
---- Returns species string for mutants, faction string for stalkers
---- @param squad userdata|nil Squad server entity
---- @return string|nil Identity key for alignment/personality lookup
-function resolve_identity(squad)
-    if not squad then return nil end
-    local species = get_species(squad.id)
-    if species then return species end
-    return squad.player_id
 end
 
 --- Check species alignment (hard filter for mutants, passes stalkers through)

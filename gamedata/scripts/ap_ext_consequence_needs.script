@@ -202,10 +202,10 @@ local function _make_handler(entry)
         return ap_core_debug.observe(trace, entry.consequence, function()
             if event_data.need ~= entry.need then return { code = RESULT.RULES_NEXT, reason = REASON.NEED_MISMATCH } end
             if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
-            if not ap_ext_dispatch.check_alignment(entry.alignment, event_data.community) then
+            if not ap_ext_util.check_alignment(entry.alignment, event_data.community) then
                 return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_dispatch.check_personality(entry.personality, event_data.community, entry.name) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+            if not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
             local filter = _build_filter(entry, event_data.community)

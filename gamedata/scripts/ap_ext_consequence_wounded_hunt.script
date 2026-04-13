@@ -7,9 +7,12 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
+local PERSONALITY = ap_ext_const.PERSONALITY
+
 local cfg = ap_core_mcm.cfg
 local _alignment_wounded_hunt = xtable.merge(ap_ext_const.alignment_mutant, ap_ext_const.alignment_outlaw)
 local _species_wounded_hunt = xtable.merge(ap_ext_const.alignment_mutant_predator, ap_ext_const.alignment_mutant_aberrant)
+local _personality = { PERSONALITY.AGGRESSION, PERSONALITY.PERCEPTION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -30,9 +33,9 @@ local function _handler(event_data)
         if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
-            if ap_ext_dispatch.check_species_alignment(_species_wounded_hunt, squad.id) then
-                squads[#squads + 1] = squad
-            end
+            local dominated = ap_ext_util.check_species_alignment(_species_wounded_hunt, squad.id)
+                and ap_ext_util.check_personality(_personality, ap_ext_util.get_species(squad.id), CONSEQUENCE.WOUNDED_HUNT)
+            if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 

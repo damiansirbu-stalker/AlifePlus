@@ -12,8 +12,9 @@ local function _on_death(trace, squad, se_victim, se_killer)
 
     local killer_id = ap_core_utils.get_entity_id(se_killer)
     if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
-    if xcreature.is_stalker(se_killer) then return { code = RESULT.RULES_NEXT, reason = REASON.STALKER_EXCLUDED } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
+    local species = ap_ext_util.get_species(killer_squad and killer_squad.id)
+    if not species then return { code = RESULT.RULES_NEXT, reason = REASON.STALKER_EXCLUDED } end
     local protected, reason, detail, pname = ap_core_squad.is_protected(killer_squad)
     if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
 
@@ -34,6 +35,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
     return {
         cause = CAUSE.ALPHA,
         killer_id = killer_id,
+        species = species,
         kills = kills,
         level = level,
         level_id = xlevel.get_level_id(se_killer),
