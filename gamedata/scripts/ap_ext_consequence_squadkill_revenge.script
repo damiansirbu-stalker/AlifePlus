@@ -12,7 +12,8 @@ local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
-local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw, ap_ext_const.alignment_predator, ap_ext_const.alignment_territorial)
+local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
+local _species_revenge = ap_ext_const.alignment_mutant_feral
 local _personality = { PERSONALITY.AGGRESSION }
 
 local function _move_actor_chasers(squads, moved)
@@ -80,7 +81,11 @@ local function _handler(event_data)
         if not ap_ext_dispatch.check_alignment(_alignment_revenge, event_data.victim_faction) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_dispatch.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_REVENGE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_dispatch.check_species_alignment(_species_revenge, event_data.squad_id) then
+            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
+        end
+        local identity = ap_ext_dispatch.get_species(event_data.squad_id) or event_data.victim_faction
+        if not ap_ext_dispatch.check_personality(_personality, identity, CONSEQUENCE.SQUADKILL_REVENGE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id

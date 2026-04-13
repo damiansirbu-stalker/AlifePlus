@@ -9,7 +9,8 @@ local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local cfg = ap_core_mcm.cfg
-local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_predator)
+local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
+local _species_scavenge = ap_ext_const.alignment_mutant_necrophage
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -19,11 +20,18 @@ local function _handler(event_data)
         local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
         if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
 
-        local squads = ap_core_utils.find_squads_observed(trace, position, {
+        local candidates = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_scavenge, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
             exclude_at_smart_id = smart.id,
         })
+        if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        local squads = {}
+        for _, squad in ipairs(candidates) do
+            if ap_ext_dispatch.check_species_alignment(_species_scavenge, squad.id) then
+                squads[#squads + 1] = squad
+            end
+        end
         if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
 
         local moved = {}

@@ -537,19 +537,83 @@ None of it shipped.
 > [8]
 
 Three character types, three completely different responses to the same event.
-GSC treated mutants as actors in the same system and classified creatures into four groups by nature: ordinary animals, animal mutants, humanoid mutants, and aberrations (monstry.doc:4).
+GSC treated mutants as actors in the same system and classified creatures into four groups by nature (monstry.doc):
 
-AlifePlus maps GSC's moral axis to factions as a hard filter.
+1. Ordinary animals (rats).
+2. Animal mutants (boar, dogs, pseudodog, flesh, chimera).
+3. Humanoid mutants (zombie, controller, burer, fracture).
+4. Aberration mutants (bloodsucker, pseudogiant, poltergeist).
+
+With a documented fear hierarchy between groups:
+
+> "Vse troe lyudi-mutanty v kotorykh mnogoe ostalos' ot cheloveka. Vse troe izbegayut sleduyushchuyu gruppu polnykh urodov-mutantov: krovososa, psevdogiganta, poltergeista."
+> (All three humanoid mutants retain much of their humanity. All three avoid the next group of complete freak-mutants: bloodsucker, pseudogiant, poltergeist.)
+> monstry.doc, group 3 -> group 4 relation
+
+The engine collapsed all of this into six factions by time-of-day activity.
+A dog, a pseudodog, a psy dog, and a lurker share `monster_predatory_day`.
+A snork, a zombie, a fracture, and a controller share `monster_zombied_day`.
+The faction called `monster_vegetarian` contains boar and flesh, both of which GSC's design documents describe as corpse-eaters.
+
+> "Pozhirayut trupy ubitykh."
+> (Devour corpses of the killed.)
+> monstry.doc, boar entry
+
+> "Est trupy krys, sobak, lyudei."
+> (Eats corpses of rats, dogs, people.)
+> monstry.doc, flesh entry
+
+The engine confirms this.
+Every creature shares the same `can_eat()` function (`monster_state_manager_inline.h:53`).
+Every state manager -- boar, flesh, dog, snork, tushkano, cat, chimera, controller, burer, fracture, bloodsucker, gigant, zombie -- registers `eStateEat` with identical corpse-detection logic.
+There is no diet parameter, no food-type filter, no herbivore flag.
+The only creature with eat disabled is poltergeist (`poltergeist_state_manager.cpp:75`, commented out).
+There are no herbivores in the Zone.
+
+GSC designed distinct feeding behaviors per species.
+Dogs hunt rats and flesh (`monstry.doc: "okhota na krys i plot', otdykh"`).
+Controllers lure small animals for food (`monstry.doc: "zhivotnykh podmanivayut i ubivayut dlya propitaniya"`).
+Bloodsuckers eat everything that moves (`monstry.doc: "est vse chto dvizhetsya"`).
+The engine gave them all the same stomach.
+
+AlifePlus maps GSC's moral axis to factions as a hard filter for stalkers.
 Principled factions (Duty, Military, Monolith, ISG) follow orders and hold positions.
 Self-serving factions (Loners, Clear Sky, Ecologists, Freedom, Mercs) act on their own goals.
 Outlaw factions (Bandits, Renegades, Sin) operate outside any code.
-Mutant factions split by nature: predators roam and hunt, territorial creatures hold ground and defend.
+Mutant alignment operates at species level, not faction level, restoring the per-creature behavioral identity GSC documented but the engine erased.
+Four alignment categories map the behavioral axis for mutants the same way principled/selfserving/outlaw maps the moral axis for stalkers.
 
-Alignment determines what a faction can do at all.
+Cowardly species flee danger and scavenge what others leave behind.
+Flesh is "podlaya, khitraya i truslivaya, mnogikh boitsya" (cowardly, cunning, timid, fears many) (monstry.doc).
+Zombie exists in "rastitel'noye sushchestvovaniye" (vegetative existence) (monstry.doc).
+Tushkano, rat, and karlik round out the bottom of the food chain.
+
+Feral species run in packs, defend their own, and avenge fallen members.
+Boar is "staynoye zhivotnoye" (herd animal) with leader morale mechanics (monstry.doc).
+Dogs are "agressivny, protivnika okruzhayut" (aggressive, surround the enemy) (monstry.doc).
+Pseudodog, snork, and cat complete the group.
+
+Predators hunt alone, ambush from cover, and pursue wounded prey.
+Bloodsucker "est vse chto dvizhetsya" (eats everything that moves) and "napadayet iz temnykh mest i ukrytiy" (attacks from dark places and cover) (monstry.doc).
+Chimera "pryachetsya, obkhodit so spiny" (hides, flanks from behind) (monstry.doc).
+Lurker, psysucker, gigant, and fracture share the same hunting pattern.
+
+Aberrant species operate through psychic abilities and lair defense.
+Controller uses "telepaticheskoye vozdeystviye" (telepathic influence) and "predpochitayet zasady v zdaniyakh" (prefers ambushes in buildings) (monstry.doc).
+Burer "zhivet tol'ko v mrachnykh, temnykh podzemyel'yakh" (lives only in dark dungeons) (monstry.doc).
+Poltergeist "na otkrytykh mestakh ne vstrechayetsya" (never found in open areas) (monstry.doc).
+Psy dog generates psychic phantoms to hunt by proxy.
+
+The engine's `player_id` gates the question "is this a mutant at all" for zero luabind cost.
+Species identity resolves through `xcreature.get_mutant_species` only when the consequence needs to know what kind of mutant it is.
+
+Alignment determines what a faction or species can do at all.
 Military never flees a base attack.
 Ecologists never conquer territory.
 Renegades never investigate massacres.
 Outlaws never help the wounded.
+Cowardly mutants never avenge or hunt.
+Feral mutants never ambush stashes.
 These are structural constraints, not tunable probabilities.
 
 ---
@@ -574,16 +638,22 @@ The decision is a function of who you are, not a coin flip.
 > [8]
 
 AlifePlus implements personality as a probability layer that runs after alignment.
-Seven traits per faction, each tracing to a GSC design axis.
-Both stalker and mutant factions share the same table and the same gate.
-The decision is probabilistic given the faction and the event, but only within the set of actions alignment permits.
+Seven traits per stalker faction, five per mutant species, each tracing to a GSC design axis.
+Stalker factions and mutant species share the same gate function and the same roll mechanic.
+The decision is probabilistic given the identity and the event, but only within the set of actions alignment permits.
+
+For stalkers, personality keys on faction community.
+For mutants, personality keys on species resolved through `xcreature.get_mutant_species`.
+A dog and a lurker both belong to `monster_predatory_day`, but a dog has high relation (pack loyalty) and moderate aggression, while a lurker has zero relation (solitary) and high aggression.
+The engine faction cannot express this.
+GSC's design documents gave each creature its own behavioral profile, and AlifePlus restores that granularity.
 
 Aggression gates revenge, alpha hunt, wounded hunt, and harvest hunt.
 Greed gates stash loot, stash ambush, stash fill, and massacre scavenge.
 Survival gates the flee consequences.
-Perception gates massacre investigate.
-Territory combined with aggression gates area conquer.
-Relation gates base kill support and wounded help.
+Perception gates massacre investigate and prey detection.
+Territory combined with aggression gates area conquer and lair defense.
+Relation gates base kill support, wounded help, and pack response to help sounds.
 Discipline gates needs consequences: eating, sleeping, guarding, socializing.
 
 ---

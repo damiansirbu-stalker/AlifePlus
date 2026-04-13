@@ -1,7 +1,8 @@
---- ap_ext_dispatch: Consequence dispatch gates (alignment, personality)
+--- ap_ext_dispatch: Consequence dispatch gates (alignment, personality, species)
 local math_random, math_min, math_max = math.random, math.min, math.max
 
 local PERSONALITY = ap_ext_const.PERSONALITY
+local _species_cache = xttltable.create_fifo_cache({ capacity = 128 })
 
 --- Check faction alignment (hard filter, deterministic)
 --- @param alignment table|nil Alignment hash set { ["faction"] = true, ... }
@@ -38,4 +39,41 @@ function check_personality(traits, community, consequence_name)
         ap_core_debug.debug("[DISPATCH] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f", consequence_name, community, chance, roll)
     end
     return passed
+end
+
+--- Get cached species for squad (FIFO cache, 0 luabind on hit, 2-5 on miss)
+--- Returns species string for mutants, nil for stalkers/invalid
+--- @param squad_id number Squad entity ID
+--- @return string|nil Species string ("dog", "bloodsucker", etc.) or nil
+function get_species(squad_id)
+    if not squad_id then return nil end
+    local cached = _species_cache:get(squad_id)
+    if cached ~= nil then return cached or nil end
+    local species = xcreature.get_mutant_species(squad_id)
+    _species_cache:set(squad_id, species or false)
+    return species
+end
+
+--- Resolve identity key for alignment/personality checks
+--- Returns species string for mutants, faction string for stalkers
+--- @param squad userdata|nil Squad server entity
+--- @return string|nil Identity key for alignment/personality lookup
+function resolve_identity(squad)
+    if not squad then return nil end
+    local species = get_species(squad.id)
+    if species then return species end
+    return squad.player_id
+end
+
+--- Check species alignment (hard filter for mutants, passes stalkers through)
+--- Returns true for stalkers (species alignment does not apply).
+--- Returns true for mutants matching the species set, false otherwise.
+--- @param species_alignment table|nil Species hash set { ["dog"] = true, ... }
+--- @param squad_id number Squad entity ID
+--- @return boolean
+function check_species_alignment(species_alignment, squad_id)
+    if not species_alignment then return true end
+    local species = get_species(squad_id)
+    if not species then return true end
+    return species_alignment[species] == true
 end

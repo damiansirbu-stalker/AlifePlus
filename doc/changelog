@@ -1,3 +1,14 @@
+next
+  Summary: Species identity, mutant behavioral alignment
+  Refactor:
+    Changed: mutant alignment from engine faction (monster_predatory_day) to species (dog, bloodsucker). 4 behavioral categories: cowardly, feral, predator, aberrant. 5 species per category.
+    Changed: mutant personality from 7 faction entries to 20 per-species entries. 5 traits: aggression, survival, territory, perception, relation.
+    Added: species dispatch helpers in ap_ext_dispatch (FIFO-cached species resolution via xcreature.get_mutant_species).
+    Added: alignment_mutant_necrophage cross-cut set for corpse site attraction.
+    Changed: consequence species gates (squadkill_revenge=feral, massacre_scavenge=necrophage, wounded_hunt=predator+aberrant, area_conquer=feral+predator+aberrant).
+    Changed: stash_ambush mutants removed (human concept).
+    Deleted: alignment_predator, alignment_territorial, 7 monster_* PERSONALITY entries.
+
 1.3.6
   Summary: Hotfix, save compat
   Fixed: updated save migrations. Old scripted squad entries released and rebuilt on load.

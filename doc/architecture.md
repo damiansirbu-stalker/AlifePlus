@@ -316,6 +316,10 @@ Probability layer: how likely is an eligible faction to act. Runs only after ali
 
 5. **Core/ext boundary.** Core never imports ext. All domain logic reaches core through registered function references.
 
+6. **Stalker/mutant consequence separation.** When stalkers and mutants respond to the same cause, they get separate consequences. A massacre triggers `massacre_investigate` (stalkers) and `massacre_scavenge` (mutants) independently. Separation exists because the behaviors differ (stalkers investigate, mutants feed) and because simultaneous responses create emergent interactions (stalkers arrive to investigate, mutant pack is already feeding, conflict erupts). Both consequences subscribe to the same cause through the event bus. Neither references the other.
+
+7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation. When multiple behaviors are possible for the same cause (stalker conquer vs mutant conquer vs mutant lair), they go into a config table as alternative entries with alignment, species, and smart filter gates. First match wins. Reactive causes have no such constraint because the event happens in the world and multiple squads respond independently.
+
 ---
 
 ## Integration API

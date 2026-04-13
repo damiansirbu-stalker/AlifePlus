@@ -60,21 +60,54 @@ alignment_naturalist = {
     ["ecolog"] = true,
 }
 
---- Mutant alignment categories (GSC creature groups, monstry.doc:4)
---- Predator = roaming pack hunters (Животные мутанты)
-alignment_predator = {
-    ["monster_predatory_day"] = true,
-    ["monster_predatory_night"] = true,
-    ["monster_zombied_day"] = true,
-    ["monster_zombied_night"] = true,
+--- All mutant factions (engine player_id fast gate for find_squads, 0 luabind)
+alignment_mutant = {
+    ["monster"] = true, ["monster_vegetarian"] = true,
+    ["monster_predatory_day"] = true, ["monster_predatory_night"] = true,
+    ["monster_zombied_day"] = true, ["monster_zombied_night"] = true,
+    ["monster_special"] = true,
 }
 
---- Territorial = hold ground, defend territory (apex + nocturnal hunters)
-alignment_territorial = {
-    ["monster_predatory_night"] = true,
-    ["monster_special"] = true,
-    ["monster_zombied_day"] = true,
-    ["monster_zombied_night"] = true,
+--- Species alignment sets (keyed by xcreature.get_mutant_species string, NOT engine faction)
+--- Behavioral axis, same pattern as stalker alignments (principled/selfserving/outlaw).
+--- src: GSC monstry.doc creature descriptions, xray-monolith state managers
+
+--- Cowardly = timid, flees danger, bottom of food chain
+--- src: monstry.doc "podlaya, khitraya i truslivaya. Mnogikh boitsya" (flesh), "rastitel'noye sushchestvovaniye" (zombie)
+alignment_mutant_cowardly = {
+    ["flesh"] = true, ["zombie"] = true,
+    ["tushkano"] = true, ["rat"] = true, ["karlik"] = true,
+}
+
+--- Feral = pack/herd, reactive aggression, avenge packmates
+--- src: monstry.doc "staynoye zhivotnoye" (boar), "agressivny, protivnika okruzhayut" (dogs)
+alignment_mutant_feral = {
+    ["dog"] = true, ["pseudodog"] = true,
+    ["boar"] = true, ["snork"] = true, ["cat"] = true,
+}
+
+--- Predator = solitary hunters, ambush, pursue wounded
+--- src: monstry.doc "est vse chto dvizhetsya" (bloodsucker), "pryachetsya, obkhodit so spiny" (chimera)
+alignment_mutant_predator = {
+    ["lurker"] = true, ["bloodsucker"] = true, ["psysucker"] = true,
+    ["chimera"] = true, ["fracture"] = true,
+}
+
+--- Aberrant = psychic, lair-bound, supernatural, brute apex
+--- src: monstry.doc "telepaticheskoye vozdeystviye" (controller), "zhivet tol'ko v mrachnykh podzemyel'yakh" (burer), "povadki buyvola" (gigant)
+alignment_mutant_aberrant = {
+    ["controller"] = true, ["burer"] = true,
+    ["poltergeist"] = true, ["psy_dog"] = true,
+    ["gigant"] = true,
+}
+
+--- Necrophage = attracted to corpse sites (n68 scavenger attractor gate, cross-cuts alignment)
+--- src: monstry.doc "pozhirayut trupy ubitykh" (boar, dogs, rats), "ishchut i edyat trupy" (zombie)
+alignment_mutant_necrophage = {
+    ["dog"] = true, ["pseudodog"] = true, ["boar"] = true,
+    ["flesh"] = true, ["cat"] = true, ["snork"] = true,
+    ["fracture"] = true, ["zombie"] = true,
+    ["tushkano"] = true, ["rat"] = true, ["karlik"] = true,
 }
 
 -- Stash fill item pool (medical, tools, artefacts)
@@ -155,14 +188,30 @@ PERSONALITY["monolith"]             = { aggression=0.95, greed=0.10, survival=0.
 PERSONALITY["greh"]                 = { aggression=0.80, greed=0.65, survival=0.10, perception=0.40, territory=0.50, relation=0.35, discipline=0.30 }
 PERSONALITY["isg"]                  = { aggression=0.40, greed=0.20, survival=0.45, perception=0.45, territory=0.70, relation=0.75, discipline=0.80 }
 PERSONALITY["zombied"]              = { aggression=0.75, greed=0.05, survival=0.05, perception=0.15, territory=0.20, relation=0.05, discipline=0.05 }
---- Mutant factions
-PERSONALITY["monster"]              = { aggression=0.20, greed=0.00, survival=0.80, perception=0.30, territory=0.10, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_vegetarian"]   = { aggression=0.30, greed=0.00, survival=0.70, perception=0.50, territory=0.20, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_predatory_day"]= { aggression=0.75, greed=0.40, survival=0.30, perception=0.60, territory=0.50, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_predatory_night"]={ aggression=0.85, greed=0.40, survival=0.20, perception=0.30, territory=0.40, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_zombied_day"]  = { aggression=0.65, greed=0.30, survival=0.10, perception=0.40, territory=0.35, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_zombied_night"]= { aggression=0.55, greed=0.30, survival=0.20, perception=0.25, territory=0.30, relation=0.00, discipline=0.00 }
-PERSONALITY["monster_special"]      = { aggression=0.95, greed=0.25, survival=0.05, perception=0.60, territory=0.70, relation=0.00, discipline=0.00 }
+--- Per-species personality (keyed by xcreature.get_mutant_species string)
+--- 5 traits: aggression, survival, territory, perception, relation
+--- relation = pack loyalty, help sound response. Pack animals high, solitary apex = 0.
+--- src: GSC monstry.doc behavioral descriptions, xray-monolith state managers (eStateHearHelpSound)
+PERSONALITY["dog"]         = { aggression=0.65, survival=0.35, territory=0.40, perception=0.55, relation=0.70 }
+PERSONALITY["pseudodog"]   = { aggression=0.75, survival=0.25, territory=0.60, perception=0.65, relation=0.30 }
+PERSONALITY["psy_dog"]     = { aggression=0.70, survival=0.20, territory=0.45, perception=0.80, relation=0.40 }
+PERSONALITY["boar"]        = { aggression=0.50, survival=0.60, territory=0.55, perception=0.35, relation=0.60 }
+PERSONALITY["flesh"]       = { aggression=0.25, survival=0.80, territory=0.15, perception=0.50, relation=0.10 }
+PERSONALITY["cat"]         = { aggression=0.55, survival=0.45, territory=0.30, perception=0.70, relation=0.05 }
+PERSONALITY["chimera"]     = { aggression=0.90, survival=0.10, territory=0.50, perception=0.75, relation=0.00 }
+PERSONALITY["lurker"]      = { aggression=0.80, survival=0.20, territory=0.45, perception=0.70, relation=0.00 }
+PERSONALITY["snork"]       = { aggression=0.70, survival=0.15, territory=0.35, perception=0.60, relation=0.45 }
+PERSONALITY["zombie"]      = { aggression=0.40, survival=0.05, territory=0.10, perception=0.10, relation=0.00 }
+PERSONALITY["fracture"]    = { aggression=0.55, survival=0.30, territory=0.25, perception=0.45, relation=0.10 }
+PERSONALITY["controller"]  = { aggression=0.80, survival=0.25, territory=0.70, perception=0.85, relation=0.00 }
+PERSONALITY["burer"]       = { aggression=0.60, survival=0.30, territory=0.90, perception=0.40, relation=0.00 }
+PERSONALITY["bloodsucker"] = { aggression=0.90, survival=0.15, territory=0.50, perception=0.65, relation=0.00 }
+PERSONALITY["psysucker"]   = { aggression=0.85, survival=0.15, territory=0.45, perception=0.60, relation=0.00 }
+PERSONALITY["gigant"]      = { aggression=0.70, survival=0.10, territory=0.65, perception=0.30, relation=0.00 }
+PERSONALITY["poltergeist"] = { aggression=0.30, survival=0.40, territory=0.85, perception=0.50, relation=0.00 }
+PERSONALITY["tushkano"]    = { aggression=0.20, survival=0.80, territory=0.05, perception=0.25, relation=0.65 }
+PERSONALITY["rat"]         = { aggression=0.15, survival=0.85, territory=0.05, perception=0.20, relation=0.60 }
+PERSONALITY["karlik"]      = { aggression=0.25, survival=0.70, territory=0.10, perception=0.30, relation=0.50 }
 
 --- Alpha mutant bonus loot by species (injected via monster_on_loot_init at loot time)
 --- Extra hides and rare parts for alpha kills. Sections are base Anomaly, GAMMA-safe.

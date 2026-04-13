@@ -11,9 +11,10 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local _alignment_conquer = xtable.subtract(
-    xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_predator, ap_ext_const.alignment_territorial),
+    xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_mutant),
     { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true }
 )
+local _species_conquer = xtable.merge(ap_ext_const.alignment_mutant_feral, ap_ext_const.alignment_mutant_predator, ap_ext_const.alignment_mutant_aberrant)
 local _personality = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
 
 local function _on_arrive(squad, args)
@@ -31,7 +32,11 @@ local function _handler(event_data)
         if not ap_ext_dispatch.check_alignment(_alignment_conquer, event_data.community) then
             return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
-        if not ap_ext_dispatch.check_personality(_personality, event_data.community, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_dispatch.check_species_alignment(_species_conquer, event_data.squad_id) then
+            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+        end
+        local identity = ap_ext_dispatch.get_species(event_data.squad_id) or event_data.community
+        if not ap_ext_dispatch.check_personality(_personality, identity, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
         local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
         if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
 
