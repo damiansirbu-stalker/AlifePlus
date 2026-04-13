@@ -44,12 +44,27 @@ local function _v130_reset_smart_mutator(m_data)
     m_data.ap_ext_smart_mutator = nil
 end
 
---- v1.4.0: clear old elite data (renamed to alpha, stalker elites dropped)
+--- v1.3.5: clear old elite data (renamed to alpha, stalker elites dropped)
 --- Old elites key deleted, tracker repopulates as alphas from scratch.
-local function _v140_clear_elite_data(m_data)
+local function _v135_clear_elite_data(m_data)
     local tracker = m_data.ap_ext_tracker
     if not tracker then return end
     if tracker.elites then tracker.elites = nil end
+end
+
+--- v1.3.5: release squads saved with old post_arrived_wait field (renamed to pre_release_gulag)
+--- Old entries lack pre_release_gulag, causing nil arithmetic crash. Release and drop.
+local function _v135_release_old_scripted_squads(m_data)
+    local saved = m_data.ap_core_squad
+    if not saved then return end
+    local squads = saved.ap_scripted_squads
+    if not squads or type(squads) ~= "table" then return end
+    for squad_id, data in pairs(squads) do
+        if not data.pre_release_gulag then
+            _release_squad(squad_id)
+            squads[squad_id] = nil
+        end
+    end
 end
 
 --- Run all migrations on load_state.
@@ -60,7 +75,8 @@ local function _on_load_state(m_data)
     _v130_release_orphaned_squads(m_data)
     _v130_delete_old_save_keys(m_data)
     _v130_reset_smart_mutator(m_data)
-    _v140_clear_elite_data(m_data)
+    _v135_clear_elite_data(m_data)
+    _v135_release_old_scripted_squads(m_data)
 end
 
 function on_game_start()
