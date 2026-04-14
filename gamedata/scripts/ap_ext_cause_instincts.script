@@ -56,15 +56,15 @@ local function _find_strongest_drive(dto, now, species)
 end
 
 local function _on_smart(trace, squad)
-    if not cfg.cause_instincts_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-    if not _alignment_mutant[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+    if not cfg.cause_instincts_enabled then return { code = RESULT.FAILED_RULES } end
+    if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
+    if not _alignment_mutant[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
     local species = ap_ext_util.get_species(squad.id)
-    if not species then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+    if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
     local level_id = xlevel.get_level_id(squad)
-    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+    if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
     local now = xtime.game_sec()
 
@@ -81,7 +81,7 @@ local function _on_smart(trace, squad)
     end
 
     local winner, best_drive = _find_strongest_drive(dto, now, species)
-    if not winner then return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD } end
+    if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     return {
         cause = CAUSE.INSTINCTS,

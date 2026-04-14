@@ -11,15 +11,15 @@ local os_clock = os.clock
 local _pickup_at = {}
 
 local function _evaluate(_trace, item, npc)
-    if not cfg.cause_harvest_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not item then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if not cfg.cause_harvest_enabled then return { code = RESULT.FAILED_RULES } end
+    if not item then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
 
     local section = item:section()
-    if not IsArtefact(item) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ARTEFACT, section = section } end
+    if not IsArtefact(item) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ARTEFACT, section = section } end
 
     local now = os_clock()
     if _pickup_at[section] and now - _pickup_at[section] < ap_core_const.HARVEST_COOLDOWN_SEC then
-        return { code = RESULT.THROTTLED_NEXT }
+        return { code = RESULT.FAILED_RULES }
     end
 
     local taker_is_player = npc == nil
@@ -27,19 +27,19 @@ local function _evaluate(_trace, item, npc)
     local position, level_id, taker_squad_id
     if taker_is_player then
         local actor = db.actor
-        if not actor then return { code = RESULT.RULES_NEXT, reason = REASON.NO_ACTOR } end
+        if not actor then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ACTOR } end
         position = actor:position()
         level_id = xlevel.get_actor_level_id()
     else
         position = npc:position()
         local squad = xsquad.get_squad_by_member(npc:id())
-        if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
         local protected, reason, detail, pname = ap_core_squad.is_protected(squad)
-        if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
+        if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
         taker_squad_id = squad.id
         level_id = xlevel.get_level_id(squad)
     end
-    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+    if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
     _pickup_at[section] = now
 

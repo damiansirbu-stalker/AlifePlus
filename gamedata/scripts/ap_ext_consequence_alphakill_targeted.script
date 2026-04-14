@@ -17,7 +17,7 @@ local _personality = { PERSONALITY.AGGRESSION }
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
         local res = ap_core_squad.script_actor_target(chaser)
-        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
@@ -29,7 +29,7 @@ local function _move_smart_chasers(squads, smart, target_squad_id, moved)
             on_arrive_args = { target_squad_id = target_squad_id },
             pre_release_gulag = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
         })
-        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
@@ -67,7 +67,7 @@ local function _on_arrive(squad, args)
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
             pre_release_gulag = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
         })
-        if res.code ~= RESULT.OK_NEXT then return { code = res.code, reason = res.reason } end
+        if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
         return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
     end)
 end
@@ -75,19 +75,18 @@ end
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.ALPHAKILL_TARGETED, function()
-        if not cfg.consequence_alphakill_targeted_enabled then return { code = RESULT.DISABLED_NEXT } end
         local killer_id, level_id = event_data.killer_id, event_data.level_id
         local victim_id = event_data.id
         local victim_name = event_data.name or "unknown"
 
-        if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
-        if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+        if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
+        if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
         local is_player_kill = killer_id == 0
         local killer_squad
         if not is_player_kill then
             killer_squad = xsquad.get_squad_by_member(killer_id)
-            if not killer_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
+            if not killer_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_KILLER_SQUAD } end
         end
 
         --- Collect other alpha squads on the same level
@@ -104,7 +103,7 @@ local function _handler(event_data)
             hunters[#hunters + 1] = squad
             ::continue::
         end
-        if #hunters == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #hunters == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local dst_id = 0
@@ -122,7 +121,7 @@ local function _handler(event_data)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #hunters - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance,
@@ -131,7 +130,7 @@ local function _handler(event_data)
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.ALPHAKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.OK_NEXT, reason = #moved .. "_alphas",
+            code = RESULT.SUCCESS, reason = #moved .. "_alphas",
             dst_id = dst_id, level_id = level_id, actor = "alpha",
         })
     end)

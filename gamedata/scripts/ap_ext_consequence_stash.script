@@ -114,31 +114,33 @@ local function _build_arrive_args(arrive_fn, stash_id)
 end
 
 local function _make_handler(entry)
-    local enabled_key = "consequence_" .. entry.name .. "_enabled"
     local rush_key = "consequence_" .. entry.name .. "_rush"
     local pda_key = "consequence_" .. entry.name .. "_pda_chance"
 
     return function(event_data)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
-            if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
             if not ap_ext_util.check_alignment(entry.community, event_data.community) then
-                return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+                return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
             if entry.personality and not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name) then
-                return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY }
+                return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 
             local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
-            if entry.exclude_at_base and xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+            if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+            if entry.exclude_at_base and xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
-            local stash_id, position, level_id = event_data.stash_id, event_data.position, event_data.level_id
-            if not stash_id or not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_STASH_DATA } end
-            if entry.require_empty and xstash.get_stash_items(stash_id) then return { code = RESULT.RULES_NEXT, reason = REASON.STASH_NOT_EMPTY } end
+            local stashes = xstash.find_stashes(event_data.position, {
+                max_distance = ap_core_const.RADIUS_DISTANT_MAX, level_id = event_data.level_id, max_count = 1,
+            })
+            local stash = stashes[1]
+            if not stash then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_STASH_NEARBY } end
+            local stash_id = stash.id
+            if entry.require_empty and xstash.get_stash_items(stash_id) then return { code = RESULT.FAILED_RULES, reason = REASON.STASH_NOT_EMPTY } end
 
-            local smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id })
-            if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+            local smart = ap_core_utils.find_smart_observed(trace, stash.position, { level_id = event_data.level_id })
+            if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
             local arrive_args = _build_arrive_args(entry.arrive_fn, stash_id)
             local res
@@ -151,7 +153,7 @@ local function _make_handler(entry)
                 })
                 return res
             end)
-            if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
+            if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
             ap_core_squad.add_marked_squad(event_data.squad_id, entry.consequence)
 
             if not entry.arrive_fn then
@@ -160,7 +162,7 @@ local function _make_handler(entry)
                 end)
             end
 
-            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, stash_id = stash_id, community = event_data.community }
+            return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, stash_id = stash_id, community = event_data.community }
         end)
     end
 end

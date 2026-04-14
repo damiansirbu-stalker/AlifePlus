@@ -22,18 +22,18 @@ local HEALING_ITEMS = {
 }
 
 local function _on_npc_medkit_use(trace, npc, medkit, kind)
-    if not cfg.cause_wounded_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not npc or not npc:alive() then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_OR_DEAD } end
+    if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES } end
+    if not npc or not npc:alive() then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
 
     local squad = xsquad.get_squad_by_member(npc:id())
     if squad then
         local protected, reason, detail, pname = ap_core_squad.is_protected(squad)
-        if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
-        if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+        if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
+        if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
     end
 
     local se_npc = xobject.se(npc:id())
-    if not se_npc then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_OR_DEAD } end
+    if not se_npc then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 
     return {
@@ -49,14 +49,14 @@ local function _on_npc_medkit_use(trace, npc, medkit, kind)
 end
 
 local function _on_actor_item_use(trace, item, section)
-    if not cfg.cause_wounded_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not HEALING_ITEMS[section] then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_HEALING } end
+    if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES } end
+    if not HEALING_ITEMS[section] then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING } end
 
     local actor = db.actor
-    if not actor then return { code = RESULT.RULES_NEXT, reason = REASON.NO_ACTOR } end
+    if not actor then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ACTOR } end
 
     local smart = xsmart.get_actor_smart()
-    if smart and xsmart.is_base(smart) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+    if smart and xsmart.is_base(smart) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
     return {
         cause = CAUSE.WOUNDED,

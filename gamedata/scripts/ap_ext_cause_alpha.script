@@ -8,27 +8,27 @@ local REASON = ap_core_const.REASON
 local cfg = ap_core_mcm.cfg
 
 local function _on_death(trace, squad, se_victim, se_killer)
-    if not cfg.cause_alpha_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not cfg.cause_alpha_enabled then return { code = RESULT.FAILED_RULES } end
 
     local killer_id = ap_core_utils.get_entity_id(se_killer)
-    if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+    if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
     local species = ap_ext_util.get_species(killer_squad and killer_squad.id)
-    if not species then return { code = RESULT.RULES_NEXT, reason = REASON.STALKER_EXCLUDED } end
+    if not species then return { code = RESULT.FAILED_RULES, reason = REASON.STALKER_EXCLUDED } end
     local protected, reason, detail, pname = ap_core_squad.is_protected(killer_squad)
-    if protected then return { code = RESULT.RULES_NEXT, reason = reason, detail = detail, name = pname } end
+    if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
 
     local victim_id = ap_core_utils.get_entity_id(se_victim)
     local kills = ap_ext_tracker.projected_kill_count(killer_id, victim_id)
     local level = ap_ext_tracker.compute_level(kills)
     if level < 1 then
-        return { code = RESULT.RULES_NEXT, reason = REASON.LOW_KILLS,
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_KILLS,
             killer_id = killer_id, kills = kills }
     end
 
     local current_level = ap_ext_tracker.get_alpha_level(killer_id)
     if level <= current_level then
-        return { code = RESULT.RULES_NEXT, reason = REASON.NO_PROMOTION,
+        return { code = RESULT.FAILED_RULES, reason = REASON.NO_PROMOTION,
             killer_id = killer_id, kills = kills, level = level }
     end
 

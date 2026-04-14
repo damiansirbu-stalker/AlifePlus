@@ -85,15 +85,15 @@ RADIANT_CALLBACKS = {
     CALLBACK.SQUAD_ON_UPDATE,
 }
 
---- Result codes (outcome_propagation pattern)
---- Two stoppers: OK_STOP, ERROR_STOP. All non-success codes propagate (_NEXT).
+--- Result codes: consequence handler return values (template method phases)
+--- Handlers return SUCCESS, FAILED_RULES, FAILED_EVAL, FAILED_ACTION.
+--- DISABLED is consumer-only (condition pre-gate, never returned by handlers).
 RESULT = {
-    OK_STOP = "ok_stop",
-    OK_NEXT = "ok_next",
-    RULES_NEXT = "rules_next",
-    DISABLED_NEXT = "disabled_next",
-    THROTTLED_NEXT = "throttled_next",
-    ERROR_STOP = "error_stop",
+    SUCCESS = "success",
+    FAILED_RULES = "failed_rules",
+    FAILED_EVAL = "failed_eval",
+    FAILED_ACTION = "failed_action",
+    DISABLED = "disabled",
 }
 
 --- Trace-level observe result codes (diagnostic, not pipeline flow)

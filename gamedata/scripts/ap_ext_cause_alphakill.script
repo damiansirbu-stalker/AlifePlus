@@ -11,15 +11,15 @@ local cfg = ap_core_mcm.cfg
 local _cooldown
 
 local function _on_death(trace, squad, npc, killer)
-    if not cfg.cause_alphakill_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not cfg.cause_alphakill_enabled then return { code = RESULT.FAILED_RULES } end
 
     local victim_id = ap_core_utils.get_entity_id(npc)
-    if not victim_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
-    if not ap_ext_tracker.is_alpha(victim_id) then return { code = RESULT.RULES_NEXT, reason = REASON.NOT_ALPHA } end
+    if not victim_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_VICTIM } end
+    if not ap_ext_tracker.is_alpha(victim_id) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
 
     local now = time_global()
     local key = "alphakill_" .. victim_id
-    if _cooldown.check(key, now) then return { code = RESULT.THROTTLED_NEXT } end
+    if _cooldown.check(key, now) then return { code = RESULT.FAILED_RULES } end
     _cooldown.mark(key, now)
 
     local alpha_data = ap_ext_tracker.get_alpha(victim_id)

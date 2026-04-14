@@ -9,12 +9,12 @@ local REASON = ap_core_const.REASON
 local cfg = ap_core_mcm.cfg
 
 local function _on_squad_npc_death(trace, squad, npc, killer)
-    if not cfg.cause_squadkill_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_SQUAD } end
+    if not cfg.cause_squadkill_enabled then return { code = RESULT.FAILED_RULES } end
+    if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_SQUAD } end
 
     -- Check if squad is wiped (count includes dying NPC, so <= 1 means last one)
-    if squad:npc_count() > 1 then return { code = RESULT.RULES_NEXT, reason = REASON.SQUAD_ALIVE } end
-    if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+    if squad:npc_count() > 1 then return { code = RESULT.FAILED_RULES, reason = REASON.SQUAD_ALIVE } end
+    if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
     local victim_faction = squad:get_squad_community()
     local killer_faction = nil

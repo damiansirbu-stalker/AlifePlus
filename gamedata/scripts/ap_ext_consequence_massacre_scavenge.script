@@ -18,17 +18,15 @@ local _personality = { PERSONALITY.SURVIVAL }
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_SCAVENGE, function()
-        if not cfg.consequence_massacre_scavenge_enabled then return { code = RESULT.DISABLED_NEXT } end
-
         local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
-        if not position or not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local candidates = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_scavenge, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
             exclude_at_smart_id = smart.id,
         })
-        if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #candidates == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
@@ -37,25 +35,25 @@ local function _handler(event_data)
                 and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.MASSACRE_SCAVENGE)
             if dominated then squads[#squads + 1] = squad end
         end
-        if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
                 local res = ap_core_squad.script_squad(squad, smart, { rush = cfg.consequence_massacre_scavenge_rush, pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_SCAVENGE })
-                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.MASSACRE_SCAVENGE) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_ext_news.get_location_description(nil, position, level_id)
             return ap_ext_news.send_pda(cfg.consequence_massacre_scavenge_pda_chance, "text_pda_consequence_massacre_scavenge", { location = location })
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_scavengers", dst_id = smart.id, species = "cowardly" })
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_scavengers", dst_id = smart.id, species = "cowardly" })
     end)
 end
 

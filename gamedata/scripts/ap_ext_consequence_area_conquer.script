@@ -6,6 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
+local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
 
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -16,6 +17,17 @@ local _alignment_conquer = xtable.subtract(
 )
 local _species_conquer = xtable.merge(ap_ext_const.alignment_mutant_feral, ap_ext_const.alignment_mutant_predator, ap_ext_const.alignment_mutant_aberrant)
 local _personality = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
+local _smart_cooldown
+
+local function _build_filter(community)
+    return function(smart)
+        if _smart_cooldown:get(smart.id) then return false end
+        if not xsmart.is_smart_empty(smart) then return false end
+        if xsmart.is_base(smart) then return false end
+        local fac = xsmart.get_smart_faction(smart)
+        return fac == "none" or game_relations.is_factions_enemies(community, fac)
+    end
+end
 
 local function _on_arrive(squad, args)
     if not args then return end
@@ -28,42 +40,44 @@ end
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.AREA_CONQUER, function()
-        if not cfg.consequence_area_conquer_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not ap_ext_util.check_alignment(_alignment_conquer, event_data.community) then
-            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
         if not ap_ext_util.check_species_alignment(_species_conquer, event_data.squad_id) then
-            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
         local identity = ap_ext_util.get_species(event_data.squad_id) or event_data.community
-        if not ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
-        local target_smart_id, position, level_id = event_data.target_smart_id, event_data.position, event_data.level_id
-        if not target_smart_id or not position or not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-
-        local smart = xobject.se(target_smart_id)
-        if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+        if not ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.AREA_CONQUER) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
 
         local squad = xobject.se(event_data.squad_id)
-        if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+
+        local filter = _build_filter(event_data.community)
+        local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
+            level_id = event_data.level_id, max_distance = RADIUS_DISTANT_MAX, filter = filter,
+        })
+        if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        _smart_cooldown:set(smart.id, true)
 
         local res
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             res = ap_core_squad.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,
-                on_arrive_args = { target_smart_id = target_smart_id, smart_name = xlevel.get_smart_display_name(smart) },
+                on_arrive_args = { target_smart_id = smart.id, smart_name = xlevel.get_smart_display_name(smart) },
                 pre_release_gulag = PRE_RELEASE_GULAG.AREA_CONQUER,
             })
             return res
         end)
-        if res.code ~= RESULT.OK_NEXT then return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED } end
+        if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
         ap_core_squad.add_marked_squad(squad.id, CONSEQUENCE.AREA_CONQUER)
 
-        return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, identity = identity }
+        return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, identity = identity }
     end)
 end
 
 function on_game_start()
+    _smart_cooldown = xttltable.create_ttl_table({ default_ttl = cfg.cause_area_smart_cooldown_sec })
     ap_core_consumer.register(CONSEQUENCE.AREA_CONQUER, {
         event = CAUSE.AREA,
         condition = function() return cfg.consequence_area_conquer_enabled end,

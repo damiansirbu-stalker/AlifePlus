@@ -1,4 +1,4 @@
---- ap_ext_cause_area: Squad near empty smart terrain (any faction)
+--- ap_ext_cause_area: Squad eligible for territory conquest (pure predicate, no find)
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -6,46 +6,24 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
-local _smart_cooldown = nil
 
 local function _on_smart(trace, squad)
-    if not cfg.cause_area_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
-    local squad_faction = squad.player_id
+    if not cfg.cause_area_enabled then return { code = RESULT.FAILED_RULES } end
+    if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
 
     local level_id = xlevel.get_level_id(squad)
-    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
-
-    local target = xsmart.find_smart(squad.position, {
-        level_id = level_id,
-        max_distance = ap_core_const.RADIUS_DISTANT_MAX,
-        filter = function(smart)
-            if _smart_cooldown:get(smart.id) then return false end
-            if not xsmart.is_smart_empty(smart) then return false end
-            if xsmart.is_base(smart) then return false end
-            local fac = xsmart.get_smart_faction(smart)
-            return fac == "none" or game_relations.is_factions_enemies(squad_faction, fac)
-        end,
-    })
-    if not target then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
-
-    _smart_cooldown:set(target.id, true)
+    if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
     return {
         cause = CAUSE.AREA,
         squad_id = squad.id,
-        community = squad_faction,
-        target_smart_id = target.id,
-        target_smart = target,
-        former_faction = xsmart.get_smart_faction(target),
-        position = target.position,
+        community = squad.player_id,
+        position = squad.position,
         level_id = level_id,
     }
 end
 
 function on_game_start()
-    _smart_cooldown = xttltable.create_ttl_table({ default_ttl = cfg.cause_area_smart_cooldown_sec })
-
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)

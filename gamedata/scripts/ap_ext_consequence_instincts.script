@@ -137,29 +137,26 @@ local function _make_condition(enabled_key)
 end
 
 local function _make_handler(entry)
-    local enabled_key = "consequence_" .. entry.name .. "_enabled"
-
     return function(event_data)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
-            if event_data.instinct ~= entry.instinct then return { code = RESULT.RULES_NEXT, reason = REASON.INSTINCT_MISMATCH } end
-            if not cfg[enabled_key] then return { code = RESULT.DISABLED_NEXT } end
+            if event_data.instinct ~= entry.instinct then return { code = RESULT.FAILED_RULES, reason = REASON.INSTINCT_MISMATCH } end
             if not ap_ext_util.check_alignment(ap_ext_const.alignment_mutant, event_data.community) then
-                return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
+                return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
             if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name) then
-                return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY }
+                return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 
             local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+            if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
             local finder = _find_by_instinct[entry.instinct]
             local smart = finder and finder(trace, event_data, squad)
 
             if not smart then
                 _fulfill_instinct(event_data.squad_id, entry.dto_field)
-                return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART }
+                return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART }
             end
 
             local res
@@ -173,12 +170,12 @@ local function _make_handler(entry)
                 })
                 return res
             end)
-            if res.code ~= RESULT.OK_NEXT then
-                return { code = RESULT.RULES_NEXT, reason = res.reason or REASON.MOVE_FAILED }
+            if res.code ~= RESULT.SUCCESS then
+                return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
             end
             ap_core_squad.add_marked_squad(event_data.squad_id, entry.consequence)
 
-            return { code = RESULT.OK_STOP, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
+            return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
         end)
     end
 end

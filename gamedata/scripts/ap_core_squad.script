@@ -99,12 +99,12 @@ local function _log_proximity(source, squad, smart, data)
 end
 
 function script_squad(squad, smart, opts)
-    if not squad or not smart then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
+    if not squad or not smart then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     opts = opts or {}
     local name = smart:name()
     if not name or name == "" then
         ap_core_debug.warn("[SQUAD] script_squad: squad=%d invalid smart name", squad.id)
-        return { code = RESULT.RULES_NEXT, reason = REASON.INVALID_SMART, id = squad.id }
+        return { code = RESULT.FAILED_ACTION, reason = REASON.INVALID_SMART, id = squad.id }
     end
     if _ap_scripted_squads[squad.id] then
         ap_core_debug.debug("[SQUAD] script_squad: squad=%d already scripted (target=%s), releasing first",
@@ -112,7 +112,7 @@ function script_squad(squad, smart, opts)
         xsquad.release_squad(squad)
     end
     if not xsquad.control_squad(squad, smart, opts.rush) then
-        return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED, id = squad.id, dst = name }
+        return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id, dst = name }
     end
     _ap_scripted_squads[squad.id] = {
         scripted_target = name,
@@ -126,19 +126,19 @@ function script_squad(squad, smart, opts)
         ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
     end
     _log_proximity("script_time", squad, smart, _ap_scripted_squads[squad.id])
-    return { code = RESULT.OK_NEXT, id = squad.id, dst = name, dst_id = smart.id }
+    return { code = RESULT.SUCCESS, id = squad.id, dst = name, dst_id = smart.id }
 end
 
 --- Script squad to pursue player directly (no arrival detection)
 function script_actor_target(squad)
-    if not squad then return { code = RESULT.ERROR_STOP, reason = REASON.NIL_ARGS } end
+    if not squad then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     if _ap_scripted_squads[squad.id] then
         ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d already scripted (target=%s), releasing first",
             squad.id, _ap_scripted_squads[squad.id].scripted_target)
         xsquad.release_squad(squad)
     end
     if not xsquad.target_actor(squad, true) then
-        return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED, id = squad.id }
+        return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id }
     end
     _ap_scripted_squads[squad.id] = {
         scripted_target = "actor",
@@ -146,7 +146,7 @@ function script_actor_target(squad)
         tracked_at = xtime.game_sec(),
     }
     ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d -> actor", squad.id)
-    return { code = RESULT.OK_NEXT, id = squad.id, dst = "actor", dst_id = 0 }
+    return { code = RESULT.SUCCESS, id = squad.id, dst = "actor", dst_id = 0 }
 end
 
 --- Get AP scripted squad table (read-only reference, do not modify)

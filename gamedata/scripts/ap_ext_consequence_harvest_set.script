@@ -27,7 +27,7 @@ local _personality_haunt = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
         local res = ap_core_squad.script_actor_target(chaser)
-        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
@@ -40,7 +40,7 @@ local function _make_move_smart_chasers(consequence_key, rush_key, gulag_key)
                 on_arrive_args = { target_squad_id = target_squad_id },
                 pre_release_gulag = gulag_key,
             })
-            if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+            if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
         end
     end
 end
@@ -84,7 +84,7 @@ local function _make_on_arrive(opts)
                 on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
                 pre_release_gulag = gulag_key,
             })
-            if res.code ~= RESULT.OK_NEXT then return { code = res.code, reason = res.reason } end
+            if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
             return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
         end)
     end
@@ -106,11 +106,10 @@ local _on_arrive_rob = _make_on_arrive({
 local function _handler_rob(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.HARVEST_ROB, function()
-        if not cfg.consequence_harvest_rob_enabled then return { code = RESULT.DISABLED_NEXT } end
         local taker_is_player = event_data.taker_is_player
         local taker_squad_id = event_data.taker_squad_id
         local position, level_id = event_data.position, event_data.level_id
-        if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local chasers = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_rob,
@@ -118,7 +117,7 @@ local function _handler_rob(event_data)
             level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
             exclude_squad_id = event_data.taker_squad_id,
         })
-        if #chasers == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #chasers == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
         local robbers = {}
         for _, squad in ipairs(chasers) do
@@ -126,12 +125,12 @@ local function _handler_rob(event_data)
                 robbers[#robbers + 1] = squad
             end
         end
-        if #robbers == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if #robbers == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
 
         local target_squad
         if not taker_is_player then
             target_squad = xobject.se(taker_squad_id)
-            if not target_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_TARGET_SQUAD } end
+            if not target_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_TARGET_SQUAD } end
         end
 
         local moved = {}
@@ -150,7 +149,7 @@ local function _handler_rob(event_data)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #robbers - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_harvest_rob_pda_chance,
@@ -159,7 +158,7 @@ local function _handler_rob(event_data)
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.HARVEST_ROB) end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.OK_NEXT, reason = #moved .. "_robbers", dst_id = dst_id,
+            code = RESULT.SUCCESS, reason = #moved .. "_robbers", dst_id = dst_id,
         })
     end)
 end
@@ -169,12 +168,11 @@ end
 local function _handler_haunt(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.HARVEST_HAUNT, function()
-        if not cfg.consequence_harvest_haunt_enabled then return { code = RESULT.DISABLED_NEXT } end
         local position, level_id = event_data.position, event_data.level_id
-        if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
-        if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+        if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
         local candidates = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_haunt,
@@ -182,7 +180,7 @@ local function _handler_haunt(event_data)
             level_id = level_id, max_count = cfg.consequence_harvest_haunt_max_squads,
             exclude_at_smart_id = target_smart.id,
         })
-        if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #candidates == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
         local squads = {}
         for _, squad in ipairs(candidates) do
@@ -192,24 +190,24 @@ local function _handler_haunt(event_data)
                 and ap_ext_util.check_personality(_personality_haunt, identity, CONSEQUENCE.HARVEST_HAUNT)
             if dominated then squads[#squads + 1] = squad end
         end
-        if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
                 local res = ap_core_squad.script_squad(squad, target_smart, { rush = cfg.consequence_harvest_haunt_rush })
-                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.HARVEST_HAUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_harvest_haunt_pda_chance, "text_pda_consequence_harvest_haunt")
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_haunters", dst_id = target_smart.id, species = "aberrant" })
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_haunters", dst_id = target_smart.id, species = "aberrant" })
     end)
 end
 

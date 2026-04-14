@@ -17,20 +17,18 @@ local _personality = { PERSONALITY.AGGRESSION, PERSONALITY.PERCEPTION }
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.WOUNDED_HUNT, function()
-        if not cfg.consequence_wounded_hunt_enabled then return { code = RESULT.DISABLED_NEXT } end
-
         local position, level_id = event_data.position, event_data.level_id
-        if not position then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
-        if not target_smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
+        if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
         local candidates = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_wounded_hunt, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
             level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
             exclude_at_smart_id = target_smart.id,
         })
-        if #candidates == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #candidates == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
@@ -39,24 +37,24 @@ local function _handler(event_data)
                 and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT)
             if dominated then squads[#squads + 1] = squad end
         end
-        if #squads == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
                 local res = ap_core_squad.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_hunt_rush })
-                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.WOUNDED_HUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_predators", dst_id = target_smart.id, species = "predator+aberrant" })
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_predators", dst_id = target_smart.id, species = "predator+aberrant" })
     end)
 end
 

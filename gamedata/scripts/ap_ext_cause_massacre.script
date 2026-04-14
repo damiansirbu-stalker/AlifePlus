@@ -10,16 +10,16 @@ local cfg = ap_core_mcm.cfg
 local deaths = nil
 
 local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
-    if not cfg.cause_massacre_enabled then return { code = RESULT.DISABLED_NEXT } end
-    if not se_victim then return { code = RESULT.RULES_NEXT, reason = REASON.NO_VICTIM } end
-    if not xcreature.is_stalker(se_victim) then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT } end
+    if not cfg.cause_massacre_enabled then return { code = RESULT.FAILED_RULES } end
+    if not se_victim then return { code = RESULT.FAILED_RULES, reason = REASON.NO_VICTIM } end
+    if not xcreature.is_stalker(se_victim) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
 
     local smart = xsquad.get_squad_smart(squad)
-    if not smart then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SMART } end
-    if xsquad.is_squad_at_base(squad) then return { code = RESULT.RULES_NEXT, reason = REASON.AT_BASE } end
+    if not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SMART } end
+    if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
     local count = ap_core_utils.count_until_threshold(deaths, smart.id, cfg.cause_massacre_threshold)
-    if not count then return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD } end
+    if not count then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     return {
         cause = CAUSE.MASSACRE,

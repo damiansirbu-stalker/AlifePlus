@@ -16,18 +16,17 @@ local _personality = { PERSONALITY.SURVIVAL, PERSONALITY.GREED }
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
-        if not cfg.consequence_squadkill_flee_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.victim_faction) then
-            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_FLEE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_FLEE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 
-        if not position or not victim_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not position or not victim_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local base = ap_core_utils.find_smart_observed(trace, position, { factions = victim_faction, level_id = level_id, filter = xsmart.is_base })
-        if not base then return { code = RESULT.RULES_NEXT, reason = REASON.NO_BASE } end
+        if not base then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_BASE } end
 
         local fleeing = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
@@ -36,25 +35,25 @@ local function _handler(event_data)
             exclude_at_smart_id = base.id,
             exclude_squad_id = event_data.squad_id,
         })
-        if #fleeing == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #fleeing == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(fleeing) do
                 local res = ap_core_squad.script_squad(squad, base, { rush = cfg.consequence_squadkill_flee_rush, pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_FLEE })
-                if res.code == RESULT.OK_NEXT then moved[#moved + 1] = squad else last_reason = res.reason end
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = base.id, rejected = #fleeing - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = last_reason or REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.SQUADKILL_FLEE) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local location = ap_ext_news.get_location_description(nil, position, level_id)
             return ap_ext_news.send_pda(cfg.consequence_squadkill_flee_pda_chance, "text_pda_consequence_squadkill_flee", { location = location })
         end)
 
-        return ap_core_debug.result_squads(moved, { code = RESULT.OK_NEXT, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
     end)
 end
 

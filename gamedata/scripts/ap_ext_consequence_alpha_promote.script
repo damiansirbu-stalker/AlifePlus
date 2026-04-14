@@ -12,14 +12,12 @@ local cfg = ap_core_mcm.cfg
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.ALPHA_PROMOTE, function()
-        if not cfg.consequence_alpha_promote_enabled then return { code = RESULT.DISABLED_NEXT } end
-
         local killer_id = event_data.killer_id
-        if not killer_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER } end
+        if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
 
         local is_new = not ap_ext_tracker.is_alpha(killer_id)
         if is_new and xtable.count(ap_ext_tracker.get_alphas()) >= cfg.max_alphas then
-            return { code = RESULT.RULES_NEXT, reason = REASON.MAX_ALPHAS }
+            return { code = RESULT.FAILED_RULES, reason = REASON.MAX_ALPHAS }
         end
 
         local name = xcreature.get_name(killer_id)
@@ -32,10 +30,10 @@ local function _handler(event_data)
             updated = ap_ext_tracker.update_alpha(killer_id, {
                 kills = kills, name = name, level_id = level_id,
             })
-            if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
+            if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
             return { code = TRACE.OK, id = killer_id, level = level }
         end)
-        if not updated then return { code = RESULT.RULES_NEXT, reason = REASON.REGISTER_FAILED } end
+        if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
 
         ap_ext_object_mutator.set_alpha_hit_power(killer_id, level)
 
@@ -53,7 +51,7 @@ local function _handler(event_data)
             })
         end)
 
-        return { code = RESULT.OK_STOP, reason = "alpha=" .. killer_id, id = killer_id, level = level, level_id = level_id }
+        return { code = RESULT.SUCCESS, reason = "alpha=" .. killer_id, id = killer_id, level = level, level_id = level_id }
     end)
 end
 

@@ -18,7 +18,7 @@ local _personality = { PERSONALITY.AGGRESSION }
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
         local res = ap_core_squad.script_actor_target(chaser)
-        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
@@ -30,7 +30,7 @@ local function _move_smart_chasers(squads, smart, target_squad_id, moved)
             on_arrive_args = { target_squad_id = target_squad_id },
             pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
         })
-        if res and res.code == RESULT.OK_NEXT then moved[#moved + 1] = chaser end
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
@@ -68,7 +68,7 @@ local function _on_arrive(squad, args)
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
             pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
         })
-        if res.code ~= RESULT.OK_NEXT then return { code = res.code, reason = res.reason } end
+        if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
         return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
     end)
 end
@@ -76,19 +76,18 @@ end
 local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_REVENGE, function()
-        if not cfg.consequence_squadkill_revenge_enabled then return { code = RESULT.DISABLED_NEXT } end
         if not ap_ext_util.check_alignment(_alignment_revenge, event_data.victim_faction) then
-            return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_REVENGE) then return { code = RESULT.RULES_NEXT, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_REVENGE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 
-        if not killer_squad_id and not is_player_kill then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
-        if not position or not victim_faction then return { code = RESULT.RULES_NEXT, reason = REASON.NO_POS } end
+        if not killer_squad_id and not is_player_kill then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER_SQUAD } end
+        if not position or not victim_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
         if is_player_kill and not game_relations.is_factions_enemies(victim_faction, "actor_stalker") then
-            return { code = RESULT.RULES_NEXT, reason = REASON.FRIENDLY_FACTION }
+            return { code = RESULT.FAILED_RULES, reason = REASON.FRIENDLY_FACTION }
         end
 
         local avengers = ap_core_utils.find_squads_observed(trace, position, {
@@ -97,12 +96,12 @@ local function _handler(event_data)
             level_id = level_id, max_count = cfg.consequence_squadkill_revenge_max_squads,
             exclude_squad_id = event_data.squad_id,
         })
-        if #avengers == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.NO_SQUAD } end
+        if #avengers == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
         local target_squad
         if not is_player_kill then
             target_squad = xobject.se(killer_squad_id)
-            if not target_squad then return { code = RESULT.RULES_NEXT, reason = REASON.NO_KILLER_SQUAD } end
+            if not target_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_KILLER_SQUAD } end
         end
 
         local moved = {}
@@ -122,7 +121,7 @@ local function _handler(event_data)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #avengers - #moved })
         end)
-        if #moved == 0 then return { code = RESULT.RULES_NEXT, reason = REASON.MOVE_FAILED } end
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_squadkill_revenge_pda_chance,
@@ -131,7 +130,7 @@ local function _handler(event_data)
         for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.SQUADKILL_REVENGE) end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.OK_NEXT, reason = #moved .. "_avengers",
+            code = RESULT.SUCCESS, reason = #moved .. "_avengers",
             dst_id = dst_id, faction = victim_faction,
         })
     end)
