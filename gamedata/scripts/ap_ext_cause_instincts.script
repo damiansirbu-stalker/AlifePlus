@@ -1,0 +1,106 @@
+--- ap_ext_cause_instincts: Mutant instinct evaluation (Hull drive scoring, active/dormant period gating)
+
+local math_random, math_floor = math.random, math.floor
+local CAUSE = ap_core_const.CAUSE
+local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+
+local HOURS_TO_SECONDS = 3600
+local cfg = ap_core_mcm.cfg
+local _alignment_mutant
+
+local INSTINCTS = {
+    { instinct = "feed", field = "last_feed_at",
+        threshold_key = "cause_instinct_feed_threshold", enabled_key = "cause_instinct_feed_enabled",
+        weight = 3.0, active_period = true },
+    { instinct = "sleep", field = "last_sleep_at",
+        threshold_key = "cause_instinct_sleep_threshold", enabled_key = "cause_instinct_sleep_enabled",
+        weight = 2.5, dormant_period = true },
+    { instinct = "explore", field = "last_explore_at",
+        threshold_key = "cause_instinct_explore_threshold", enabled_key = "cause_instinct_explore_enabled",
+        weight = 1.0, active_period = true },
+    { instinct = "socialize", field = "last_socialize_at",
+        threshold_key = "cause_instinct_socialize_threshold", enabled_key = "cause_instinct_socialize_enabled",
+        weight = 0.8, active_period = true },
+}
+
+local function _find_strongest_drive(dto, now, species)
+    if not level.present() then return nil, 0 end
+    local is_active = ap_ext_util.is_active_period(species)
+    local best_entry = nil
+    local best_drive = 0
+
+    for i = 1, #INSTINCTS do
+        local inst = INSTINCTS[i]
+
+        if not cfg[inst.enabled_key] then goto continue end
+        if inst.active_period and not is_active then goto continue end
+        if inst.dormant_period and is_active then goto continue end
+
+        local elapsed = now - dto[inst.field]
+        local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+        if elapsed <= threshold then goto continue end
+        local ratio = elapsed / threshold
+        local drive = inst.weight * ratio * ratio
+
+        if drive > best_drive then
+            best_drive = drive
+            best_entry = inst
+        end
+
+        ::continue::
+    end
+
+    return best_entry, best_drive
+end
+
+local function _on_smart(trace, squad)
+    if not cfg.cause_instincts_enabled then return { code = RESULT.DISABLED_NEXT } end
+    if not squad then return { code = RESULT.RULES_NEXT, reason = REASON.NIL_ARGS } end
+    if not _alignment_mutant[squad.player_id] then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+
+    local species = ap_ext_util.get_species(squad.id)
+    if not species then return { code = RESULT.RULES_NEXT, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.RULES_NEXT, reason = REASON.NO_LEVEL_ID } end
+
+    local now = xtime.game_sec()
+
+    local dto = ap_ext_tracker.get_mutant_instincts(squad.id)
+    if not dto then
+        dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
+        for i = 1, #INSTINCTS do
+            local inst = INSTINCTS[i]
+            if not cfg[inst.enabled_key] then goto init_next end
+            local scatter = math_floor(cfg[inst.threshold_key] * HOURS_TO_SECONDS * 2)
+            dto[inst.field] = now - math_random(0, scatter)
+            ::init_next::
+        end
+    end
+
+    local winner, best_drive = _find_strongest_drive(dto, now, species)
+    if not winner then return { code = RESULT.RULES_NEXT, reason = REASON.BELOW_THRESHOLD } end
+
+    return {
+        cause = CAUSE.INSTINCTS,
+        instinct = winner.instinct,
+        dto_field = winner.field,
+        drive = best_drive,
+        squad_id = squad.id,
+        community = squad.player_id,
+        species = species,
+        position = squad.position,
+        level_id = level_id,
+    }
+end
+
+function on_game_start()
+    _alignment_mutant = ap_ext_const.alignment_mutant
+    local radiant = ap_core_const.RADIANT_CALLBACKS
+    for i = 1, #radiant do
+        ap_core_producer.register(CAUSE.INSTINCTS, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+    end
+    ap_core_debug.info("[CAUSE.INSTINCTS] Initialized")
+end

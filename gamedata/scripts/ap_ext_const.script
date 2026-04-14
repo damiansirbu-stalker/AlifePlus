@@ -79,11 +79,12 @@ alignment_mutant_cowardly = {
     ["tushkano"] = true, ["rat"] = true, ["karlik"] = true,
 }
 
---- Feral = pack/herd, reactive aggression, avenge packmates
---- src: monstry.doc "staynoye zhivotnoye" (boar), "agressivny, protivnika okruzhayut" (dogs)
+--- Feral = pack/herd, reactive aggression, avenge packmates, brute apex
+--- src: monstry.doc "staynoye zhivotnoye" (boar), "agressivny, protivnika okruzhayut" (dogs), "povadki buyvola" (gigant)
 alignment_mutant_feral = {
     ["dog"] = true, ["pseudodog"] = true,
     ["boar"] = true, ["snork"] = true, ["cat"] = true,
+    ["gigant"] = true,
 }
 
 --- Predator = solitary hunters, ambush, pursue wounded
@@ -93,21 +94,30 @@ alignment_mutant_predator = {
     ["chimera"] = true, ["fracture"] = true,
 }
 
---- Aberrant = psychic, lair-bound, supernatural, brute apex
---- src: monstry.doc "telepaticheskoye vozdeystviye" (controller), "zhivet tol'ko v mrachnykh podzemyel'yakh" (burer), "povadki buyvola" (gigant)
+--- Aberrant = psychic, lair-bound, supernatural
+--- src: monstry.doc "telepaticheskoye vozdeystviye" (controller), "zhivet tol'ko v mrachnykh podzemyel'yakh" (burer)
 alignment_mutant_aberrant = {
     ["controller"] = true, ["burer"] = true,
     ["poltergeist"] = true, ["psy_dog"] = true,
-    ["gigant"] = true,
 }
 
---- Necrophage = attracted to corpse sites (n68 scavenger attractor gate, cross-cuts alignment)
---- src: monstry.doc "pozhirayut trupy ubitykh" (boar, dogs, rats), "ishchut i edyat trupy" (zombie)
-alignment_mutant_necrophage = {
-    ["dog"] = true, ["pseudodog"] = true, ["boar"] = true,
-    ["flesh"] = true, ["cat"] = true, ["snork"] = true,
-    ["fracture"] = true, ["zombie"] = true,
+--- Activity alignment axis (independent of behavioral axis, gates day/night cycle)
+--- src: monstry.doc "noch'yu vykhodit na otkrytyye mesta, okhotit'sya" (bloodsucker), engine monster_predatory_night/monster_zombied_night factions
+
+--- Nocturnal = active at night (20:00-05:00), dormant during day
+alignment_mutant_night = {
+    ["bloodsucker"] = true, ["psysucker"] = true,
+    ["lurker"] = true, ["chimera"] = true,
+    ["zombie"] = true, ["fracture"] = true,
+}
+
+--- Diurnal = active during day (05:00-20:00), dormant at night (default for all non-nocturnal)
+alignment_mutant_day = {
+    ["dog"] = true, ["pseudodog"] = true, ["psy_dog"] = true,
+    ["boar"] = true, ["flesh"] = true, ["cat"] = true,
+    ["snork"] = true, ["gigant"] = true,
     ["tushkano"] = true, ["rat"] = true, ["karlik"] = true,
+    ["burer"] = true, ["controller"] = true, ["poltergeist"] = true,
 }
 
 -- Stash fill item pool (medical, tools, artefacts)
@@ -240,6 +250,11 @@ NEED_FIELDS = {
     "last_hunger_at", "last_sleep_at", "last_rest_at",
     "last_heal_at", "last_shelter_at", "last_money_at",
     "last_supply_at", "last_job_at", "last_social_at",
+}
+
+--- Mutant instinct DTO field names
+INSTINCT_FIELDS = {
+    "last_feed_at", "last_sleep_at", "last_explore_at", "last_socialize_at",
 }
 
 --- Item section lists for needs arrive_fn (GAMMA-verified)

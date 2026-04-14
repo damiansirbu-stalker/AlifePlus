@@ -521,6 +521,80 @@ Free items from a trader is a spawn, not a trade.
 
 ---
 
+### Instincts: Feed, Sleep, Explore, Socialize
+
+Mutants develop instincts that drive movement the same way stalker needs do: Hull scoring picks the strongest unmet drive, and the consequence routes the squad to an appropriate smart terrain.
+
+AlifePlus fires the instincts cause during radiant evaluation when a mutant squad's drives are overdue.
+Four instincts dispatch: feed routes the squad to open territory where prey exists, sleep returns it to a species-appropriate rest location, explore moves it to a new territory or lair, and socialize draws it toward smart terrains where same-faction squads are present.
+
+Sleep destinations follow the behavioral alignment axis.
+Cowardly species sleep in open fields.
+Feral species sleep in lairs.
+Predators sleep in lairs or buildings.
+Aberrant species sleep in buildings and underground shelters.
+
+The engine already models the complete feeding state machine.
+`eStateEat` defines approach, inspect, drag, eat, and rest substates (`state_defs.h`).
+`CorpseMan` tracks nearby corpses in memory.
+`hungry()` returns true after 20 seconds without food.
+AlifePlus does not simulate eating -- it puts predators in proximity with prey through shared territory.
+The engine handles combat and corpse consumption when they meet.
+
+GSC designed creatures with species-specific feeding behaviors.
+Dogs hunt rats and flesh (`monstry.doc: "okhota na krys i plot', otdykh"`).
+Controllers lure small animals for food (`monstry.doc: "zhivotnykh podmanivayut i ubivayut dlya propitaniya"`).
+Bloodsuckers eat everything that moves (`monstry.doc: "est vse chto dvizhetsya"`).
+The feeding drive was planned and stubbed (`GetSatiety()` returns hardcoded 0.5, `ChangeSatiety()` does nothing in `base_monster.h`) but the motivation layer that triggers feeding behavior was never connected.
+AlifePlus provides that motivation.
+
+> "A complex AI system with a life simulation system that enables any monster and NPC to act independently on any game level, with creatures having a full life cycle where they hunt, feed, take rest, and sleep."
+> Oles Shishkovtsov, ModDB interview [3]
+
+---
+
+### Day/Night Cycle
+
+Stalkers and mutants follow a day/night activity cycle.
+During their active period, creatures feed, explore, work, and socialize.
+During their dormant period, they seek shelter and sleep.
+
+Stalkers are diurnal: active during the day (05:00-20:00), dormant at night.
+Nocturnal mutant species -- bloodsuckers, lurkers, chimeras, zombies, fractures -- are active at night (20:00-05:00) and sleep during the day.
+All other species are diurnal.
+
+The engine already encodes this distinction in its faction system.
+`monster_predatory_day` and `monster_predatory_night` are separate factions with different spawning and simulation behavior.
+`monster_zombied_day` and `monster_zombied_night` follow the same split.
+
+GSC's gulag job system defines four states per smart terrain: Day (6:00-21:00), Night (21:00-6:00), Attack, and Defense.
+Day jobs include camp, walker, patrol, guard, and sniper.
+Night jobs replace camp with sleep.
+Attack and defense override the day/night rule [8].
+
+> "Raboty universal'nykh lagerey. U kazhdogo universal'nogo lagerya yest' 4 sostoyaniya: 1. Den' (6:00-21:00). 2. Noch' (21:00-6:00). 3. Ataka. 4. Oborona."
+> (Universal camp jobs. Each universal camp has 4 states: 1. Day. 2. Night. 3. Attack. 4. Defense.)
+> Smart_terrain_jobs.htm [8]
+
+GSC described nocturnal hunting explicitly for bloodsuckers.
+During the day they ambush from dark places and shelter.
+At night they emerge into the open to hunt.
+
+> "Noch'yu i v temnote luchshe vidit. Noch'yu vykhodit na otkrytyye mesta, okhotit'sya."
+> (Sees better at night and in darkness. At night goes to open areas to hunt.)
+> monstry.doc, bloodsucker entry
+
+> "Mesto zhitel'stva razvaliny, podzemel'ya, broshennye postroyki."
+> (Place of residence: ruins, dungeons, abandoned buildings.)
+> monstry.doc, bloodsucker entry
+
+AlifePlus implements the same split through the activity alignment axis.
+The `is_active_period` function resolves the current period for any species or community.
+Every drive entry declares whether it requires the active or dormant period.
+The same mechanism applies uniformly to stalker needs and mutant instincts.
+
+---
+
 ## Alignment
 
 GSC classified characters along a moral axis with nine types across two dimensions: principled, self-serving, or unprincipled crossed with good, cold-blooded, or evil (Ai.doc:65-76, тип характера).
@@ -591,12 +665,13 @@ Tushkano, rat, and karlik round out the bottom of the food chain.
 Feral species run in packs, defend their own, and avenge fallen members.
 Boar is "staynoye zhivotnoye" (herd animal) with leader morale mechanics (monstry.doc).
 Dogs are "agressivny, protivnika okruzhayut" (aggressive, surround the enemy) (monstry.doc).
+Gigant has "povadki buyvola" (buffalo-like behavior) -- brute force, not psychic (monstry.doc).
 Pseudodog, snork, and cat complete the group.
 
 Predators hunt alone, ambush from cover, and pursue wounded prey.
 Bloodsucker "est vse chto dvizhetsya" (eats everything that moves) and "napadayet iz temnykh mest i ukrytiy" (attacks from dark places and cover) (monstry.doc).
 Chimera "pryachetsya, obkhodit so spiny" (hides, flanks from behind) (monstry.doc).
-Lurker, psysucker, gigant, and fracture share the same hunting pattern.
+Lurker, psysucker, and fracture share the same hunting pattern.
 
 Aberrant species operate through psychic abilities and lair defense.
 Controller uses "telepaticheskoye vozdeystviye" (telepathic influence) and "predpochitayet zasady v zdaniyakh" (prefers ambushes in buildings) (monstry.doc).

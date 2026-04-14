@@ -1,4 +1,4 @@
---- ap_ext_tracker: Kill registry, alpha system, stalker needs DTO
+--- ap_ext_tracker: Kill registry, alpha system, stalker needs DTO, mutant instincts DTO
 local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
@@ -8,6 +8,7 @@ local TRACE = ap_core_const.TRACE
 local ALPHA_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_ext_const.NEED_FIELDS
+local INSTINCT_FIELDS = ap_ext_const.INSTINCT_FIELDS
 
 local _ap_killers = {}
 local _ap_alphas = {}
@@ -15,16 +16,18 @@ local _last_victim_id
 local _ap_alpha_dead
 local cfg = ap_core_mcm.cfg
 local _ap_stalker_needs = {}
+local _ap_mutant_instincts = {}
 
 local function _on_save_state(m_data)
     m_data.ap_ext_tracker = {
         killers = _ap_killers,
         alphas = _ap_alphas,
         stalker_needs = _ap_stalker_needs,
+        mutant_instincts = _ap_mutant_instincts,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs))
+        ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d instincts=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs), xtable.count(_ap_mutant_instincts))
     end
 end
 
@@ -49,17 +52,31 @@ local function _validate_stalker_needs(loaded)
     return result
 end
 
+local function _validate_mutant_instincts(loaded)
+    local result = {}
+    for squad_id, dto in pairs(loaded) do
+        if type(dto) ~= "table" then goto continue end
+        for i = 1, #INSTINCT_FIELDS do
+            if not dto[INSTINCT_FIELDS[i]] then dto[INSTINCT_FIELDS[i]] = 0 end
+        end
+        result[squad_id] = dto
+        ::continue::
+    end
+    return result
+end
+
 local function _on_load_state(m_data)
     _ap_alpha_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
     _ap_killers = saved.killers or {}
     _ap_alphas = _validate_alphas(saved.alphas or {})
     _ap_stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
+    _ap_mutant_instincts = _validate_mutant_instincts(saved.mutant_instincts or {})
     if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.alphas then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d needs=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs))
+        ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d needs=%d instincts=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs), xtable.count(_ap_mutant_instincts))
     end
 end
 
@@ -180,6 +197,7 @@ end
 local function _unregister_squad(squad_id)
     if not squad_id then return end
     _ap_stalker_needs[squad_id] = nil
+    _ap_mutant_instincts[squad_id] = nil
 end
 
 
@@ -217,6 +235,31 @@ end
 function reset_stalker_need(squad_id, key, now)
     if not squad_id or not key or not now then return false end
     local dto = _ap_stalker_needs[squad_id]
+    if not dto then return false end
+    dto[key] = now
+    return true
+end
+
+
+function get_mutant_instincts(squad_id)
+    if not squad_id then return nil end
+    return _ap_mutant_instincts[squad_id]
+end
+
+function init_mutant_instincts(squad_id, now)
+    if not squad_id or not now then return nil end
+    local dto = {}
+    for i = 1, #INSTINCT_FIELDS do
+        dto[INSTINCT_FIELDS[i]] = now
+    end
+    _ap_mutant_instincts[squad_id] = dto
+    ap_core_debug.debug("[TRACKER] init_mutant_instincts: squad=%d all_fields=now", squad_id)
+    return dto
+end
+
+function reset_mutant_instinct(squad_id, key, now)
+    if not squad_id or not key or not now then return false end
+    local dto = _ap_mutant_instincts[squad_id]
     if not dto then return false end
     dto[key] = now
     return true

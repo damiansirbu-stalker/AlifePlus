@@ -60,6 +60,33 @@ defaults = {
     cause_job_threshold = 18,
     cause_social_threshold = 36,
 
+    -- Cause: Instincts (thresholds in game-hours, per-instinct enabled gates)
+    cause_instincts_enabled = true,
+    cause_instinct_feed_enabled = true,
+    cause_instinct_sleep_enabled = true,
+    cause_instinct_explore_enabled = true,
+    cause_instinct_socialize_enabled = true,
+    cause_instinct_feed_threshold = 24,
+    cause_instinct_sleep_threshold = 12,
+    cause_instinct_explore_threshold = 12,
+    cause_instinct_socialize_threshold = 24,
+
+    -- Consequence: Instinct Feed
+    consequence_instinct_feed_enabled = true,
+    consequence_instinct_feed_rush = false,
+
+    -- Consequence: Instinct Sleep
+    consequence_instinct_sleep_enabled = true,
+    consequence_instinct_sleep_rush = false,
+
+    -- Consequence: Instinct Explore
+    consequence_instinct_explore_enabled = true,
+    consequence_instinct_explore_rush = false,
+
+    -- Consequence: Instinct Socialize
+    consequence_instinct_socialize_enabled = true,
+    consequence_instinct_socialize_rush = false,
+
     -- Cause: Area
     cause_area_enabled = true,
     cause_area_smart_cooldown_sec = 120,
@@ -307,6 +334,23 @@ local _key_to_tab = {
     cause_supply_threshold = "causes/needs",
     cause_job_threshold = "causes/needs",
     cause_social_threshold = "causes/needs",
+    cause_instincts_enabled = "causes/instincts",
+    cause_instinct_feed_enabled = "causes/instincts",
+    cause_instinct_sleep_enabled = "causes/instincts",
+    cause_instinct_explore_enabled = "causes/instincts",
+    cause_instinct_socialize_enabled = "causes/instincts",
+    cause_instinct_feed_threshold = "causes/instincts",
+    cause_instinct_sleep_threshold = "causes/instincts",
+    cause_instinct_explore_threshold = "causes/instincts",
+    cause_instinct_socialize_threshold = "causes/instincts",
+    consequence_instinct_feed_enabled = "consequences/instincts",
+    consequence_instinct_feed_rush = "consequences/instincts",
+    consequence_instinct_sleep_enabled = "consequences/instincts",
+    consequence_instinct_sleep_rush = "consequences/instincts",
+    consequence_instinct_explore_enabled = "consequences/instincts",
+    consequence_instinct_explore_rush = "consequences/instincts",
+    consequence_instinct_socialize_enabled = "consequences/instincts",
+    consequence_instinct_socialize_rush = "consequences/instincts",
     cause_area_enabled = "causes/area",
     cause_area_smart_cooldown_sec = "causes/area",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
@@ -581,6 +625,25 @@ function on_mcm_load()
                             _slide("ui_mcm_ap_causes_wounded_title"),
                             _desc("ui_mcm_ap_causes_wounded_desc"),
                             _check("cause_wounded_enabled"),
+                        },
+                    },
+                    {
+                        id = "instincts",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_causes_instincts_title"),
+                            _desc("ui_mcm_ap_causes_instincts_desc"),
+                            _check("cause_instincts_enabled"),
+                            { id = "div_per_instinct", type = "line" },
+                            _check("cause_instinct_feed_enabled"),
+                            _check("cause_instinct_sleep_enabled"),
+                            _check("cause_instinct_explore_enabled"),
+                            _check("cause_instinct_socialize_enabled"),
+                            { id = "div_thresholds", type = "line" },
+                            _track("cause_instinct_feed_threshold", 0.1, 48, 0.1),
+                            _track("cause_instinct_sleep_threshold", 0.1, 48, 0.1),
+                            _track("cause_instinct_explore_threshold", 0.1, 48, 0.1),
+                            _track("cause_instinct_socialize_threshold", 0.1, 48, 0.1),
                         },
                     },
                     {
@@ -994,6 +1057,22 @@ function on_mcm_load()
                             _check("consequence_social_base_rush"),
                             _check("consequence_social_base_arrive_action_enabled"),
                             _track("consequence_social_base_pda_chance", 0, 100, 5),
+                        },
+                    },
+                    {
+                        id = "instincts",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_instincts_title"),
+                            _desc("ui_mcm_ap_consequences_instincts_desc"),
+                            _check("consequence_instinct_feed_enabled"),
+                            _check("consequence_instinct_feed_rush"),
+                            _check("consequence_instinct_sleep_enabled"),
+                            _check("consequence_instinct_sleep_rush"),
+                            _check("consequence_instinct_explore_enabled"),
+                            _check("consequence_instinct_explore_rush"),
+                            _check("consequence_instinct_socialize_enabled"),
+                            _check("consequence_instinct_socialize_rush"),
                         },
                     },
                 },

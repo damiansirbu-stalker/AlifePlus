@@ -2,7 +2,21 @@
 local math_random, math_min, math_max = math.random, math.min, math.max
 
 local PERSONALITY = ap_ext_const.PERSONALITY
+local _alignment_mutant_night = ap_ext_const.alignment_mutant_night
 local _species_cache = xttltable.create_fifo_cache({ capacity = 128 })
+
+function is_night()
+    if not level.present() then return false end
+    local hours = level.get_time_hours()
+    return hours >= 20 or hours < 5
+end
+
+--- Nocturnal species (alignment_mutant_night) active at night, all others active during day
+function is_active_period(identity)
+    local night = is_night()
+    if _alignment_mutant_night[identity] then return night end
+    return not night
+end
 
 --- Check faction alignment (hard filter, deterministic)
 --- @param alignment table|nil Alignment hash set { ["faction"] = true, ... }

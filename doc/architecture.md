@@ -137,7 +137,7 @@ All rate limiting lives in `ap_core_limiter`. Five independent limiters operate 
 | Reactive pacer | token bucket | per-callback-type | 1/sec | constant |
 | Cause budget | TTL counter, sliding window | per-cause | 10/60s | MCM cause_max_events |
 | Consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
-| Global consequence | TTL counter | radiant only | 6/60s | MCM global_consequence_max_events |
+| Global consequence | TTL counter | radiant only | 5/60s | MCM global_consequence_max_events |
 
 ### Tracing
 
@@ -251,6 +251,7 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 | STASH | radiant | squad_on_update | not protected, stash within 500m (no cause-level alignment filter, consequences handle it) |
 | AREA | radiant | squad_on_update | not protected, empty smart, not is_base |
 | NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring |
+| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
 
@@ -275,6 +276,10 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 | STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
 | AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h) |
 | NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
+| INSTINCTS | instincts_feed | mutant | move to territory to hunt/scavenge |
+| INSTINCTS | instincts_sleep | mutant | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
+| INSTINCTS | instincts_explore | mutant | wander to nearby territory or lair |
+| INSTINCTS | instincts_socialize | mutant | move toward smart with same-faction squads |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. Gate order inside each handler: enabled -> alignment -> species alignment -> personality -> data validation -> logic -> result code. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
 
@@ -317,9 +322,16 @@ Mutant species alignments follow GSC's creature groups (monstry.doc:4). Keyed by
 |-------|---------|------------|
 | alignment_mutant | all 7 monster factions | Fast gate for find_squads (engine player_id) |
 | alignment_mutant_cowardly | flesh, zombie, tushkano, rat, karlik | Timid, flees danger, bottom of food chain |
-| alignment_mutant_feral | dog, pseudodog, boar, snork, cat | Pack/herd, reactive aggression |
+| alignment_mutant_feral | dog, pseudodog, boar, snork, cat, gigant | Pack/herd, reactive aggression, brute apex |
 | alignment_mutant_predator | lurker, bloodsucker, psysucker, chimera, fracture | Solitary hunters, ambush, pursue wounded |
-| alignment_mutant_aberrant | controller, burer, poltergeist, psy_dog, gigant | Psychic, lair-bound, supernatural |
+| alignment_mutant_aberrant | controller, burer, poltergeist, psy_dog | Psychic, lair-bound, supernatural |
+
+Activity alignment axis (independent of behavioral axis, gates day/night cycle):
+
+| Table | Species | GSC origin |
+|-------|---------|------------|
+| alignment_mutant_night | bloodsucker, psysucker, lurker, chimera, zombie, fracture | monstry.doc: bloodsucker "noch'yu vykhodit na otkrytyye mesta, okhotit'sya". Engine: monster_predatory_night, monster_zombied_night factions. |
+| alignment_mutant_day | all other species | Engine: monster_predatory_day, monster_zombied_day. Default for lair-bound species. |
 
 Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract` (set difference) at module load.
 
@@ -328,6 +340,35 @@ Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract
 Probability layer: how likely is an eligible faction/species to act. Runs only after alignment passes. All checks happen in ext consequence code via `ap_ext_util.check_personality`, never in core.
 
 Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares which traits matter. The check averages those traits for the faction/species, clamps to 0.10-0.50, and rolls. Target pass rate: 20-50%.
+
+### Day/Night Cycle
+
+All drives (stalker needs and mutant instincts) are gated by the active/dormant period system. Each drive entry declares `active_period = true` (fires only when the creature is active) or `dormant_period = true` (fires only when dormant). Drives with neither flag fire at any time.
+
+`ap_ext_util.is_active_period(identity)` resolves the current period for any species or community. Nocturnal species (`alignment_mutant_night`) are active at night (20:00-05:00). All others (stalkers, diurnal mutants) are active during day (05:00-20:00).
+
+**Stalker needs:**
+
+| Drive | Flag | Effect |
+|-------|------|--------|
+| hunger | (none) | any time |
+| sleep | dormant_period | night only |
+| rest | dormant_period | night only |
+| heal | (none) | any time |
+| shelter | dormant_period | night only |
+| supply | active_period | day only |
+| money | active_period | day only |
+| job | active_period | day only |
+| social | (none) | any time |
+
+**Mutant instincts:**
+
+| Drive | Flag | Effect |
+|-------|------|--------|
+| feed | active_period | active period only |
+| sleep | dormant_period | dormant period only |
+| explore | active_period | active period only |
+| socialize | active_period | active period only |
 
 ### Invariants
 
@@ -351,7 +392,7 @@ Stalker factions have 7 traits: aggression, greed, survival, perception, territo
 
 Three patterns for organizing consequences under a cause:
 
-**CONFIGS (one file, alternatives).** Multiple behaviors for the same cause where only one fires per evaluation. A config table lists entries with alignment, species, personality, and smart filter gates. First match wins. Suited for radiant causes where the ticking squad picks one action. Examples: `stash` (loot/ambush/fill), `needs` (14 entries).
+**CONFIGS (one file, alternatives).** Multiple behaviors for the same cause where only one fires per evaluation. A config table lists entries with alignment, species, personality, and smart filter gates. First match wins. Suited for radiant causes where the ticking squad picks one action. Examples: `stash` (loot/ambush/fill), `needs` (14 entries), `instincts` (4 entries).
 
 **Separate files (cascading).** Multiple consequences that fire independently on the same cause event. Each subscribes to the cause via xbus and runs its own gate chain. Multiple can trigger from the same event. Suited for reactive causes where different actor types respond simultaneously. Examples: `massacre_investigate` + `massacre_scavenge`, `wounded_hunt` + `wounded_help`.
 
