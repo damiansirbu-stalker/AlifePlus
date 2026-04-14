@@ -1,6 +1,6 @@
 --- ap_core_producer: Dispatches cause predicates on engine callbacks
 --- Gate chains: radiant (PACER->SCRIPTED->RATIO->PROTECTION->EVAL), reactive (PACER->RATIO->EVAL)
-local next, pairs, tostring, type, unpack = next, pairs, tostring, type, unpack
+local pairs, tostring, type, unpack = pairs, tostring, type, unpack
 local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -15,6 +15,7 @@ local _radiant_callbacks = {}
 
 --- Radiant handlers (collapsed from all radiant registrations into one flat table)
 local _radiant_handlers = {}
+local _radiant_cursor = 0
 
 --- Callbacks that are always on the player's map (actor/npc game_objects only exist online)
 local _always_on_map = {
@@ -149,18 +150,23 @@ local function _protection_gate(squad)
     return not protected
 end
 
---- Mid-evaluation guard: checks if a squad became scripted during handler iteration.
---- NOT a pipeline gate -- this runs inside _eval_handlers between handler invocations.
---- Purpose: when handler A fires, its cause may be published synchronously (Lua is
----   single-threaded, event_publish is synchronous), triggering a consequence that calls
----   script_squad() on the same squad. Without this check, handler B would fire for a
----   now-scripted squad, producing a competing cause whose consequence silently overrides
----   handler A's destination (last-writer-wins with non-deterministic pairs() order).
---- @param squad_id number|nil Squad server ID (nil for actor callbacks, returns true)
---- @return boolean true = safe to continue, false = squad was scripted mid-chain (caller should break)
-local function _scripted_during_eval(squad_id)
-    if not squad_id then return true end
-    return not ap_core_squad.get_scripted_ids()[squad_id]
+
+local function _find_handler_index(entries, name)
+    for i = 1, #entries do
+        if entries[i].label == name then return i end
+    end
+    return nil
+end
+
+-- Check structural invariant: radiant and reactive causes must not share a callback
+local function _check_cross_type(cause_type, callback)
+    if cause_type == CAUSE_TYPE.REACTIVE and _radiant_callbacks[callback] then
+        return "reactive cause on radiant callback"
+    end
+    if cause_type == CAUSE_TYPE.RADIANT and _handlers[callback] and not _radiant_callbacks[callback] then
+        return "radiant cause on reactive callback"
+    end
+    return nil
 end
 
 --- Register a cause handler
@@ -178,18 +184,16 @@ function register(name, config, handler)
         return false
     end
     local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
-    if cause_type == CAUSE_TYPE.REACTIVE and _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER] register '%s': reactive cause on radiant callback '%s'", name, callback)
-        return false
-    end
-    if cause_type == CAUSE_TYPE.RADIANT and _handlers[callback] and not _radiant_callbacks[callback] then
-        ap_core_debug.err("[PRODUCER] register '%s': radiant cause on reactive callback '%s'", name, callback)
+    local conflict = _check_cross_type(cause_type, callback)
+    if conflict then
+        ap_core_debug.err("[PRODUCER] register '%s': %s '%s'", name, conflict, callback)
         return false
     end
     if not _handlers[callback] then
         _handlers[callback] = {}
     end
-    _handlers[callback][name] = { handler = handler, label = name, cause_type = cause_type }
+    local entries = _handlers[callback]
+    entries[_find_handler_index(entries, name) or #entries + 1] = { handler = handler, label = name, cause_type = cause_type }
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true
     end
@@ -211,28 +215,28 @@ local function _try_publish(on_map, name, result, trace, cause_type)
         result.cause, result.squad_id, on_map, result.level_id)
 end
 
---- Evaluate cause handlers for a squad that passed all gates
---- @param handlers table Registered handlers for this callback
+--- Evaluate all reactive cause handlers for a callback that passed all gates
+--- @param handlers table Indexed array of registered handlers for this callback
 --- @param on_map boolean|nil On-map status for ratio logging
---- @param squad_id number|nil Squad ID (nil for actor callbacks)
-local function _eval_handlers(handlers, on_map, squad_id, ...)
+local function _eval_reactive_handlers(handlers, on_map, ...)
     local args = {...}
-    for name, entry in pairs(handlers) do
-        if not _scripted_during_eval(squad_id) then break end
-        if not ap_core_limiter.check_cause_rate_limit(name) then goto continue end
+    for i = 1, #handlers do
+        local entry = handlers[i]
+        if not ap_core_limiter.check_cause_rate_limit(entry.label) then goto continue end
 
         local trace = ap_core_debug.trace()
         local result = ap_core_debug.observe(trace, entry.label, entry.handler, unpack(args))
-        if result and result.cause then _try_publish(on_map, name, result, trace, entry.cause_type) end
+        if result and result.cause then _try_publish(on_map, entry.label, result, trace, entry.cause_type) end
 
         ::continue::
     end
 end
 
---- Radiant callback handler: evaluates cause predicates for the squad that triggered the callback
+--- Radiant callback handler: one cause per trigger via round-robin cursor
 --- Gates: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
-local function _on_radiant_update(squad)
-    if not next(_radiant_handlers) then return end
+local function _on_radiant(squad)
+    local total = #_radiant_handlers
+    if total == 0 then return end
     if not _radiant_pacer_gate() then return end
     local debug = ap_core_debug.enabled()
     local squad_id = squad.id
@@ -249,7 +253,19 @@ local function _on_radiant_update(squad)
     if debug then _radiant_ratio = _radiant_ratio + 1 end
     if not _protection_gate(squad) then _next_radiant = clock() + PACER_RETRY_INTERVAL return end
     if debug then _radiant_protection = _radiant_protection + 1 end
-    _eval_handlers(_radiant_handlers, on_map, squad_id, squad)
+    local t0 = debug and clock() or nil
+    _radiant_cursor = (_radiant_cursor % total) + 1
+    local entry = _radiant_handlers[_radiant_cursor]
+    if ap_core_limiter.check_cause_rate_limit(entry.label) then
+        local trace = ap_core_debug.trace()
+        local result = ap_core_debug.observe(trace, entry.label, entry.handler, squad)
+        if result and result.cause then
+            _try_publish(on_map, entry.label, result, trace, entry.cause_type)
+        end
+    end
+    if t0 then
+        ap_core_debug.debug("[PRODUCER.RADIANT] sq=%d cause=%s [%.2fms]", squad_id, entry.label, (clock() - t0) * 1000)
+    end
 end
 
 --- Resolve on-map status for a reactive callback from known-online callbacks or squad.online
@@ -261,21 +277,11 @@ local function _resolve_on_map(callback_type, first_arg)
     return nil
 end
 
---- Extract squad_id from first callback arg when applicable
--- @complexity O(1) | 0 luabind
-local function _resolve_squad_id(callback_type, first_arg)
-    if _always_on_map[callback_type] then return nil end
-    if type(first_arg) ~= "userdata" then return nil end
-    local id = first_arg.id
-    if type(id) == "number" then return id end
-    return nil
-end
-
 --- Reactive entry point (~6.5/sec)
 --- Gates: PACER(1/3) -> RATIO(2/3) -> EVAL(3/3)
-local function _dispatch_reactive(callback_type, ...)
+local function _on_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
-    if not handlers or not next(handlers) then return end
+    if not handlers or #handlers == 0 then return end
     local debug = ap_core_debug.enabled()
 
     if debug then _reactive_callbacks = _reactive_callbacks + 1 end
@@ -293,20 +299,24 @@ local function _dispatch_reactive(callback_type, ...)
     end
     if debug then _reactive_ratio = _reactive_ratio + 1 end
 
-    _eval_handlers(handlers, on_map, _resolve_squad_id(callback_type, first_arg), ...)
+    local t0 = debug and clock() or nil
+    _eval_reactive_handlers(handlers, on_map, ...)
+    if t0 then
+        ap_core_debug.debug("[PRODUCER.REACTIVE] callback=%s [%.2fms]", callback_type, (clock() - t0) * 1000)
+    end
 end
 
 local function _create_reactive_dispatcher(callback)
-    return function(...) _dispatch_reactive(callback, ...) end
+    return function(...) _on_reactive(callback, ...) end
 end
 
 local _dispatchers = {}
 
---- Subscribe radiant (shared _on_radiant_update) and reactive (per-callback _dispatch_reactive)
+--- Subscribe radiant (shared _on_radiant) and reactive (per-callback _on_reactive)
 local function _init_subscriptions()
     for callback in pairs(_radiant_callbacks) do
         if _subscribed[callback] then goto continue end
-        RegisterScriptCallback(callback, _on_radiant_update)
+        RegisterScriptCallback(callback, _on_radiant)
         _subscribed[callback] = true
         ap_core_debug.debug("[PRODUCER.RADIANT] subscribed to callback=%s", callback)
         ::continue::
@@ -324,16 +334,16 @@ local function _init_subscriptions()
 end
 
 local function _has_radiant_entry(entries)
-    for _, entry in pairs(entries) do
-        if entry.cause_type == CAUSE_TYPE.RADIANT then return true end
+    for i = 1, #entries do
+        if entries[i].cause_type == CAUSE_TYPE.RADIANT then return true end
     end
     return false
 end
 
 local function _collect_radiant_handlers(entries)
-    for name, entry in pairs(entries) do
-        if entry.cause_type ~= CAUSE_TYPE.RADIANT then goto continue end
-        _radiant_handlers[name] = entry
+    for i = 1, #entries do
+        if entries[i].cause_type ~= CAUSE_TYPE.RADIANT then goto continue end
+        _radiant_handlers[#_radiant_handlers + 1] = entries[i]
         ::continue::
     end
 end
@@ -377,6 +387,7 @@ function on_game_start()
     _reactive_ratio = 0
     _reactive_published = 0
     _reactive_event_limiter = nil
+    _radiant_cursor = 0
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     ap_core_debug.info("[PRODUCER] Initialized")
 end
