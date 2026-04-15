@@ -9,12 +9,12 @@ AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 You are not special.
 
 AlifePlus is a reactive alife framework for STALKER Anomaly.
-A complete simulation layer that replaces passive A-Life with event-driven emergent behavior.
+A complete simulation layer that extends A-Life with event-driven emergent behavior, built on GSC's original AI design.
 It intercepts engine events, classifies them into causes, and dispatches consequences that change the simulation.
 NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects.
 Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs.
 Everything that happens to the player happens to NPCs and mutants alike.
-Nothing is random, every action traces back to a cause in the simulation.
+Every action traces back to a cause, a world state, and a mechanic. Nothing is arbitrary.
 
 Inspired by Roadside Picnic, the original STALKER vision, and GSC's unshipped AI design documents.
 The Zone runs on its own rules, and the actor is just another entity inside it.
@@ -81,12 +81,10 @@ Why this mod exists:
 
 A-Life modding is hard. The engine exposes limited APIs, documentation is scarce, and most knowledge comes from trial and error.
 
-Common patterns scan the entire world hundreds of times per frame at O(n) cost,
-permanently hijack squads by overwriting scripted_target, and run heavy luabind loops that scale with squad count.
-This causes ghosting, entity leaking, save corruption, and mod conflicts.
-Crashed engine interactions get swallowed by pcall exception handlers, failing silently and degrading over time.
-State accumulates across saves with no cleanup.
-Behaviors duplicate what the engine already handles, with no cohesive economy and no systemic purpose.
+Common patterns in A-Life modding scan the world every frame, permanently hijack squads
+by overwriting engine variables, swallow crashes silently, and accumulate stale state
+across saves with no cleanup. The result is poor performance, entity leaking, ghosting,
+save corruption, and mod conflicts that get worse the longer you play.
 
 ---
 
@@ -127,14 +125,16 @@ Architecture:
 - Rate-limited event pipeline with token budgets, cooldowns, and separate pacing for radiant and reactive streams.
 - Protection gates at every pipeline layer: permanent NPCs, task targets, companions, externally scripted squads.
   Squads owned by other mods (warfare, BAO) are excluded via an ownership registry.
-- All engine interaction through xlibs, reverse-engineered from X-Ray Monolith C++ source.
+- AlifePlus runs on xlibs, a reverse-engineered API that wraps the X-Ray engine source.
+  It was built, load-tested, and validated against the C++ implementation.
+  Core patterns were studied from the most accomplished mods in the Anomaly ecosystem.
 - No base script edits, no engine patches. Runtime callbacks and hooks only.
 - Operates above the action planner at the simulation layer, routing squads through SIMBOARD.
   The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination.
 
 Performance:
 
-- Designed performance-first, load tested (1000x load), profiled with anomaly-devtools v1.3.0
+- Performance was the first design constraint. The pipeline was profiled with anomaly-devtools v1.3.0 and load-tested at 1000x simulated pressure.
 - Near-zero performance impact as seen in the screenshots
 - OTel-style tracing, structured logging with rotation, microsecond profiling
 - Long saves stable by avoiding permanent squad control and limiting engine pressure under load
@@ -177,7 +177,7 @@ Alpha (reactive)
     scales with level, panic immunity, valuable loot injected into inventory.
 
 AlphaKill (reactive)
-  - Targeted - Other alphas on the same tier hunt the killer across the map.
+  - Targeted - Other alphas on the same level hunt the killer.
 
 Wounded (reactive)
   - Hunt - Predator mutants sense weakness and close in.
@@ -197,8 +197,8 @@ Area (radiant)
     Conquered territory decays over time if not held (decay hours configurable in MCM).
 
 Needs (radiant)
-  Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation.
-  The strongest unmet need wins.
+  Stalkers have human needs. Nine drives inspired by Maslow-Hull, scored by how long since last fulfilled.
+  The most deprived need wins.
   - Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
   - Sleep - Finds a campfire during dormant hours. Sleeps.
   - Rest - Finds a campfire. Smokes a cigarette, has a drink.
@@ -241,10 +241,11 @@ Alignment
   Behavioral determines what a species does. Activity determines when.
 
 Personality
-  Seven traits per faction (aggression, greed, survival, perception, territory,
-  relation, discipline) derived from GSC's original AI design documents. A faction
-  that passes the alignment gate rolls against its personality score for the
-  relevant traits. Both stalker and mutant factions share the same system.
+  Every stalker faction and mutant species has a personality profile derived from GSC's
+  original AI design documents. Traits include aggression, greed, survival, perception,
+  territory, relation, and discipline. Each consequence checks the relevant traits,
+  averages them, and multiplies by a per-consequence weight tunable in MCM.
+  Both stalkers and mutants share the same system.
 
 ---
 

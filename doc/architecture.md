@@ -376,9 +376,11 @@ Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract
 
 Probability layer: how likely is an eligible faction/species to act. Runs only after alignment passes. All checks happen in ext consequence code via `ap_ext_util.check_personality`, never in core.
 
-Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares which traits matter. The check averages those traits for the faction/species, clamps to 0.10-0.50, and rolls `math.random()` against the clamped chance. Target pass rate: 20-50%.
+Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares which traits matter and has an MCM-configurable `personality_weight` slider (0.0-1.0, default 0.50). The check averages those traits for the faction/species, multiplies by the weight, and rolls `math.random()` against the result.
 
-**Current formula:** `chance = math.min(0.50, math.max(0.10, avg))`. The hard clamp at 0.50 means trait averages above 0.50 are wasted -- a faction with 0.90 aggression has the same 50% chance as one with 0.50. Trait averages below 0.20 at the 0.50 clamp produce less than 10% effective pass rate. Known low-floor combos: army/monolith stash (greed=0.10), ecolog revenge (aggression=0.10), monolith flee (survival=0.05+greed=0.10), renegade support/help (territory=0.05+relation=0.10). Planned replacement in n80: `chance = avg * personality_weight` with per-consequence weight, removing the clamp.
+**Formula:** `chance = avg(relevant_traits) * personality_weight`. The weight is per-consequence and user-tunable via MCM. Higher weight = personality matters more (lower pass rates for low-trait factions). At weight 0.50, effective chances range from ~5% (army stash, greed=0.10) to ~45% (monolith area_conquer, territory+aggression avg=0.90). At weight 1.0, the full trait average is the chance.
+
+**Trait value design:** all traits use tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival has a floor of 0.60 for all living creatures (biological needs are universal) with exceptions for zombied (0.20), zombie (0.20), and poltergeist (0.20).
 
 ### Range Tiers
 

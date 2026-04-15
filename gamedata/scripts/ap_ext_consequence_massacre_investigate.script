@@ -25,7 +25,10 @@ local function _handler(event_data)
         if not ap_ext_util.check_alignment(_alignment_investigate, investigate_faction) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
-        if not ap_ext_util.check_personality(_personality, investigate_faction, CONSEQUENCE.MASSACRE_INVESTIGATE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, investigate_faction,
+            CONSEQUENCE.MASSACRE_INVESTIGATE, cfg.personality_weight_massacre_investigate) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,

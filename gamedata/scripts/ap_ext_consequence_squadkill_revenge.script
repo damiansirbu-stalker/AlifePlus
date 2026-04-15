@@ -79,7 +79,10 @@ local function _handler(event_data)
         if not ap_ext_util.check_alignment(_alignment_revenge, event_data.victim_faction) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_REVENGE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.victim_faction,
+            CONSEQUENCE.SQUADKILL_REVENGE, cfg.personality_weight_squadkill_revenge) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == 0
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id

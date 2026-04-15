@@ -21,7 +21,10 @@ local function _handler(event_data)
 
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
-        if not ap_ext_util.check_personality(_personality, event_data.faction, CONSEQUENCE.BASEKILL_FLEE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.faction,
+            CONSEQUENCE.BASEKILL_FLEE, cfg.personality_weight_basekill_flee) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
 
         local destination = ap_core_utils.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
         if not destination then

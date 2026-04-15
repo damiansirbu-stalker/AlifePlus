@@ -19,7 +19,10 @@ local function _handler(event_data)
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.victim_faction) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_util.check_personality(_personality, event_data.victim_faction, CONSEQUENCE.SQUADKILL_FLEE) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.victim_faction,
+            CONSEQUENCE.SQUADKILL_FLEE, cfg.personality_weight_squadkill_flee) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
 
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 

@@ -169,59 +169,46 @@ PERSONALITY = {
 }
 
 --- Per-faction personality table. Keys are engine player_id strings.
---- Values 0.0-1.0 = probability of engaging in behavior gated by that trait.
---- Used as: average(relevant traits) -> roll. Clamped 0.05-0.95 (never 0%, never 100%).
---- Defining traits per faction:
---- stalker:  perception, greed, survival (adventurous wanderers, self-reliant)
---- dolg:     discipline, territory, relation (organized, hold ground, loyal)
---- freedom:  relation, perception, survival (social, exploratory, self-reliant)
---- csky:     discipline, relation, perception (methodical, loyal, observant)
---- ecolog:   perception, discipline, survival (researchers, cautious)
---- killer:   aggression, greed, discipline (professional, profit-driven)
---- army:     discipline, territory, survival (ordered, base-centric, defensive)
---- bandit:   greed, survival, perception (opportunistic, cowardly, cunning)
---- renegade: greed, survival (desperate, lowest discipline)
---- monolith: aggression, territory (fanatical, fearless, no greed)
---- greh:     aggression, greed (sinister zealots, predatory)
---- isg:      discipline, territory, relation (professional contractors)
---- zombied:  aggression only (mindless)
-PERSONALITY["stalker"]              = { aggression=0.45, greed=0.70, survival=0.50, perception=0.75, territory=0.25, relation=0.65, discipline=0.40 }
-PERSONALITY["dolg"]                 = { aggression=0.70, greed=0.20, survival=0.45, perception=0.50, territory=0.85, relation=0.80, discipline=0.85 }
-PERSONALITY["freedom"]              = { aggression=0.45, greed=0.45, survival=0.50, perception=0.65, territory=0.50, relation=0.75, discipline=0.30 }
-PERSONALITY["csky"]                 = { aggression=0.30, greed=0.30, survival=0.50, perception=0.70, territory=0.45, relation=0.75, discipline=0.75 }
-PERSONALITY["ecolog"]               = { aggression=0.10, greed=0.30, survival=0.50, perception=0.75, territory=0.40, relation=0.45, discipline=0.80 }
-PERSONALITY["killer"]               = { aggression=0.70, greed=0.70, survival=0.50, perception=0.40, territory=0.25, relation=0.35, discipline=0.65 }
-PERSONALITY["army"]                 = { aggression=0.50, greed=0.10, survival=0.40, perception=0.45, territory=0.70, relation=0.40, discipline=0.90 }
-PERSONALITY["bandit"]               = { aggression=0.30, greed=0.85, survival=0.50, perception=0.35, territory=0.15, relation=0.45, discipline=0.25 }
-PERSONALITY["renegade"]             = { aggression=0.20, greed=0.90, survival=0.45, perception=0.25, territory=0.05, relation=0.10, discipline=0.05 }
-PERSONALITY["monolith"]             = { aggression=0.95, greed=0.10, survival=0.05, perception=0.45, territory=0.90, relation=0.50, discipline=0.35 }
-PERSONALITY["greh"]                 = { aggression=0.80, greed=0.65, survival=0.10, perception=0.40, territory=0.50, relation=0.35, discipline=0.30 }
-PERSONALITY["isg"]                  = { aggression=0.40, greed=0.20, survival=0.45, perception=0.45, territory=0.70, relation=0.75, discipline=0.80 }
-PERSONALITY["zombied"]              = { aggression=0.75, greed=0.05, survival=0.05, perception=0.15, territory=0.20, relation=0.05, discipline=0.05 }
+--- Values 0.0-1.0 = probability weight for behavior gated by that trait.
+--- Used as: average(relevant traits) * mcm_weight -> roll.
+--- Tiered values (0.10 steps): ensures clean math, no floating point noise.
+PERSONALITY["stalker"]              = { aggression=0.50, greed=0.70, survival=0.80, perception=0.70, territory=0.30, relation=0.60, discipline=0.50 }
+PERSONALITY["dolg"]                 = { aggression=0.70, greed=0.20, survival=0.70, perception=0.50, territory=0.70, relation=0.80, discipline=0.80 }
+PERSONALITY["freedom"]              = { aggression=0.50, greed=0.50, survival=0.70, perception=0.60, territory=0.50, relation=0.70, discipline=0.40 }
+PERSONALITY["csky"]                 = { aggression=0.40, greed=0.30, survival=0.90, perception=0.70, territory=0.50, relation=0.70, discipline=0.70 }
+PERSONALITY["ecolog"]               = { aggression=0.20, greed=0.30, survival=0.90, perception=0.70, territory=0.40, relation=0.50, discipline=0.80 }
+PERSONALITY["killer"]               = { aggression=0.70, greed=0.70, survival=0.80, perception=0.40, territory=0.30, relation=0.40, discipline=0.50 }
+PERSONALITY["army"]                 = { aggression=0.60, greed=0.10, survival=0.70, perception=0.40, territory=0.70, relation=0.70, discipline=0.90 }
+PERSONALITY["bandit"]               = { aggression=0.40, greed=0.90, survival=0.80, perception=0.30, territory=0.20, relation=0.30, discipline=0.30 }
+PERSONALITY["renegade"]             = { aggression=0.30, greed=0.90, survival=0.70, perception=0.20, territory=0.40, relation=0.30, discipline=0.20 }
+PERSONALITY["monolith"]             = { aggression=0.90, greed=0.10, survival=0.60, perception=0.40, territory=0.90, relation=0.50, discipline=0.40 }
+PERSONALITY["greh"]                 = { aggression=0.80, greed=0.70, survival=0.60, perception=0.40, territory=0.50, relation=0.30, discipline=0.30 }
+PERSONALITY["isg"]                  = { aggression=0.50, greed=0.20, survival=0.90, perception=0.50, territory=0.70, relation=0.70, discipline=0.70 }
+PERSONALITY["zombied"]              = { aggression=0.70, greed=0.10, survival=0.20, perception=0.10, territory=0.20, relation=0.20, discipline=0.10 }
 --- Per-species personality (keyed by xcreature.get_mutant_species string)
 --- 5 traits: aggression, survival, territory, perception, relation
---- relation = pack loyalty, help sound response. Pack animals high, solitary apex = 0.
---- src: GSC monstry.doc behavioral descriptions, xray-monolith state managers (eStateHearHelpSound)
-PERSONALITY["dog"]         = { aggression=0.65, survival=0.35, territory=0.40, perception=0.55, relation=0.70 }
-PERSONALITY["pseudodog"]   = { aggression=0.75, survival=0.25, territory=0.60, perception=0.65, relation=0.30 }
-PERSONALITY["psy_dog"]     = { aggression=0.70, survival=0.20, territory=0.45, perception=0.80, relation=0.40 }
-PERSONALITY["boar"]        = { aggression=0.50, survival=0.60, territory=0.55, perception=0.35, relation=0.60 }
-PERSONALITY["flesh"]       = { aggression=0.25, survival=0.80, territory=0.15, perception=0.50, relation=0.10 }
-PERSONALITY["cat"]         = { aggression=0.55, survival=0.45, territory=0.30, perception=0.70, relation=0.05 }
-PERSONALITY["chimera"]     = { aggression=0.90, survival=0.10, territory=0.50, perception=0.75, relation=0.00 }
-PERSONALITY["lurker"]      = { aggression=0.80, survival=0.20, territory=0.45, perception=0.70, relation=0.00 }
-PERSONALITY["snork"]       = { aggression=0.70, survival=0.15, territory=0.35, perception=0.60, relation=0.45 }
-PERSONALITY["zombie"]      = { aggression=0.40, survival=0.35, territory=0.10, perception=0.10, relation=0.00 }
-PERSONALITY["fracture"]    = { aggression=0.55, survival=0.30, territory=0.25, perception=0.45, relation=0.10 }
-PERSONALITY["controller"]  = { aggression=0.80, survival=0.25, territory=0.70, perception=0.85, relation=0.00 }
-PERSONALITY["burer"]       = { aggression=0.60, survival=0.30, territory=0.90, perception=0.40, relation=0.00 }
-PERSONALITY["bloodsucker"] = { aggression=0.90, survival=0.15, territory=0.50, perception=0.65, relation=0.00 }
-PERSONALITY["psysucker"]   = { aggression=0.85, survival=0.15, territory=0.45, perception=0.60, relation=0.00 }
-PERSONALITY["gigant"]      = { aggression=0.70, survival=0.10, territory=0.65, perception=0.30, relation=0.00 }
-PERSONALITY["poltergeist"] = { aggression=0.30, survival=0.40, territory=0.85, perception=0.50, relation=0.00 }
-PERSONALITY["tushkano"]    = { aggression=0.20, survival=0.80, territory=0.05, perception=0.25, relation=0.65 }
-PERSONALITY["rat"]         = { aggression=0.15, survival=0.85, territory=0.05, perception=0.20, relation=0.60 }
-PERSONALITY["karlik"]      = { aggression=0.25, survival=0.70, territory=0.10, perception=0.30, relation=0.50 }
+--- relation = pack loyalty, social grouping. Pack animals high, solitary apex low.
+--- survival = biological needs drive (eat, sleep, heal). Floor 0.60 for all living creatures.
+PERSONALITY["dog"]         = { aggression=0.60, survival=0.70, territory=0.40, perception=0.60, relation=0.80 }
+PERSONALITY["pseudodog"]   = { aggression=0.70, survival=0.70, territory=0.50, perception=0.70, relation=0.40 }
+PERSONALITY["psy_dog"]     = { aggression=0.70, survival=0.60, territory=0.40, perception=0.80, relation=0.40 }
+PERSONALITY["boar"]        = { aggression=0.50, survival=0.80, territory=0.50, perception=0.40, relation=0.60 }
+PERSONALITY["flesh"]       = { aggression=0.20, survival=0.80, territory=0.20, perception=0.50, relation=0.40 }
+PERSONALITY["cat"]         = { aggression=0.50, survival=0.70, territory=0.30, perception=0.70, relation=0.80 }
+PERSONALITY["chimera"]     = { aggression=0.90, survival=0.60, territory=0.50, perception=0.80, relation=0.20 }
+PERSONALITY["lurker"]      = { aggression=0.80, survival=0.70, territory=0.40, perception=0.80, relation=0.50 }
+PERSONALITY["snork"]       = { aggression=0.70, survival=0.60, territory=0.30, perception=0.60, relation=0.70 }
+PERSONALITY["zombie"]      = { aggression=0.40, survival=0.20, territory=0.10, perception=0.10, relation=0.30 }
+PERSONALITY["fracture"]    = { aggression=0.50, survival=0.60, territory=0.30, perception=0.50, relation=0.30 }
+PERSONALITY["controller"]  = { aggression=0.80, survival=0.80, territory=0.70, perception=0.90, relation=0.30 }
+PERSONALITY["burer"]       = { aggression=0.60, survival=0.80, territory=0.90, perception=0.40, relation=0.30 }
+PERSONALITY["bloodsucker"] = { aggression=0.90, survival=0.70, territory=0.50, perception=0.70, relation=0.50 }
+PERSONALITY["psysucker"]   = { aggression=0.90, survival=0.70, territory=0.50, perception=0.60, relation=0.50 }
+PERSONALITY["gigant"]      = { aggression=0.70, survival=0.60, territory=0.70, perception=0.30, relation=0.20 }
+PERSONALITY["poltergeist"] = { aggression=0.30, survival=0.20, territory=0.90, perception=0.50, relation=0.30 }
+PERSONALITY["tushkano"]    = { aggression=0.20, survival=0.80, territory=0.10, perception=0.20, relation=0.60 }
+PERSONALITY["rat"]         = { aggression=0.20, survival=0.90, territory=0.10, perception=0.20, relation=0.50 }
+PERSONALITY["karlik"]      = { aggression=0.20, survival=0.70, territory=0.20, perception=0.30, relation=0.60 }
 
 --- Alpha mutant bonus loot by species (injected via monster_on_loot_init at loot time)
 --- Extra hides and rare parts for alpha kills. Sections are base Anomaly, GAMMA-safe.

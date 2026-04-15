@@ -124,7 +124,7 @@ local CONFIGS = {
         dto_field = "last_social_at", filter = xsmart.is_base,
         exclude_enemy = true, section_key = "SOCIAL",
         alignment = alignment_principled,
-        personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE }, pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
+        personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY }, pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
 }
 
 --- Mark need as fulfilled so it backs off for a full threshold period.
@@ -202,7 +202,10 @@ local function _make_handler(entry)
             if not ap_ext_util.check_alignment(entry.alignment, event_data.community) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+            if not ap_ext_util.check_personality(entry.personality, event_data.community,
+                entry.name, cfg["personality_weight_" .. entry.name]) then
+                return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+            end
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
             local filter = _build_filter(entry, event_data.community)

@@ -144,7 +144,7 @@ local function _make_handler(entry)
             if not ap_ext_util.check_alignment(ap_ext_const.alignment_mutant, event_data.community) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name) then
+            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name, cfg["personality_weight_" .. entry.name]) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 

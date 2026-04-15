@@ -21,7 +21,10 @@ local function _handler(event_data)
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_support, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
-        if not ap_ext_util.check_personality(_personality, event_data.faction, CONSEQUENCE.BASEKILL_SUPPORT) then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+        if not ap_ext_util.check_personality(_personality, event_data.faction,
+            CONSEQUENCE.BASEKILL_SUPPORT, cfg.personality_weight_basekill_support) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = factions,

@@ -1,27 +1,22 @@
 next
   Summary: Range tiers, cause taxonomy, mutant instincts, day/night cycle, species behavior, squad ownership hardening
   Gameplay:
-    Added: three range tiers. EyeRange (200m), SignalRange (500m), ScentRange (500m). Squads see, hear, or smell within their tier.
+    Added: detection range tiers. EyeRange, SignalRange, ScentRange. Squads see, hear, or smell within their tier.
     Added: four cause types. Reactions, opportunities, needs, instincts. Each maps to a range tier and a set of rules.
-    Added: per-squad opportunity drive. After acting on a stash or territory, the squad waits before seeking another.
     Changed: decay and cooldown timers use game time instead of wall time. Respects time acceleration and realism mods.
     Changed: opportunities (stash, territory) search within eye range instead of the entire level.
     Changed: mutant consequences use scent range. Stalker consequences use signal range.
     Added: mutant instincts. Four drives (feed, sleep, explore, socialize) scored by deprivation, same as stalker needs.
     Added: day/night activity cycle for all creatures. Stalkers work and trade by day, rest and sleep at night.
     Added: nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night and retreat to lairs at dawn.
-    Added: mutant sleep locations by behavioral alignment. Cowardly in fields, feral in lairs, predator in lairs/buildings, aberrant underground.
+    Added: mutant sleep locations by behavioral alignment. Cowardly in fields, feral in lairs, predator in lairs/buildings, aberrant buildings and underground.
     Changed: stalker needs gated by day/night. Supply, money, job day-only. Sleep, rest, shelter night-only. Hunger, heal, social any time.
     Changed: gigant reclassified from aberrant to feral. Brute force, not psychic.
     Changed: every mutant species has its own personality. Species identity drives all mutant decisions.
     Changed: mutants split into behavioral groups (cowardly, feral, predator, aberrant) with distinct consequence gates.
-    Changed: squad wipe revenge and retreat are stalker-only. Mutants no longer join human factional responses.
     Changed: stalkers and mutants respond separately to every world event.
     Changed: when an alpha dies, other alphas on the same level hunt the killer regardless of species.
     Added: picking up an artefact triggers two responses. Outlaws chase the taker. Aberrant mutants converge on the pickup site.
-    Changed: stash ambush is stalker-only. Mutants don't camp at stashes.
-    Changed: zombies scavenge more readily instead of wandering past massacre sites.
-    Changed: alpha mutants identified by species. The promotion cause carries species through to loot and hit power systems.
   Core:
     Added: squad ownership reassertion. AP restores control over its squads every scan if another mod overwrites it.
     Added: squads that die or despawn between scans are cleaned up immediately.
@@ -30,7 +25,12 @@ next
     Changed: cause predicates are pure gates. World evaluation moved to consequence handlers. Causes reject faster and skip expensive world queries when business rules fail.
   MCM:
     Added: instincts cause and consequence sections with per-instinct toggles, thresholds, and rush settings.
+    Added: per-consequence personality weight MCM sliders. Users tune how much faction character matters for each behavior.
     Changed: all consequence descriptions updated to reflect species behavior and stalker/mutant separation.
+  Personality:
+    Changed: personality formula redesigned. Clamp removed, replaced with avg * weight. Each consequence has its own MCM weight slider (default 0.50).
+    Changed: all personality trait values rebalanced. Tiered values in 0.10 steps. Survival floor for all living creatures.
+    Changed: faction and species behavior tuned for more consistent and immersive outcomes across all consequences.
 
 1.3.6
   Summary: Hotfix, save compat
