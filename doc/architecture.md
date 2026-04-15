@@ -273,6 +273,24 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
 
+#### Cause Classification
+
+All causes are reactive -- the framework reacts to something. The pipeline splits into two mechanisms:
+
+- **Simple (reactive pipeline):** a discrete world action triggers the cause. A death, a healing, a pickup. The squad did not ask for it. Engine callback fires, producer evaluates all registered predicates for that callback type.
+- **Radiant (radiant pipeline):** the squad evaluates its own state on its update tick. Nothing specific happened. The framework checks what the squad sees, feels, or senses.
+
+Radiant causes split into three behavioral categories based on what the squad evaluates:
+
+| Category | Causes | What drives behavior | Range |
+|----------|--------|---------------------|-------|
+| Reactions | MASSACRE, SQUADKILL, BASEKILL, ALPHA, ALPHAKILL, WOUNDED, HARVEST | World event triggers response | signal (stalkers), scent (mutants) |
+| Opportunities | STASH, AREA | Squad sees what's nearby | eye |
+| Needs | NEEDS | Stalker internal drives, scored by deprivation | signal |
+| Instincts | INSTINCTS | Mutant internal drives, scored by deprivation | scent |
+
+Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are radiant-mechanism causes.
+
 ### Consequences
 
 | Cause | Consequence | Actor | Effect |

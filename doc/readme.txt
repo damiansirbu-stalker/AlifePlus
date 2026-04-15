@@ -160,45 +160,57 @@ Features:
 
 Causes and consequences that aggregate into hundreds of combinations.
 
-Massacre (reactive)
-  - Scavenge - Nearby scavengers and predators converge on the massacre site.
-  - Investigate - Victims' faction sends nearby squads to investigate.
+Reactions
 
-SquadKill (reactive)
-  - Revenge - Same-faction squads pursue the killer as it moves.
-  - Flee - Nearby squads of the victim's faction fall back to the nearest base.
+  World events trigger responses. A death, a healing, a pickup. Consequences search
+  within signal or scent range and evaluate alignment and personality.
 
-BaseKill (reactive)
-  - Support - Nearby friendly squads rush to reinforce the base under attack.
-  - Flee - Squads at the base evacuate to the nearest friendly position.
+  Massacre
+    - Scavenge - Nearby scavengers and predators converge on the massacre site.
+    - Investigate - Victims' faction sends nearby squads to investigate.
 
-Alpha (reactive)
-  - Promote - Mutants accumulate kills to level up. 10 levels. Hit power bonus/reduction
-    scales with level, panic immunity, valuable loot injected into inventory.
+  SquadKill
+    - Revenge - Same-faction squads pursue the killer as it moves.
+    - Flee - Nearby squads of the victim's faction fall back to the nearest base.
 
-AlphaKill (reactive)
-  - Targeted - Other alphas on the same level hunt the killer.
+  BaseKill
+    - Support - Nearby friendly squads rush to reinforce the base under attack.
+    - Flee - Squads at the base evacuate to the nearest friendly position.
 
-Wounded (reactive)
-  - Hunt - Predator mutants sense weakness and close in.
-  - Help - Nearby same-faction squads rush to help the wounded.
+  Alpha
+    - Promote - Mutants accumulate kills to level up. 10 levels. Hit power bonus/reduction
+      scales with level, panic immunity, valuable loot injected into inventory.
 
-Harvest (reactive)
-  - Rob - Nearby outlaws pursue whoever picked up the artefact.
-  - Haunt - Aberrant mutants converge on the artefact pickup site.
+  AlphaKill
+    - Targeted - Other alphas on the same level hunt the killer.
 
-Stash (radiant)
-  - Loot - Stalker squad spots the stash, walks there, and loots it.
-  - Ambush - Outlaw squad spots the stash and camps it. The stash is bait.
-  - Fill - Stalker squad spots the stash and hides supplies inside.
+  Wounded
+    - Hunt - Predator mutants sense weakness and close in.
+    - Help - Nearby same-faction squads rush to help the wounded.
 
-Area (radiant)
-  - Conquer - Organized and aggressive factions claim empty territory. Ecologists, loners, and renegades never conquer.
-    Conquered territory decays over time if not held (decay hours configurable in MCM).
+  Harvest
+    - Rob - Nearby outlaws pursue whoever picked up the artefact.
+    - Haunt - Aberrant mutants converge on the artefact pickup site.
 
-Needs (radiant)
-  Stalkers have human needs. Nine drives inspired by Maslow-Hull, scored by how long since last fulfilled.
-  The most deprived need wins.
+Opportunities
+
+  Squad sees what's nearby and acts. Consequences search within eye range and
+  evaluate alignment and personality. Per-squad drive cooldown prevents repeated firing.
+
+  Stash
+    - Loot - Stalker squad spots the stash, walks there, and loots it.
+    - Ambush - Outlaw squad spots the stash and camps it. The stash is bait.
+    - Fill - Stalker squad spots the stash and hides supplies inside.
+
+  Area
+    - Conquer - Organized and aggressive factions claim empty territory. Ecologists, loners, and renegades never conquer.
+      Conquered territory decays over time if not held (decay hours configurable in MCM).
+
+Needs
+
+  Stalkers have human needs. Nine drives inspired by Maslow-Hull, scored by how long
+  since last fulfilled. The most deprived need wins. Consequences search within signal
+  range and evaluate alignment and personality.
   - Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
   - Sleep - Finds a campfire during dormant hours. Sleeps.
   - Rest - Finds a campfire. Smokes a cigarette, has a drink.
@@ -212,9 +224,11 @@ Needs (radiant)
   NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty.
   Stalkers go to traders to swap artefacts for ammo, grenades, or medical supplies.
 
-Instincts (radiant)
+Instincts
+
   Mutants have instincts. Four drives scored by deprivation, same as stalker needs.
-  The strongest unmet instinct wins.
+  The strongest unmet instinct wins. Consequences search within scent range and
+  evaluate alignment and personality.
   - Feed - Mutants move to open territory during active hours. Predators and prey meet on shared hunting grounds.
   - Sleep - Mutants return to rest locations during dormant hours.
     Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.
