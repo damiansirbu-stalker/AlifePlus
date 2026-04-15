@@ -69,15 +69,3 @@ function get_species(squad_id)
     return species
 end
 
---- Check species alignment (hard filter for mutants, passes stalkers through)
---- Returns true for stalkers (species alignment does not apply).
---- Returns true for mutants matching the species set, false otherwise.
---- @param species_alignment table|nil Species hash set { ["dog"] = true, ... }
---- @param squad_id number Squad entity ID
---- @return boolean
-function check_species_alignment(species_alignment, squad_id)
-    if not species_alignment then return true end
-    local species = get_species(squad_id)
-    if not species then return true end
-    return species_alignment[species] == true
-end

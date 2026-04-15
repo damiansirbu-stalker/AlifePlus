@@ -57,7 +57,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest) |
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
-| ap_ext_util | Domain gates: alignment, species alignment, personality checks, FIFO-cached species resolution |
+| ap_ext_util | Domain gates: alignment, personality checks, FIFO-cached species resolution |
 | ap_ext_const | Community sets, faction lists, item pools |
 | ap_ext_messages | PDA message templates |
 | ap_ext_test | In-game debug commands |
@@ -311,26 +311,26 @@ rules -> eval -> action
 
 | Phase | What runs | Returns on fail |
 |-------|-----------|-----------------|
-| rules | alignment, personality, species alignment, match (need/instinct), validation (nil args, at_base) | `FAILED_RULES` |
+| rules | alignment, species (direct hash), personality, match (need/instinct), validation (nil args, at_base) | `FAILED_RULES` |
 | eval | find_squads, find_smart, xobject.se (entity lookup) | `FAILED_EVAL` |
 | action | script_squad, script_actor_target, update_alpha, conquer_smart | `FAILED_ACTION` |
 | action (ok) | | `SUCCESS` |
 
 Each phase runs in order. If a phase fails, the handler returns immediately with the corresponding result code. The handler never reaches a later phase if an earlier phase failed.
 
-Gate order within the rules phase: alignment -> species alignment -> personality -> match -> validation.
+Gate order within the rules phase: alignment -> species (direct hash on resolved identity) -> personality -> match -> validation.
 
 ### Domain Gates
 
-Alignment, species alignment, and personality are domain-level gates. They live exclusively in ext consequence code (`ap_ext_util`), never in core. Core knows nothing about factions, species, or personality traits.
+Alignment and personality are domain-level gates. They live exclusively in ext consequence code (`ap_ext_util`), never in core. Core knows nothing about factions, species, or personality traits. Species filtering is a direct hash lookup on the resolved identity, not a separate function.
 
 **Gate order inside every consequence handler:**
 
-1. **Alignment** (hard filter, deterministic). Can this faction participate at all? Static hash set lookup, O(1). Checked via `ap_ext_util.check_alignment`.
-2. **Species alignment** (hard filter, deterministic). For mutants: is this the right kind of mutant? Stalkers pass through. Checked via `ap_ext_util.check_species_alignment`. Uses FIFO-cached species resolution (`ap_ext_util.get_species` -> `xcreature.get_mutant_species`).
-3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits, clamps to 0.10-0.50, rolls. Target range: roughly 20-50% pass rate. Checked via `ap_ext_util.check_personality`. For mutants, the identity key is the species string (not engine faction). Resolved via `ap_ext_util.get_species`.
+1. **Alignment** (hard filter, deterministic). Can this faction participate at all? Static hash set lookup on engine faction (`squad.player_id`), O(1). Checked via `ap_ext_util.check_alignment`.
+2. **Species** (hard filter, deterministic). For mutants: is this the right kind of mutant? Species is resolved once via `ap_ext_util.get_species` (FIFO-cached, 0 luabind on hit). Stalkers have nil species and pass automatically. Mutants are checked via direct hash lookup on the species alignment set.
+3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits, multiplies by per-consequence MCM weight, rolls. Checked via `ap_ext_util.check_personality`. The identity key (species for mutants, community for stalkers) is resolved once and shared with the species gate.
 
-Not every consequence uses all three gates. Human-only consequences skip species alignment. Some consequences (alpha_promote) have no gates beyond enabled check. But when gates are present, the order is always alignment -> species -> personality.
+Not every consequence uses all three gates. Human-only consequences skip species. Some consequences (alpha_promote) have no gates beyond enabled check. But when gates are present, the order is always alignment -> species -> personality.
 
 **Where gates apply depends on cause type:**
 
@@ -450,7 +450,7 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation. When multiple behaviors are possible for the same cause (stalker conquer vs mutant conquer vs mutant lair), they go into a config table as alternative entries with alignment, species, and smart filter gates. First match wins. Reactive causes have no such constraint because the event happens in the world and multiple squads respond independently.
 
-8. **Domain gates in ext only.** Alignment, species alignment, and personality checks live exclusively in ext consequence code (`ap_ext_util`). Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
+8. **Domain gates in ext only.** Alignment and personality checks live exclusively in ext consequence code (`ap_ext_util`). Species filtering is a direct hash lookup in consequence code. Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
 
 ### Consequence File Patterns
 

@@ -43,10 +43,11 @@ local function _handler(event_data)
         if not ap_ext_util.check_alignment(_alignment_conquer, event_data.community) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
-        if not ap_ext_util.check_species_alignment(_species_conquer, event_data.squad_id) then
+        local species = ap_ext_util.get_species(event_data.squad_id)
+        if species and not _species_conquer[species] then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
         end
-        local identity = ap_ext_util.get_species(event_data.squad_id) or event_data.community
+        local identity = species or event_data.community
         if not ap_ext_util.check_personality(_personality, identity,
             CONSEQUENCE.AREA_CONQUER, cfg.personality_weight_area_conquer) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }

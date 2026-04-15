@@ -33,7 +33,7 @@ local function _handler(event_data)
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
-            local dominated = ap_ext_util.check_species_alignment(_species_wounded_hunt, squad.id)
+            local dominated = (not species or _species_wounded_hunt[species])
                 and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT, cfg.personality_weight_wounded_hunt)
             if dominated then squads[#squads + 1] = squad end
         end
