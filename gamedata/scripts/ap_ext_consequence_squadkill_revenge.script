@@ -55,7 +55,7 @@ local function _on_arrive(squad, args)
     end
     ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
         local smart = ap_core_utils.find_smart(target_squad.position, {
-            level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
         })
         if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
@@ -92,7 +92,7 @@ local function _handler(event_data)
 
         local avengers = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
             level_id = level_id, max_count = cfg.consequence_squadkill_revenge_max_squads,
             exclude_squad_id = event_data.squad_id,
         })
@@ -113,7 +113,7 @@ local function _handler(event_data)
                 _move_actor_chasers(avengers, moved)
             else
                 local smart = ap_core_utils.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+                    level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id

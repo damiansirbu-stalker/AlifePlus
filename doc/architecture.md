@@ -380,6 +380,29 @@ Stalker factions have 7 traits: aggression, greed, survival, perception, territo
 
 **Current formula:** `chance = math.min(0.50, math.max(0.10, avg))`. The hard clamp at 0.50 means trait averages above 0.50 are wasted -- a faction with 0.90 aggression has the same 50% chance as one with 0.50. Trait averages below 0.20 at the 0.50 clamp produce less than 10% effective pass rate. Known low-floor combos: army/monolith stash (greed=0.10), ecolog revenge (aggression=0.10), monolith flee (survival=0.05+greed=0.10), renegade support/help (territory=0.05+relation=0.10). Planned replacement in n80: `chance = avg * personality_weight` with per-consequence weight, removing the clamp.
 
+### Range Tiers
+
+Every consequence searches within a range that matches the squad's awareness. Two tiers, grounded in GSC's `PersonalEyeRange` (EFC design docs, circa 2002) and validated against empirical smart terrain spacing (14 levels measured via TestZone, see `doc/library/modding/level-geometry.md`).
+
+| Tier | Constant | Distance | Who |
+|------|----------|----------|-----|
+| EyeRange | `RANGE_EYE` | 200m | all -- line-of-sight |
+| SignalRange | `RANGE_SIGNAL` | 500m | stalkers -- PDA/radio |
+| ScentRange | `RANGE_SCENT` | 500m | mutants -- scent tracking |
+
+EyeRange covers the p90 nearest-neighbor distance on 13 of 14 measured levels. A squad at any smart terrain can see 1-3 neighboring smarts and several stashes within 200m. SignalRange and ScentRange cover the full operational radius: stalkers receive PDA alerts, mutants track scent. Same distance today (500m), independently tunable.
+
+Each cause type maps to a range based on how the squad learns about the opportunity:
+
+| Cause type | Stalker range | Mutant range | Rationale |
+|------------|---------------|--------------|-----------|
+| Opportunities (stash, territory) | EyeRange | EyeRange | Squad sees what's nearby on arrival |
+| Reactions (kills, massacres, wounded) | SignalRange | ScentRange | Stalkers hear over radio, mutants smell blood |
+| Needs (hunger, sleep, shelter) | SignalRange | - | Squad knows campfire/trader locations from PDA |
+| Instincts (feed, sleep, explore) | - | ScentRange | Mutants track by scent across the area |
+
+Three tiers create a natural separation: opportunities are local and opportunistic (200m), stalker coordination reaches further via radio (500m), and mutant hunting extends through scent (500m). You act on what you see, respond to what you hear, hunt what you smell.
+
 ### Day/Night Cycle
 
 All drives (stalker needs and mutant instincts) are gated by the active/dormant period system. Each drive entry declares `active_period = true` (fires only when the creature is active) or `dormant_period = true` (fires only when dormant). Drives with neither flag fire at any time.

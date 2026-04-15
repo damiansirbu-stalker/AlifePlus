@@ -8,7 +8,7 @@ local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
-local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
+local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -49,10 +49,10 @@ local function _resolve_sleep_filter(species)
 end
 
 local function _find_predator_sleep_smart(trace, position, level_id)
-    local lair_opts = { level_id = level_id, filter = _is_lair, max_distance = RADIUS_DISTANT_MAX }
+    local lair_opts = { level_id = level_id, filter = _is_lair, max_distance = RANGE_SCENT }
     local smart = ap_core_utils.find_smart_observed(trace, position, lair_opts)
     if smart then return smart end
-    local surge_opts = { level_id = level_id, filter = _is_surge_shelter_not_base, max_distance = RADIUS_DISTANT_MAX }
+    local surge_opts = { level_id = level_id, filter = _is_surge_shelter_not_base, max_distance = RANGE_SCENT }
     return ap_core_utils.find_smart_observed(trace, position, surge_opts)
 end
 
@@ -108,7 +108,7 @@ local function _find_sleep_smart(trace, species, position, level_id)
     end
     local filter = _resolve_sleep_filter(species)
     if not filter then return nil end
-    local find_opts = { level_id = level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
+    local find_opts = { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
     return ap_core_utils.find_smart_observed(trace, position, find_opts)
 end
 
@@ -118,16 +118,16 @@ local _find_by_instinct = {
     end,
     socialize = function(trace, event_data, squad)
         local filter = _build_socialize_filter(event_data.community, squad.smart_id)
-        local opts = { level_id = event_data.level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
+        local opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
     explore = function(trace, event_data, squad)
         local opts = { level_id = event_data.level_id, filter = _is_territory_or_lair,
-            max_distance = RADIUS_DISTANT_MAX, exclude_id = squad.smart_id }
+            max_distance = RANGE_SCENT, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
     feed = function(trace, event_data, _squad)
-        local opts = { level_id = event_data.level_id, filter = _is_territory, max_distance = RADIUS_DISTANT_MAX }
+        local opts = { level_id = event_data.level_id, filter = _is_territory, max_distance = RANGE_SCENT }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
 }

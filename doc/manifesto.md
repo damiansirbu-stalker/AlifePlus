@@ -712,8 +712,10 @@ The decision is a function of who you are, not a coin flip.
 > "A character's personality determines what they prioritize as more valuable: money or reputation points (including negative reputation points)."
 > [8]
 
+The EFC (Evaluated Function Container) lookup tables in the original design archives prove this was not abstract. GSC built concrete probability matrices: `EnemyDetectProbability` is a 10x5 table indexed by `EnemyDetectability` and `PersonalEyeRange`. `EnemyRetreatProbability` crosses `EnemyDetectability` with `PersonalIntelligence`. `Expediency` crosses four axes into a single action probability. These are not descriptions of intent -- they are filled tables with numeric values that a running simulation would evaluate per tick.
+
 AlifePlus implements personality as a probability layer that runs after alignment.
-Seven traits per stalker faction, five per mutant species, each tracing to a GSC design axis.
+Seven traits per stalker faction, five per mutant species, each tracing directly to GSC's EFC variable names: `PersonalAggressiveness` -> aggression, `PersonalGreed` -> greed, `PersonalIntelligence` -> discipline, `PersonalEyeRange` -> perception, `PersonalRelation` -> relation.
 Stalker factions and mutant species share the same gate function and the same roll mechanic.
 The decision is probabilistic given the identity and the event, but only within the set of actions alignment permits.
 
@@ -730,6 +732,29 @@ Perception gates massacre investigate and prey detection.
 Territory combined with aggression gates area conquer and lair defense.
 Relation gates base kill support, wounded help, and pack response to help sounds.
 Discipline gates needs consequences: eating, sleeping, guarding, socializing.
+
+---
+
+## Range: Awareness and Reach
+
+GSC's `PersonalEyeRange` was a per-entity attribute that determined how far a stalker could perceive threats. It fed directly into `EnemyDetectProbability`: a stalker with high EyeRange detected enemies that others missed [8]. The range was not a game mechanic exposed to the player -- it was an internal simulation parameter that made each entity's awareness feel distinct.
+
+AlifePlus extends this into two range tiers that govern how far consequences search for targets:
+
+- **EyeRange** (200m): line-of-sight. What the squad can see from where it stands. A stalker arriving at a smart terrain spots a nearby stash, an unclaimed outpost. A mutant pack sees prey at a watering hole.
+- **SignalRange** (500m): PDA radio. A stalker hears about a massacre, a base under attack, a trader location. Information travels further than sight.
+- **ScentRange** (500m): scent tracking. A bloodsucker smells corpses from 500m. A pack follows pheromone trails. A predator tracks wounded prey on the wind. Same distance as radio, different sense, independently tunable.
+
+The 200m EyeRange is not arbitrary. Empirical measurement of smart terrain spacing across 14 Anomaly levels shows that the median nearest-neighbor distance between smarts ranges from 44m (dense urban) to 148m (sparse industrial), with 200m covering the 90th percentile on 93% of levels.
+
+Each system maps to a range based on how the squad becomes aware:
+
+- **Opportunities** use EyeRange. A squad arrives and sees what's nearby. Stash, unclaimed territory. If nothing is visible, nothing happens. This is local and opportunistic.
+- **Reactions** use SignalRange (stalkers) or ScentRange (mutants). A stalker hears about a kill over radio. A mutant smells blood. The event happened elsewhere; the squad responds from a distance.
+- **Needs** use SignalRange. A hungry stalker knows where campfires are from PDA contacts. A wounded stalker knows the nearest medic.
+- **Instincts** use ScentRange. A hungry predator tracks scent to prey. A pack follows pheromone trails to a gathering point.
+
+Three tiers create a natural boundary between seeing, hearing, and smelling. You act on what you see, respond to what you hear, hunt what you smell. This is how GSC designed awareness: `PersonalEyeRange` determined the visible world, while faction SOS signals carried information beyond it.
 
 ---
 

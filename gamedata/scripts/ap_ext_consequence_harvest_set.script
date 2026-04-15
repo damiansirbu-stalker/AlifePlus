@@ -71,7 +71,7 @@ local function _make_on_arrive(opts)
         end
         ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
             local smart = ap_core_utils.find_smart(target_squad.position, {
-                level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+                level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
             })
             if not smart then return { code = TRACE.NO_SMART } end
             if xsmart.is_arrived(squad, smart) then
@@ -113,7 +113,7 @@ local function _handler_rob(event_data)
 
         local chasers = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_rob,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
             level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
             exclude_squad_id = event_data.taker_squad_id,
         })
@@ -141,7 +141,7 @@ local function _handler_rob(event_data)
                 _move_actor_chasers(robbers, moved)
             else
                 local smart = ap_core_utils.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+                    level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id
@@ -171,12 +171,12 @@ local function _handler_haunt(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RADIUS_DISTANT_MAX })
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
         if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
         local candidates = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_haunt,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RADIUS_DISTANT_MAX,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_harvest_haunt_max_squads,
             exclude_at_smart_id = target_smart.id,
         })

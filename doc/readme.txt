@@ -101,6 +101,15 @@ Behavior is the result of independent actors colliding in a shared simulation.
 - Reactive causes: triggered by combat, wounds, deaths, item use
 - Radiant causes: triggered by movement, location, and needs
 
+Every action is bounded by awareness. Three range tiers govern how far a squad searches:
+- EyeRange: what the squad can see. Opportunities like stashes and unclaimed territory.
+- SignalRange: PDA radio. Stalkers hear about massacres, base attacks, trader locations.
+- ScentRange: scent tracking. Mutants smell corpses, track wounded prey, follow trails.
+Range tiers are grounded in GSC's original AI design documents (PersonalEyeRange, EnemyDetectProbability).
+EyeRange validated empirically: nearest-neighbor distance measured in-engine across 14 levels
+(Escape, Garbage, Bar, Darkvalley, Military, Yantar, Deadcity, Red Forest, Radar, Pripyat,
+Marsh, Trucks Cemetery, Promzona, Pole). Median NN distance 44-148m, p90 66-188m.
+
 AlifePlus is first and foremost a framework.
 Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause and a consequence.
 The pipeline handles protection, rate limiting, tracing, squad lifecycle, and PDA routing.

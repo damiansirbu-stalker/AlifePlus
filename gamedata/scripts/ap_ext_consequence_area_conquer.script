@@ -6,7 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
-local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
+local RANGE_EYE = ap_core_const.RANGE_EYE
 
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -54,7 +54,7 @@ local function _handler(event_data)
 
         local filter = _build_filter(event_data.community)
         local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
-            level_id = event_data.level_id, max_distance = RADIUS_DISTANT_MAX, filter = filter,
+            level_id = event_data.level_id, max_distance = RANGE_EYE, filter = filter,
         })
         if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
         _smart_cooldown:set(smart.id, true)

@@ -1,19 +1,25 @@
---- ap_ext_cause_area: Squad eligible for territory conquest (pure predicate, no find)
+--- ap_ext_cause_area: Squad eligible for territory conquest (pure predicate, per-squad cooldown)
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local time_global = time_global
 
 local cfg = ap_core_mcm.cfg
+local _cooldown
 
 local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.FAILED_RULES } end
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
 
+    local now = time_global()
+    if _cooldown.check(squad.id, now) then return { code = RESULT.FAILED_RULES } end
+
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
+    _cooldown.mark(squad.id, now)
     return {
         cause = CAUSE.AREA,
         squad_id = squad.id,
@@ -24,6 +30,7 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
+    _cooldown = ap_core_limiter.create_cooldown(ap_core_const.OPPORTUNITY_COOLDOWN_MS)
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)

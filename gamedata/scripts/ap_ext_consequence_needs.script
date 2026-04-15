@@ -9,7 +9,7 @@ local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
-local RADIUS_DISTANT_MAX = ap_core_const.RADIUS_DISTANT_MAX
+local RANGE_SIGNAL = ap_core_const.RANGE_SIGNAL
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local NEEDS_SECTIONS = ap_ext_const.NEEDS_SECTIONS
 local PERSONALITY = ap_ext_const.PERSONALITY
@@ -206,7 +206,7 @@ local function _make_handler(entry)
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
             local filter = _build_filter(entry, event_data.community)
-            local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RADIUS_DISTANT_MAX }
+            local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SIGNAL }
 
             local smart = ap_core_utils.find_smart_observed(trace, event_data.position, find_opts)
             if not smart then

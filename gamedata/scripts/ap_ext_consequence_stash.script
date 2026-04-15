@@ -132,7 +132,7 @@ local function _make_handler(entry)
             if entry.exclude_at_base and xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
             local stashes = xstash.find_stashes(event_data.position, {
-                max_distance = ap_core_const.RADIUS_DISTANT_MAX, level_id = event_data.level_id, max_count = 1,
+                max_distance = ap_core_const.RANGE_EYE, level_id = event_data.level_id, max_count = 1,
             })
             local stash = stashes[1]
             if not stash then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_STASH_NEARBY } end
