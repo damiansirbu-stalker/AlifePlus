@@ -312,10 +312,10 @@ Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are r
 | STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
 | AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h) |
 | NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
-| INSTINCTS | instincts_feed | mutant | move to territory to hunt/scavenge |
-| INSTINCTS | instincts_sleep | mutant | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
-| INSTINCTS | instincts_explore | mutant | wander to nearby territory or lair |
-| INSTINCTS | instincts_socialize | mutant | move toward smart with same-faction squads |
+| INSTINCTS | instincts_feed | mutant (all) | move to territory to hunt/scavenge |
+| INSTINCTS | instincts_sleep | mutant (all) | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
+| INSTINCTS | instincts_explore | mutant (cowardly+feral+predator) | wander to nearby territory or lair. Aberrant excluded (lair-bound). |
+| INSTINCTS | instincts_socialize | mutant (cowardly+feral) | move toward smart with same-faction squads. Predator and aberrant excluded (solitary). |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
 

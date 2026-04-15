@@ -526,13 +526,38 @@ Free items from a trader is a spawn, not a trade.
 Mutants develop instincts that drive movement the same way stalker needs do: Hull scoring picks the strongest unmet drive, and the consequence routes the squad to an appropriate smart terrain.
 
 AlifePlus fires the instincts cause during radiant evaluation when a mutant squad's drives are overdue.
-Four instincts dispatch: feed routes the squad to open territory where prey exists, sleep returns it to a species-appropriate rest location, explore moves it to a new territory or lair, and socialize draws it toward smart terrains where same-faction squads are present.
+Four instincts dispatch, each gated by species behavioral alignment:
 
-Sleep destinations follow the behavioral alignment axis.
+**Feed** routes all species to open territory.
+GSC designed every creature with the same feeding state machine (`eStateEat` in `state_defs.h`): approach, inspect, drag, eat, rest.
+Every species registers the same `can_eat()` function (`monster_state_manager_inline.h:53`).
+AlifePlus puts predators in proximity with prey through shared territory.
+The engine handles combat and corpse consumption when they meet.
+
+**Sleep** returns the squad to a species-appropriate rest location.
 Cowardly species sleep in open fields.
 Feral species sleep in lairs.
 Predators sleep in lairs or buildings.
 Aberrant species sleep in buildings and underground shelters.
+GSC documented these habitats per species: bloodsucker "mesto zhitel'stva razvaliny, podzemel'ya, broshennye postroyki" (residence: ruins, dungeons, abandoned buildings) (monstry.doc).
+Burer "zhivet tol'ko v mrachnykh, temnykh podzemyel'yakh" (lives only in dark dungeons) (monstry.doc).
+
+**Explore** moves the squad to a different territory or lair.
+Cowardly, feral, and predator species explore.
+Aberrant species do not explore -- they are lair-bound.
+GSC documented this sedentary nature explicitly: poltergeist "na otkrytykh mestakh ne vstrechayetsya" (never found in open areas) (monstry.doc).
+Burer never leaves its dungeon.
+Controller "predpochitayet zasady v zdaniyakh" (prefers ambushes in buildings) (monstry.doc).
+Species that never leave their lair have no reason to wander.
+
+**Socialize** draws the squad toward smart terrains where same-faction squads are present.
+Cowardly and feral species socialize -- they are pack and herd animals.
+Boar is "staynoye zhivotnoye" (herd animal) with leader morale mechanics (monstry.doc).
+Dogs are "agressivny, protivnika okruzhayut" (aggressive, surround the enemy) -- pack tactics imply social structure (monstry.doc).
+Flesh form "staya" (pack) and flee together (monstry.doc).
+Predator and aberrant species do not socialize -- they are solitary hunters and lair defenders.
+Bloodsucker ambushes from cover alone.
+Chimera "pryachetsya, obkhodit so spiny" (hides, flanks from behind) -- solitary ambush predator (monstry.doc).
 
 The engine already models the complete feeding state machine.
 `eStateEat` defines approach, inspect, drag, eat, and rest substates (`state_defs.h`).

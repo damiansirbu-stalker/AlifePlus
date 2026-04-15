@@ -18,6 +18,8 @@ local _alignment_mutant_cowardly
 local _alignment_mutant_feral
 local _alignment_mutant_predator
 local _alignment_mutant_aberrant
+local _species_explore
+local _species_socialize
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
@@ -141,7 +143,7 @@ local function _make_handler(entry)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
             if event_data.instinct ~= entry.instinct then return { code = RESULT.FAILED_RULES, reason = REASON.INSTINCT_MISMATCH } end
-            if not ap_ext_util.check_alignment(ap_ext_const.alignment_mutant, event_data.community) then
+            if entry.species_alignment and not entry.species_alignment[event_data.species] then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
             if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name, cfg["personality_weight_" .. entry.name]) then
@@ -185,6 +187,14 @@ function on_game_start()
     _alignment_mutant_feral = ap_ext_const.alignment_mutant_feral
     _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
     _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
+
+    -- explore: cowardly + feral + predator (aberrant are lair-bound, never wander)
+    _species_explore = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
+    -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
+    _species_socialize = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
+
+    CONFIGS[3].species_alignment = _species_explore
+    CONFIGS[4].species_alignment = _species_socialize
 
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
