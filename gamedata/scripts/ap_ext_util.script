@@ -28,30 +28,42 @@ function check_alignment(alignment, community)
 end
 
 --- Check faction personality (probability layer, runs after alignment)
---- Averages relevant traits for the faction, multiplies by MCM weight, rolls.
+--- Averages relevant traits for the faction, clamps to MCM min/max, rolls.
+--- INV_ traits are resolved as (1 - base_value) before averaging.
 --- Logs PERSONALITY_PASSED/BLOCKED at DEBUG (zero cost above DEBUG).
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
 --- @param consequence_name string Consequence name for logging
---- @param weight number MCM personality_weight for this consequence (0.0-1.0)
 --- @return boolean true = personality roll passed
-function check_personality(traits, community, consequence_name, weight)
+function check_personality(traits, community, consequence_name)
     if not traits or not community then return true end
     local faction_traits = PERSONALITY[community]
     if not faction_traits then return true end
     local sum, count = 0, 0
     for i = 1, #traits do
-        sum = sum + (faction_traits[traits[i]] or 0.5)
+        local key = traits[i]
+        local base_key = key:match("^inv_(.+)$")
+        if base_key then
+            sum = sum + (1.0 - (faction_traits[base_key] or 0.5))
+        else
+            sum = sum + (faction_traits[key] or 0.5)
+        end
         count = count + 1
     end
     if count == 0 then return true end
-    local chance = (sum / count) * (weight or 0.50)
+    local config = ap_core_mcm.get_config()
+    local p_min = config.personality_min or 0.20
+    local p_max = config.personality_max or 0.70
+    local avg = sum / count
+    local chance = avg
+    if chance < p_min then chance = p_min end
+    if chance > p_max then chance = p_max end
     local roll = math_random()
     local passed = roll < chance
     if passed then
-        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s chance=%.2f roll=%.2f weight=%.2f", consequence_name, community, chance, roll, weight or 0.50)
+        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", consequence_name, community, avg, chance, roll)
     else
-        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s chance=%.2f roll=%.2f weight=%.2f", consequence_name, community, chance, roll, weight or 0.50)
+        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", consequence_name, community, avg, chance, roll)
     end
     return passed
 end

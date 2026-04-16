@@ -11,7 +11,7 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 
 local cfg = ap_core_mcm.cfg
 local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
-local _personality = { PERSONALITY.SURVIVAL, PERSONALITY.GREED }
+local _personality = { PERSONALITY.INV_DISCIPLINE, PERSONALITY.INV_TERRITORY }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -22,7 +22,7 @@ local function _handler(event_data)
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
         if not ap_ext_util.check_personality(_personality, event_data.faction,
-            CONSEQUENCE.BASEKILL_FLEE, cfg.personality_weight_basekill_flee) then
+            CONSEQUENCE.BASEKILL_FLEE) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

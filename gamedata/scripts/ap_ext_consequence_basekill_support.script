@@ -12,7 +12,7 @@ local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local cfg = ap_core_mcm.cfg
 local _alignment_support = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
-local _personality = { PERSONALITY.TERRITORY, PERSONALITY.RELATION }
+local _personality = { PERSONALITY.DISCIPLINE, PERSONALITY.RELATION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -22,7 +22,7 @@ local function _handler(event_data)
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_support, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
         if not ap_ext_util.check_personality(_personality, event_data.faction,
-            CONSEQUENCE.BASEKILL_SUPPORT, cfg.personality_weight_basekill_support) then
+            CONSEQUENCE.BASEKILL_SUPPORT) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

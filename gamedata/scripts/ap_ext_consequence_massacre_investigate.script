@@ -12,7 +12,7 @@ local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local cfg = ap_core_mcm.cfg
 local _alignment_investigate = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
-local _personality = { PERSONALITY.PERCEPTION }
+local _personality = { PERSONALITY.PERCEPTION, PERSONALITY.RELATION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -26,7 +26,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
         if not ap_ext_util.check_personality(_personality, investigate_faction,
-            CONSEQUENCE.MASSACRE_INVESTIGATE, cfg.personality_weight_massacre_investigate) then
+            CONSEQUENCE.MASSACRE_INVESTIGATE) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

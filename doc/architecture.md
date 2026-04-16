@@ -346,7 +346,7 @@ Alignment and personality are domain-level gates. They live exclusively in ext c
 
 1. **Alignment** (hard filter, deterministic). Can this faction participate at all? Static hash set lookup on engine faction (`squad.player_id`), O(1). Checked via `ap_ext_util.check_alignment`.
 2. **Species** (hard filter, deterministic). For mutants: is this the right kind of mutant? Species is resolved once via `ap_ext_util.get_species` (FIFO-cached, 0 luabind on hit). Stalkers have nil species and pass automatically. Mutants are checked via direct hash lookup on the species alignment set.
-3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits, multiplies by per-consequence MCM weight, rolls. Checked via `ap_ext_util.check_personality`. The identity key (species for mutants, community for stalkers) is resolved once and shared with the species gate.
+3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits (max 2 per consequence), clamps to MCM `personality_min`/`personality_max` (defaults 0.20/0.70), rolls. INV_ traits resolve as `1 - base_value` before averaging. Checked via `ap_ext_util.check_personality`. The identity key (species for mutants, community for stalkers) is resolved once and shared with the species gate.
 
 Not every consequence uses all three gates. Human-only consequences skip species. Some consequences (alpha_promote) have no gates beyond enabled check. But when gates are present, the order is always alignment -> species -> personality.
 
@@ -394,11 +394,13 @@ Consequences compose tables with `xtable.merge` (set union) and `xtable.subtract
 
 Probability layer: how likely is an eligible faction/species to act. Runs only after alignment passes. All checks happen in ext consequence code via `ap_ext_util.check_personality`, never in core.
 
-Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares which traits matter and has an MCM-configurable `personality_weight` slider (0.0-1.0, default 0.50). The check averages those traits for the faction/species, multiplies by the weight, and rolls `math.random()` against the result.
+Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares at most 2 relevant traits. The check averages those traits for the faction/species and rolls `math.random()` against the result, clamped to MCM `personality_min`/`personality_max`.
 
-**Formula:** `chance = avg(relevant_traits) * personality_weight`. The weight is per-consequence and user-tunable via MCM. Higher weight = personality matters more (lower pass rates for low-trait factions). At weight 0.50, effective chances range from ~5% (army stash, greed=0.10) to ~45% (monolith area_conquer, territory+aggression avg=0.90). At weight 1.0, the full trait average is the chance.
+**Formula:** `chance = clamp(avg(relevant_traits), personality_min, personality_max)`. No per-consequence weight. Two global MCM sliders control the floor and ceiling of all personality rolls (defaults: min=0.20, max=0.70). The floor ensures even unfavorable factions act occasionally. The ceiling ensures even favorable factions fail sometimes. Effective chances range from 20% (clamped floor) to 70% (clamped ceiling) with personality providing variance within that band.
 
-**Trait value design:** all traits use tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival has a floor of 0.60 for all living creatures (biological needs are universal) with exceptions for zombied (0.20), zombie (0.20), and poltergeist (0.20).
+**Inverted traits:** traits prefixed with `INV_` resolve as `1 - base_value` before averaging. Used for behaviors driven by the absence of a quality: fleeing is gated by `INV_DISCIPLINE` + `INV_TERRITORY` (low discipline and low territorial attachment = more likely to flee). Only `INV_DISCIPLINE`, `INV_TERRITORY`, and `INV_AGGRESSION` are defined.
+
+**Trait value design:** all traits use tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival is a flat band (0.40-0.60) for all factions and species -- biological needs are universal drives, not faction differentiators. Each value is a direct probability grounded in GSC lore (monstry.doc, Ai.doc).
 
 ### Range Tiers
 

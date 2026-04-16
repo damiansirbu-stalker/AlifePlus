@@ -13,7 +13,7 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 local cfg = ap_core_mcm.cfg
 local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
 local _species_scavenge = ap_ext_const.alignment_mutant_cowardly
-local _personality = { PERSONALITY.SURVIVAL }
+local _personality = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -32,7 +32,7 @@ local function _handler(event_data)
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
             local dominated = (not species or _species_scavenge[species])
-                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.MASSACRE_SCAVENGE, cfg.personality_weight_massacre_scavenge)
+                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.MASSACRE_SCAVENGE)
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end

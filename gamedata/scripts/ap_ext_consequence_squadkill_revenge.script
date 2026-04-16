@@ -13,7 +13,7 @@ local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
 local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
-local _personality = { PERSONALITY.AGGRESSION }
+local _personality = { PERSONALITY.AGGRESSION, PERSONALITY.RELATION }
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
@@ -80,7 +80,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
         if not ap_ext_util.check_personality(_personality, event_data.victim_faction,
-            CONSEQUENCE.SQUADKILL_REVENGE, cfg.personality_weight_squadkill_revenge) then
+            CONSEQUENCE.SQUADKILL_REVENGE) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
         local killer_squad_id = event_data.killer_squad_id

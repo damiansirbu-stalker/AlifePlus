@@ -1,6 +1,6 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
-- Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md
+- Integration guide: https://damiansirbu-stalker.github.io/siski-report/guide.html
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
 
@@ -116,7 +116,7 @@ New causes and consequences plug in without modifying core code.
 Other mods can integrate at any level: passively listen to events, register new behaviors, or coordinate squad control.
 AP uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs).
 Any mod that respects the engine's own APIs will not conflict.
-See doc/integration-guide.md for examples, API reference, and a concrete two-mod collaboration scenario.
+See guide.html on the project site for examples, API reference, and a concrete two-mod collaboration scenario.
 
 ---
 
@@ -257,9 +257,10 @@ Alignment
 Personality
   Every stalker faction and mutant species has a personality profile derived from GSC's
   original AI design documents. Traits include aggression, greed, survival, perception,
-  territory, relation, and discipline. Each consequence checks the relevant traits,
-  averages them, and multiplies by a per-consequence weight tunable in MCM.
-  Both stalkers and mutants share the same system.
+  territory, relation, and discipline. Each consequence checks at most two relevant
+  traits, averages them, and rolls against the result clamped to a global floor and
+  ceiling (MCM personality_min / personality_max). Both stalkers and mutants share the
+  same system. Trait values are direct probabilities grounded in GSC lore.
 
 ---
 
@@ -274,9 +275,9 @@ Compatibility & Safety:
 - Other mods can integrate at any level: listen to events, register new behaviors, or coordinate squad control
 - Uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs).
 - AlifePlus does not need third-party "bridge" or "synergy" patches.
-  Mods that adopt the AP framework through the official API (see integration-guide.md) are supported.
+  Mods that adopt the AP framework through the official API (see guide.html on the project site) are supported.
   Unauthorized patches that claim compatibility are not endorsed and will cause instability and save corruption.
-- See doc/integration-guide.md for API reference and examples
+- See guide.html on the project site for API reference and examples
 
 ---
 

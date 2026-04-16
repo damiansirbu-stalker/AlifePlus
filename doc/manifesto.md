@@ -741,22 +741,28 @@ The EFC (Evaluated Function Container) lookup tables in the original design arch
 
 AlifePlus implements personality as a probability layer that runs after alignment.
 Seven traits per stalker faction, five per mutant species, each tracing directly to GSC's EFC variable names: `PersonalAggressiveness` -> aggression, `PersonalGreed` -> greed, `PersonalIntelligence` -> discipline, `PersonalEyeRange` -> perception, `PersonalRelation` -> relation.
+Two additional traits -- territory (from `CMonsterHome` territory system) and survival (biological needs drive) -- complete the set.
 Stalker factions and mutant species share the same gate function and the same roll mechanic.
 The decision is probabilistic given the identity and the event, but only within the set of actions alignment permits.
 
+Each trait value is a direct probability (0.0-1.0) grounded in GSC lore. Trait values are pure: no weight multiplier, no per-consequence scaling. Each consequence declares at most two traits. The check averages those traits and rolls against the result, clamped to a user-configurable floor and ceiling (MCM `personality_min` and `personality_max`, defaults 0.20 and 0.70). The clamp ensures that even unfavorable factions act occasionally (floor) and even favorable factions fail sometimes (ceiling).
+
+Survival is a flat band (0.40-0.60) across all factions and species. Eating and sleeping are universal biological drives, not faction differentiators. The interesting personality differences come from the other traits.
+
+Inverted traits (`INV_`) express behaviors driven by the absence of a quality. Fleeing a base attack is gated by `INV_DISCIPLINE` and `INV_TERRITORY` -- low discipline and low territorial attachment make flight more likely. The check resolves `1 - base_value` before averaging.
+
 For stalkers, personality keys on faction community.
 For mutants, personality keys on species resolved through `xcreature.get_mutant_species`.
-A dog and a lurker both belong to `monster_predatory_day`, but a dog has high relation (pack loyalty) and moderate aggression, while a lurker has zero relation (solitary) and high aggression.
+A dog and a lurker both belong to `monster_predatory_day`, but a dog has high relation (pack loyalty) and moderate aggression, while a lurker has low relation (solitary) and high aggression.
 The engine faction cannot express this.
 GSC's design documents gave each creature its own behavioral profile, and AlifePlus restores that granularity.
 
-Aggression gates revenge, alpha hunt, wounded hunt, and harvest hunt.
-Greed gates stash loot, stash ambush, stash fill, and massacre scavenge.
-Survival gates the flee consequences.
-Perception gates massacre investigate and prey detection.
-Territory combined with aggression gates area conquer and lair defense.
-Relation gates base kill support, wounded help, and pack response to help sounds.
-Discipline gates needs consequences: eating, sleeping, guarding, socializing.
+Aggression gates revenge, alpha hunt, wounded hunt, territory conquest, harvest robbery, and stash ambush.
+Greed gates stash loot, stash fill, money harvest, supply runs, and harvest robbery.
+Perception gates massacre investigation, exploration, research, money harvest, and mutant feeding.
+Territory gates area conquest, shelter, outpost duty, and exploration.
+Relation gates squad revenge, massacre investigation, base support, wounded help, social behavior, and supply trading.
+Discipline gates base support, shelter, outpost duty, research, and healing -- and its inverse gates fleeing.
 
 ---
 

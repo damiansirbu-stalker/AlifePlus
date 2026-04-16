@@ -88,7 +88,7 @@ end
 local CONFIGS = {
     { instinct = "feed", consequence = CONSEQUENCE.INSTINCTS_FEED, name = "instinct_feed",
         dto_field = "last_feed_at",
-        personality = { PERSONALITY.SURVIVAL },
+        personality = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_FEED },
     { instinct = "sleep", consequence = CONSEQUENCE.INSTINCTS_SLEEP, name = "instinct_sleep",
         dto_field = "last_sleep_at",
@@ -96,7 +96,7 @@ local CONFIGS = {
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SLEEP },
     { instinct = "explore", consequence = CONSEQUENCE.INSTINCTS_EXPLORE, name = "instinct_explore",
         dto_field = "last_explore_at",
-        personality = { PERSONALITY.PERCEPTION },
+        personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_EXPLORE },
     { instinct = "socialize", consequence = CONSEQUENCE.INSTINCTS_SOCIALIZE, name = "instinct_socialize",
         dto_field = "last_socialize_at",
@@ -146,7 +146,7 @@ local function _make_handler(entry)
             if entry.species_alignment and not entry.species_alignment[event_data.species] then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name, cfg["personality_weight_" .. entry.name]) then
+            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 
