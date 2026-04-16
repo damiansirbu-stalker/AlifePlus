@@ -1,5 +1,5 @@
 --- ap_core_producer: Dispatches cause predicates on engine callbacks
---- Gate chains: radiant (PACER->SCRIPTED->RATIO->PROTECTION->EVAL), reactive (PACER->RATIO->EVAL)
+--- Gate chains: radiant (PACER_1->PROTECTION->RATIO->PACER_2->EVAL), reactive (PACER->RATIO->EVAL)
 local pairs, tostring, type, unpack = pairs, tostring, type, unpack
 local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 
@@ -30,27 +30,36 @@ local _always_on_map = {
 local _radiant_ct = { on = 0, off = 0 }
 local _reactive_ct = { on = 0, off = 0 }
 
---- PACER state: next allowed radiant evaluation (os.clock timestamp)
-local _next_radiant = 0
-local _pacer_rejected = 0
-local _pacer_accepted = 0
+--- PACER_1: coarse rate limiter (100ms, ~10/sec). Pure os.clock + comparison, no squad fields.
+local _next_pacer1 = 0
+local PACER_1_INTERVAL = 0.1
+
+--- PACER_2: budget limiter (cfg.distributor_interval_sec). Only eligible squads consume triggers.
+local _next_pacer2 = 0
+
+--- Periodic pipeline dump
 local _pacer_last_log = 0
 local PACER_LOG_INTERVAL = 60
-local PACER_RETRY_INTERVAL = 0.5
 
 --- Pipeline trace counters (guarded by enabled(), dumped every PACER_LOG_INTERVAL)
-local _radiant_scripted = 0
+local _pacer1_accepted = 0
+local _radiant_eligible = 0
 local _radiant_ratio = 0
-local _radiant_protection = 0
+local _pacer2_accepted = 0
 local _radiant_published = 0
 local _reactive_callbacks = 0
 local _reactive_pacer = 0
 local _reactive_ratio = 0
 local _reactive_published = 0
 
---- GATE: RATIO (radiant 3/5, reactive 2/3)
+--- Instrumentation spans: {total_ms, max_ms, count} (debug only)
+local _radiant_gate_span = {0, 0, 0}
+local _radiant_eval_span = {0, 0, 0}
+local _reactive_gate_span = {0, 0, 0}
+local _reactive_eval_span = {0, 0, 0}
+
+--- GATE: RATIO (radiant 3/4, reactive 2/3)
 --- @complexity O(1) | 0 luabind
---- @param on_map boolean true = on-map, false = off-map
 --- @param on_map boolean true = on-map, false = off-map
 --- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
 --- @return boolean true = allowed, false = blocked
@@ -95,59 +104,48 @@ local function _reactive_pacer_gate(callback_type)
     return _reactive_event_limiter:acquire(callback_type)
 end
 
---- GATE: PACER-RADIANT (radiant 1/5)
---- @complexity O(1) | 0 luabind (os.clock + number compare, rejects ~99% of squad_on_update)
---- @return boolean true = allowed, false = blocked
-local function _radiant_pacer_gate()
-    local now = clock()
-    if now < _next_radiant then
-        _pacer_rejected = _pacer_rejected + 1
-        return false
-    end
-    _pacer_accepted = _pacer_accepted + 1
-    _next_radiant = now + cfg.distributor_interval_sec
-    if (now - _pacer_last_log) >= PACER_LOG_INTERVAL then
-        ap_core_debug.debug(
-            "[PIPELINE] %ds | radiant: received=%d after_pacer=%d after_scripted=%d after_ratio=%d after_protection=%d published=%d | reactive: received=%d after_pacer=%d after_ratio=%d published=%d",
-            PACER_LOG_INTERVAL,
-            _pacer_accepted + _pacer_rejected, _pacer_accepted, _radiant_scripted, _radiant_ratio,
-            _radiant_protection, _radiant_published,
-            _reactive_callbacks, _reactive_pacer, _reactive_ratio, _reactive_published)
-        _pacer_accepted = 0
-        _pacer_rejected = 0
-        _radiant_scripted = 0
-        _radiant_ratio = 0
-        _radiant_protection = 0
-        _radiant_published = 0
-        _reactive_callbacks = 0
-        _reactive_pacer = 0
-        _reactive_ratio = 0
-        _reactive_published = 0
-        _pacer_last_log = now
-        ap_core_consumer.dump_statistics()
-    end
-    return true
+-- Accumulate span measurement, return ms or nil
+-- @cost O(1) | 0 luabind
+local function _accum_span(span, t0)
+    if not t0 then return nil end
+    local ms = (clock() - t0) * 1000
+    span[1] = span[1] + ms
+    if ms > span[2] then span[2] = ms end
+    span[3] = span[3] + 1
+    return ms
 end
 
---- GATE: SCRIPTED (radiant 2/5)
---- @complexity O(1) | 0 luabind (hash lookup in _ap_scripted_squads)
---- @param squad_id number Squad server ID
---- @return boolean true = allowed, false = blocked
-local function _scripted_gate(squad_id)
-    return not ap_core_squad.get_scripted_ids()[squad_id]
+local function _reset_span(span)
+    span[1], span[2], span[3] = 0, 0, 0
 end
 
---- GATE: PROTECTION (radiant 4/5)
---- @complexity O(1) cached, O(t) worst | 0 luabind (cache hit) or 4-5 luabind (miss, populates session cache)
---- @param squad userdata Squad server object
---- @return boolean true = allowed, false = blocked
-local function _protection_gate(squad)
-    local protected, reason, detail, name = ap_core_squad.is_protected(squad)
-    if protected and ap_core_debug.enabled() then
-        if not name then name = squad:section_name() or "?" end
-        ap_core_debug.debug("[PRODUCER.RADIANT] %s_BLOCKED squad=%d detail=%s name=%s", reason, squad.id, detail or "?", name)
-    end
-    return not protected
+--- Dump pipeline stats and reset counters (called every PACER_LOG_INTERVAL from PACER_1)
+local function _dump_pipeline_stats(now)
+    local rg, re = _radiant_gate_span, _radiant_eval_span
+    local xg, xe = _reactive_gate_span, _reactive_eval_span
+    ap_core_debug.debug(
+        "[PIPELINE] %ds | radiant: pacer1=%d eligible=%d ratio=%d pacer2=%d published=%d [gates avg=%.2f max=%.2fms] [eval avg=%.2f max=%.2fms]"
+        .. " | reactive: recv=%d pacer=%d ratio=%d published=%d [gates avg=%.2f max=%.2fms] [eval avg=%.2f max=%.2fms]",
+        PACER_LOG_INTERVAL,
+        _pacer1_accepted, _radiant_eligible, _radiant_ratio, _pacer2_accepted, _radiant_published,
+        rg[3] > 0 and rg[1] / rg[3] or 0, rg[2], re[3] > 0 and re[1] / re[3] or 0, re[2],
+        _reactive_callbacks, _reactive_pacer, _reactive_ratio, _reactive_published,
+        xg[3] > 0 and xg[1] / xg[3] or 0, xg[2], xe[3] > 0 and xe[1] / xe[3] or 0, xe[2])
+    _pacer1_accepted = 0
+    _radiant_eligible = 0
+    _radiant_ratio = 0
+    _pacer2_accepted = 0
+    _radiant_published = 0
+    _reactive_callbacks = 0
+    _reactive_pacer = 0
+    _reactive_ratio = 0
+    _reactive_published = 0
+    _reset_span(rg)
+    _reset_span(re)
+    _reset_span(xg)
+    _reset_span(xe)
+    _pacer_last_log = now
+    ap_core_consumer.dump_statistics()
 end
 
 
@@ -232,39 +230,71 @@ local function _eval_reactive_handlers(handlers, on_map, ...)
     end
 end
 
---- Radiant callback handler: one cause per trigger via round-robin cursor
---- Gates: PACER(1/5) -> SCRIPTED(2/5) -> RATIO(3/5) -> PROTECTION(4/5) -> EVAL(5/5)
-local function _on_radiant(squad)
-    local total = #_radiant_handlers
-    if total == 0 then return end
-    if not _radiant_pacer_gate() then return end
-    local debug = ap_core_debug.enabled()
-    local squad_id = squad.id
-    if not _scripted_gate(squad_id) then return end
-    if debug then _radiant_scripted = _radiant_scripted + 1 end
-    local on_map = squad.online
-    if not _alife_ratio_gate(on_map, _radiant_ct) then
-        if debug then
-            ap_core_debug.debug("[PRODUCER.RADIANT] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
-                tostring(on_map), cfg.alife_ratio, _radiant_ct.on, _radiant_ct.off, squad_id)
-        end
-        return
-    end
-    if debug then _radiant_ratio = _radiant_ratio + 1 end
-    if not _protection_gate(squad) then _next_radiant = clock() + PACER_RETRY_INTERVAL return end
-    if debug then _radiant_protection = _radiant_protection + 1 end
-    local t0 = debug and clock() or nil
-    _radiant_cursor = (_radiant_cursor % total) + 1
-    local entry = _radiant_handlers[_radiant_cursor]
-    if ap_core_limiter.check_cause_rate_limit(entry.label) then
+--- Cascade through radiant causes starting at cursor, stop on first publish
+local function _eval_radiant_cascade(total, on_map, squad)
+    local start = (_radiant_cursor % total) + 1
+    for offset = 0, total - 1 do
+        local idx = ((start - 1 + offset) % total) + 1
+        local entry = _radiant_handlers[idx]
+        _radiant_cursor = idx
+        if not ap_core_limiter.check_cause_rate_limit(entry.label) then goto continue end
         local trace = ap_core_debug.trace()
         local result = ap_core_debug.observe(trace, entry.label, entry.handler, squad)
         if result and result.cause then
             _try_publish(on_map, entry.label, result, trace, entry.cause_type)
+            break
         end
+        ::continue::
     end
-    if t0 then
-        ap_core_debug.debug("[PRODUCER.RADIANT] sq=%d cause=%s [%.2fms]", squad_id, entry.label, (clock() - t0) * 1000)
+end
+
+--- Radiant callback handler
+--- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
+local function _on_radiant(squad)
+    local total = #_radiant_handlers
+    if total == 0 then return end
+    -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
+    local now = clock()
+    if now < _next_pacer1 then return end
+    _next_pacer1 = now + PACER_1_INTERVAL
+    local debug = ap_core_debug.enabled()
+    if debug then
+        _pacer1_accepted = _pacer1_accepted + 1
+        if (now - _pacer_last_log) >= PACER_LOG_INTERVAL then _dump_pipeline_stats(now) end
+    end
+    local t0_gates = debug and now or nil
+    -- Gate 2: is_protected (full eligibility check)
+    local protected, reason, detail, name = ap_core_squad.is_protected(squad)
+    if protected then
+        if debug then
+            ap_core_debug.debug("[PRODUCER.RADIANT] PROTECTED squad=%d reason=%s detail=%s name=%s",
+                squad.id, reason or "?", detail or "?", name or squad:section_name() or "?")
+        end
+        return
+    end
+    if debug then _radiant_eligible = _radiant_eligible + 1 end
+    -- Gate 3: RATIO
+    local on_map = squad.online
+    if not _alife_ratio_gate(on_map, _radiant_ct) then
+        if debug then
+            ap_core_debug.debug("[PRODUCER.RADIANT] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
+                tostring(on_map), cfg.alife_ratio, _radiant_ct.on, _radiant_ct.off, squad.id)
+        end
+        return
+    end
+    if debug then _radiant_ratio = _radiant_ratio + 1 end
+    -- Gate 4: PACER_2 (budget limiter, every trigger produces an EVAL)
+    if now < _next_pacer2 then return end
+    _next_pacer2 = now + cfg.distributor_interval_sec
+    if debug then _pacer2_accepted = _pacer2_accepted + 1 end
+    _accum_span(_radiant_gate_span, t0_gates)
+    -- EVAL cascade
+    local t0_eval = debug and clock() or nil
+    _eval_radiant_cascade(total, on_map, squad)
+    local eval_ms = _accum_span(_radiant_eval_span, t0_eval)
+    if eval_ms then
+        ap_core_debug.debug("[PRODUCER.RADIANT] sq=%d last_cause=%s [eval %.2fms]",
+            squad.id, _radiant_handlers[_radiant_cursor].label, eval_ms)
     end
 end
 
@@ -285,6 +315,7 @@ local function _on_reactive(callback_type, ...)
     local debug = ap_core_debug.enabled()
 
     if debug then _reactive_callbacks = _reactive_callbacks + 1 end
+    local t0_gates = debug and clock() or nil
     if not _reactive_pacer_gate(callback_type) then return end
     if debug then _reactive_pacer = _reactive_pacer + 1 end
 
@@ -292,17 +323,18 @@ local function _on_reactive(callback_type, ...)
     local on_map = _resolve_on_map(callback_type, first_arg)
     if on_map ~= nil and not _alife_ratio_gate(on_map, _reactive_ct) then
         if debug then
-            ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d sq=%s",
-                callback_type, cfg.alife_ratio, _reactive_ct.on, _reactive_ct.off, type(first_arg) == "userdata" and first_arg.id or "?")
+            ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d",
+                callback_type, cfg.alife_ratio, _reactive_ct.on, _reactive_ct.off)
         end
         return
     end
     if debug then _reactive_ratio = _reactive_ratio + 1 end
-
-    local t0 = debug and clock() or nil
+    _accum_span(_reactive_gate_span, t0_gates)
+    local t0_eval = debug and clock() or nil
     _eval_reactive_handlers(handlers, on_map, ...)
-    if t0 then
-        ap_core_debug.debug("[PRODUCER.REACTIVE] callback=%s [%.2fms]", callback_type, (clock() - t0) * 1000)
+    local eval_ms = _accum_span(_reactive_eval_span, t0_eval)
+    if eval_ms then
+        ap_core_debug.debug("[PRODUCER.REACTIVE] callback=%s [eval %.2fms]", callback_type, eval_ms)
     end
 end
 
@@ -374,18 +406,22 @@ function on_game_start()
     _radiant_ct.off = 0
     _reactive_ct.on = 0
     _reactive_ct.off = 0
-    _next_radiant = 0
-    _pacer_rejected = 0
-    _pacer_accepted = 0
+    _next_pacer1 = 0
+    _next_pacer2 = 0
     _pacer_last_log = 0
-    _radiant_scripted = 0
+    _pacer1_accepted = 0
+    _radiant_eligible = 0
     _radiant_ratio = 0
-    _radiant_protection = 0
+    _pacer2_accepted = 0
     _radiant_published = 0
     _reactive_callbacks = 0
     _reactive_pacer = 0
     _reactive_ratio = 0
     _reactive_published = 0
+    _reset_span(_radiant_gate_span)
+    _reset_span(_radiant_eval_span)
+    _reset_span(_reactive_gate_span)
+    _reset_span(_reactive_eval_span)
     _reactive_event_limiter = nil
     _radiant_cursor = 0
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)

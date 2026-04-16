@@ -21,16 +21,21 @@ next
     Added: squad ownership reassertion. AP restores control over its squads every scan if another mod overwrites it.
     Added: squads that die or despawn between scans are cleaned up immediately.
     Changed: tuned gulag stay durations for all consequences. Squads return to simulation faster after completing their task.
-    Changed: pipeline redesign. Consumer runs all consequences per cause, radiant evaluates one cause per trigger with round-robin, distributor interval halved to 5s. Multiple responses to the same event fire reliably.
-    Changed: cause predicates are pure gates. World evaluation moved to consequence handlers. Causes reject faster and skip expensive world queries when business rules fail.
+    Changed: pipeline redesign. Ineligible squads (story NPCs, traders, scripted) are filtered before the evaluation budget. Every trigger produces a result. Previously up to 79% of triggers were wasted on squads that could never act.
+    Changed: radiant causes cascade on rejection. If a cause doesn't match the squad, the next one is tried immediately instead of waiting for the next trigger.
+    Changed: cause predicates are pure gates. Causes reject faster and skip expensive world queries when business rules fail.
+    Added: periodic pipeline statistics in debug logs. Gate funnel, eval timing, and consequence breakdown reported every 60s.
+    Changed: rush defaults rebalanced. Only combat, chase, and urgent consequences use rush.
   MCM:
     Added: instincts cause and consequence sections with per-instinct toggles, thresholds, and rush settings.
-    Removed: per-consequence personality weight sliders. Replaced with two global sliders (floor and ceiling).
+    Added: per-consequence personality floor and ceiling sliders. Each consequence owns its probability band (default 0.20-0.60).
+    Removed: global personality floor/ceiling sliders. Per-consequence sliders replace them.
     Added: cause and consequence type tags in MCM descriptions. Each entry shows its classification at a glance.
     Changed: all consequence descriptions updated to reflect species behavior and stalker/mutant separation.
   Personality:
     Changed: personality recalibrated. All trait values grounded in GSC lore as direct probabilities.
     Changed: new formula. Average of traits, clamped to floor/ceiling. No per-consequence weights.
+    Changed: personality clamp moved from global to per-consequence. Tunable per behavior via MCM.
 
 1.3.6
   Summary: Hotfix, save compat

@@ -72,17 +72,19 @@ X-Ray runs Lua on a single thread. There is no concurrency within one engine tic
 
 ```
 engine squad_on_update
-  -> producer._on_radiant (gate chain: pacer, scripted, ratio, protection)
-    -> cause predicate (ext) returns { cause = CAUSE.X, ...payload }
-      -> producer._try_publish -> xbus.publish (synchronous, inline)
-        -> consumer._process (iterates all consequences for this cause)
-          -> consequence handler (ext) returns { code = RESULT.X }
-            -> script_squad (core) sets scripted_target, registers arrival
-        <- all consequences done, returns to producer
-      <- producer reads event_data._fired, continues
+  -> producer._on_radiant (gate chain: pacer_1, is_protected, ratio, pacer_2)
+    -> cause cascade: try each predicate starting at cursor, stop on first publish
+      -> cause predicate (ext) returns nil -> try next cause
+      -> cause predicate (ext) returns { cause = CAUSE.X, ...payload } -> publish + break
+        -> _try_publish -> xbus.publish (synchronous, inline)
+          -> consumer._process (iterates all consequences for this cause)
+            -> consequence handler (ext) returns { code = RESULT.X }
+              -> script_squad (core) sets scripted_target, registers arrival
+          <- all consequences done, returns to producer
+        <- cascade breaks on first publish
 ```
 
-When `_try_publish` returns, the consequences have already executed, squads have been scripted, and counters have been incremented. The producer reads `event_data._fired` immediately. `xbus.publish` calls each subscriber function inline and returns when all have finished.
+When `_try_publish` returns, the consequences have already executed, squads have been scripted, and counters have been incremented. `xbus.publish` calls each subscriber function inline and returns when all have finished.
 
 ### Event Pipeline
 
@@ -96,23 +98,19 @@ The producer receives engine callbacks and filters them through a chain of gates
 
 Radiant causes fire on `squad_on_update` - the only stable, uniform heartbeat covering both online and offline squads. The engine fires this callback from `sim_squad_scripted:update()` for every squad every tick. Online squads fire at frame rate (~3/sec per squad), offline squads fire via the A-Life scheduler round-robin (~0.03/sec per squad, ~20 squads per tick across ~776 total). This produces a raw volume of ~6,600 calls/min that the gate chain must reduce to a manageable rate.
 
-Radiant causes are an open collection. New causes can be added by registering a predicate on `RADIANT_CALLBACKS`. Each admitted call evaluates exactly one cause predicate via a round-robin cursor that rotates through all registered radiant causes. With `distributor_interval_sec = 5s` (~12 triggers/min) and 4 causes, each cause gets ~3 evaluations/min. Business rules (alignment, protection, rate limits) reduce ~12 publishes/min to ~4 fired/min. This is different from reactive causes, where each cause registers on a specific callback type and all causes for that callback evaluate on every admitted event.
+Radiant causes are an open collection. New causes can be added by registering a predicate on `RADIANT_CALLBACKS`. Each admitted call cascades through all registered radiant causes starting at a round-robin cursor. The first cause whose predicate publishes stops the cascade. If all predicates reject, nothing publishes. The cursor advances past the last-tried cause, so each admission starts at a different cause. With `distributor_interval_sec = 5s` (~12 triggers/min), every admission tries up to 4 causes (worst case). This is different from reactive causes, where all causes for a callback evaluate independently on every admitted event.
 
 The triggering squad is both sensor and responder - it evaluates its own surroundings and acts on what it finds (stashes, empty territory, unmet needs).
 
-**Gate 1: PACER.** `os.clock` timestamp comparison. Rejects all calls within `cfg.distributor_interval_sec` of the last accepted call. Rejects ~99% of `squad_on_update` volume at near-zero cost (one number comparison, no luabind). On protection reject (gate 4), the pacer retries after a shorter interval instead of burning the full cooldown.
+**Gate 1: PACER_1.** Coarse rate limiter. Pure `os.clock()` timestamp comparison with a 100ms interval (~10 admits/sec). Runs before any squad field access. No `squad.id`, no luabind. Rejects ~98% of raw `squad_on_update` volume at near-zero cost. Instead of caching known-bad squads (old BANNED gate), PACER_1 simply limits how many squads reach the eligibility check.
 
-**Gate 2: SCRIPTED.** Hash lookup in `_ap_scripted_squads`. Skips squads already under AP control - a squad executing a consequence should not trigger new causes until released. O(1), no luabind.
-
-**Gate 3: RATIO.** Bresenham integer admission gate. Off-map events outnumber on-map ~50-100:1 per squad because online squads fire at frame rate while offline squads fire via scheduler round-robin. The ratio gate restores balance using integer cross-multiplication: `throttled_count * |r| <= (10 - |r|) * favored_count`. At the default ratio of 8, this admits ~4 on-map events per 1 off-map. The `squad.online` field (C++ `m_bOnline`, refreshed by `check_online_status()` immediately before the callback) determines on-map status with zero luabind cost. Radiant and reactive pipelines maintain separate counter pairs (`_radiant_ct`, `_reactive_ct`) so high-volume radiant traffic does not bias reactive admission. Counters reset at 32768 to prevent overflow.
-
-**Gate 4: PROTECTION.** Calls `xsquad.is_protected()` with the ownership registry. Rejects squads that are permanent (story NPCs, traders, named characters), have an active role (task giver, companion), are task targets (assault, bounty, delivery squads), are owned by another mod (warfare, BAO), or are already scripted (engine `scripted_target`, condlist, random_targets). Static checks are cached per squad with weak keys (O(1) after first call).
+**Gate 2: is_protected.** Full eligibility check via `ap_core_squad.is_protected`. Runs on ~10 squads/sec from PACER_1. Checks ownership (warfare, BAO), is_scripted (engine `scripted_target`, condlist, random_targets), permanent (story, trader, named NPC -- session-lifetime cache), active role (task giver, companion), and task target (assault, bounty, delivery). Short-circuits early: scripted and permanent squads are caught in the first two checks. Subsumes the old BANNED and SCRIPTED gates. At 10/sec, the cost is acceptable without negative caching.
 
 Protection is not a single gate - it is applied at four layers across the pipeline. The same guard set is checked at each layer, but against different entities depending on context:
 
 | Layer | Where | What is checked |
 |-------|-------|-----------------|
-| Producer | Radiant gate 4/5 | Triggering squad, before any cause evaluates |
+| Producer | Radiant gate 2 (is_protected) | Triggering squad, before any cause evaluates |
 | Cause | Reactive predicates | The entity AP would act on (killer, patient, taker) |
 | Consequence | `ap_core_utils.find_squads` | Every candidate responder squad |
 | Squad | `ap_core_squad.script_squad` | No inline check - protection is upstream |
@@ -121,7 +119,11 @@ Reactive causes skip the producer protection gate because the callback entity (e
 
 `script_squad` does not check protection. It assumes all upstream layers have already verified the squad. Direct callers outside the pipeline must check `is_protected` themselves.
 
-**Gate 5: EVAL.** Selects one cause predicate via round-robin cursor (indexed array, deterministic order). The predicate is wrapped in `observe()` for tracing and checked against a per-cause sliding window rate limit (`cfg.cause_max_events`, 60s window). Only one cause evaluates per admitted trigger -- the cursor advances on each admission, distributing evaluations evenly across all registered radiant causes. If the cause publishes, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model).
+**Gate 3: RATIO.** Bresenham integer admission gate. Off-map events outnumber on-map ~50-100:1 per squad because online squads fire at frame rate while offline squads fire via scheduler round-robin. The ratio gate restores balance using integer cross-multiplication: `throttled_count * |r| <= (10 - |r|) * favored_count`. At the default ratio of 8, this admits ~4 on-map events per 1 off-map. The `squad.online` field (C++ `m_bOnline`, refreshed by `check_online_status()` immediately before the callback) determines on-map status with zero luabind cost. Radiant and reactive pipelines maintain separate counter pairs (`_radiant_ct`, `_reactive_ct`) so high-volume radiant traffic does not bias reactive admission. Counters reset at 32768 to prevent overflow. Must be after is_protected so it only balances eligible squads.
+
+**Gate 4: PACER_2.** Budget limiter. `os.clock()` timestamp comparison with `cfg.distributor_interval_sec` (default 5s, ~12 triggers/min). Only fully eligible, ratio-balanced squads consume triggers. Every PACER_2 admit produces an EVAL -- zero waste. This is the key improvement over the old pipeline: the old single pacer ran before eligibility checks, so ineligible squads (scripted dogs, story NPCs) consumed triggers and starved the pipeline.
+
+**EVAL (cascade).** Cascades through all registered cause predicates starting at the round-robin cursor (indexed array, deterministic order). Each predicate is checked against a per-cause sliding window rate limit (`cfg.cause_max_events`, 60s window) and skipped if exhausted. The first predicate to publish stops the cascade. If all predicates reject, nothing publishes. The cursor tracks the last-tried cause; next admission starts at cursor+1. Each predicate is wrapped in `observe()` for tracing. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
 
 #### Reactive variant
 
@@ -131,7 +133,11 @@ Reactive causes fire on world events: `squad_on_npc_death`, `x_npc_medkit_use`, 
 
 **Gate 2: RATIO.** Same Bresenham algorithm as radiant but with its own counter pair (`_reactive_ct`). Some reactive callbacks (`actor_on_item_use`, `actor_on_item_take`) are always on-map (they require a game_object which only exists online).
 
-**Gate 3: EVAL.** Iterates all registered reactive cause predicates for the callback type in deterministic order (indexed array). Each predicate is checked against the per-cause sliding window rate limit, then evaluated. Unlike radiant (one cause per trigger), reactive evaluates all causes -- a single death event can trigger MASSACRE, SQUADKILL, and ALPHA simultaneously because different responder squads act independently.
+**Gate 3: EVAL.** Iterates all registered reactive cause predicates for the callback type in deterministic order (indexed array). Each predicate is checked against the per-cause sliding window rate limit, then evaluated. All causes evaluate independently. A single death event can trigger MASSACRE, SQUADKILL, and ALPHA simultaneously because different responder squads act independently. Radiant cascade stops on first publish because the triggering squad can only do one thing.
+
+#### Instrumentation
+
+Both pipelines measure gate span and eval span. Gate span covers the time from first eligibility check to budget admission (radiant: is_protected + RATIO + PACER_2; reactive: PACER + RATIO). Eval span covers cause predicate evaluation, xbus dispatch, and all consequence handlers. Spans are accumulated per `PACER_LOG_INTERVAL` (60s) and reported as avg/max in the periodic `[PIPELINE]` dump. All timing uses `os.clock()` and is gated by `ap_core_debug.enabled()` -- zero overhead when log level is above DEBUG.
 
 ### Dispatch Pipeline
 
@@ -173,19 +179,19 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 `ap_core_squad` manages the full lifecycle of squads under AP control: scripting, arrival detection, post-arrival wait, and release.
 
-**Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` + `__lock` via `xsquad.control_squad`. `scripted_target` routes the squad to `specific_update` (direct A->B movement). `__lock` blocks `generic_update` as a fallback guard - if another mod clears `scripted_target` between ticks, the squad stays put instead of being reassigned by SIMBOARD. The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
+**Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` via `xsquad.control_squad`. `scripted_target` routes the squad to `specific_update` (direct A->B movement). AP clears `__lock` on acquisition -- `scripted_target` alone is sufficient for routing. If another mod clears `scripted_target` between ticks, `generic_update` runs and the squad may be reassigned by SIMBOARD; `reassert_target` restores `scripted_target` within 20s. The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
 **Scripted squad scan.** `_update_scripted_squads` runs every 20s via `CreateTimeEvent`. For each tracked squad:
 
 1. **Entity** - `xobject.se(squad_id)`. Gone -> remove from tracking table. Catches squads that died or despawned between scans.
-2. **Reassert** - `xsquad.reassert_target(squad, data.scripted_target)`. Restores `scripted_target` + `__lock` if another mod overwrote them. Every alife overhaul mod (warfare, BAO, Vintar) sets these fields every tick on its own squads; AP reasserts every 20s on its squads.
+2. **Reassert** - `xsquad.reassert_target(squad, data.scripted_target)`. Restores `scripted_target` if another mod overwrote it, clears `__lock`. Every alife overhaul mod (warfare, BAO, Vintar) sets these fields every tick on its own squads; AP reasserts every 20s on its squads.
 3. **TTL** - 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
 4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
 5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
 **Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_squad`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
 
-**Coordination.** Two fields form the squad control contract: `scripted_target` (routes to `specific_update`) and `__lock` (blocks `generic_update`). Setting both signals "I control this squad." AP checks these at two gates: SCRIPTED (gate 2, AP's own squads) and PROTECTION (gate 4, anyone's squads). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets both fields on acquire; `xsquad.release_squad` clears both on release; `xsquad.reassert_target` restores both if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
+**Coordination.** `scripted_target` is the squad control field. Setting it routes the squad to `specific_update`. AP no longer sets `__lock` (clears it on acquisition). `scripted_target` alone is sufficient for routing; `__lock` was a redundant fallback guard. AP checks `scripted_target` at gate 2 (is_protected, via `xsquad.is_scripted`). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets `scripted_target` on acquire; `xsquad.release_squad` clears it on release; `xsquad.reassert_target` restores it if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
 **Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
 
@@ -231,7 +237,7 @@ Critical timing from the engine load sequence:
 
 ### Tracker (ap_ext_tracker)
 
-Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), and stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 drives). Only mutants become alphas -- stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
+Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), and stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 drives). Only mutants become alphas. Stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
@@ -275,7 +281,7 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 
 #### Cause Classification
 
-All causes are reactive -- the framework reacts to something. The pipeline splits into two mechanisms:
+All causes are reactive. The framework reacts to something. The pipeline splits into two mechanisms:
 
 - **Simple (reactive pipeline):** a discrete world action triggers the cause. A death, a healing, a pickup. The squad did not ask for it. Engine callback fires, producer evaluates all registered predicates for that callback type.
 - **Radiant (radiant pipeline):** the squad evaluates its own state on its update tick. Nothing specific happened. The framework checks what the squad sees, feels, or senses.
@@ -396,11 +402,11 @@ Probability layer: how likely is an eligible faction/species to act. Runs only a
 
 Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5 traits: aggression, survival, territory, perception, relation. Each consequence declares at most 2 relevant traits. The check averages those traits for the faction/species and rolls `math.random()` against the result, clamped to MCM `personality_min`/`personality_max`.
 
-**Formula:** `chance = clamp(avg(relevant_traits), personality_min, personality_max)`. No per-consequence weight. Two global MCM sliders control the floor and ceiling of all personality rolls (defaults: min=0.20, max=0.70). The floor ensures even unfavorable factions act occasionally. The ceiling ensures even favorable factions fail sometimes. Effective chances range from 20% (clamped floor) to 70% (clamped ceiling) with personality providing variance within that band.
+**Formula:** `chance = clamp(avg(relevant_traits), p_min, p_max)`. No per-consequence weight. Each consequence defines its own floor (`p_min`) and ceiling (`p_max`) as code-level constants (defaults: 0.20/0.70). The floor ensures even unfavorable factions act occasionally. The ceiling ensures even favorable factions fail sometimes. Per-consequence ownership allows individual tuning without a global lever affecting all behaviors.
 
 **Inverted traits:** traits prefixed with `INV_` resolve as `1 - base_value` before averaging. Used for behaviors driven by the absence of a quality: fleeing is gated by `INV_DISCIPLINE` + `INV_TERRITORY` (low discipline and low territorial attachment = more likely to flee). Only `INV_DISCIPLINE`, `INV_TERRITORY`, and `INV_AGGRESSION` are defined.
 
-**Trait value design:** all traits use tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival is a flat band (0.40-0.60) for all factions and species -- biological needs are universal drives, not faction differentiators. Each value is a direct probability grounded in GSC lore (monstry.doc, Ai.doc).
+**Trait value design:** all traits use tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival is a flat band (0.40-0.60) for all factions and species. Biological needs are universal drives, not faction differentiators. Each value is a direct probability grounded in GSC lore (monstry.doc, Ai.doc).
 
 ### Range Tiers
 
@@ -408,9 +414,9 @@ Every consequence searches within a range that matches the squad's awareness. Tw
 
 | Tier | Constant | Distance | Who |
 |------|----------|----------|-----|
-| EyeRange | `RANGE_EYE` | 200m | all -- line-of-sight |
-| SignalRange | `RANGE_SIGNAL` | 500m | stalkers -- PDA/radio |
-| ScentRange | `RANGE_SCENT` | 500m | mutants -- scent tracking |
+| EyeRange | `RANGE_EYE` | 200m | all (line-of-sight) |
+| SignalRange | `RANGE_SIGNAL` | 500m | stalkers (PDA/radio) |
+| ScentRange | `RANGE_SCENT` | 500m | mutants (scent tracking) |
 
 EyeRange covers the p90 nearest-neighbor distance on 13 of 14 measured levels. A squad at any smart terrain can see 1-3 neighboring smarts and several stashes within 200m. SignalRange and ScentRange cover the full operational radius: stalkers receive PDA alerts, mutants track scent. Same distance today (500m), independently tunable.
 

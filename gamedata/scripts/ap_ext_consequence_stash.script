@@ -33,7 +33,8 @@ local CONFIGS = {
         personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
     { consequence = CONSEQUENCE.STASH_AMBUSH, name = "stash_ambush",
         community = _alignment_stash_ambush, exclude_at_base = true,
-        personality = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }, pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH },
+        personality = { PERSONALITY.GREED, PERSONALITY.AGGRESSION },
+        pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH },
     { consequence = CONSEQUENCE.STASH_FILL, name = "stash_fill",
         community = alignment_human, require_empty = true,
         arrive_fn = "fill",
@@ -123,7 +124,8 @@ local function _make_handler(entry)
             if not ap_ext_util.check_alignment(entry.community, event_data.community) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if entry.personality and not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name) then
+            if entry.personality and not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name,
+                cfg["consequence_" .. entry.name .. "_personality_min"], cfg["consequence_" .. entry.name .. "_personality_max"]) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 

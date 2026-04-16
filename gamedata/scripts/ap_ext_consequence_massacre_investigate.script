@@ -26,7 +26,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
         if not ap_ext_util.check_personality(_personality, investigate_faction,
-            CONSEQUENCE.MASSACRE_INVESTIGATE) then
+            CONSEQUENCE.MASSACRE_INVESTIGATE, cfg.consequence_massacre_investigate_personality_min, cfg.consequence_massacre_investigate_personality_max) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

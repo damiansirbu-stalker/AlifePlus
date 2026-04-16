@@ -99,7 +99,8 @@ local function _handler(event_data)
             if xlevel.get_level_id(squad) ~= level_id then goto continue end
             local species = ap_ext_util.get_species(squad.id)
             if not species then goto continue end
-            if not ap_ext_util.check_personality(_personality, species, CONSEQUENCE.ALPHAKILL_TARGETED) then goto continue end
+            if not ap_ext_util.check_personality(_personality, species, CONSEQUENCE.ALPHAKILL_TARGETED,
+                cfg.consequence_alphakill_targeted_personality_min, cfg.consequence_alphakill_targeted_personality_max) then goto continue end
             hunters[#hunters + 1] = squad
             ::continue::
         end

@@ -34,7 +34,7 @@ local function _handler(event_data)
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
             local dominated = (not species or _species_wounded_hunt[species])
-                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT)
+                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT, cfg.consequence_wounded_hunt_personality_min, cfg.consequence_wounded_hunt_personality_max)
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end

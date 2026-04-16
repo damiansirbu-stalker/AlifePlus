@@ -28,14 +28,16 @@ function check_alignment(alignment, community)
 end
 
 --- Check faction personality (probability layer, runs after alignment)
---- Averages relevant traits for the faction, clamps to MCM min/max, rolls.
+--- Averages relevant traits for the faction, clamps to per-consequence min/max, rolls.
 --- INV_ traits are resolved as (1 - base_value) before averaging.
 --- Logs PERSONALITY_PASSED/BLOCKED at DEBUG (zero cost above DEBUG).
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
 --- @param consequence_name string Consequence name for logging
+--- @param p_min number Floor clamp (default 0.20)
+--- @param p_max number Ceiling clamp (default 0.70)
 --- @return boolean true = personality roll passed
-function check_personality(traits, community, consequence_name)
+function check_personality(traits, community, consequence_name, p_min, p_max)
     if not traits or not community then return true end
     local faction_traits = PERSONALITY[community]
     if not faction_traits then return true end
@@ -51,9 +53,8 @@ function check_personality(traits, community, consequence_name)
         count = count + 1
     end
     if count == 0 then return true end
-    local config = ap_core_mcm.get_config()
-    local p_min = config.personality_min or 0.20
-    local p_max = config.personality_max or 0.70
+    p_min = p_min or 0.20
+    p_max = p_max or 0.70
     local avg = sum / count
     local chance = avg
     if chance < p_min then chance = p_min end

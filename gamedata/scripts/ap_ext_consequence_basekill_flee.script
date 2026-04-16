@@ -22,7 +22,7 @@ local function _handler(event_data)
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
         if not ap_ext_util.check_personality(_personality, event_data.faction,
-            CONSEQUENCE.BASEKILL_FLEE) then
+            CONSEQUENCE.BASEKILL_FLEE, cfg.consequence_basekill_flee_personality_min, cfg.consequence_basekill_flee_personality_max) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

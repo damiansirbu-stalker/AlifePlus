@@ -146,7 +146,8 @@ local function _make_handler(entry)
             if entry.species_alignment and not entry.species_alignment[event_data.species] then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name) then
+            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name,
+                cfg["consequence_" .. entry.name .. "_personality_min"], cfg["consequence_" .. entry.name .. "_personality_max"]) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 
