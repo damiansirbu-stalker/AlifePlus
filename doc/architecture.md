@@ -318,6 +318,7 @@ Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are r
 | STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
 | AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h) |
 | NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
+| INSTINCTS | instincts_scatter | mutant (cowardly+feral+predator) | scatter from higher-tier predators to safe smart terrain. Food chain: tier 0 fears 1+2+3, tier 1 fears 2+3, tier 2 fears 3. |
 | INSTINCTS | instincts_feed | mutant (all) | move to territory to hunt/scavenge |
 | INSTINCTS | instincts_sleep | mutant (all) | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
 | INSTINCTS | instincts_explore | mutant (cowardly+feral+predator) | wander to nearby territory or lair. Aberrant excluded (lair-bound). |
@@ -455,6 +456,7 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 | Drive | Flag | Effect |
 |-------|------|--------|
+| scatter | (none) | any time |
 | feed | active_period | active period only |
 | sleep | dormant_period | dormant period only |
 | explore | active_period | active period only |

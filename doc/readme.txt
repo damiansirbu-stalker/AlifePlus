@@ -69,6 +69,7 @@ What you'll notice:
 - Campfire and base behavior driven by hunger, fatigue, social needs
 - Day/night cycle: stalkers work and trade by day, rest and sleep at campfires by night.
 - Nocturnal predators hunt at night and retreat to lairs at dawn. Diurnal mutants do the opposite.
+- Prey scattering when a predator moves through. Kill the predator, prey returns over time.
 - Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted
 - Bandits looting and ambushing while Duty patrols and holds the line
 - Loners chasing artefacts while Military stays close to base
@@ -226,9 +227,12 @@ Needs
 
 Instincts
 
-  Mutants have instincts. Four drives scored by deprivation, same as stalker needs.
-  The strongest unmet instinct wins. Consequences search within scent range and
-  evaluate alignment and personality.
+  Mutants have instincts. Drives scored by deprivation, same as stalker needs.
+  Scatter is binary (predator proximity). The strongest unmet instinct wins.
+  Consequences search within eye or scent range and evaluate alignment and personality.
+  - Scatter - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range.
+    Food chain: cowardly fears feral/predator/aberrant, feral fears predator/aberrant, predator fears aberrant.
+    Squads relocate to the nearest smart terrain with no higher-tier threats.
   - Feed - Mutants move to open territory during active hours. Predators and prey meet on shared hunting grounds.
   - Sleep - Mutants return to rest locations during dormant hours.
     Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.
@@ -253,6 +257,7 @@ Alignment
   predator (bloodsucker, chimera, lurker), aberrant (controller, burer, poltergeist).
   Activity: nocturnal (bloodsucker, lurker, chimera, zombie, fracture) vs diurnal.
   Behavioral determines what a species does. Activity determines when.
+  These four tiers form a food chain. Each tier scatters from all higher tiers. Aberrant fear nothing.
 
 Personality
   Every stalker faction and mutant species has a personality profile derived from GSC's

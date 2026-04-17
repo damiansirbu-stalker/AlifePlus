@@ -10,7 +10,10 @@ local HOURS_TO_SECONDS = 3600
 local cfg = ap_core_mcm.cfg
 local _alignment_mutant
 
+local _food_chain_tier
+
 local INSTINCTS = {
+    { instinct = "scatter", constant_drive = 15.0, enabled_key = "cause_instinct_scatter_enabled" },
     { instinct = "feed", field = "last_feed_at",
         threshold_key = "cause_instinct_feed_threshold", enabled_key = "cause_instinct_feed_enabled",
         weight = 3.0, active_period = true },
@@ -37,12 +40,21 @@ local function _find_strongest_drive(dto, now, species)
         if not cfg[inst.enabled_key] then goto continue end
         if inst.active_period and not is_active then goto continue end
         if inst.dormant_period and is_active then goto continue end
+        if inst.max_tier then
+            local tier = _food_chain_tier[species]
+            if not tier or tier > inst.max_tier then goto continue end
+        end
 
-        local elapsed = now - dto[inst.field]
-        local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
-        if elapsed <= threshold then goto continue end
-        local ratio = elapsed / threshold
-        local drive = inst.weight * ratio * ratio
+        local drive
+        if inst.constant_drive then
+            drive = inst.constant_drive
+        else
+            local elapsed = now - dto[inst.field]
+            local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+            if elapsed <= threshold then goto continue end
+            local ratio = elapsed / threshold
+            drive = inst.weight * ratio * ratio
+        end
 
         if drive > best_drive then
             best_drive = drive
@@ -73,9 +85,10 @@ local function _on_smart(trace, squad)
         dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
         for i = 1, #INSTINCTS do
             local inst = INSTINCTS[i]
+            if not inst.field then goto init_next end
             if not cfg[inst.enabled_key] then goto init_next end
-            local scatter = math_floor(cfg[inst.threshold_key] * HOURS_TO_SECONDS * 2)
-            dto[inst.field] = now - math_random(0, scatter)
+            local spread = math_floor(cfg[inst.threshold_key] * HOURS_TO_SECONDS * 2)
+            dto[inst.field] = now - math_random(0, spread)
             ::init_next::
         end
     end
@@ -98,6 +111,8 @@ end
 
 function on_game_start()
     _alignment_mutant = ap_ext_const.alignment_mutant
+    _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
+    INSTINCTS[1].max_tier = 2
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register(CAUSE.INSTINCTS, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)

@@ -1,4 +1,4 @@
---- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (feed, sleep, explore, socialize)
+--- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed, sleep, explore, socialize)
 
 local pairs = pairs
 
@@ -9,6 +9,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local TRACE = ap_core_const.TRACE
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
+local RANGE_EYE = ap_core_const.RANGE_EYE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -18,8 +19,12 @@ local _alignment_mutant_cowardly
 local _alignment_mutant_feral
 local _alignment_mutant_predator
 local _alignment_mutant_aberrant
+local _alignment_mutant
 local _species_explore
 local _species_socialize
+local _species_scatter
+local _food_chain_tier
+local _scatter_from
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
@@ -77,15 +82,19 @@ local function _fulfill_instinct(squad_id, dto_field)
 end
 
 local function _on_arrive(squad, args)
-    if not args or not args.dto_field then return end
+    if not args then return end
     ap_core_debug.observe(nil, ACTION.COMPLETE_INSTINCTS, function(trace)
-        local now = xtime.game_sec()
-        ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, now)
+        if args.dto_field then
+            ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
+        end
         return { code = TRACE.OK, squad = squad.id, instinct = args.name, dst = args.dst_name }
     end)
 end
 
 local CONFIGS = {
+    { instinct = "scatter", consequence = CONSEQUENCE.INSTINCTS_SCATTER, name = "instinct_scatter",
+        personality = { PERSONALITY.INV_AGGRESSION, PERSONALITY.SURVIVAL },
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SCATTER },
     { instinct = "feed", consequence = CONSEQUENCE.INSTINCTS_FEED, name = "instinct_feed",
         dto_field = "last_feed_at",
         personality = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION },
@@ -114,7 +123,53 @@ local function _find_sleep_smart(trace, species, position, level_id)
     return ap_core_utils.find_smart_observed(trace, position, find_opts)
 end
 
+local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
+    local found = false
+    ap_core_debug.observe(trace, ACTION.FIND_TARGETS, function()
+        local nearby = xsquad.find_squads(pos, {
+            factions = _alignment_mutant,
+            level_id = level_id,
+            max_distance = RANGE_EYE,
+            max_count = 999,
+            exclude_squad_id = squad_id,
+        })
+        for i = 1, #nearby do
+            local sp = ap_ext_util.get_species(nearby[i].id)
+            if sp and threats[sp] then
+                found = true
+                return { code = TRACE.OK, threat = nearby[i].id, species = sp }
+            end
+        end
+        return { code = TRACE.EMPTY }
+    end)
+    return found
+end
+
+local function _build_safe_filter(threats)
+    return function(smart)
+        if not _not_base(smart) then return false end
+        local squads = xsmart.get_smart_squads(smart.id)
+        if not squads then return true end
+        for sq_id in pairs(squads) do
+            local sp = ap_ext_util.get_species(sq_id)
+            if sp and threats[sp] then return false end
+        end
+        return true
+    end
+end
+
 local _find_by_instinct = {
+    scatter = function(trace, event_data, squad)
+        local tier = _food_chain_tier[event_data.species]
+        if not tier then return nil end
+        local threats = _scatter_from[tier]
+        if not threats then return nil end
+        if not _has_nearby_threat(trace, event_data.position, event_data.level_id, event_data.squad_id, threats) then return nil end
+        local filter = _build_safe_filter(threats)
+        local opts = { level_id = event_data.level_id, filter = filter,
+            max_distance = RANGE_EYE, exclude_id = squad.smart_id }
+        return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
+    end,
     sleep = function(trace, event_data, _squad)
         return _find_sleep_smart(trace, event_data.species, event_data.position, event_data.level_id)
     end,
@@ -188,14 +243,20 @@ function on_game_start()
     _alignment_mutant_feral = ap_ext_const.alignment_mutant_feral
     _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
     _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
+    _alignment_mutant = ap_ext_const.alignment_mutant
+    _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
+    _scatter_from = ap_ext_const.SCATTER_FROM
 
+    -- scatter: cowardly + feral + predator (tier 0-2, aberrant never scatter)
+    _species_scatter = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- explore: cowardly + feral + predator (aberrant are lair-bound, never wander)
     _species_explore = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
     _species_socialize = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
 
-    CONFIGS[3].species_alignment = _species_explore
-    CONFIGS[4].species_alignment = _species_socialize
+    CONFIGS[1].species_alignment = _species_scatter
+    CONFIGS[4].species_alignment = _species_explore
+    CONFIGS[5].species_alignment = _species_socialize
 
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]

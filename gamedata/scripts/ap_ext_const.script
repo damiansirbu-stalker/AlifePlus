@@ -111,6 +111,20 @@ alignment_mutant_night = {
     ["zombie"] = true, ["fracture"] = true,
 }
 
+--- Food chain tiers. Species -> tier number (0=cowardly, 1=feral, 2=predator, 3=aberrant).
+--- Tier n scatters from tier n+1..3. Tier 3 scatters from nothing.
+--- src: GSC monstry.doc creature groups, fear descriptions per species
+FOOD_CHAIN_TIER = {
+    flesh = 0, zombie = 0, tushkano = 0, rat = 0, karlik = 0,
+    dog = 1, pseudodog = 1, boar = 1, snork = 1, cat = 1, gigant = 1,
+    lurker = 2, bloodsucker = 2, psysucker = 2, chimera = 2, fracture = 2,
+    controller = 3, burer = 3, poltergeist = 3, psy_dog = 3,
+}
+
+--- Higher-tier species sets. SCATTER_FROM[tier] = species this tier scatters from.
+--- Built in on_game_start via xtable.merge.
+SCATTER_FROM = {}
+
 --- Diurnal = active during day (05:00-20:00), dormant at night (default for all non-nocturnal)
 alignment_mutant_day = {
     ["dog"] = true, ["pseudodog"] = true, ["psy_dog"] = true,
@@ -278,6 +292,7 @@ CONSEQUENCE_DESCRIPTION = {
     [CONSEQUENCE.INSTINCTS_SLEEP] = "Instinct Sleep",
     [CONSEQUENCE.INSTINCTS_EXPLORE] = "Instinct Explore",
     [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "Instinct Socialize",
+    [CONSEQUENCE.INSTINCTS_SCATTER] = "Instinct Scatter",
 }
 
 --- Stalker needs DTO field names
@@ -293,6 +308,9 @@ INSTINCT_FIELDS = {
 }
 
 function on_game_start()
+    SCATTER_FROM[0] = xtable.merge(alignment_mutant_feral, alignment_mutant_predator, alignment_mutant_aberrant)
+    SCATTER_FROM[1] = xtable.merge(alignment_mutant_predator, alignment_mutant_aberrant)
+    SCATTER_FROM[2] = xtable.merge(alignment_mutant_aberrant)
     ap_core_broker.register_descriptions(CONSEQUENCE_DESCRIPTION)
 end
 

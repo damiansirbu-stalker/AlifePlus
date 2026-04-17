@@ -704,6 +704,10 @@ Burer "zhivet tol'ko v mrachnykh, temnykh podzemyel'yakh" (lives only in dark du
 Poltergeist "na otkrytykh mestakh ne vstrechayetsya" (never found in open areas) (monstry.doc).
 Psy dog generates psychic phantoms to hunt by proxy.
 
+These four categories form a linear food chain. Cowardly species scatter from feral, predator, and aberrant. Feral species scatter from predator and aberrant. Predators scatter from aberrant. Aberrant species fear nothing.
+GSC documented this hierarchy implicitly: flesh "mnogikh boitsya" (fears many), chimera "biologicheskikh vragov malo" (few biological enemies), controller and burer avoid bloodsuckers and pseudogiants (monstry.doc group 3->4 relations).
+AlifePlus makes it explicit as a scatter instinct: when a lower-tier mutant sees a higher-tier predator within eye range, it relocates to a safe location.
+
 The engine's `player_id` gates the question "is this a mutant at all" for zero luabind cost.
 Species identity resolves through `xcreature.get_mutant_species` only when the consequence needs to know what kind of mutant it is.
 
