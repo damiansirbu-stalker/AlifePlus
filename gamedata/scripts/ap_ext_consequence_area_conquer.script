@@ -49,7 +49,7 @@ local function _handler(event_data)
         end
         local identity = species or event_data.community
         if not ap_ext_util.check_personality(_personality, identity,
-            CONSEQUENCE.AREA_CONQUER, cfg.consequence_area_conquer_personality_min, cfg.consequence_area_conquer_personality_max) then
+            { name = CONSEQUENCE.AREA_CONQUER, p_min = cfg.consequence_area_conquer_personality_min, p_max = cfg.consequence_area_conquer_personality_max }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

@@ -33,12 +33,11 @@ end
 --- Logs PERSONALITY_PASSED/BLOCKED at DEBUG (zero cost above DEBUG).
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
---- @param consequence_name string Consequence name for logging
---- @param p_min number Floor clamp (default 0.20)
---- @param p_max number Ceiling clamp (default 0.70)
+--- @param opts table { name, p_min, p_max } consequence name for logging, floor/ceiling clamps
 --- @return boolean true = personality roll passed
-function check_personality(traits, community, consequence_name, p_min, p_max)
+function check_personality(traits, community, opts)
     if not traits or not community then return true end
+    opts = opts or {}
     local faction_traits = PERSONALITY[community]
     if not faction_traits then return true end
     local sum, count = 0, 0
@@ -53,8 +52,8 @@ function check_personality(traits, community, consequence_name, p_min, p_max)
         count = count + 1
     end
     if count == 0 then return true end
-    p_min = p_min or 0.20
-    p_max = p_max or 0.70
+    local p_min = opts.p_min or 0.20
+    local p_max = opts.p_max or 0.70
     local avg = sum / count
     local chance = avg
     if chance < p_min then chance = p_min end
@@ -62,9 +61,9 @@ function check_personality(traits, community, consequence_name, p_min, p_max)
     local roll = math_random()
     local passed = roll < chance
     if passed then
-        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", consequence_name, community, avg, chance, roll)
+        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", opts.name or "?", community, avg, chance, roll)
     else
-        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", consequence_name, community, avg, chance, roll)
+        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", opts.name or "?", community, avg, chance, roll)
     end
     return passed
 end

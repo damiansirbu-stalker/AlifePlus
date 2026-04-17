@@ -22,13 +22,13 @@ local function _handler(event_data)
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_support, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
         if not ap_ext_util.check_personality(_personality, event_data.faction,
-            CONSEQUENCE.BASEKILL_SUPPORT, cfg.consequence_basekill_support_personality_min, cfg.consequence_basekill_support_personality_max) then
+            { name = CONSEQUENCE.BASEKILL_SUPPORT, p_min = cfg.consequence_basekill_support_personality_min, p_max = cfg.consequence_basekill_support_personality_max }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = factions,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id,
             max_count = cfg.consequence_basekill_support_max_squads,
             exclude_at_smart_id = smart.id,

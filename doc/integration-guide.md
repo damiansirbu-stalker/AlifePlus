@@ -120,7 +120,7 @@ local function _handler(event_data)
         local squads = ap_core_utils.find_squads_observed(trace, event_data.position, {
             factions = _alignment,
             level_id = event_data.level_id,
-            max_distance = ap_core_const.RANGE_SIGNAL,
+            max_distance = ap_core_const.RANGE_RADIO,
             max_count = cfg.consequence_ambush_setup_max_squads,
             exclude_at_smart_id = smart.id,
         })
@@ -194,7 +194,7 @@ local function _on_arrive(squad, args)
     if not level_id or xlevel.get_level_id(squad) ~= level_id then return end
 
     local smart = ap_core_utils.find_smart(target_squad.position, {
-        level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
+        level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
     })
     if not smart then return end
 

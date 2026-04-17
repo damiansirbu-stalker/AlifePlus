@@ -102,7 +102,7 @@ Behavior is the result of independent actors colliding in a shared simulation.
 
 Every action is bounded by awareness. Three range tiers govern how far a squad searches:
 - EyeRange: what the squad can see. Opportunities like stashes and unclaimed territory.
-- SignalRange: PDA radio. Stalkers hear about massacres, base attacks, trader locations.
+- RadioRange: PDA radio. Stalkers hear about massacres, base attacks, trader locations.
 - ScentRange: scent tracking. Mutants smell corpses, track wounded prey, follow trails.
 Range tiers are grounded in GSC's original AI design documents (PersonalEyeRange, EnemyDetectProbability).
 EyeRange validated empirically: nearest-neighbor distance measured in-engine across 14 levels
@@ -164,7 +164,7 @@ Causes and consequences that aggregate into hundreds of combinations.
 Reactions
 
   World events trigger responses. A death, a healing, a pickup. Consequences search
-  within signal or scent range and evaluate alignment and personality.
+  within radio or scent range and evaluate alignment and personality.
 
   Massacre
     - Scavenge - Nearby scavengers and predators converge on the massacre site.
@@ -210,7 +210,7 @@ Opportunities
 Needs
 
   Stalkers have human needs. Nine drives inspired by Maslow-Hull, scored by how long
-  since last fulfilled. The most deprived need wins. Consequences search within signal
+  since last fulfilled. The most deprived need wins. Consequences search within radio
   range and evaluate alignment and personality.
   - Hunger - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.
   - Sleep - Finds a campfire during dormant hours. Sleeps.

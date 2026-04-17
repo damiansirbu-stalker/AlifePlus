@@ -20,11 +20,11 @@ local function _handler(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL })
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
         if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
         local candidates = ap_core_utils.find_squads_observed(trace, position, {
-            factions = _alignment_wounded_hunt, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            factions = _alignment_wounded_hunt, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
             exclude_at_smart_id = target_smart.id,
         })
@@ -34,7 +34,8 @@ local function _handler(event_data)
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
             local dominated = (not species or _species_wounded_hunt[species])
-                and ap_ext_util.check_personality(_personality, identity, CONSEQUENCE.WOUNDED_HUNT, cfg.consequence_wounded_hunt_personality_min, cfg.consequence_wounded_hunt_personality_max)
+                and ap_ext_util.check_personality(_personality, identity, { name = CONSEQUENCE.WOUNDED_HUNT,
+                    p_min = cfg.consequence_wounded_hunt_personality_min, p_max = cfg.consequence_wounded_hunt_personality_max })
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end

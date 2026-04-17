@@ -290,9 +290,9 @@ Radiant causes split into three behavioral categories based on what the squad ev
 
 | Category | Causes | What drives behavior | Range |
 |----------|--------|---------------------|-------|
-| Reactions | MASSACRE, SQUADKILL, BASEKILL, ALPHA, ALPHAKILL, WOUNDED, HARVEST | World event triggers response | signal (stalkers), scent (mutants) |
+| Reactions | MASSACRE, SQUADKILL, BASEKILL, ALPHA, ALPHAKILL, WOUNDED, HARVEST | World event triggers response | radio (stalkers), scent (mutants) |
 | Opportunities | STASH, AREA | Squad sees what's nearby | eye |
-| Needs | NEEDS | Stalker internal drives, scored by deprivation | signal |
+| Needs | NEEDS | Stalker internal drives, scored by deprivation | radio |
 | Instincts | INSTINCTS | Mutant internal drives, scored by deprivation | scent |
 
 Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are radiant-mechanism causes.
@@ -416,18 +416,18 @@ Every consequence searches within a range that matches the squad's awareness. Tw
 | Tier | Constant | Distance | Who |
 |------|----------|----------|-----|
 | EyeRange | `RANGE_EYE` | 200m | all (line-of-sight) |
-| SignalRange | `RANGE_SIGNAL` | 500m | stalkers (PDA/radio) |
+| RadioRange | `RANGE_RADIO` | 500m | stalkers (PDA/radio) |
 | ScentRange | `RANGE_SCENT` | 500m | mutants (scent tracking) |
 
-EyeRange covers the p90 nearest-neighbor distance on 13 of 14 measured levels. A squad at any smart terrain can see 1-3 neighboring smarts and several stashes within 200m. SignalRange and ScentRange cover the full operational radius: stalkers receive PDA alerts, mutants track scent. Same distance today (500m), independently tunable.
+EyeRange covers the p90 nearest-neighbor distance on 13 of 14 measured levels. A squad at any smart terrain can see 1-3 neighboring smarts and several stashes within 200m. RadioRange and ScentRange cover the full operational radius: stalkers receive PDA alerts, mutants track scent. Same distance today (500m), independently tunable.
 
 Each cause type maps to a range based on how the squad learns about the opportunity:
 
 | Cause type | Stalker range | Mutant range | Rationale |
 |------------|---------------|--------------|-----------|
 | Opportunities (stash, territory) | EyeRange | EyeRange | Squad sees what's nearby on arrival |
-| Reactions (kills, massacres, wounded) | SignalRange | ScentRange | Stalkers hear over radio, mutants smell blood |
-| Needs (hunger, sleep, shelter) | SignalRange | - | Squad knows campfire/trader locations from PDA |
+| Reactions (kills, massacres, wounded) | RadioRange | ScentRange | Stalkers hear over radio, mutants smell blood |
+| Needs (hunger, sleep, shelter) | RadioRange | - | Squad knows campfire/trader locations from PDA |
 | Instincts (feed, sleep, explore) | - | ScentRange | Mutants track by scent across the area |
 
 Three tiers create a natural separation: opportunities are local and opportunistic (200m), stalker coordination reaches further via radio (500m), and mutant hunting extends through scent (500m). You act on what you see, respond to what you hear, hunt what you smell.

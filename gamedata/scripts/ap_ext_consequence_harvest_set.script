@@ -71,7 +71,7 @@ local function _make_on_arrive(opts)
         end
         ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
             local smart = ap_core_utils.find_smart(target_squad.position, {
-                level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
+                level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
             })
             if not smart then return { code = TRACE.NO_SMART } end
             if xsmart.is_arrived(squad, smart) then
@@ -113,7 +113,7 @@ local function _handler_rob(event_data)
 
         local chasers = ap_core_utils.find_squads_observed(trace, position, {
             factions = _alignment_rob,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
             exclude_squad_id = event_data.taker_squad_id,
         })
@@ -121,7 +121,8 @@ local function _handler_rob(event_data)
 
         local robbers = {}
         for _, squad in ipairs(chasers) do
-            if ap_ext_util.check_personality(_personality_rob, squad.player_id, CONSEQUENCE.HARVEST_ROB, cfg.consequence_harvest_rob_personality_min, cfg.consequence_harvest_rob_personality_max) then
+            if ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB,
+                p_min = cfg.consequence_harvest_rob_personality_min, p_max = cfg.consequence_harvest_rob_personality_max }) then
                 robbers[#robbers + 1] = squad
             end
         end
@@ -141,7 +142,7 @@ local function _handler_rob(event_data)
                 _move_actor_chasers(robbers, moved)
             else
                 local smart = ap_core_utils.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL,
+                    level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id
@@ -187,7 +188,8 @@ local function _handler_haunt(event_data)
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
             local dominated = (not species or _species_haunt[species])
-                and ap_ext_util.check_personality(_personality_haunt, identity, CONSEQUENCE.HARVEST_HAUNT, cfg.consequence_harvest_haunt_personality_min, cfg.consequence_harvest_haunt_personality_max)
+                and ap_ext_util.check_personality(_personality_haunt, identity, { name = CONSEQUENCE.HARVEST_HAUNT,
+                    p_min = cfg.consequence_harvest_haunt_personality_min, p_max = cfg.consequence_harvest_haunt_personality_max })
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end

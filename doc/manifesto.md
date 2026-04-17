@@ -777,7 +777,7 @@ GSC's `PersonalEyeRange` was a per-entity attribute that determined how far a st
 AlifePlus extends this into two range tiers that govern how far consequences search for targets:
 
 - **EyeRange** (200m): line-of-sight. What the squad can see from where it stands. A stalker arriving at a smart terrain spots a nearby stash, an unclaimed outpost. A mutant pack sees prey at a watering hole.
-- **SignalRange** (500m): PDA radio. A stalker hears about a massacre, a base under attack, a trader location. Information travels further than sight.
+- **RadioRange** (500m): PDA radio. A stalker hears about a massacre, a base under attack, a trader location. Information travels further than sight.
 - **ScentRange** (500m): scent tracking. A bloodsucker smells corpses from 500m. A pack follows pheromone trails. A predator tracks wounded prey on the wind. Same distance as radio, different sense, independently tunable.
 
 The 200m EyeRange is not arbitrary. Empirical measurement of smart terrain spacing across 14 Anomaly levels shows that the median nearest-neighbor distance between smarts ranges from 44m (dense urban) to 148m (sparse industrial), with 200m covering the 90th percentile on 93% of levels.
@@ -785,8 +785,8 @@ The 200m EyeRange is not arbitrary. Empirical measurement of smart terrain spaci
 Each system maps to a range based on how the squad becomes aware:
 
 - **Opportunities** use EyeRange. A squad arrives and sees what's nearby. Stash, unclaimed territory. If nothing is visible, nothing happens. This is local and opportunistic.
-- **Reactions** use SignalRange (stalkers) or ScentRange (mutants). A stalker hears about a kill over radio. A mutant smells blood. The event happened elsewhere; the squad responds from a distance.
-- **Needs** use SignalRange. A hungry stalker knows where campfires are from PDA contacts. A wounded stalker knows the nearest medic.
+- **Reactions** use RadioRange (stalkers) or ScentRange (mutants). A stalker hears about a kill over radio. A mutant smells blood. The event happened elsewhere; the squad responds from a distance.
+- **Needs** use RadioRange. A hungry stalker knows where campfires are from PDA contacts. A wounded stalker knows the nearest medic.
 - **Instincts** use ScentRange. A hungry predator tracks scent to prey. A pack follows pheromone trails to a gathering point.
 
 Three tiers create a natural boundary between seeing, hearing, and smelling. You act on what you see, respond to what you hear, hunt what you smell. This is how GSC designed awareness: `PersonalEyeRange` determined the visible world, while faction SOS signals carried information beyond it.

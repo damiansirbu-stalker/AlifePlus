@@ -124,25 +124,18 @@ local function _find_sleep_smart(trace, species, position, level_id)
 end
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
-    local found = false
-    ap_core_debug.observe(trace, ACTION.FIND_TARGETS, function()
-        local nearby = xsquad.find_squads(pos, {
-            factions = _alignment_mutant,
-            level_id = level_id,
-            max_distance = RANGE_EYE,
-            max_count = 999,
-            exclude_squad_id = squad_id,
-        })
-        for i = 1, #nearby do
-            local sp = ap_ext_util.get_species(nearby[i].id)
-            if sp and threats[sp] then
-                found = true
-                return { code = TRACE.OK, threat = nearby[i].id, species = sp }
-            end
-        end
-        return { code = TRACE.EMPTY }
-    end)
-    return found
+    local nearby = ap_core_utils.find_squads_observed(trace, pos, {
+        factions = _alignment_mutant,
+        level_id = level_id,
+        max_distance = RANGE_EYE,
+        max_count = 999,
+        exclude_squad_id = squad_id,
+    })
+    for i = 1, #nearby do
+        local sp = ap_ext_util.get_species(nearby[i].id)
+        if sp and threats[sp] then return true end
+    end
+    return false
 end
 
 local function _build_safe_filter(threats)
@@ -201,8 +194,8 @@ local function _make_handler(entry)
             if entry.species_alignment and not entry.species_alignment[event_data.species] then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if not ap_ext_util.check_personality(entry.personality, event_data.species, entry.name,
-                cfg["consequence_" .. entry.name .. "_personality_min"], cfg["consequence_" .. entry.name .. "_personality_max"]) then
+            if not ap_ext_util.check_personality(entry.personality, event_data.species,
+                { name = entry.name, p_min = cfg["consequence_" .. entry.name .. "_personality_min"], p_max = cfg["consequence_" .. entry.name .. "_personality_max"] }) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 

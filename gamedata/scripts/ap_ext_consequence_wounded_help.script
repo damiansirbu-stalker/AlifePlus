@@ -31,16 +31,16 @@ local function _handler(event_data)
         if not faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
         if not ap_ext_util.check_alignment(_alignment_help, faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = faction } end
         if not ap_ext_util.check_personality(_personality, faction,
-            CONSEQUENCE.WOUNDED_HELP, cfg.consequence_wounded_help_personality_min, cfg.consequence_wounded_help_personality_max) then
+            { name = CONSEQUENCE.WOUNDED_HELP, p_min = cfg.consequence_wounded_help_personality_min, p_max = cfg.consequence_wounded_help_personality_max }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SIGNAL })
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
         if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [faction] = true },
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_wounded_help_max_squads,
             exclude_at_smart_id = target_smart.id,
             exclude_squad_id = event_data.squad_id,

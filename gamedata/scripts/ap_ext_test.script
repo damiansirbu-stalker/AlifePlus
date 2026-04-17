@@ -181,7 +181,12 @@ function kit()
         spawned = spawned + 1
         ::continue::
     end
-    _tip(string_format("Kit: %d items, %d skipped", spawned, skipped))
+    actor:give_money(500000)
+    xobject.create_item("equ_tourist_backpack_full", id)
+    ui_options.set("gameplay/fast_travel/state", 2)
+    game_fast_travel.update_settings()
+    xactor.give_info("drx_sl_brain_scorcher_switch_off")
+    _tip(string_format("Kit: %d items, %d skipped + 500k + backpack + travel + scorcher off", spawned, skipped))
     ap_core_debug.debug("[TEST] kit OK spawned=%d skipped=%d", spawned, skipped)
 end
 

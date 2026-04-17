@@ -124,8 +124,8 @@ local function _make_handler(entry)
             if not ap_ext_util.check_alignment(entry.community, event_data.community) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
-            if entry.personality and not ap_ext_util.check_personality(entry.personality, event_data.community, entry.name,
-                cfg["consequence_" .. entry.name .. "_personality_min"], cfg["consequence_" .. entry.name .. "_personality_max"]) then
+            if entry.personality and not ap_ext_util.check_personality(entry.personality, event_data.community,
+                { name = entry.name, p_min = cfg["consequence_" .. entry.name .. "_personality_min"], p_max = cfg["consequence_" .. entry.name .. "_personality_max"] }) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
 

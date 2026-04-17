@@ -20,7 +20,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
         if not ap_ext_util.check_personality(_personality, event_data.victim_faction,
-            CONSEQUENCE.SQUADKILL_FLEE, cfg.consequence_squadkill_flee_personality_min, cfg.consequence_squadkill_flee_personality_max) then
+            { name = CONSEQUENCE.SQUADKILL_FLEE, p_min = cfg.consequence_squadkill_flee_personality_min, p_max = cfg.consequence_squadkill_flee_personality_max }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
@@ -33,7 +33,7 @@ local function _handler(event_data)
 
         local fleeing = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_squadkill_flee_max_squads,
             exclude_at_smart_id = base.id,
             exclude_squad_id = event_data.squad_id,

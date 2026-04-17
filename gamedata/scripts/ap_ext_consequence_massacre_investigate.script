@@ -26,12 +26,12 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
         if not ap_ext_util.check_personality(_personality, investigate_faction,
-            CONSEQUENCE.MASSACRE_INVESTIGATE, cfg.consequence_massacre_investigate_personality_min, cfg.consequence_massacre_investigate_personality_max) then
+            { name = CONSEQUENCE.MASSACRE_INVESTIGATE, p_min = cfg.consequence_massacre_investigate_personality_min, p_max = cfg.consequence_massacre_investigate_personality_max }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
-            factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SIGNAL,
+            factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
             exclude_at_smart_id = smart.id,
         })
