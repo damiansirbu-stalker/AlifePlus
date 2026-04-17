@@ -116,44 +116,41 @@ Consequence handlers receive trace from consumer. Rate limiting handled by consu
 
 | Element | Owner | Purpose |
 |---------|-------|---------|
-| Priority | Registration | Execution order (lower = first) |
-| Rate limiter | Consumer | Sliding window, checked before handler |
-| Enabled gate | Handler | MCM toggle, early return |
-| Chance gate | Handler | Probability roll |
-| PDA message | Handler | Zone gossip with location |
-| Map markers | Handler | Visual feedback on PDA map |
-| Result code | Handler | Controls chain execution |
+| Rate limiter | Consumer | Token bucket (per-consequence) + global counter (radiant), checked before handler |
+| Enabled gate | Consumer | MCM condition function, checked before handler |
+| Rules phase | Handler | Alignment, species, personality, validation |
+| Eval phase | Handler | find_squads, find_smart, entity lookups |
+| Action phase | Handler | script_squad, record, PDA message |
+| Result code | Handler | Template phase outcome |
 
-### Handler Order
+### Handler Template (rules -> eval -> action)
 
-1. Enabled check -> DISABLED_NEXT
-2. Chance roll -> CHANCE_NEXT
-3. Data validation -> RULES_NEXT
-4. Business logic with internal `observe()` for actions
-5. Side effects (via xlibs)
-6. Return result code
+Every consequence follows a three-phase structure. Each phase returns immediately on failure.
+
+1. **Rules** - alignment check, species check (direct hash), personality roll, match validation, at_base guard -> `FAILED_RULES`
+2. **Eval** - find_squads, find_smart, xobject.se lookups -> `FAILED_EVAL`
+3. **Action** - script_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
+
+Gate order within rules: alignment -> species -> personality -> match -> validation.
 
 ### Result Codes
 
-Pattern: `OUTCOME_PROPAGATION`. Every code is two words: what happened + what the chain does.
+Template phase outcomes. Each code names the phase that answered.
 
-| Code | Outcome | Propagation | Chain |
-|------|---------|-------------|-------|
-| `OK_STOP` | success (exclusive) | stop | stops |
-| `OK_NEXT` | success (non-exclusive) | next | continues |
-| `RULES_NEXT` | conditions not met | next | continues |
-| `CHANCE_NEXT` | chance roll failed | next | continues |
-| `DISABLED_NEXT` | enabled gate off | next | continues |
-| `THROTTLED_NEXT` | rate limited | next | continues |
-| `ERROR_STOP` | handler failure | stop | stops |
+| Code | Phase | Meaning |
+|------|-------|---------|
+| `SUCCESS` | action | Consequence executed, squad scripted, record written |
+| `FAILED_RULES` | rules | Business rules rejected (alignment, personality, validation) |
+| `FAILED_EVAL` | eval | World query found nothing (no squads, no smart, entity gone) |
+| `FAILED_ACTION` | action | Rules and eval passed but action failed (script_squad rejected) |
+| `DISABLED` | consumer | Condition pre-gate returned false (MCM toggle off). Never returned by handlers. |
 
 Rules:
-- Two stoppers only: `OK_STOP` and `ERROR_STOP`
-- All non-success codes propagate (`_NEXT`)
-- Each non-success code names the gate that blocked it (rules, chance, disabled, throttled)
-- Error stops chain: fail-fast, don't run handlers in potentially invalid state
-- Names align with MCM fields: `_enabled` -> DISABLED, `_chance` -> CHANCE
-- Developer MUST choose propagation when picking a result code
+- Handlers return SUCCESS, FAILED_RULES, FAILED_EVAL, or FAILED_ACTION
+- DISABLED is consumer-only (condition pre-gate, line consumer:68)
+- Consumer continues to next consequence on any non-SUCCESS result
+- Consumer stops loop only when global radiant budget is exhausted
+- On SUCCESS: consumer increments per-type counter, global radiant counter, sets `event_data._fired = true`
 
 ### MCM Fields
 

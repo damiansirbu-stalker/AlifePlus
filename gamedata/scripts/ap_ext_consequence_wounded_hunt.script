@@ -43,13 +43,13 @@ local function _handler(event_data)
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_squad.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_hunt_rush })
+                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_hunt_rush })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.WOUNDED_HUNT) end
+        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
         end)

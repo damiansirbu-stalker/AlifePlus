@@ -164,7 +164,7 @@ local function _make_handler(entry)
 
             local res
             ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-                res = ap_core_squad.script_squad(squad, smart, {
+                res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
@@ -176,7 +176,7 @@ local function _make_handler(entry)
             if res.code ~= RESULT.SUCCESS then
                 return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
             end
-            ap_core_squad.add_marked_squad(event_data.squad_id, entry.consequence)
+            ap_core_broker.record(event_data.squad_id, CAUSE.INSTINCTS, entry.consequence)
 
             return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
         end)

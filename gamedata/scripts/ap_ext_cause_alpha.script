@@ -15,7 +15,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
     local killer_squad = xsquad.get_squad_by_member(killer_id)
     local species = ap_ext_util.get_species(killer_squad and killer_squad.id)
     if not species then return { code = RESULT.FAILED_RULES, reason = REASON.STALKER_EXCLUDED } end
-    local protected, reason, detail, pname = ap_core_squad.is_protected(killer_squad)
+    local protected, reason, detail, pname = ap_core_broker.is_protected(killer_squad)
     if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
 
     local victim_id = ap_core_utils.get_entity_id(se_victim)

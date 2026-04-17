@@ -26,7 +26,7 @@ local _personality_haunt = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
-        local res = ap_core_squad.script_actor_target(chaser)
+        local res = ap_core_broker.script_actor_target(chaser)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
@@ -34,7 +34,7 @@ end
 local function _make_move_smart_chasers(consequence_key, rush_key, gulag_key)
     return function(squads, smart, target_squad_id, moved)
         for _, chaser in ipairs(squads) do
-            local res = ap_core_squad.script_squad(chaser, smart, {
+            local res = ap_core_broker.script_squad(chaser, smart, {
                 rush = cfg[rush_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id },
@@ -78,7 +78,7 @@ local function _make_on_arrive(opts)
                 ap_ext_news.send_pda(cfg[pda_chance_key], pda_found_key)
                 return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
             end
-            local res = ap_core_squad.script_squad(squad, smart, {
+            local res = ap_core_broker.script_squad(squad, smart, {
                 rush = cfg[rush_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
@@ -155,7 +155,7 @@ local function _handler_rob(event_data)
             return ap_ext_news.send_pda(cfg.consequence_harvest_rob_pda_chance,
                 "text_pda_consequence_harvest_rob", { location = location })
         end)
-        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.HARVEST_ROB) end
+        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.SUCCESS, reason = #moved .. "_robbers", dst_id = dst_id,
@@ -196,13 +196,13 @@ local function _handler_haunt(event_data)
         local last_reason
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_squad.script_squad(squad, target_smart, { rush = cfg.consequence_harvest_haunt_rush })
+                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_harvest_haunt_rush })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.HARVEST_HAUNT) end
+        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_harvest_haunt_pda_chance, "text_pda_consequence_harvest_haunt")
         end)

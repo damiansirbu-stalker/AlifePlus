@@ -16,14 +16,14 @@ local _personality = { PERSONALITY.AGGRESSION }
 
 local function _move_actor_chasers(squads, moved)
     for _, chaser in ipairs(squads) do
-        local res = ap_core_squad.script_actor_target(chaser)
+        local res = ap_core_broker.script_actor_target(chaser)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
 local function _move_smart_chasers(squads, smart, target_squad_id, moved)
     for _, chaser in ipairs(squads) do
-        local res = ap_core_squad.script_squad(chaser, smart, {
+        local res = ap_core_broker.script_squad(chaser, smart, {
             rush = cfg.consequence_alphakill_targeted_rush,
             on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
             on_arrive_args = { target_squad_id = target_squad_id },
@@ -61,7 +61,7 @@ local function _on_arrive(squad, args)
             ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_found")
             return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
         end
-        local res = ap_core_squad.script_squad(squad, smart, {
+        local res = ap_core_broker.script_squad(squad, smart, {
             rush = cfg.consequence_alphakill_targeted_rush,
             on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
             on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
@@ -128,7 +128,7 @@ local function _handler(event_data)
             return ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance,
                 "text_pda_consequence_alphakill_targeted", { name = victim_name, location = location })
         end)
-        for i = 1, #moved do ap_core_squad.add_marked_squad(moved[i].id, CONSEQUENCE.ALPHAKILL_TARGETED) end
+        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.SUCCESS, reason = #moved .. "_alphas",

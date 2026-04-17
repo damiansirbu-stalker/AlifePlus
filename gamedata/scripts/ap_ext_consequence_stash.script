@@ -147,7 +147,7 @@ local function _make_handler(entry)
             local arrive_args = _build_arrive_args(entry.arrive_fn, stash_id)
             local res
             ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-                res = ap_core_squad.script_squad(squad, smart, {
+                res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg[rush_key],
                     on_arrive = arrive_args and entry.consequence or nil,
                     on_arrive_args = arrive_args,
@@ -156,7 +156,7 @@ local function _make_handler(entry)
                 return res
             end)
             if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-            ap_core_squad.add_marked_squad(event_data.squad_id, entry.consequence)
+            ap_core_broker.record(event_data.squad_id, CAUSE.STASH, entry.consequence)
 
             if not entry.arrive_fn then
                 ap_core_debug.observe(trace, ACTION.SEND_PDA, function()

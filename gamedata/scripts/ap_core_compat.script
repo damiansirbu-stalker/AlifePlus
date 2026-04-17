@@ -57,7 +57,7 @@ end
 --- v1.3.5: release squads saved with old post_arrived_wait field (renamed to pre_release_gulag)
 --- Old entries lack pre_release_gulag, causing nil arithmetic crash. Release and drop.
 local function _v135_release_old_scripted_squads(m_data)
-    local saved = m_data.ap_core_squad
+    local saved = m_data.ap_core_squad or m_data.ap_core_broker
     if not saved then return end
     local squads = saved.ap_scripted_squads
     if not squads or type(squads) ~= "table" then return end
@@ -71,8 +71,20 @@ local function _v135_release_old_scripted_squads(m_data)
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
+--- v1.4.0: delete old ap_core_squad save key (renamed to ap_core_broker)
+--- Release orphaned squads, delete key. Broker repopulates from scratch.
+local function _v140_cleanup_squad_key(m_data)
+    local old = m_data.ap_core_squad
+    if not old then return end
+    local squads = old.ap_scripted_squads
+    if squads and type(squads) == "table" then
+        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    end
+    m_data.ap_core_squad = nil
+end
+
 --- Run all migrations on load_state.
---- Alphabetical load order (ap_core_compat < ap_core_squad < ap_ext_tracker)
+--- Alphabetical load order (ap_core_compat < ap_core_broker < ap_ext_tracker)
 --- ensures this runs before any module reads m_data.
 local function _on_load_state(m_data)
     if not m_data then return end
@@ -81,15 +93,16 @@ local function _on_load_state(m_data)
     _v130_reset_smart_mutator(m_data)
     _v135_clear_elite_data(m_data)
     _v135_release_old_scripted_squads(m_data)
+    _v140_cleanup_squad_key(m_data)
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
 
-    ap_core_squad.register_owner("warfare", function(squad)
+    ap_core_broker.register_owner("warfare", function(squad)
         return squad.registered_with_warfare == true
     end)
-    ap_core_squad.register_owner("bao", function(squad)
+    ap_core_broker.register_owner("bao", function(squad)
         return squad.__lock == true
     end)
 

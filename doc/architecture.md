@@ -37,7 +37,7 @@ The pipeline, protection, squad lifecycle, rate limiting, tracing, and configura
 |------|------|
 | ap_core_producer | Gate chain, predicate evaluation, xbus publish |
 | ap_core_consumer | Dispatch: xbus subscribe, consequence iteration, result codes, rate gating |
-| ap_core_squad | Ownership registry, squad scripting lifecycle, arrival detection, protection, PDA markers |
+| ap_core_broker | Ownership registry, squad scripting lifecycle, activity record, arrival detection, protection, PDA markers |
 | ap_core_limiter | Rate limiting: cause counter, consequence token bucket, global consequence counter, cooldowns |
 | ap_core_debug | Logger, observe() tracing, result helpers. Zero overhead below DEBUG |
 | ap_core_utils | Event pub/sub wrappers, PDA dispatch, find_squads/find_smart with protection filters |
@@ -104,7 +104,7 @@ The triggering squad is both sensor and responder - it evaluates its own surroun
 
 **Gate 1: PACER_1.** Coarse rate limiter. Pure `os.clock()` timestamp comparison with a 100ms interval (~10 admits/sec). Runs before any squad field access. No `squad.id`, no luabind. Rejects ~98% of raw `squad_on_update` volume at near-zero cost. Instead of caching known-bad squads (old BANNED gate), PACER_1 simply limits how many squads reach the eligibility check.
 
-**Gate 2: is_protected.** Full eligibility check via `ap_core_squad.is_protected`. Runs on ~10 squads/sec from PACER_1. Checks ownership (warfare, BAO), is_scripted (engine `scripted_target`, condlist, random_targets), permanent (story, trader, named NPC -- session-lifetime cache), active role (task giver, companion), and task target (assault, bounty, delivery). Short-circuits early: scripted and permanent squads are caught in the first two checks. Subsumes the old BANNED and SCRIPTED gates. At 10/sec, the cost is acceptable without negative caching.
+**Gate 2: is_protected.** Full eligibility check via `ap_core_broker.is_protected`. Runs on ~10 squads/sec from PACER_1. Checks ownership (warfare, BAO), is_scripted (engine `scripted_target`, condlist, random_targets), permanent (story, trader, named NPC -- session-lifetime cache), active role (task giver, companion), and task target (assault, bounty, delivery). Short-circuits early: scripted and permanent squads are caught in the first two checks. Subsumes the old BANNED and SCRIPTED gates. At 10/sec, the cost is acceptable without negative caching.
 
 Protection is not a single gate - it is applied at four layers across the pipeline. The same guard set is checked at each layer, but against different entities depending on context:
 
@@ -113,7 +113,7 @@ Protection is not a single gate - it is applied at four layers across the pipeli
 | Producer | Radiant gate 2 (is_protected) | Triggering squad, before any cause evaluates |
 | Cause | Reactive predicates | The entity AP would act on (killer, patient, taker) |
 | Consequence | `ap_core_utils.find_squads` | Every candidate responder squad |
-| Squad | `ap_core_squad.script_squad` | No inline check - protection is upstream |
+| Squad | `ap_core_broker.script_squad` | No inline check - protection is upstream |
 
 Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the predicate itself: `alpha` and `alphakill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
 
@@ -177,7 +177,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 ### Squad Lifecycle
 
-`ap_core_squad` manages the full lifecycle of squads under AP control: scripting, arrival detection, post-arrival wait, and release.
+`ap_core_broker` manages the full lifecycle of squads under AP control: scripting, activity recording, arrival detection, post-arrival wait, and release.
 
 **Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` via `xsquad.control_squad`. `scripted_target` routes the squad to `specific_update` (direct A->B movement). AP clears `__lock` on acquisition -- `scripted_target` alone is sufficient for routing. If another mod clears `scripted_target` between ticks, `generic_update` runs and the squad may be reassigned by SIMBOARD; `reassert_target` restores `scripted_target` within 20s. The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
@@ -189,11 +189,11 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
 5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
-**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_squad`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
+**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
 
 **Coordination.** `scripted_target` is the squad control field. Setting it routes the squad to `specific_update`. AP no longer sets `__lock` (clears it on acquisition). `scripted_target` alone is sufficient for routing; `__lock` was a redundant fallback guard. AP checks `scripted_target` at gate 2 (is_protected, via `xsquad.is_scripted`). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets `scripted_target` on acquire; `xsquad.release_squad` clears it on release; `xsquad.reassert_target` restores it if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
-**Markers.** `add_marked_squad(squad_id, label, opts)` adds a squad to the PDA map marker system. A 10s timer applies new marks; a 20s timer validates (removes dead or unscripted squads). The `persistent` flag keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
+**Markers.** Markers are derived from `_ap_record`. A 10s timer (`_apply_markers`) iterates record entries, resolves labels from `CONSEQUENCE_DESCRIPTION`, and calls `xpda.mark_squad`. A 20s timer (`_validate_markers`) removes marks for dead entities or unscripted non-persistent entries. The `persistent` flag (set via `record(id, cause, consequence, { persistent = true })`) keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
 
 ### Initialization Lifecycle
 
@@ -208,7 +208,7 @@ Four phases. Each requires the previous to complete.
 - `ap_core_debug` registers `actor_on_first_update` for deferred log level init.
 - `ap_core_producer` resets dispatch state, registers `actor_on_first_update`. Does NOT subscribe to callbacks yet.
 - `ap_core_consumer` registers `actor_on_first_update`. Does NOT subscribe to xbus yet.
-- `ap_core_squad` registers save/load/first_update callbacks, creates the 20s scripted squad scan timer.
+- `ap_core_broker` registers save/load/first_update callbacks, creates the 20s scripted squad scan timer.
 - `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxies (warfare, bao).
 - `ap_ext_cause_*` register predicates with producer via `register()`.
 - `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
@@ -524,7 +524,7 @@ Register a cause predicate with `ap_core_producer.register(name, config, predica
 Register a squad ownership filter to prevent AP from scripting squads your mod controls.
 
 ```lua
-ap_core_squad.register_owner("my_mod", function(squad)
+ap_core_broker.register_owner("my_mod", function(squad)
     return squad.my_mod_flag == true
 end)
 ```

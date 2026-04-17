@@ -34,7 +34,7 @@ function register(name, config, handler)
     end
 
     if config.on_arrive then
-        ap_core_squad.register_arrival_handler(name, config.on_arrive)
+        ap_core_broker.register_arrival_handler(name, config.on_arrive)
     end
 
     local event = config.event
@@ -167,7 +167,7 @@ function dump_statistics()
     if #parts > 0 then
         ap_core_debug.debug("[CONSUMER.DISPATCH] %s", table_concat(parts, " | "))
     end
-    local scripted = ap_core_squad.get_scripted_ids()
+    local scripted = ap_core_broker.get_scripted_ids()
     local active, waiting, arrived_count = 0, 0, 0
     for _, data in pairs(scripted) do
         active = active + 1
@@ -176,7 +176,7 @@ function dump_statistics()
             arrived_count = arrived_count + 1
         end
     end
-    local marked = ap_core_squad.get_marked_count()
+    local marked = ap_core_broker.get_marked_count()
     ap_core_debug.debug("[CONSUMER.LIFECYCLE] active=%d arrived=%d waiting=%d marked=%d",
         active, arrived_count, waiting, marked)
     -- Reset

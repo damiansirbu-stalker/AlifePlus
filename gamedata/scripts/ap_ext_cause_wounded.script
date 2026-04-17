@@ -27,7 +27,7 @@ local function _on_npc_medkit_use(trace, npc, medkit, kind)
 
     local squad = xsquad.get_squad_by_member(npc:id())
     if squad then
-        local protected, reason, detail, pname = ap_core_squad.is_protected(squad)
+        local protected, reason, detail, pname = ap_core_broker.is_protected(squad)
         if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
         if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
     end

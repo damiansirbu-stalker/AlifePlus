@@ -10,6 +10,8 @@ local time_global = time_global
 local cfg = ap_core_mcm.cfg
 local _cooldown
 
+local ALPHAKILL_COOLDOWN_MS = 60000
+
 local function _on_death(trace, squad, npc, killer)
     if not cfg.cause_alphakill_enabled then return { code = RESULT.FAILED_RULES } end
 
@@ -39,7 +41,7 @@ local function _on_death(trace, squad, npc, killer)
 end
 
 function on_game_start()
-    _cooldown = ap_core_limiter.create_cooldown(60000)
+    _cooldown = ap_core_limiter.create_cooldown(ALPHAKILL_COOLDOWN_MS)
     ap_core_producer.register(CAUSE.ALPHAKILL, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_death)

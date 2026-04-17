@@ -239,6 +239,47 @@ ALPHA_LOOT = {
 }
 
 
+--- Consequence display labels for PDA markers and external queries.
+--- Values match MCM menu names (spaces, no \n).
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+
+CONSEQUENCE_DESCRIPTION = {
+    [CONSEQUENCE.ALPHA_PROMOTE] = "Alpha Promote",
+    [CONSEQUENCE.ALPHAKILL_TARGETED] = "AlphaKill Targeted",
+    [CONSEQUENCE.MASSACRE_SCAVENGE] = "Massacre Scavenge",
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "Massacre Investigate",
+    [CONSEQUENCE.STASH_AMBUSH] = "Stash Ambush",
+    [CONSEQUENCE.STASH_LOOT] = "Stash Loot",
+    [CONSEQUENCE.STASH_FILL] = "Stash Fill",
+    [CONSEQUENCE.SQUADKILL_REVENGE] = "SquadKill Revenge",
+    [CONSEQUENCE.SQUADKILL_FLEE] = "SquadKill Flee",
+    [CONSEQUENCE.BASEKILL_SUPPORT] = "BaseKill Support",
+    [CONSEQUENCE.BASEKILL_FLEE] = "BaseKill Flee",
+    [CONSEQUENCE.WOUNDED_HUNT] = "Wounded Hunt",
+    [CONSEQUENCE.WOUNDED_HELP] = "Wounded Help",
+    [CONSEQUENCE.AREA_CONQUER] = "Area Conquer",
+    [CONSEQUENCE.HARVEST_ROB] = "Harvest Rob",
+    [CONSEQUENCE.HARVEST_HAUNT] = "Harvest Haunt",
+    [CONSEQUENCE.HUNGER_CAMPFIRE] = "Hunger Campfire",
+    [CONSEQUENCE.SLEEP_CAMPFIRE] = "Sleep Campfire",
+    [CONSEQUENCE.REST_CAMPFIRE] = "Rest Campfire",
+    [CONSEQUENCE.HEAL_SHELTER] = "Heal Shelter",
+    [CONSEQUENCE.SHELTER_INDOOR] = "Shelter Indoor",
+    [CONSEQUENCE.SHELTER_OUTDOOR] = "Shelter Outdoor",
+    [CONSEQUENCE.MONEY_HARVEST] = "Money Harvest",
+    [CONSEQUENCE.MONEY_HUNT] = "Money Hunt",
+    [CONSEQUENCE.SUPPLY_TRADER] = "Supply Trader",
+    [CONSEQUENCE.JOB_OUTPOST] = "Job Outpost",
+    [CONSEQUENCE.JOB_EXPLORE] = "Job Explore",
+    [CONSEQUENCE.JOB_RESEARCH] = "Job Research",
+    [CONSEQUENCE.SOCIAL_CAMPFIRE] = "Social Campfire",
+    [CONSEQUENCE.SOCIAL_BASE] = "Social Base",
+    [CONSEQUENCE.INSTINCTS_FEED] = "Instinct Feed",
+    [CONSEQUENCE.INSTINCTS_SLEEP] = "Instinct Sleep",
+    [CONSEQUENCE.INSTINCTS_EXPLORE] = "Instinct Explore",
+    [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "Instinct Socialize",
+}
+
 --- Stalker needs DTO field names
 NEED_FIELDS = {
     "last_hunger_at", "last_sleep_at", "last_rest_at",
@@ -250,6 +291,10 @@ NEED_FIELDS = {
 INSTINCT_FIELDS = {
     "last_feed_at", "last_sleep_at", "last_explore_at", "last_socialize_at",
 }
+
+function on_game_start()
+    ap_core_broker.register_descriptions(CONSEQUENCE_DESCRIPTION)
+end
 
 --- Item section lists for needs arrive_fn (GAMMA-verified)
 NEEDS_SECTIONS = {

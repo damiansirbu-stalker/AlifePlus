@@ -65,7 +65,7 @@ local function _handler(event_data)
 
         local res
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
-            res = ap_core_squad.script_squad(squad, smart, {
+            res = ap_core_broker.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,
                 on_arrive_args = { target_smart_id = smart.id, smart_name = xlevel.get_smart_display_name(smart) },
@@ -74,7 +74,7 @@ local function _handler(event_data)
             return res
         end)
         if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_core_squad.add_marked_squad(squad.id, CONSEQUENCE.AREA_CONQUER)
+        ap_core_broker.record(squad.id, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER)
 
         return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, identity = identity }
     end)
