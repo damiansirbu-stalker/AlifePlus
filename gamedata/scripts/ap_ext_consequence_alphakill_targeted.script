@@ -1,6 +1,6 @@
---- ap_ext_consequence_alphakill_targeted: Same-species alpha mutants hunt the alpha's killer
+--- ap_ext_consequence_alphakill_targeted: Same-species mutants hunt the alpha's killer
 
-local ipairs, pairs = ipairs, pairs
+local ipairs = ipairs
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -9,9 +9,11 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PERSONALITY = ap_ext_const.PERSONALITY
 local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
+local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
+local _alignment_mutant = ap_ext_const.alignment_mutant
 local _personality = { PERSONALITY.AGGRESSION }
 
 local function _move_actor_chasers(squads, moved)
@@ -76,14 +78,14 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.ALPHAKILL_TARGETED, function()
         local killer_id, level_id = event_data.killer_id, event_data.level_id
-        local victim_id = event_data.id
+        local position = event_data.position
         local victim_name = event_data.name or "unknown"
-
         local victim_species = event_data.species
 
         if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
         if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
         if not victim_species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
         local is_player_kill = killer_id == 0
         local killer_squad
@@ -92,14 +94,14 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        --- Collect same-species alpha squads on the same level
-        local alphas = ap_ext_tracker.get_alphas()
+        local candidates = ap_core_utils.find_squads_observed(trace, position, {
+            factions = _alignment_mutant, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = RANGE_SCENT,
+            level_id = level_id, max_count = cfg.consequence_alphakill_targeted_max_squads,
+        })
+        if #candidates == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+
         local hunters = {}
-        for npc_id, _ in pairs(alphas) do
-            if npc_id == victim_id then goto continue end
-            local squad = xsquad.get_squad_by_member(npc_id)
-            if not squad then goto continue end
-            if xlevel.get_level_id(squad) ~= level_id then goto continue end
+        for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
             if species ~= victim_species then goto continue end
             if not ap_ext_util.check_personality(_personality, species, { name = CONSEQUENCE.ALPHAKILL_TARGETED,
@@ -108,7 +110,7 @@ local function _handler(event_data)
             hunters[#hunters + 1] = squad
             ::continue::
         end
-        if #hunters == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #hunters == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local dst_id = 0
@@ -118,7 +120,7 @@ local function _handler(event_data)
                 _move_actor_chasers(hunters, moved)
             else
                 local smart = ap_core_utils.find_smart(killer_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RANGE_SCENT,
+                    level_id = level_id, max_distance = RANGE_SCENT,
                 })
                 if not smart then return { code = TRACE.NO_SMART } end
                 dst_id = smart.id
@@ -135,8 +137,8 @@ local function _handler(event_data)
         for i = 1, #moved do ap_core_hud.record(moved[i].id, CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.SUCCESS, reason = #moved .. "_alphas",
-            dst_id = dst_id, level_id = level_id, actor = "alpha",
+            code = RESULT.SUCCESS, reason = #moved .. "_hunters",
+            dst_id = dst_id, level_id = level_id, actor = victim_species,
         })
     end)
 end

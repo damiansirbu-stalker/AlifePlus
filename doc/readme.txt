@@ -183,7 +183,7 @@ Reactions
       scales with level, panic immunity, valuable loot injected into inventory.
 
   AlphaKill
-    - Targeted - Same-species alphas on the same level hunt the killer.
+    - Targeted - Same-species mutants on the same level hunt the killer.
 
   Wounded
     - Hunt - Predator mutants sense weakness and close in.

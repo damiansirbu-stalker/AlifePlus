@@ -184,13 +184,13 @@ end
 --- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
 local function _on_radiant(squad)
     if #_radiant_handlers == 0 then return end
-    local s = stats_collecting()
-    if s then sr.events = sr.events + 1 end
+    local sc = stats_collecting()
+    if sc then sr.events = sr.events + 1 end
     -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
     local now = clock()
     if now < _next_pacer1 then return end
     _next_pacer1 = now + PACER_1_INTERVAL
-    if s then sr.pacer1 = sr.pacer1 + 1 end
+    if sc then sr.pacer1 = sr.pacer1 + 1 end
     -- Gate 2: is_protected (full eligibility check)
     local protected, reason, detail, name = ap_core_broker.is_protected(squad)
     if protected then
@@ -198,7 +198,7 @@ local function _on_radiant(squad)
             squad.id, reason or "?", detail or "?", name or squad:section_name() or "?")
         return
     end
-    if s then sr.protected = sr.protected + 1 end
+    if sc then sr.protected = sr.protected + 1 end
     -- Gate 3: RATIO
     local on_map = squad.online
     if not _alife_ratio_gate(on_map, _radiant_ct) then
@@ -206,11 +206,11 @@ local function _on_radiant(squad)
             tostring(on_map), cfg.alife_ratio, _radiant_ct.on, _radiant_ct.off, squad.id)
         return
     end
-    if s then sr.ratio = sr.ratio + 1 end
+    if sc then sr.ratio = sr.ratio + 1 end
     -- Gate 4: PACER_2 (budget limiter, every trigger produces an EVAL)
     if now < _next_pacer2 then return end
     _next_pacer2 = now + cfg.distributor_interval_sec
-    if s then sr.pacer2 = sr.pacer2 + 1 end
+    if sc then sr.pacer2 = sr.pacer2 + 1 end
     -- EVAL cascade
     _eval_radiant_cascade(on_map, squad)
 end
@@ -229,11 +229,11 @@ end
 local function _on_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or #handlers == 0 then return end
-    local s = stats_collecting()
+    local sc = stats_collecting()
 
-    if s then sx.events = sx.events + 1 end
+    if sc then sx.events = sx.events + 1 end
     if not _reactive_pacer_gate(callback_type) then return end
-    if s then sx.pacer = sx.pacer + 1 end
+    if sc then sx.pacer = sx.pacer + 1 end
 
     local first_arg = select(1, ...)
     local on_map = _resolve_on_map(callback_type, first_arg)
@@ -242,7 +242,7 @@ local function _on_reactive(callback_type, ...)
             callback_type, cfg.alife_ratio, _reactive_ct.on, _reactive_ct.off)
         return
     end
-    if s then sx.ratio = sx.ratio + 1 end
+    if sc then sx.ratio = sx.ratio + 1 end
     _eval_reactive_handlers(handlers, on_map, ...)
 end
 

@@ -64,6 +64,20 @@ local function _find_strongest_drive(dto, now, species)
     return best_entry, best_drive
 end
 
+local function _init_dto(dto, now)
+    for i = 1, #INSTINCTS do
+        local inst = INSTINCTS[i]
+        if not cfg[inst.enabled_key] then goto init_next end
+        if math_random() < 0.5 then
+            dto[inst.field] = now
+        else
+            local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+            dto[inst.field] = now - threshold - math_random(0, math_floor(threshold))
+        end
+        ::init_next::
+    end
+end
+
 local function _on_smart(trace, squad)
     if not cfg.cause_instincts_enabled then return { code = RESULT.FAILED_RULES } end
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
@@ -80,17 +94,7 @@ local function _on_smart(trace, squad)
     local dto = ap_ext_tracker.get_mutant_instincts(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
-        for i = 1, #INSTINCTS do
-            local inst = INSTINCTS[i]
-            if not cfg[inst.enabled_key] then goto init_next end
-            if math_random() < 0.5 then
-                dto[inst.field] = now
-            else
-                local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
-                dto[inst.field] = now - threshold - math_random(0, math_floor(threshold))
-            end
-            ::init_next::
-        end
+        _init_dto(dto, now)
     end
 
     local winner, best_drive = _find_strongest_drive(dto, now, species)

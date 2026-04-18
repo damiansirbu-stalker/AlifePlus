@@ -1,6 +1,7 @@
 --- ap_ext_test: MCM debug tools and demo harnesses
 
-local pairs, table_sort, table_remove, math_min = pairs, table.sort, table.remove, math.min
+local pairs, ipairs, pcall = pairs, ipairs, pcall
+local table_sort, table_remove, math_min = table.sort, table.remove, math.min
 local math_floor, math_huge = math.floor, math.huge
 local string_format, time_global = string.format, time_global
 local character_community, IsStalker = character_community, IsStalker
@@ -207,48 +208,45 @@ local _test_marker_spots = {
     "circle_killer", "circle_monolith", "circle_army",
 }
 
+--- @safety pcall required: map_add_object_spot crashes on invalid spot types (engine API)
+local function _try_add_spot(id, spot)
+    return pcall(level.map_add_object_spot, id, spot, spot)
+end
+
+--- @safety pcall required: map_remove_object_spot crashes on missing spots (engine API)
+local function _try_remove_spot(id, spot)
+    return pcall(level.map_remove_object_spot, id, spot)
+end
+
 --- Place all map spot types on squads across the level so you can see what each looks like
 --- @export console
 function show_markers()
     ap_core_debug.debug("[TEST] show_markers pressed")
     local actor = db.actor
     if not actor then return _tip("Not in game") end
-    local sim = alife()
-    local actor_se = sim:actor()
+    local actor_se = alife():actor()
     if not actor_se then return _tip("No actor entity") end
     local actor_level = xlevel.get_level_id(actor_se)
 
-    -- collect all squads on this level (online + offline), one per smart for spread
-    local seen_smart = {}
     local ids = {}
-    for id, data in pairs(SIMBOARD.smarts) do
-        if not data or not data.squads then goto skip_smart end
-        local smart = sim:object(id)
-        if not smart then goto skip_smart end
-        if xlevel.get_level_id(smart) ~= actor_level then goto skip_smart end
-        for sq_id in pairs(data.squads) do
-            if seen_smart[id] then goto skip_sq end
-            seen_smart[id] = true
-            ids[#ids + 1] = sq_id
-            ::skip_sq::
+    for squad in xsquad.iter_squads() do
+        if xlevel.get_level_id(squad) == actor_level then
+            ids[#ids + 1] = squad.id
         end
-        ::skip_smart::
     end
+    if #ids == 0 then return _tip("No squads on level") end
 
     _test_marker_ids = {}
     local placed = 0
     for i = 1, math_min(#_test_marker_spots, #ids) do
-        local ok = pcall(function()
-            level.map_add_object_spot(ids[i], _test_marker_spots[i], _test_marker_spots[i])
-        end)
-        if ok then
+        if _try_add_spot(ids[i], _test_marker_spots[i]) then
             placed = placed + 1
             _test_marker_ids[#_test_marker_ids + 1] = ids[i]
         end
     end
 
-    _tip(string_format("Placed %d/%d marker types across %d smarts", placed, #_test_marker_spots, #ids))
-    ap_core_debug.debug("[TEST] show_markers OK placed=%d total=%d smarts=%d", placed, #_test_marker_spots, #ids)
+    _tip(string_format("Placed %d/%d marker types across %d squads", placed, #_test_marker_spots, #ids))
+    ap_core_debug.debug("[TEST] show_markers OK placed=%d total=%d squads=%d", placed, #_test_marker_spots, #ids)
 end
 
 --- Clear all test markers placed by show_markers
@@ -257,7 +255,7 @@ function clear_markers()
     ap_core_debug.debug("[TEST] clear_markers pressed")
     for _, sq_id in ipairs(_test_marker_ids) do
         for _, spot in ipairs(_test_marker_spots) do
-            pcall(function() level.map_remove_object_spot(sq_id, spot) end)
+            _try_remove_spot(sq_id, spot)
         end
     end
     _test_marker_ids = {}

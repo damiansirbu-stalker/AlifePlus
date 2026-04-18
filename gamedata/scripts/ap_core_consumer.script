@@ -68,20 +68,20 @@ end
 
 
 -- Dispatch one consequence. Returns true to stop the loop (radiant success or global budget exhausted).
-local function _dispatch_entry(entry, event_type, event_data, is_radiant, s)
+local function _dispatch_entry(entry, event_type, event_data, is_radiant, sc)
     if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
         ap_core_debug.debug("[CONSUMER] GLOBAL_RATE_EXHAUSTED consequence=%s cause=%s", entry.name, event_type)
-        if s then stats.inc_rate(is_radiant) end
+        if sc then stats.inc_rate(is_radiant) end
         return true
     end
     if not ap_core_limiter.check_consequence_rate_limit(entry.name) then
         ap_core_debug.debug("[CONSUMER] RATE_LIMITED consequence=%s", entry.name)
-        if s then stats.inc_rate(is_radiant) end
+        if sc then stats.inc_rate(is_radiant) end
         return
     end
     local result = _run_handler(entry, event_data)
     if not result or result.code == RESULT.DISABLED then return end
-    if s then stats.classify(result, is_radiant) end
+    if sc then stats.classify(result, is_radiant) end
     if result.code == RESULT.SUCCESS then
         _on_success(entry.name, is_radiant, event_data)
         if is_radiant then return true end
@@ -96,11 +96,11 @@ local function _process(event_type, event_data)
         event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
-    local s = stats_collecting()
+    local sc = stats_collecting()
     local shuffled = xtable.shuffle(consequences)
 
     for i = 1, #shuffled do
-        if _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, s) then break end
+        if _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, sc) then break end
     end
 end
 

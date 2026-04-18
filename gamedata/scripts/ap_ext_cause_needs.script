@@ -55,6 +55,20 @@ local function _find_strongest_drive(dto, now, identity)
     return best_entry, best_drive
 end
 
+local function _init_dto(dto, now)
+    for i = 1, #NEEDS do
+        local need = NEEDS[i]
+        if not cfg[need.enabled_key] then goto init_next end
+        if math_random() < 0.5 then
+            dto[need.field] = now
+        else
+            local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
+            dto[need.field] = now - threshold - math_random(0, math_floor(threshold))
+        end
+        ::init_next::
+    end
+end
+
 --- Evaluate needs for squad at smart terrain transition
 local function _on_smart(trace, squad)
     if not cfg.cause_needs_enabled then return { code = RESULT.FAILED_RULES } end
@@ -69,17 +83,7 @@ local function _on_smart(trace, squad)
     local dto = ap_ext_tracker.get_stalker_needs(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_stalker_needs(squad.id, now)
-        for i = 1, #NEEDS do
-            local need = NEEDS[i]
-            if not cfg[need.enabled_key] then goto init_next end
-            if math_random() < 0.5 then
-                dto[need.field] = now
-            else
-                local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
-                dto[need.field] = now - threshold - math_random(0, math_floor(threshold))
-            end
-            ::init_next::
-        end
+        _init_dto(dto, now)
     end
 
     local winner, best_drive = _find_strongest_drive(dto, now, squad.player_id)
