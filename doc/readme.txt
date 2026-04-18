@@ -270,7 +270,7 @@ Personality
 ---
 
 Compatibility & Safety:
-- Compatible with all modded exe variants (Demonized, AOE, MT)
+- Tested with vanilla Anomaly 1.5.3, Demonized main, Demonized MT, and AOEngine (latest versions)
 - Built and tested with GAMMA, also tested with Zona and EFP
 - No base script edits, no engine patches
 - Works mid-save
@@ -288,7 +288,6 @@ Compatibility & Safety:
 
 Requirements:
 - Anomaly 1.5.3
-- Modded exes
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 

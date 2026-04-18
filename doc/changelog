@@ -1,50 +1,33 @@
 next
-  Summary: Range tiers, cause taxonomy, mutant instincts, food chain, day/night cycle, species behavior, pipeline redesign, personality recalibration, integration API, statistics overlay
+
+1.4.0
+  Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
   Gameplay:
-    Added: detection range tiers. EyeRange, RadioRange, ScentRange. Squads see, hear, or smell within their tier.
-    Added: four cause types. Reactions, opportunities, needs, instincts. Each maps to a range tier and a set of rules.
-    Changed: decay and cooldown timers use game time instead of wall time. Respects time acceleration and realism mods.
-    Changed: opportunities (stash, territory) search within eye range instead of the entire level.
-    Changed: mutant consequences use scent range. Stalker consequences use radio range.
-    Added: mutant instincts. Scatter, feed, sleep, explore, socialize. Deprivation-scored drives, same as stalker needs. Scatter is binary (predator proximity).
-    Added: food chain hierarchy. Cowardly scatters from feral/predator/aberrant, feral from predator/aberrant, predator from aberrant.
-    Added: day/night activity cycle for all creatures. Stalkers work and trade by day, rest and sleep at night.
-    Added: nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night and retreat to lairs at dawn.
-    Added: mutant sleep locations by behavioral alignment. Cowardly in fields, feral in lairs, predator in lairs/buildings, aberrant buildings and underground.
-    Changed: stalker needs gated by day/night. Supply, money, job day-only. Sleep, rest, shelter night-only. Hunger, heal, social any time.
-    Changed: gigant reclassified from aberrant to feral. Brute force, not psychic.
-    Changed: every mutant species has its own personality. Species identity drives all mutant decisions.
-    Changed: mutants split into behavioral groups (cowardly, feral, predator, aberrant) with distinct consequence gates.
-    Changed: stalkers and mutants respond separately to every world event.
-    Changed: when an alpha dies, same-species mutants on the same level hunt the killer.
-    Added: picking up an artefact triggers two responses. Outlaws chase the taker. Aberrant mutants converge on the pickup site.
+    Added: mutant instincts. Five deprivation-scored drives (scatter, feed, sleep, explore, socialize) parallel to stalker needs. Per-instinct xbus routing, Hull drive competition, independent thresholds.
+    Changed: mutant personality and alignment redesigned from GSC source (monstry.doc). Species and subspecies detection via xlibs replaces naive community categories.
+    Added: food chain. Four behavioral groups (cowardly, feral, predator, aberrant) with tiered avoidance. Cowardly flees feral+predator+aberrant, feral flees predator+aberrant, predator flees aberrant.
+    Added: day/night cycle. Stalkers work by day, rest at night. Nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night, retreat at dawn. All needs and instincts time-gated accordingly.
+    Added: range-based perception. EyeRange (200m, vision), RadioRange (500m, stalker PDA), ScentRange (500m, mutant tracking). Each cause type maps to a range tier. Distances derived from empirical smart terrain geometry analysis across 14 levels (nearest-neighbor spacing, vertex density, level dimensions).
+    Changed: when an alpha dies, same-species mutants on the level hunt the killer.
+    Added: artefact pickup triggers reactions. Outlaws chase the taker; aberrant mutants converge on the site.
+    Changed: decay and cooldown timers use game time (respects time acceleration and realism mods).
   Core:
-    Added: squad ownership reassertion. AP restores control over its squads every scan if another mod overwrites it.
-    Added: squads that die or despawn between scans are cleaned up immediately.
-    Changed: tuned gulag stay durations for all consequences. Squads return to simulation faster after completing their task.
-    Changed: pipeline redesign. Ineligible squads (story NPCs, traders, scripted) are filtered before the evaluation budget. Every trigger produces a result. Previously up to 79% of triggers were wasted on squads that could never act.
-    Changed: radiant causes cascade on rejection. If a cause doesn't match the squad, the next one is tried immediately instead of waiting for the next trigger.
-    Changed: map markers now use blue icons for active squads. Markers linger for 60 seconds after the squad finishes or dies, then fade.
-    Changed: cause predicates are pure gates. Causes reject faster and skip expensive world queries when business rules fail.
-    Added: statistics overlay. Real-time pipeline tracking on screen with cause/consequence counts, blocker breakdown, and per-minute rates. Six screen positions via MCM. Hides on PDA, inventory, and menus. Zero overhead when off.
-    Changed: pipeline instrumentation replaced with unified statistics system. Full detail logged every 10s when overlay enabled.
-    Changed: rush defaults rebalanced. Only combat, chase, and urgent consequences use rush.
+    Changed: pipeline redesign. Ineligible squads filtered before evaluation budget. Every trigger produces a result.
+    Changed: cascading causes with pure predicate gates. Rejections skip expensive queries and immediately try the next cause.
+    Added: squad ownership reassertion. Dead squad cleanup. Invalid cause-consequence pairs blocked at cause level.
+    Added: statistics overlay. Real-time pipeline metrics (rates, blockers, counts), configurable position via MCM.
+    Changed: map markers use blue icons, linger 60s after completion, then fade.
+    Changed: general tuning (rush defaults, gulag duration, return-to-simulation timing).
   MCM:
-    Added: statistics overlay position selector in Development tab. Off, top/center/bottom left/right.
-    Added: instincts cause and consequence sections with per-instinct toggles, thresholds, and rush settings.
-    Added: per-consequence personality floor and ceiling sliders. Each consequence owns its probability band (default 0.20-0.60).
-    Removed: global personality floor/ceiling sliders. Per-consequence sliders replace them.
-    Added: cause and consequence type tags in MCM descriptions. Each entry shows its classification at a glance.
-    Changed: all consequence descriptions updated to reflect species behavior and stalker/mutant separation.
-  Personality:
-    Changed: personality recalibrated. All trait values grounded in GSC lore as direct probabilities.
-    Changed: new formula. Average of traits, clamped to floor/ceiling. No per-consequence weights.
-    Changed: personality clamp moved from global to per-consequence. Tunable per behavior via MCM.
+    Added: instincts configuration. Per-instinct toggles, thresholds, and rush settings.
+    Added: statistics overlay configuration.
+    Added: per-consequence personality floor and ceiling sliders.
   Integration:
-    Added: activity record API. record() and get_record() let external mods query what AP squads are doing (e.g. warfare map tooltips).
-    Added: consequence description labels for PDA map markers via register_descriptions().
-    Changed: register_owner() supports override. Mods that register natively replace AP's proxy filter.
-    Changed: integration guide rewritten with current API examples, consequence template, chase pattern, events table.
+    Added: activity record API. record() and get_record() for external mods (e.g. warfare map tooltips).
+    Added: PDA marker descriptions via register_descriptions().
+    Changed: register_owner() supports override. Integration guide rewritten with current API and examples.
+  Compatibility:
+    Removed: modded exes requirement. Works with vanilla Anomaly 1.5.3, Demonized, Demonized MT, AOEngine. Tested with GAMMA, EFP, Zona.
 
 1.3.6
   Summary: Hotfix, save compat
