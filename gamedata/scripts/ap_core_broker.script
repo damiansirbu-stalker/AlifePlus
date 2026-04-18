@@ -139,11 +139,6 @@ local function _unscript_squad(squad_or_id)
         xsquad.release_squad(squad)
     end
     _ap_scripted_squads[squad_id] = nil
-    local rec = _ap_record[squad_id]
-    if rec and not rec.persistent then
-        if rec.is_marked then xpda.unmark_squad(squad_id) end
-        _ap_record[squad_id] = nil
-    end
     return true
 end
 
@@ -348,12 +343,6 @@ local function _update_scripted_squads()
 end
 
 
-local function _should_remove_marker(entry, se)
-    if not se then return true end
-    if not entry.persistent and not se.scripted_target then return true end
-    return false
-end
-
 local function _apply_markers()
     for squad_id, entry in pairs(_ap_record) do
         if entry.is_marked then goto continue end
@@ -361,7 +350,7 @@ local function _apply_markers()
         if not se then goto continue end
         local desc = _consequence_descriptions and _consequence_descriptions[entry.consequence]
         local full_label = (desc or entry.consequence) .. ": " .. xsquad.get_community_name(se)
-        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_core_const.MARKER_TYPE })
+        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
         entry.is_marked = true
         ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
         ::continue::
@@ -369,14 +358,20 @@ local function _apply_markers()
 end
 
 local function _validate_markers()
+    local now = os.clock()
     for squad_id, entry in pairs(_ap_record) do
+        if not entry.is_marked then goto continue end
         local se = xobject.se(squad_id)
-        if not _should_remove_marker(entry, se) then goto continue end
-        if entry.is_marked then
-            xpda.unmark_squad(squad_id)
-            ap_core_debug.debug("[SQUAD] unmark: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
+        local should_linger = not se or (not entry.persistent and not se.scripted_target)
+        if should_linger and not entry.remove_at then
+            entry.remove_at = now + ap_core_const.MARKER_LINGER_SEC
+            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
         end
-        _ap_record[squad_id] = nil
+        if entry.remove_at and now >= entry.remove_at then
+            xpda.unmark_squad(squad_id)
+            ap_core_debug.debug("[SQUAD] unmark: squad=%d", squad_id)
+            _ap_record[squad_id] = nil
+        end
         ::continue::
     end
 end

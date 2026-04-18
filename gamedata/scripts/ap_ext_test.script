@@ -190,6 +190,80 @@ function kit()
     ap_core_debug.debug("[TEST] kit OK spawned=%d skipped=%d", spawned, skipped)
 end
 
+local _test_marker_ids = {}
+local _test_marker_spots = {
+    "red_location", "green_location", "blue_location",
+    "circle_small_red", "circle_small_green", "circle_small_yellow", "circle_empty",
+    "crlc_mdl", "crlc_small", "crlc_squad_red", "crlc_squad_green",
+    "circle_target", "warfare_selected_target",
+    "warfare_friendly_spot_moving", "warfare_enemy_spot_moving", "warfare_neutral_spot_moving",
+    "alife_presentation_squad_friend", "alife_presentation_squad_enemy", "alife_presentation_squad_neutral",
+    "alife_presentation_squad_monster",
+    "alife_presentation_faction_stalker", "alife_presentation_faction_dolg",
+    "alife_presentation_faction_freedom", "alife_presentation_faction_bandit",
+    "alife_presentation_faction_killer", "alife_presentation_faction_monster",
+    "alife_combat", "alife_combat_fight",
+    "circle_stalker", "circle_dolg", "circle_freedom", "circle_bandit",
+    "circle_killer", "circle_monolith", "circle_army",
+}
+
+--- Place all map spot types on squads across the level so you can see what each looks like
+--- @export console
+function show_markers()
+    ap_core_debug.debug("[TEST] show_markers pressed")
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local sim = alife()
+    local actor_se = sim:actor()
+    if not actor_se then return _tip("No actor entity") end
+    local actor_level = xlevel.get_level_id(actor_se)
+
+    -- collect all squads on this level (online + offline), one per smart for spread
+    local seen_smart = {}
+    local ids = {}
+    for id, data in pairs(SIMBOARD.smarts) do
+        if not data or not data.squads then goto skip_smart end
+        local smart = sim:object(id)
+        if not smart then goto skip_smart end
+        if xlevel.get_level_id(smart) ~= actor_level then goto skip_smart end
+        for sq_id in pairs(data.squads) do
+            if seen_smart[id] then goto skip_sq end
+            seen_smart[id] = true
+            ids[#ids + 1] = sq_id
+            ::skip_sq::
+        end
+        ::skip_smart::
+    end
+
+    _test_marker_ids = {}
+    local placed = 0
+    for i = 1, math_min(#_test_marker_spots, #ids) do
+        local ok = pcall(function()
+            level.map_add_object_spot(ids[i], _test_marker_spots[i], _test_marker_spots[i])
+        end)
+        if ok then
+            placed = placed + 1
+            _test_marker_ids[#_test_marker_ids + 1] = ids[i]
+        end
+    end
+
+    _tip(string_format("Placed %d/%d marker types across %d smarts", placed, #_test_marker_spots, #ids))
+    ap_core_debug.debug("[TEST] show_markers OK placed=%d total=%d smarts=%d", placed, #_test_marker_spots, #ids)
+end
+
+--- Clear all test markers placed by show_markers
+--- @export console
+function clear_markers()
+    ap_core_debug.debug("[TEST] clear_markers pressed")
+    for _, sq_id in ipairs(_test_marker_ids) do
+        for _, spot in ipairs(_test_marker_spots) do
+            pcall(function() level.map_remove_object_spot(sq_id, spot) end)
+        end
+    end
+    _test_marker_ids = {}
+    _tip("Cleared test markers")
+end
+
 --- Spawn a mutant nearby and promote it to alpha for loot testing
 --- @export console
 function spawn_alpha()
