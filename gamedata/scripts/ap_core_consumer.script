@@ -1,22 +1,13 @@
 --- ap_core_consumer: Routes cause events to consequence handlers via round-robin
-local pairs, RegisterScriptCallback, table_concat = pairs, RegisterScriptCallback, table.concat
+local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 
 local RESULT = ap_core_const.RESULT
-local REASON = ap_core_const.REASON
 local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
 
--- Statistics counters (guarded by enabled(), reset every dump)
-local _stats = {}
-local _stats_success = 0
-local _stats_alignment = 0
-local _stats_personality = 0
-local _stats_rules = 0
-local _stats_eval = 0
-local _stats_action = 0
-local _stats_rate = 0
-local _stats_published = 0
+local stats = ap_core_statistics
+local stats_enabled = stats.enabled
 
 --- Register a consequence handler for an event
 --- @param name string Consequence name (used as trace key, rate limit key, arrival key)
@@ -75,56 +66,22 @@ local function _on_success(entry_name, is_radiant, event_data)
     if event_data then event_data._fired = true end
 end
 
-local function _stat_inc(cause, field)
-    if not _stats[cause] then _stats[cause] = { success = 0, alignment = 0, personality = 0, rules = 0, eval = 0, action = 0, rate = 0 } end
-    _stats[cause][field] = _stats[cause][field] + 1
-end
-
--- Classify result into stat bucket (called only when debug enabled)
-local function _stat_record(event_type, result)
-    local code = result.code
-    if code == RESULT.SUCCESS then
-        _stats_success = _stats_success + 1
-        _stat_inc(event_type, "success")
-    elseif code == RESULT.FAILED_EVAL then
-        _stats_eval = _stats_eval + 1
-        _stat_inc(event_type, "eval")
-    elseif code == RESULT.FAILED_ACTION then
-        _stats_action = _stats_action + 1
-        _stat_inc(event_type, "action")
-    elseif result.reason == REASON.WRONG_ALIGNMENT then
-        _stats_alignment = _stats_alignment + 1
-        _stat_inc(event_type, "alignment")
-    elseif result.reason == REASON.LOW_PERSONALITY then
-        _stats_personality = _stats_personality + 1
-        _stat_inc(event_type, "personality")
-    else
-        _stats_rules = _stats_rules + 1
-        _stat_inc(event_type, "rules")
-    end
-end
-
--- Record rate block (called only when debug enabled)
-local function _stat_rate(event_type)
-    _stats_rate = _stats_rate + 1
-    _stat_inc(event_type, "rate")
-end
 
 -- Dispatch one consequence. Returns true to stop the loop (radiant success or global budget exhausted).
-local function _dispatch_entry(entry, event_type, event_data, is_radiant, debug)
+local function _dispatch_entry(entry, event_type, event_data, is_radiant, s)
     if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
         ap_core_debug.debug("[CONSUMER] GLOBAL_RATE_EXHAUSTED consequence=%s cause=%s", entry.name, event_type)
-        if debug then _stat_rate(event_type) end
+        if s then stats.inc_rate(is_radiant) end
         return true
     end
     if not ap_core_limiter.check_consequence_rate_limit(entry.name) then
         ap_core_debug.debug("[CONSUMER] RATE_LIMITED consequence=%s", entry.name)
-        if debug then _stat_rate(event_type) end
+        if s then stats.inc_rate(is_radiant) end
         return
     end
     local result = _run_handler(entry, event_data)
     if not result or result.code == RESULT.DISABLED then return end
-    if debug then _stat_record(event_type, result) end
+    if s then stats.classify(result, is_radiant) end
     if result.code == RESULT.SUCCESS then
         _on_success(entry.name, is_radiant, event_data)
         if is_radiant then return true end
@@ -135,57 +92,18 @@ local function _process(event_type, event_data)
     local consequences = _registry[event_type]
     if not consequences or #consequences == 0 then return end
 
-    local debug = ap_core_debug.enabled()
-    if debug then
-        ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s",
-            event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
-        _stats_published = _stats_published + 1
-    end
+    ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s",
+        event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
+    local s = stats_enabled()
     local shuffled = xtable.shuffle(consequences)
 
     for i = 1, #shuffled do
-        if _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, debug) then break end
+        if _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, s) then break end
     end
 end
 
---- Dump statistics and reset counters. Called by producer on the same timer as PIPELINE.
-function dump_statistics()
-    if not ap_core_debug.enabled() then return end
-    ap_core_debug.debug("[CONSUMER.CAUSES] published=%d success=%d | alignment=%d personality=%d rules=%d eval=%d action=%d rate=%d",
-        _stats_published, _stats_success, _stats_alignment, _stats_personality, _stats_rules, _stats_eval, _stats_action, _stats_rate)
-    local parts = {}
-    for cause, s in pairs(_stats) do
-        parts[#parts + 1] = cause .. ": success=" .. s.success .. " alignment=" .. s.alignment .. " personality=" .. s.personality
-            .. " rules=" .. s.rules .. " eval=" .. s.eval .. " action=" .. s.action .. " rate=" .. s.rate
-    end
-    if #parts > 0 then
-        ap_core_debug.debug("[CONSUMER.DISPATCH] %s", table_concat(parts, " | "))
-    end
-    local scripted = ap_core_broker.get_scripted_ids()
-    local active, waiting, arrived_count = 0, 0, 0
-    for _, data in pairs(scripted) do
-        active = active + 1
-        if data.arrived then
-            if data.release_at then waiting = waiting + 1 end
-            arrived_count = arrived_count + 1
-        end
-    end
-    local marked = ap_core_broker.get_marked_count()
-    ap_core_debug.debug("[CONSUMER.LIFECYCLE] active=%d arrived=%d waiting=%d marked=%d",
-        active, arrived_count, waiting, marked)
-    -- Reset
-    _stats = {}
-    _stats_success = 0
-    _stats_alignment = 0
-    _stats_personality = 0
-    _stats_rules = 0
-    _stats_eval = 0
-    _stats_action = 0
-    _stats_rate = 0
-    _stats_published = 0
-end
 
 local function _make_handler(event)
     return function(event_data) _process(event, event_data) end

@@ -363,12 +363,14 @@ defaults = {
     -- Development
     log_level = "WARN",
     map_markers = false,
+    statistics_position = "off",
 
 }
 
 local _key_to_tab = {
     log_level = "development",
     map_markers = "development",
+    statistics_position = "development",
     alife_ratio = "general",
     distributor_interval_sec = "general",
     allow_external_ownership = "general",
@@ -1417,6 +1419,15 @@ function on_mcm_load()
                         {"WARN", "warn"},
                         {"INFO", "info"},
                         {"DEBUG", "debug"},
+                    }),
+                    _list("statistics_position", {
+                        {"off", "off"},
+                        {"top_left", "top_left"},
+                        {"top_right", "top_right"},
+                        {"center_left", "center_left"},
+                        {"center_right", "center_right"},
+                        {"bottom_left", "bottom_left"},
+                        {"bottom_right", "bottom_right"},
                     }),
                     _check("map_markers"),
                 },
