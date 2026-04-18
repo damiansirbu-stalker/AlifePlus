@@ -1,4 +1,4 @@
---- ap_ext_consequence_alphakill_targeted: Other alpha mutants hunt the alpha's killer
+--- ap_ext_consequence_alphakill_targeted: Same-species alpha mutants hunt the alpha's killer
 
 local ipairs, pairs = ipairs, pairs
 
@@ -79,8 +79,11 @@ local function _handler(event_data)
         local victim_id = event_data.id
         local victim_name = event_data.name or "unknown"
 
+        local victim_species = event_data.species
+
         if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
         if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
+        if not victim_species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
 
         local is_player_kill = killer_id == 0
         local killer_squad
@@ -89,7 +92,7 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        --- Collect other alpha squads on the same level
+        --- Collect same-species alpha squads on the same level
         local alphas = ap_ext_tracker.get_alphas()
         local hunters = {}
         for npc_id, _ in pairs(alphas) do
@@ -98,7 +101,7 @@ local function _handler(event_data)
             if not squad then goto continue end
             if xlevel.get_level_id(squad) ~= level_id then goto continue end
             local species = ap_ext_util.get_species(squad.id)
-            if not species then goto continue end
+            if species ~= victim_species then goto continue end
             if not ap_ext_util.check_personality(_personality, species, { name = CONSEQUENCE.ALPHAKILL_TARGETED,
                 p_min = cfg.consequence_alphakill_targeted_personality_min,
                 p_max = cfg.consequence_alphakill_targeted_personality_max }) then goto continue end

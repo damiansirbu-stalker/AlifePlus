@@ -26,11 +26,13 @@ local function _on_death(trace, squad, npc, killer)
 
     local alpha_data = ap_ext_tracker.get_alpha(victim_id)
     local killer_id = ap_core_utils.get_entity_id(killer)
+    local species = squad and ap_ext_util.get_species(squad.id)
 
     return {
         cause = CAUSE.ALPHAKILL,
         id = victim_id,
         community = squad and squad.player_id,
+        species = species,
         killer_id = killer_id,
         name = alpha_data and alpha_data.name or "unknown",
         alpha_level = alpha_data and alpha_data.level or 0,

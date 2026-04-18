@@ -334,7 +334,7 @@ Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are r
 | BASEKILL | basekill_support | stalker | friendly squads reinforce attacked base |
 | BASEKILL | basekill_flee | stalker | squads at base evacuate |
 | ALPHA | alpha_promote | mutant | update alpha level, apply hit power/panic buffs, grant loot |
-| ALPHAKILL | alphakill_targeted | mutant | other alpha mutants on same level pursue killer (chase) |
+| ALPHAKILL | alphakill_targeted | mutant | same-species alphas on same level pursue killer (chase) |
 | WOUNDED | wounded_hunt | mutant | predator+aberrant mutants close in |
 | WOUNDED | wounded_help | stalker | same-faction squads rush to help |
 | HARVEST | harvest_rob | stalker | outlaws pursue artefact taker (chase) |
