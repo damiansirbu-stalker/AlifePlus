@@ -19,13 +19,12 @@ local _species_conquer = xtable.merge(ap_ext_const.alignment_mutant_feral, ap_ex
 local _personality = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
 local _smart_cooldown
 
-local function _build_filter(community)
+local function _build_filter()
     return function(smart)
         if _smart_cooldown:get(smart.id) then return false end
         if not xsmart.is_smart_empty(smart) then return false end
         if xsmart.is_base(smart) then return false end
-        local fac = xsmart.get_smart_faction(smart)
-        return fac == "none" or game_relations.is_factions_enemies(community, fac)
+        return true
     end
 end
 
@@ -56,7 +55,7 @@ local function _handler(event_data)
         local squad = xobject.se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
-        local filter = _build_filter(event_data.community)
+        local filter = _build_filter()
         local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
             level_id = event_data.level_id, max_distance = RANGE_EYE, filter = filter,
         })

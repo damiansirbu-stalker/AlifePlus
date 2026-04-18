@@ -85,7 +85,7 @@ local CONFIGS = {
     { need = "heal", consequence = CONSEQUENCE.HEAL_SHELTER, name = "heal_shelter",
         dto_field = "last_heal_at", filter = xsmart.has_surge_shelter,
         exclude_enemy = true, section_key = "HEAL",
-        personality = { PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE },
+        personality = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL },
         pre_release_gulag = PRE_RELEASE_GULAG.HEAL_SHELTER },
     { need = "shelter", consequence = CONSEQUENCE.SHELTER_INDOOR, name = "shelter_indoor",
         dto_field = "last_shelter_at", filter = xsmart.has_surge_shelter,
@@ -212,7 +212,6 @@ local function _make_handler(entry)
     return function(event_data)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
-            if event_data.need ~= entry.need then return { code = RESULT.FAILED_RULES, reason = REASON.NEED_MISMATCH } end
             if not ap_ext_util.check_alignment(entry.alignment, event_data.community) then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
@@ -271,7 +270,7 @@ function on_game_start()
         local entry = CONFIGS[i]
         local enabled_key = "consequence_" .. entry.name .. "_enabled"
         ap_core_consumer.register(entry.consequence, {
-            event = CAUSE.NEEDS,
+            event = "cause:" .. entry.need,
             condition = _make_condition(enabled_key),
             on_arrive = _on_arrive,
         }, _make_handler(entry))

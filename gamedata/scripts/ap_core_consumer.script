@@ -6,7 +6,6 @@ local REASON = ap_core_const.REASON
 local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
-local _cursor = {}
 
 -- Statistics counters (guarded by enabled(), reset every dump)
 local _stats = {}
@@ -111,7 +110,7 @@ local function _stat_rate(event_type)
     _stat_inc(event_type, "rate")
 end
 
--- Dispatch one consequence. Returns true to stop the loop (global budget exhausted).
+-- Dispatch one consequence. Returns true to stop the loop (radiant success or global budget exhausted).
 local function _dispatch_entry(entry, event_type, event_data, is_radiant, debug)
     if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
         ap_core_debug.debug("[CONSUMER] GLOBAL_RATE_EXHAUSTED consequence=%s cause=%s", entry.name, event_type)
@@ -126,31 +125,28 @@ local function _dispatch_entry(entry, event_type, event_data, is_radiant, debug)
     local result = _run_handler(entry, event_data)
     if not result or result.code == RESULT.DISABLED then return end
     if debug then _stat_record(event_type, result) end
-    if result.code == RESULT.SUCCESS then _on_success(entry.name, is_radiant, event_data) end
+    if result.code == RESULT.SUCCESS then
+        _on_success(entry.name, is_radiant, event_data)
+        if is_radiant then return true end
+    end
 end
 
 local function _process(event_type, event_data)
     local consequences = _registry[event_type]
-    if not consequences then return end
-
-    local total = #consequences
-    if total == 0 then return end
-
-    local cursor = ((_cursor[event_type] or 1) - 1) % total + 1
-    _cursor[event_type] = cursor % total + 1
+    if not consequences or #consequences == 0 then return end
 
     local debug = ap_core_debug.enabled()
     if debug then
-        ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s cursor=%d",
-            event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type, cursor)
+        ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s",
+            event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
         _stats_published = _stats_published + 1
     end
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
+    local shuffled = xtable.shuffle(consequences)
 
-    for offset = 0, total - 1 do
-        local i = ((cursor - 1 + offset) % total) + 1
-        if _dispatch_entry(consequences[i], event_type, event_data, is_radiant, debug) then break end
+    for i = 1, #shuffled do
+        if _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, debug) then break end
     end
 end
 
@@ -211,7 +207,6 @@ end
 
 function on_game_start()
     _subscribed = false
-    _cursor = {}
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     ap_core_debug.info("[CONSUMER] Initialized")
 end

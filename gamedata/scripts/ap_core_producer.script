@@ -15,7 +15,6 @@ local _radiant_callbacks = {}
 
 --- Radiant handlers (collapsed from all radiant registrations into one flat table)
 local _radiant_handlers = {}
-local _radiant_cursor = 0
 
 --- Callbacks that are always on the player's map (actor/npc game_objects only exist online)
 local _always_on_map = {
@@ -230,13 +229,11 @@ local function _eval_reactive_handlers(handlers, on_map, ...)
     end
 end
 
---- Cascade through radiant causes starting at cursor, stop on first publish
-local function _eval_radiant_cascade(total, on_map, squad)
-    local start = (_radiant_cursor % total) + 1
-    for offset = 0, total - 1 do
-        local idx = ((start - 1 + offset) % total) + 1
-        local entry = _radiant_handlers[idx]
-        _radiant_cursor = idx
+--- Cascade through radiant causes in random order, stop on first publish
+local function _eval_radiant_cascade(on_map, squad)
+    local shuffled = xtable.shuffle(_radiant_handlers)
+    for i = 1, #shuffled do
+        local entry = shuffled[i]
         if not ap_core_limiter.check_cause_rate_limit(entry.label) then goto continue end
         local trace = ap_core_debug.trace()
         local result = ap_core_debug.observe(trace, entry.label, entry.handler, squad)
@@ -251,8 +248,7 @@ end
 --- Radiant callback handler
 --- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
 local function _on_radiant(squad)
-    local total = #_radiant_handlers
-    if total == 0 then return end
+    if #_radiant_handlers == 0 then return end
     -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
     local now = clock()
     if now < _next_pacer1 then return end
@@ -290,11 +286,10 @@ local function _on_radiant(squad)
     _accum_span(_radiant_gate_span, t0_gates)
     -- EVAL cascade
     local t0_eval = debug and clock() or nil
-    _eval_radiant_cascade(total, on_map, squad)
+    _eval_radiant_cascade(on_map, squad)
     local eval_ms = _accum_span(_radiant_eval_span, t0_eval)
     if eval_ms then
-        ap_core_debug.debug("[PRODUCER.RADIANT] sq=%d last_cause=%s [eval %.2fms]",
-            squad.id, _radiant_handlers[_radiant_cursor].label, eval_ms)
+        ap_core_debug.debug("[PRODUCER.RADIANT] sq=%d [eval %.2fms]", squad.id, eval_ms)
     end
 end
 
@@ -423,7 +418,6 @@ function on_game_start()
     _reset_span(_reactive_gate_span)
     _reset_span(_reactive_eval_span)
     _reactive_event_limiter = nil
-    _radiant_cursor = 0
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     ap_core_debug.info("[PRODUCER] Initialized")
 end

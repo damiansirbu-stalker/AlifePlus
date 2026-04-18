@@ -7,6 +7,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
+local _alignment_human
 
 local function _on_squad_npc_death(trace, squad, npc, killer)
     if not cfg.cause_squadkill_enabled then return { code = RESULT.FAILED_RULES } end
@@ -17,6 +18,7 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
     if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
     local victim_faction = squad:get_squad_community()
+    if not _alignment_human[victim_faction] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = victim_faction } end
     local killer_faction = nil
     local killer_id = nil
     local killer_squad_id = nil
@@ -42,6 +44,7 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
 end
 
 function on_game_start()
+    _alignment_human = ap_ext_const.alignment_human
     ap_core_producer.register(CAUSE.SQUADKILL, {
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
     }, _on_squad_npc_death)

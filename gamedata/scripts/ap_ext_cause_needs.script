@@ -72,8 +72,12 @@ local function _on_smart(trace, squad)
         for i = 1, #NEEDS do
             local need = NEEDS[i]
             if not cfg[need.enabled_key] then goto init_next end
-            local scatter = math_floor(cfg[need.threshold_key] * HOURS_TO_SECONDS * 2)
-            dto[need.field] = now - math_random(0, scatter)
+            if math_random() < 0.5 then
+                dto[need.field] = now
+            else
+                local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
+                dto[need.field] = now - threshold - math_random(0, math_floor(threshold))
+            end
             ::init_next::
         end
     end
@@ -82,8 +86,7 @@ local function _on_smart(trace, squad)
     if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     return {
-        cause = CAUSE.NEEDS,
-        need = winner.need,
+        cause = "cause:" .. winner.need,
         dto_field = winner.field,
         drive = best_drive,
         squad_id = squad.id,

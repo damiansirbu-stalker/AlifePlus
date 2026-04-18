@@ -8,10 +8,12 @@ local time_global = time_global
 
 local cfg = ap_core_mcm.cfg
 local _cooldown
+local _alignment_area
 
 local function _on_smart(trace, squad)
     if not cfg.cause_area_enabled then return { code = RESULT.FAILED_RULES } end
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
+    if not _alignment_area[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
     local now = time_global()
     if _cooldown.check(squad.id, now) then return { code = RESULT.FAILED_RULES } end
@@ -30,6 +32,9 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
+    _alignment_area = xtable.subtract(
+        xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_mutant),
+        { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true })
     _cooldown = ap_core_limiter.create_cooldown(ap_core_const.OPPORTUNITY_COOLDOWN_MS)
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do

@@ -8,11 +8,12 @@ local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
 local deaths = nil
+local _alignment_human
 
 local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     if not cfg.cause_massacre_enabled then return { code = RESULT.FAILED_RULES } end
     if not se_victim then return { code = RESULT.FAILED_RULES, reason = REASON.NO_VICTIM } end
-    if not xcreature.is_stalker(se_victim) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
 
     local smart = xsquad.get_squad_smart(squad)
     if not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SMART } end
@@ -32,6 +33,7 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
 end
 
 function on_game_start()
+    _alignment_human = ap_ext_const.alignment_human
     deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_massacre_decay_time, clock = xtime.game_sec })
 
     ap_core_producer.register(CAUSE.MASSACRE, {

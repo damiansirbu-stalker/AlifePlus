@@ -15,19 +15,17 @@ local _ap_alphas = {}
 local _last_victim_id
 local _ap_alpha_dead
 local cfg = ap_core_mcm.cfg
-local _ap_stalker_needs = {}
-local _ap_mutant_instincts = {}
+local _ap_stalker_needs
+local _ap_mutant_instincts
 
 local function _on_save_state(m_data)
     m_data.ap_ext_tracker = {
         killers = _ap_killers,
         alphas = _ap_alphas,
-        stalker_needs = _ap_stalker_needs,
-        mutant_instincts = _ap_mutant_instincts,
     }
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d instincts=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs), xtable.count(_ap_mutant_instincts))
+            xtable.count(_ap_killers), xtable.count(_ap_alphas), _ap_stalker_needs:size(), _ap_mutant_instincts:size())
     end
 end
 
@@ -39,44 +37,18 @@ local function _validate_alphas(loaded)
     return result
 end
 
-local function _validate_stalker_needs(loaded)
-    local result = {}
-    for squad_id, dto in pairs(loaded) do
-        if type(dto) ~= "table" then goto continue end
-        for i = 1, #NEED_FIELDS do
-            if not dto[NEED_FIELDS[i]] then dto[NEED_FIELDS[i]] = 0 end
-        end
-        result[squad_id] = dto
-        ::continue::
-    end
-    return result
-end
-
-local function _validate_mutant_instincts(loaded)
-    local result = {}
-    for squad_id, dto in pairs(loaded) do
-        if type(dto) ~= "table" then goto continue end
-        for i = 1, #INSTINCT_FIELDS do
-            if not dto[INSTINCT_FIELDS[i]] then dto[INSTINCT_FIELDS[i]] = 0 end
-        end
-        result[squad_id] = dto
-        ::continue::
-    end
-    return result
-end
-
 local function _on_load_state(m_data)
     _ap_alpha_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
     _ap_killers = saved.killers or {}
     _ap_alphas = _validate_alphas(saved.alphas or {})
-    _ap_stalker_needs = _validate_stalker_needs(saved.stalker_needs or {})
-    _ap_mutant_instincts = _validate_mutant_instincts(saved.mutant_instincts or {})
+    _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
+    _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
     if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.alphas then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d needs=%d instincts=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas), xtable.count(_ap_stalker_needs), xtable.count(_ap_mutant_instincts))
+        ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d",
+            xtable.count(_ap_killers), xtable.count(_ap_alphas))
     end
 end
 
@@ -193,17 +165,9 @@ local function _unregister_entity(id)
     end
 end
 
---- Unregister squad from all squad-keyed tracking (on last NPC death)
-local function _unregister_squad(squad_id)
-    if not squad_id then return end
-    _ap_stalker_needs[squad_id] = nil
-    _ap_mutant_instincts[squad_id] = nil
-end
-
-
 function get_stalker_needs(squad_id)
     if not squad_id then return nil end
-    return _ap_stalker_needs[squad_id]
+    return _ap_stalker_needs:get(squad_id)
 end
 
 function init_stalker_needs(squad_id, now)
@@ -212,18 +176,18 @@ function init_stalker_needs(squad_id, now)
     for i = 1, #NEED_FIELDS do
         dto[NEED_FIELDS[i]] = now
     end
-    _ap_stalker_needs[squad_id] = dto
-    ap_core_debug.debug("[TRACKER] init_stalker_needs: squad=%d all_fields=now", squad_id)
+    _ap_stalker_needs:set(squad_id, dto)
+    ap_core_debug.debug("[TRACKER] init_stalker_needs: squad=%d", squad_id)
     return dto
 end
 
 function force_stalker_need(squad_id, field)
     if not squad_id or not field then return end
     local now = xtime.game_sec()
-    local dto = _ap_stalker_needs[squad_id]
+    local dto = _ap_stalker_needs:get(squad_id)
     if not dto then
         dto = {}
-        _ap_stalker_needs[squad_id] = dto
+        _ap_stalker_needs:set(squad_id, dto)
     end
     for i = 1, #NEED_FIELDS do
         dto[NEED_FIELDS[i]] = now
@@ -234,7 +198,7 @@ end
 
 function reset_stalker_need(squad_id, key, now)
     if not squad_id or not key or not now then return false end
-    local dto = _ap_stalker_needs[squad_id]
+    local dto = _ap_stalker_needs:get(squad_id)
     if not dto then return false end
     dto[key] = now
     return true
@@ -243,7 +207,7 @@ end
 
 function get_mutant_instincts(squad_id)
     if not squad_id then return nil end
-    return _ap_mutant_instincts[squad_id]
+    return _ap_mutant_instincts:get(squad_id)
 end
 
 function init_mutant_instincts(squad_id, now)
@@ -252,14 +216,14 @@ function init_mutant_instincts(squad_id, now)
     for i = 1, #INSTINCT_FIELDS do
         dto[INSTINCT_FIELDS[i]] = now
     end
-    _ap_mutant_instincts[squad_id] = dto
-    ap_core_debug.debug("[TRACKER] init_mutant_instincts: squad=%d all_fields=now", squad_id)
+    _ap_mutant_instincts:set(squad_id, dto)
+    ap_core_debug.debug("[TRACKER] init_mutant_instincts: squad=%d", squad_id)
     return dto
 end
 
 function reset_mutant_instinct(squad_id, key, now)
     if not squad_id or not key or not now then return false end
-    local dto = _ap_mutant_instincts[squad_id]
+    local dto = _ap_mutant_instincts:get(squad_id)
     if not dto then return false end
     dto[key] = now
     return true
@@ -275,15 +239,14 @@ local function _on_squad_npc_death(squad, npc, killer)
         if victim_id then
             _unregister_entity(victim_id)
         end
-        if squad and squad:npc_count() <= 1 then
-            _unregister_squad(squad.id)
-        end
         return { code = TRACE.OK, killer_id = killer_id, victim_id = victim_id }
     end)
 end
 
 function on_game_start()
     _ap_alpha_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
+    _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
+    _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

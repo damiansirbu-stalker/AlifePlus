@@ -190,7 +190,6 @@ local function _make_handler(entry)
     return function(event_data)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
-            if event_data.instinct ~= entry.instinct then return { code = RESULT.FAILED_RULES, reason = REASON.INSTINCT_MISMATCH } end
             if entry.species_alignment and not entry.species_alignment[event_data.species] then
                 return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
             end
@@ -255,7 +254,7 @@ function on_game_start()
         local entry = CONFIGS[i]
         local enabled_key = "consequence_" .. entry.name .. "_enabled"
         ap_core_consumer.register(entry.consequence, {
-            event = CAUSE.INSTINCTS,
+            event = "cause:instinct_" .. entry.instinct,
             condition = _make_condition(enabled_key),
             on_arrive = _on_arrive,
         }, _make_handler(entry))

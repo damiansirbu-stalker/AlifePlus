@@ -73,11 +73,11 @@ X-Ray runs Lua on a single thread. There is no concurrency within one engine tic
 ```
 engine squad_on_update
   -> producer._on_radiant (gate chain: pacer_1, is_protected, ratio, pacer_2)
-    -> cause cascade: try each predicate starting at cursor, stop on first publish
+    -> cause cascade: shuffle causes, try each predicate, stop on first publish
       -> cause predicate (ext) returns nil -> try next cause
       -> cause predicate (ext) returns { cause = CAUSE.X, ...payload } -> publish + break
         -> _try_publish -> xbus.publish (synchronous, inline)
-          -> consumer._process (iterates all consequences for this cause)
+          -> consumer._process (shuffle consequences, iterate)
             -> consequence handler (ext) returns { code = RESULT.X }
               -> script_squad (core) sets scripted_target, registers arrival
           <- all consequences done, returns to producer
@@ -98,13 +98,13 @@ The producer receives engine callbacks and filters them through a chain of gates
 
 Radiant causes fire on `squad_on_update` - the only stable, uniform heartbeat covering both online and offline squads. The engine fires this callback from `sim_squad_scripted:update()` for every squad every tick. Online squads fire at frame rate (~3/sec per squad), offline squads fire via the A-Life scheduler round-robin (~0.03/sec per squad, ~20 squads per tick across ~776 total). This produces a raw volume of ~6,600 calls/min that the gate chain must reduce to a manageable rate.
 
-Radiant causes are an open collection. New causes can be added by registering a predicate on `RADIANT_CALLBACKS`. Each admitted call cascades through all registered radiant causes starting at a round-robin cursor. The first cause whose predicate publishes stops the cascade. If all predicates reject, nothing publishes. The cursor advances past the last-tried cause, so each admission starts at a different cause. With `distributor_interval_sec = 5s` (~12 triggers/min), every admission tries up to 4 causes (worst case). This is different from reactive causes, where all causes for a callback evaluate independently on every admitted event.
+Radiant causes are an open collection. New causes can be added by registering a predicate on `RADIANT_CALLBACKS`. Each admitted call shuffles the registered radiant causes (`xtable.shuffle`) and cascades through them in random order. The first cause whose predicate publishes stops the cascade. If all predicates reject, nothing publishes. Shuffling ensures fair distribution regardless of how many causes apply to a given squad's alignment -- no cause is systematically favored. With `distributor_interval_sec = 5s` (~12 triggers/min), every admission tries up to 4 causes (worst case). This is different from reactive causes, where all causes for a callback evaluate independently on every admitted event.
 
 The triggering squad is both sensor and responder - it evaluates its own surroundings and acts on what it finds (stashes, empty territory, unmet needs).
 
 **Gate 1: PACER_1.** Coarse rate limiter. Pure `os.clock()` timestamp comparison with a 100ms interval (~10 admits/sec). Runs before any squad field access. No `squad.id`, no luabind. Rejects ~98% of raw `squad_on_update` volume at near-zero cost. Instead of caching known-bad squads (old BANNED gate), PACER_1 simply limits how many squads reach the eligibility check.
 
-**Gate 2: is_protected.** Full eligibility check via `ap_core_broker.is_protected`. Runs on ~10 squads/sec from PACER_1. Checks ownership (warfare, BAO), is_scripted (engine `scripted_target`, condlist, random_targets), permanent (story, trader, named NPC -- session-lifetime cache), active role (task giver, companion), and task target (assault, bounty, delivery). Short-circuits early: scripted and permanent squads are caught in the first two checks. Subsumes the old BANNED and SCRIPTED gates. At 10/sec, the cost is acceptable without negative caching.
+**Gate 2: is_protected.** Full eligibility check via `ap_core_broker.is_protected`. Runs on ~10 squads/sec from PACER_1. Checks ownership (warfare), is_scripted (engine `scripted_target`, condlist, random_targets), permanent (story, trader, named NPC -- session-lifetime cache), active role (task giver, companion), and task target (assault, bounty, delivery). Short-circuits early: scripted and permanent squads are caught in the first two checks. Subsumes the old BANNED and SCRIPTED gates. At 10/sec, the cost is acceptable without negative caching.
 
 Protection is not a single gate - it is applied at four layers across the pipeline. The same guard set is checked at each layer, but against different entities depending on context:
 
@@ -123,7 +123,7 @@ Reactive causes skip the producer protection gate because the callback entity (e
 
 **Gate 4: PACER_2.** Budget limiter. `os.clock()` timestamp comparison with `cfg.distributor_interval_sec` (default 5s, ~12 triggers/min). Only fully eligible, ratio-balanced squads consume triggers. Every PACER_2 admit produces an EVAL -- zero waste. This is the key improvement over the old pipeline: the old single pacer ran before eligibility checks, so ineligible squads (scripted dogs, story NPCs) consumed triggers and starved the pipeline.
 
-**EVAL (cascade).** Cascades through all registered cause predicates starting at the round-robin cursor (indexed array, deterministic order). Each predicate is checked against a per-cause sliding window rate limit (`cfg.cause_max_events`, 60s window) and skipped if exhausted. The first predicate to publish stops the cascade. If all predicates reject, nothing publishes. The cursor tracks the last-tried cause; next admission starts at cursor+1. Each predicate is wrapped in `observe()` for tracing. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
+**EVAL (cascade).** Shuffles the registered cause predicates (`xtable.shuffle`, new copy per admission) and cascades through them in random order. Each predicate is checked against a per-cause sliding window rate limit (`cfg.cause_max_events`, 60s window) and skipped if exhausted. The first predicate to publish stops the cascade. If all predicates reject, nothing publishes. Each predicate is wrapped in `observe()` for tracing. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
 
 #### Reactive variant
 
@@ -141,15 +141,31 @@ Both pipelines measure gate span and eval span. Gate span covers the time from f
 
 ### Dispatch Pipeline
 
-After a cause publishes to xbus, the consumer receives the event and iterates all registered consequence handlers for that cause type.
+After a cause publishes to xbus, the consumer receives the event and iterates registered consequence handlers for that event type. The dispatch rules differ between radiant and reactive events.
 
-**Iteration order.** Each cause type maintains a round-robin cursor. The cursor rotates which consequence gets tried first, distributing evaluations evenly across handlers. The consumer always tries every consequence for the cause. Consequences do not control flow. The only thing that stops the loop early is global radiant budget exhaustion.
+#### Dispatch Rules
 
-**Before each handler runs, the consumer checks two pre-gates.** The `condition` function (registered at init, typically checks MCM enabled flag) determines if the consequence is active. If it returns false, the consumer skips the consequence and moves to the next one. Then the rate limiters are checked: if the per-type budget for this consequence is exhausted, the consumer skips it. If the global radiant budget is exhausted, the consumer stops the entire loop. The handler never runs when a pre-gate rejects.
+1. **Radiant cascade (producer).** The producer shuffles registered radiant cause predicates and cascades through them in random order. The first predicate to publish stops the cascade. Remaining causes do not evaluate. Shuffling ensures fair distribution across causes regardless of alignment subset.
 
-**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, match, validation) and rejected the event. `FAILED_EVAL` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and eval passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
+2. **Cause publish contract.** A cause predicate must not publish if no consequence can act on the event. The cascade stops on publish -- if every consequence rejects, the trigger is wasted. Causes that serve a subset of alignments must filter at the cause level (e.g. `alignment_human` for stash/needs, `alignment_mutant` for instincts) rather than relying on consequences to reject.
 
-**On `SUCCESS`, the consumer increments the per-type counter, increments the global radiant counter (for radiant events only), and sets `event_data._fired = true`.** This flag signals the producer that at least one consequence acted on the event. On any other result code, the consumer records stats but takes no counter action. The loop continues to the next consequence regardless of the result.
+3. **Per-need/per-instinct routing.** Needs and instincts causes register one predicate with the producer but publish specific xbus events per need/instinct (`cause:hunger`, `cause:heal`, `cause:instinct_scatter`, etc.). Each consequence subscribes to its specific event. Only consequences that handle the winning need/instinct receive the event. No mismatch iteration.
+
+4. **Consequence shuffle.** The consumer shuffles consequences for each event before iterating. This distributes evaluations fairly across alternative handlers (e.g. shelter_indoor vs shelter_outdoor, stash_loot vs stash_fill).
+
+5. **Radiant: stop on first success.** For radiant events, the consumer stops the loop after the first consequence returns `SUCCESS`. One squad, one action per trigger. Alternatives compete via shuffle -- each has equal probability of being tried first.
+
+6. **Reactive: all run independently.** For reactive events, all consequences for the cause run regardless of results. Multiple consequences can fire from a single event (e.g. massacre_investigate and massacre_scavenge both respond to the same massacre). Different actor types respond simultaneously.
+
+7. **Loop stop conditions.** The consequence loop stops early on: (a) radiant success (rule 5), (b) global radiant budget exhaustion (`global_consequence_max_events`). All other results (FAILED_RULES, FAILED_EVAL, FAILED_ACTION, DISABLED, rate-limited) skip to the next consequence.
+
+#### Pre-gates and Result Codes
+
+**Before each handler runs, the consumer checks two pre-gates.** The `condition` function (registered at init, typically checks MCM enabled flag) determines if the consequence is active. If it returns false, the consumer skips the consequence. Then the rate limiters are checked: if the per-type budget for this consequence is exhausted, the consumer skips it. If the global radiant budget is exhausted, the consumer stops the entire loop. The handler never runs when a pre-gate rejects.
+
+**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, validation) and rejected the event. `FAILED_EVAL` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and eval passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
+
+**On `SUCCESS`, the consumer increments the per-type counter, increments the global radiant counter (for radiant events only), and sets `event_data._fired = true`.** For radiant events, success also stops the loop (rule 5).
 
 ### Rate Limiting
 
@@ -168,7 +184,7 @@ All rate limiting lives in `ap_core_limiter`. Five independent limiters operate 
 Hierarchical tracing via `observe()` in `ap_core_debug`. Each trace carries a monotonic **tid** (trace ID) and a slash-separated **path** (span hierarchy). A single `tid` links a cause through its consequence chain into individual actions:
 
 ```
-[CAUSE.NEEDS] [tid=42 path=CAUSE.NEEDS] ok id=1337 need=hunger drive=4.2 [0.15ms]
+[CAUSE.NEEDS] [tid=42 path=CAUSE.NEEDS] ok id=1337 drive=4.2 [0.15ms]
 [CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
 [ACTION.FIND_DESTINATION] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE/ACTION.FIND_DESTINATION] ok id=445 [0.12ms]
 ```
@@ -184,7 +200,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 **Scripted squad scan.** `_update_scripted_squads` runs every 20s via `CreateTimeEvent`. For each tracked squad:
 
 1. **Entity** - `xobject.se(squad_id)`. Gone -> remove from tracking table. Catches squads that died or despawned between scans.
-2. **Reassert** - `xsquad.reassert_target(squad, data.scripted_target)`. Restores `scripted_target` if another mod overwrote it, clears `__lock`. Every alife overhaul mod (warfare, BAO, Vintar) sets these fields every tick on its own squads; AP reasserts every 20s on its squads.
+2. **Reassert** - `xsquad.reassert_target(squad, data.scripted_target)`. Restores `scripted_target` if another mod overwrote it, clears `__lock`. Every alife overhaul mod (warfare, Vintar) sets these fields every tick on its own squads; AP reasserts every 20s on its squads.
 3. **TTL** - 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
 4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
 5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
@@ -209,7 +225,7 @@ Four phases. Each requires the previous to complete.
 - `ap_core_producer` resets dispatch state, registers `actor_on_first_update`. Does NOT subscribe to callbacks yet.
 - `ap_core_consumer` registers `actor_on_first_update`. Does NOT subscribe to xbus yet.
 - `ap_core_broker` registers save/load/first_update callbacks, creates the 20s scripted squad scan timer.
-- `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxies (warfare, bao).
+- `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxy (warfare).
 - `ap_ext_cause_*` register predicates with producer via `register()`.
 - `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
 
@@ -265,17 +281,17 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 | Cause | Type | Callback(s) | Conditions |
 |-------|------|-------------|------------|
-| MASSACRE | reactive | squad_on_npc_death | IsStalker(victim), at smart, not is_base, kill_count >= threshold |
-| SQUADKILL | reactive | squad_on_npc_death | last member dead, not is_base |
-| BASEKILL | reactive | squad_on_npc_death | IsStalker(victim), at is_base, kill_count >= threshold |
+| MASSACRE | reactive | squad_on_npc_death | alignment_human, at smart, not is_base, kill_count >= threshold |
+| SQUADKILL | reactive | squad_on_npc_death | alignment_human (victim), last member dead, not is_base |
+| BASEKILL | reactive | squad_on_npc_death | alignment_human, at is_base, kill_count >= threshold |
 | ALPHA | reactive | squad_on_npc_death | killer is mutant, not protected, projected kills cross new level |
 | ALPHAKILL | reactive | squad_on_npc_death | victim is alpha, killer not protected, cooldown clear |
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
-| STASH | radiant | squad_on_update | not protected, stash within 500m (no cause-level alignment filter, consequences handle it) |
-| AREA | radiant | squad_on_update | not protected, empty smart, not is_base |
-| NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring |
-| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring |
+| STASH | radiant | squad_on_update | not protected, alignment_human |
+| AREA | radiant | squad_on_update | not protected, alignment_area (human+mutant minus ecolog/stalker/renegade) |
+| NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring. Publishes per-need event (cause:hunger, cause:heal, etc.) |
+| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, etc.) |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
 
@@ -476,9 +492,11 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 6. **Stalker/mutant consequence separation.** When stalkers and mutants respond to the same cause, they get separate consequences. A massacre triggers `massacre_investigate` (stalkers) and `massacre_scavenge` (mutants) independently. Separation exists because the behaviors differ (stalkers investigate, mutants feed) and because simultaneous responses create emergent interactions (stalkers arrive to investigate, mutant pack is already feeding, conflict erupts). Both consequences subscribe to the same cause through the event bus. Neither references the other.
 
-7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation. When multiple behaviors are possible for the same cause (stalker conquer vs mutant conquer vs mutant lair), they go into a config table as alternative entries with alignment, species, and smart filter gates. First match wins. Reactive causes have no such constraint because the event happens in the world and multiple squads respond independently.
+7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation (enforced by dispatch rule 5: stop on first radiant success). Alternatives compete via shuffle -- each has equal probability of being tried first. Reactive causes have no such constraint -- multiple consequences fire independently.
 
 8. **Domain gates in ext only.** Alignment and personality checks live exclusively in ext consequence code (`ap_ext_util`). Species filtering is a direct hash lookup in consequence code. Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
+
+9. **Cascade publish contract.** A radiant cause predicate must not publish if no consequence can act on the event. The cascade stops on first publish -- if no consequence fires, the trigger is wasted and remaining causes in the cascade never evaluate. Causes that serve a subset of alignments must filter at the cause level (e.g. `alignment_human` for stash, `alignment_mutant` for instincts) rather than relying on consequences to reject. Reactive causes are not cascaded, but the same principle applies to avoid unnecessary consumer iterations.
 
 ### Consequence File Patterns
 
@@ -531,4 +549,4 @@ ap_core_broker.register_owner("my_mod", function(squad)
 end)
 ```
 
-Squads matching any registered ownership filter are excluded from AP at the protection gate (producer), in `find_squads` results (consequence), and via `get_owner` queries. Gated by MCM `allow_external_ownership`. Warfare and BAO are registered by default in `ap_core_compat`.
+Squads matching any registered ownership filter are excluded from AP at the protection gate (producer), in `find_squads` results (consequence), and via `get_owner` queries. Gated by MCM `allow_external_ownership`. Warfare is registered by default in `ap_core_compat`.

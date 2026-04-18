@@ -13,7 +13,9 @@ local _alignment_mutant
 local _food_chain_tier
 
 local INSTINCTS = {
-    { instinct = "scatter", constant_drive = 15.0, enabled_key = "cause_instinct_scatter_enabled" },
+    { instinct = "scatter", field = "last_scatter_at",
+        threshold_key = "cause_instinct_scatter_threshold", enabled_key = "cause_instinct_scatter_enabled",
+        weight = 4.0 },
     { instinct = "feed", field = "last_feed_at",
         threshold_key = "cause_instinct_feed_threshold", enabled_key = "cause_instinct_feed_enabled",
         weight = 3.0, active_period = true },
@@ -45,16 +47,11 @@ local function _find_strongest_drive(dto, now, species)
             if not tier or tier > inst.max_tier then goto continue end
         end
 
-        local drive
-        if inst.constant_drive then
-            drive = inst.constant_drive
-        else
-            local elapsed = now - dto[inst.field]
-            local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
-            if elapsed <= threshold then goto continue end
-            local ratio = elapsed / threshold
-            drive = inst.weight * ratio * ratio
-        end
+        local elapsed = now - dto[inst.field]
+        local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+        if elapsed <= threshold then goto continue end
+        local ratio = elapsed / threshold
+        local drive = inst.weight * ratio * ratio
 
         if drive > best_drive then
             best_drive = drive
@@ -85,10 +82,13 @@ local function _on_smart(trace, squad)
         dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
         for i = 1, #INSTINCTS do
             local inst = INSTINCTS[i]
-            if not inst.field then goto init_next end
             if not cfg[inst.enabled_key] then goto init_next end
-            local spread = math_floor(cfg[inst.threshold_key] * HOURS_TO_SECONDS * 2)
-            dto[inst.field] = now - math_random(0, spread)
+            if math_random() < 0.5 then
+                dto[inst.field] = now
+            else
+                local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+                dto[inst.field] = now - threshold - math_random(0, math_floor(threshold))
+            end
             ::init_next::
         end
     end
@@ -97,8 +97,7 @@ local function _on_smart(trace, squad)
     if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     return {
-        cause = CAUSE.INSTINCTS,
-        instinct = winner.instinct,
+        cause = "cause:instinct_" .. winner.instinct,
         dto_field = winner.field,
         drive = best_drive,
         squad_id = squad.id,
