@@ -6,8 +6,8 @@ local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
 
-local stats = ap_core_statistics
-local stats_enabled = stats.enabled
+local stats = ap_core_hud
+local stats_collecting = stats.collecting
 
 --- Register a consequence handler for an event
 --- @param name string Consequence name (used as trace key, rate limit key, arrival key)
@@ -96,7 +96,7 @@ local function _process(event_type, event_data)
         event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
-    local s = stats_enabled()
+    local s = stats_collecting()
     local shuffled = xtable.shuffle(consequences)
 
     for i = 1, #shuffled do

@@ -37,7 +37,8 @@ The pipeline, protection, squad lifecycle, rate limiting, tracing, and configura
 |------|------|
 | ap_core_producer | Gate chain, predicate evaluation, xbus publish |
 | ap_core_consumer | Dispatch: xbus subscribe, consequence iteration, result codes, rate gating |
-| ap_core_broker | Ownership registry, squad scripting lifecycle, activity record, arrival detection, protection, PDA markers |
+| ap_core_broker | Ownership registry, squad scripting lifecycle, arrival detection, protection |
+| ap_core_hud | Activity record, PDA map markers, pipeline statistics, HUD overlay |
 | ap_core_limiter | Rate limiting: cause counter, consequence token bucket, global consequence counter, cooldowns |
 | ap_core_debug | Logger, observe() tracing, result helpers. Zero overhead below DEBUG |
 | ap_core_utils | Event pub/sub wrappers, PDA dispatch, find_squads/find_smart with protection filters |
@@ -193,7 +194,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 ### Squad Lifecycle
 
-`ap_core_broker` manages the full lifecycle of squads under AP control: scripting, activity recording, arrival detection, post-arrival wait, and release.
+`ap_core_broker` manages the full lifecycle of squads under AP control: scripting, arrival detection, post-arrival wait, and release.
 
 **Scripting.** `script_squad(squad, smart, opts)` sets `scripted_target` via `xsquad.control_squad`. `scripted_target` routes the squad to `specific_update` (direct A->B movement). AP clears `__lock` on acquisition -- `scripted_target` alone is sufficient for routing. If another mod clears `scripted_target` between ticks, `generic_update` runs and the squad may be reassigned by SIMBOARD; `reassert_target` restores `scripted_target` within 20s. The squad is registered in `_ap_scripted_squads` with a TTL, optional arrival handler, and wait duration. `script_actor_target(squad)` scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
@@ -205,11 +206,19 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
 5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
-**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
+**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Activity record persists to `m_data.ap_core_hud` (delegated via `ap_core_hud.save_record`/`load_record`, backward compatible with old saves that stored record in `m_data.ap_core_broker`). Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
 
 **Coordination.** `scripted_target` is the squad control field. Setting it routes the squad to `specific_update`. AP no longer sets `__lock` (clears it on acquisition). `scripted_target` alone is sufficient for routing; `__lock` was a redundant fallback guard. AP checks `scripted_target` at gate 2 (is_protected, via `xsquad.is_scripted`). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets `scripted_target` on acquire; `xsquad.release_squad` clears it on release; `xsquad.reassert_target` restores it if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
+### HUD (ap_core_hud)
+
+`ap_core_hud` consolidates all visual output and activity tracking: the pipeline statistics overlay, activity record, and PDA map markers.
+
+**Activity record.** `record(squad_id, cause, consequence, opts)` stores what a squad is doing after a successful consequence. `get_record(squad_id)` returns the entry. External mods query activity via `get_record`. `register_descriptions(tbl)` maps consequence keys to display labels for markers. Save/load delegated from broker via `save_record`/`load_record` (backward compatible with saves that stored record in `m_data.ap_core_broker`).
+
 **Markers.** Markers are derived from `_ap_record`. A 10s timer (`_apply_markers`) iterates record entries, resolves labels from `CONSEQUENCE_DESCRIPTION`, and calls `xpda.mark_squad`. A 20s timer (`_validate_markers`) removes marks for dead entities or unscripted non-persistent entries. The `persistent` flag (set via `record(id, cause, consequence, { persistent = true })`) keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
+
+**Statistics overlay.** Pipeline counters (`r` for radiant, `x` for reactive) track events, gate admissions, cause publishes, consequence results, and blocker breakdown. `classify(result, is_radiant)` routes each consequence result to the appropriate counter. `UIStatsHUD` renders a compact table with R/X columns and a per-minute or percentage extra column. Six screen positions via MCM. Hides on PDA, inventory, and menus. Zero overhead when `statistics_position` is "off". Log dump every 10s with total and per-minute breakdowns.
 
 ### Initialization Lifecycle
 
@@ -224,7 +233,8 @@ Four phases. Each requires the previous to complete.
 - `ap_core_debug` registers `actor_on_first_update` for deferred log level init.
 - `ap_core_producer` resets dispatch state, registers `actor_on_first_update`. Does NOT subscribe to callbacks yet.
 - `ap_core_consumer` registers `actor_on_first_update`. Does NOT subscribe to xbus yet.
-- `ap_core_broker` registers save/load/first_update callbacks, creates the 20s scripted squad scan timer.
+- `ap_core_broker` registers save/load callbacks, creates the 20s scripted squad scan timer.
+- `ap_core_hud` resets statistics, registers first_update/option_change/net_destroy/GUI/entity_unregister callbacks.
 - `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxy (warfare).
 - `ap_ext_cause_*` register predicates with producer via `register()`.
 - `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
@@ -236,7 +246,7 @@ After phase 1: all predicates and handlers are registered, but no callbacks are 
 - Producer rebuilds the radiant handler set from all registrations, subscribes to engine callbacks.
 - Consumer subscribes to xbus cause events.
 - Debug reads MCM log level (config is now loaded), dumps all MCM settings at DEBUG.
-- Squad clears stale map markers from previous session, starts marker timer if MCM `map_markers` is enabled.
+- HUD clears stale map markers from previous session, starts marker timer if MCM `map_markers` is enabled. Activates statistics overlay if MCM `statistics_position` is not "off".
 
 The `actor_on_first_update` callback fires on the first frame with a live actor. It fires on every level transition (not just game start), so all handlers use a `_subscribed` guard to prevent duplicate registration. Named function references registered via `RegisterScriptCallback` are naturally deduplicated (the function reference is the table key), but the guard prevents redundant work.
 

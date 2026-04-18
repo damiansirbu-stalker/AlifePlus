@@ -6,8 +6,8 @@ local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 local CALLBACK = ap_core_const.CALLBACK
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local cfg = ap_core_mcm.cfg
-local stats = ap_core_statistics
-local stats_enabled = stats.enabled
+local stats = ap_core_hud
+local stats_collecting = stats.collecting
 local sr, sx = stats.r, stats.x
 local _handlers = {}
 local _subscribed = {}
@@ -142,7 +142,7 @@ local function _try_publish(on_map, name, result, trace, cause_type)
     result.cause_type = cause_type
     ap_core_utils.event_publish(result.cause, result)
     ap_core_limiter.increment_cause_counter(name)
-    if stats_enabled() then stats.inc_causes(cause_type) end
+    if stats_collecting() then stats.inc_causes(cause_type) end
     ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
         result.cause, result.squad_id, on_map, result.level_id)
 end
@@ -184,7 +184,7 @@ end
 --- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
 local function _on_radiant(squad)
     if #_radiant_handlers == 0 then return end
-    local s = stats_enabled()
+    local s = stats_collecting()
     if s then sr.events = sr.events + 1 end
     -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
     local now = clock()
@@ -229,7 +229,7 @@ end
 local function _on_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or #handlers == 0 then return end
-    local s = stats_enabled()
+    local s = stats_collecting()
 
     if s then sx.events = sx.events + 1 end
     if not _reactive_pacer_gate(callback_type) then return end

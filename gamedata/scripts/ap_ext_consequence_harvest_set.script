@@ -156,7 +156,7 @@ local function _handler_rob(event_data)
             return ap_ext_news.send_pda(cfg.consequence_harvest_rob_pda_chance,
                 "text_pda_consequence_harvest_rob", { location = location })
         end)
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB) end
+        for i = 1, #moved do ap_core_hud.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.SUCCESS, reason = #moved .. "_robbers", dst_id = dst_id,
@@ -204,7 +204,7 @@ local function _handler_haunt(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT) end
+        for i = 1, #moved do ap_core_hud.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT) end
         ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             return ap_ext_news.send_pda(cfg.consequence_harvest_haunt_pda_chance, "text_pda_consequence_harvest_haunt")
         end)

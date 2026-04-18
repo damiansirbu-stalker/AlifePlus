@@ -156,7 +156,7 @@ local function _make_handler(entry)
                 return res
             end)
             if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-            ap_core_broker.record(event_data.squad_id, CAUSE.STASH, entry.consequence)
+            ap_core_hud.record(event_data.squad_id, CAUSE.STASH, entry.consequence)
 
             if not entry.arrive_fn then
                 ap_core_debug.observe(trace, ACTION.SEND_PDA, function()

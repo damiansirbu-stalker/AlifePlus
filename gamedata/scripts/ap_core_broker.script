@@ -1,4 +1,4 @@
---- ap_core_broker: Squad scripting lifecycle, ownership registry, activity record, arrival, protection
+--- ap_core_broker: Squad scripting lifecycle, ownership registry, arrival, protection
 local pairs, tostring, type = pairs, tostring, type
 local RegisterScriptCallback = RegisterScriptCallback
 
@@ -12,16 +12,11 @@ local UPDATE_SCRIPTED_SQUADS_SEC = ap_core_const.UPDATE_SCRIPTED_SQUADS_SEC
 
 local TIMER_EV = "ap_core_broker"
 local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
-local UPDATE_MARKERS = "update_markers"
-local UPDATE_MARKERS_SEC = 10
-local VALIDATE_MARKERS_SEC = 20
 
 local cfg = ap_core_mcm.cfg
 
 local _ap_scripted_squads = {}
 local _arrival_handlers = {}
-local _ap_record = {}
-local _consequence_descriptions = nil
 
 
 local _owners = {}
@@ -80,48 +75,6 @@ function is_protected(squad)
         }
     end
     return xsquad.is_protected(squad, _protection_opts)
-end
-
-
---- Register consequence description table (called from ext at init).
---- Core stores reference, no core->ext import.
---- @safety SAFE - pure Lua reference assignment
---- @cost O(1) | 0 luabind
---- @param tbl table Maps CONSEQUENCE keys to display strings
-function register_descriptions(tbl)
-    _consequence_descriptions = tbl
-end
-
---- Record squad activity after SUCCESS. Written by consequence handlers.
---- Stores cause/consequence identity for markers and external queries (get_record).
---- @safety SAFE - pure Lua table write, nil-guarded on squad_id
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
---- @param cause string Cause key (CAUSE.X)
---- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil Options: persistent=true keeps record until entity dies
-function record(squad_id, cause, consequence, opts)
-    if not squad_id or not cause or not consequence then return end
-    opts = opts or {}
-    _ap_record[squad_id] = {
-        cause = cause,
-        consequence = consequence,
-        persistent = opts.persistent or false,
-        is_marked = false,
-    }
-    ap_core_debug.debug("[SQUAD] record: squad=%d cause=%s consequence=%s persistent=%s",
-        squad_id, cause or "nil", consequence or "nil", tostring(opts.persistent or false))
-end
-
---- Get activity record for a squad
---- Returns { cause, consequence, persistent, is_marked } or nil
---- @safety SAFE - pure Lua table read
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
---- @return table|nil Record entry or nil
---- @export api
-function get_record(squad_id)
-    return _ap_record[squad_id]
 end
 
 
@@ -222,15 +175,6 @@ end
 --- Get AP scripted squad table (read-only reference, do not modify)
 function get_scripted_ids()
     return _ap_scripted_squads
-end
-
---- Get count of active PDA map markers
-function get_marked_count()
-    local count = 0
-    for _, entry in pairs(_ap_record) do
-        if entry.is_marked then count = count + 1 end
-    end
-    return count
 end
 
 --- Register an arrival handler by key (called from consumer on_game_start)
@@ -343,97 +287,25 @@ local function _update_scripted_squads()
 end
 
 
-local function _apply_markers()
-    for squad_id, entry in pairs(_ap_record) do
-        if entry.is_marked then goto continue end
-        local se = xobject.se(squad_id)
-        if not se then goto continue end
-        local desc = _consequence_descriptions and _consequence_descriptions[entry.consequence]
-        local full_label = (desc or entry.consequence) .. ": " .. xsquad.get_community_name(se)
-        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
-        entry.is_marked = true
-        ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
-        ::continue::
-    end
-end
-
-local function _validate_markers()
-    local now = os.clock()
-    for squad_id, entry in pairs(_ap_record) do
-        if not entry.is_marked then goto continue end
-        local se = xobject.se(squad_id)
-        local should_linger = not se or (not entry.persistent and not se.scripted_target)
-        if should_linger and not entry.remove_at then
-            entry.remove_at = now + ap_core_const.MARKER_LINGER_SEC
-            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
-        end
-        if entry.remove_at and now >= entry.remove_at then
-            xpda.unmark_squad(squad_id)
-            ap_core_debug.debug("[SQUAD] unmark: squad=%d", squad_id)
-            _ap_record[squad_id] = nil
-        end
-        ::continue::
-    end
-end
-
-local _last_validate_at = 0
-
-local function _update_markers()
-    ResetTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
-    if not cfg.map_markers then return false end
-    local now = os.clock()
-    if (now - _last_validate_at) >= VALIDATE_MARKERS_SEC then
-        _last_validate_at = now
-        _validate_markers()
-    end
-    _apply_markers()
-    return false
-end
-
-local function _on_first_update()
-    xpda.clear_squad_markers()
-    for _, entry in pairs(_ap_record) do
-        entry.is_marked = false
-    end
-    _last_validate_at = 0
-    if cfg.map_markers then
-        CreateTimeEvent(TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)
-        ap_core_debug.debug("[SQUAD] marker timer created (map_markers=true)")
-    end
-end
-
-
 local function _on_save_state(m_data)
     m_data.ap_core_broker = {
         ap_scripted_squads = _ap_scripted_squads,
-        record = _ap_record,
     }
+    ap_core_hud.save_record(m_data)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] save: scripted=%d record=%d", xtable.count(_ap_scripted_squads), xtable.count(_ap_record))
+        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.count(_ap_scripted_squads))
     end
 end
 
 local function _on_load_state(m_data)
     local saved = m_data.ap_core_broker or {}
     _ap_scripted_squads = saved.ap_scripted_squads or {}
-    _ap_record = saved.record or {}
     for _, data in pairs(_ap_scripted_squads) do
         if data.arrived then data.release_at = 0 end
     end
+    ap_core_hud.load_record(m_data)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] load: scripted=%d record=%d", xtable.count(_ap_scripted_squads), xtable.count(_ap_record))
-    end
-end
-
-
-local function _on_server_entity_on_unregister(se_obj)
-    if not se_obj then return end
-    local id = se_obj.id
-    if not id then return end
-    local entry = _ap_record[id]
-    if entry then
-        if entry.is_marked then xpda.unmark_squad(id) end
-        _ap_record[id] = nil
+        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.count(_ap_scripted_squads))
     end
 end
 
@@ -441,8 +313,6 @@ end
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
-    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
 
     CreateTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC, _update_scripted_squads)
 

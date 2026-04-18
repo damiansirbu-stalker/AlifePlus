@@ -73,7 +73,7 @@ local function _handler(event_data)
             return res
         end)
         if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_core_broker.record(squad.id, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER)
+        ap_core_hud.record(squad.id, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER)
 
         return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, identity = identity }
     end)
