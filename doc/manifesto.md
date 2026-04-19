@@ -438,8 +438,9 @@ When a squad discovers an unguarded smart terrain nearby, it walks there and cla
 Both stalker and mutant factions conquer territory through the same mechanism.
 
 AlifePlus fires the area cause during radiant evaluation when a squad detects an empty smart terrain that is not a base.
-The conquer consequence walks the squad there and mutates the smart terrain on arrival: the engine's respawn parameters are rewritten so only the conqueror's faction spawns at that location.
-This is the same mechanism the engine uses internally through `try_respawn` in `smart_terrain.script`.
+The conquer consequence walks the squad there and injects the conqueror's spawn entry into the smart terrain's respawn parameters on arrival.
+The injection is additive: the original spawn entries keep firing alongside the conqueror's entry.
+A mutant lair conquered by duty still spawns its mutants, but duty squads also appear.
 
 The engine's smart terrain is a bare scheduling shell with zero faction fields at the C++ level (`CSE_ALifeSmartZone` in `xrServer_Objects_ALife.h`).
 All territory control lives in Lua.
@@ -448,14 +449,13 @@ The simulation board gates access through time windows: enemy base takeover is r
 AlifePlus adds the proactive decision.
 
 Mutant factions conquer through the same cause and consequence.
-The engine's `check_smart_faction` only counts stalker NPCs, so when only monsters occupy an online smart terrain, the faction reverts to its default.
-AlifePlus re-applies monster faction ownership through a periodic scanner that runs every 60 seconds.
 
-Conquered territory decays after 48 game hours by default.
+Conquered territory decays after 72 game hours by default.
 A FIFO eviction cap prevents any faction from holding more than 50 conquered smarts.
 Same-faction reconquest refreshes the timestamp.
 Different-faction conquest overwrites without counting against the cap.
-Decay creates a natural territorial cycle: factions conquer, territory reverts, other factions move in.
+Decay removes the injected entry and restores the smart terrain to its original spawn tables.
+The cycle creates gradual territorial oscillation: factions expand, their presence fades, other factions move in.
 
 GSC designed faction expansion as a staged process.
 Their faction settings define expansion levels with increasing squad requirements and per-faction simulation priority tables that shift targeting preferences as the faction grows [8].
@@ -465,6 +465,35 @@ Territory that mutants hold becomes territory where mutants breed.
 
 > "A control point leading to a place with artifacts is controlled by bandits. Their destruction means that the path to resources is safe."
 > Clear Sky pre-release interview [5]
+
+---
+
+### Infestation: Nest
+
+When a mutant squad's territorial instinct fires, it walks to a species-appropriate smart terrain and claims it as a nest.
+The original spawns are suppressed and replaced with the infesting species.
+
+Feral mutants infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and underground shelters.
+A per-level cap prevents any species from dominating an entire map.
+
+The engine already has a per-creature home point system.
+`CMonsterHome` gives every monster a home position with min, mid, and max radii.
+During rest, the creature returns to its home point (`eStateRest_MoveToHomePoint`).
+During panic, it retreats toward home (`eStatePanic_HomePoint_Camp`).
+During combat, it returns if the fight drifts too far (`eStateAttack_MoveToHomePoint`).
+This operates at the individual NPC level within a single smart terrain.
+AlifePlus extends it to the simulation level: a squad claims a smart terrain, and the spawn tables shift to reflect it.
+
+GSC designed territory patrol for specific species.
+Boar "патрулирует свою территорию" (patrols its territory) (monstry.doc).
+Chernobyl dogs are "крайне агрессивна, патрулирует свою территорию" (extremely aggressive, patrols its territory) (monstry.doc).
+Their creature reproduction tables (`BirthProbability`, `BirthSpeed`, `BirthPercentage`) assign non-zero values to only three of 21 creature types: rats (70%), rat wolves (60%), and dogs (50%) [8].
+These are the pack species that patrol territory. All others have BirthProbability=0.
+Territory that mutants hold is territory where mutants breed.
+
+> "Крайне агрессивна, патрулирует свою территорию, нападает на любых противников."
+> (Extremely aggressive, patrols its territory, attacks any opponents.)
+> monstry.doc, Chernobyl dog entry
 
 ---
 
@@ -521,7 +550,7 @@ Free items from a trader is a spawn, not a trade.
 
 ---
 
-### Instincts: Feed, Sleep, Explore, Socialize
+### Instincts: Feed, Sleep, Explore, Socialize, Infest
 
 Mutants develop instincts that drive movement the same way stalker needs do: Hull scoring picks the strongest unmet drive, and the consequence routes the squad to an appropriate smart terrain.
 

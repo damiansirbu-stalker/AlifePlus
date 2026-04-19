@@ -1,18 +1,24 @@
---- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, faction control, decay)
+--- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, infestation, decay)
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 local math_huge, math_floor = math.huge, math.floor
 local CALLBACK = ap_core_const.CALLBACK
 
 local cfg = ap_core_mcm.cfg
+
+local CONQUEST_KEY = "ap_conquest"
+local INFEST_KEY = "ap_infest"
+
 local _conquered_smarts = {}
 local _conquered_pending = nil
+local _infested_smarts = {}
+local _infested_pending = nil
 
 local TIMER_EV = "ap_ext_smart_mutator"
-local SCAN_ID = "conquest_scan"
+local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
-local function _find_oldest()
+local function _find_oldest_conquest()
     local oldest_id, oldest_at = nil, math_huge
     for id, data in pairs(_conquered_smarts) do
         if data.conquered_at < oldest_at then
@@ -22,11 +28,11 @@ local function _find_oldest()
     return oldest_id
 end
 
-local function _evict_oldest()
-    local oldest_id = _find_oldest()
+local function _evict_oldest_conquest()
+    local oldest_id = _find_oldest_conquest()
     if not oldest_id then return end
     local smart = xobject.se(oldest_id)
-    if smart then xsmart.clear_faction_controlled(smart) end
+    if smart then xsmart.clear_shared_spawn(smart, CONQUEST_KEY) end
     _conquered_smarts[oldest_id] = nil
     ap_core_debug.debug("[MUTATOR.SMART] evict_oldest: smart=%d", oldest_id)
 end
@@ -46,10 +52,10 @@ function conquer_smart(smart_id, faction)
     end
     if not existing then
         if xtable.count(_conquered_smarts) >= cfg.area_conquest_max_smarts then
-            _evict_oldest()
+            _evict_oldest_conquest()
         end
     end
-    if not xsmart.set_faction_controlled(smart, faction, cfg.area_conquest_spawn_num) then
+    if not xsmart.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.area_conquest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
@@ -60,64 +66,146 @@ end
 
 local _decay_collector = {}
 
---- Check if a single conquest entry has decayed
--- @complexity O(1) | 1 luabind (xobject.se) if decayed
-local function _check_decay(smart_id, data, now, decay_sec)
+-- Check if a single conquest entry has decayed
+-- @cost O(1) | 1 luabind (xobject.se) if decayed
+local function _check_conquest_decay(smart_id, data, now, decay_sec)
     if decay_sec <= 0 then return false end
     if not data.conquered_at then return false end
     if (now - data.conquered_at) <= decay_sec then return false end
     local smart = xobject.se(smart_id)
-    if smart then xsmart.clear_faction_controlled(smart) end
-    ap_core_debug.debug("[MUTATOR.SMART] decay: smart=%d faction=%s age=%dh",
+    if smart then xsmart.clear_shared_spawn(smart, CONQUEST_KEY) end
+    ap_core_debug.debug("[MUTATOR.SMART] conquest_decay: smart=%d faction=%s age=%dh",
         smart_id, data.faction, math_floor((now - data.conquered_at) / 3600))
     return true
 end
 
---- Re-apply monster faction if check_smart_faction reverted it
--- @complexity O(1) | 1 luabind (xobject.se)
-local function _check_monster_faction(smart_id, data)
-    if not is_squad_monster[data.faction] then return end
-    local smart = xobject.se(smart_id)
-    if smart and smart.faction ~= data.faction then
-        smart.faction = data.faction
-    end
-end
-
---- Re-apply respawn params if engine wiped them (STATE_Read rebuilds from LTX)
--- @complexity O(1) | 1 luabind (xobject.se)
-local function _check_respawn(smart_id, data)
+-- Re-apply conquest injection if engine wiped respawn_params (STATE_Read rebuilds from LTX)
+-- @cost O(1) | 1 luabind (xobject.se)
+local function _check_conquest_respawn(smart_id, data)
     if not cfg.area_conquest_mutate_smart then return end
     local smart = xobject.se(smart_id)
     if not smart then return end
-    xsmart.set_faction_controlled(smart, data.faction, cfg.area_conquest_spawn_num)
+    xsmart.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.area_conquest_spawn_num)
 end
 
---- Update all conquered smarts: re-apply faction + respawn, decay expired entries.
---- Called once on game load and every 60s during gameplay.
--- @complexity O(n) conquered smarts (max area_conquest_max_smarts)
-local function _update_conquered()
-    local now = xtime.game_sec()
+-- Check if a single infest entry has decayed
+-- @cost O(1) | 1 luabind (xobject.se) if decayed
+local function _check_infest_decay(smart_id, data, now, decay_sec)
+    if decay_sec <= 0 then return false end
+    if not data.infested_at then return false end
+    if (now - data.infested_at) <= decay_sec then return false end
+    local smart = xobject.se(smart_id)
+    if smart then xsmart.clear_exclusive_spawn(smart, INFEST_KEY) end
+    ap_core_debug.debug("[MUTATOR.SMART] infest_decay: smart=%d faction=%s age=%dh",
+        smart_id, data.faction, math_floor((now - data.infested_at) / 3600))
+    return true
+end
+
+-- Re-apply exclusive spawn and faction for infested smarts
+-- faction_controlled + faction + respawn_params all volatile (engine rebuilds from LTX on load)
+-- smart.faction reverted by check_smart_faction every tick on online smarts (monsters invisible)
+-- @cost O(1) | 1 luabind (xobject.se)
+local function _check_infest_respawn(smart_id, data)
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    xsmart.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.infest_spawn_num)
+end
+
+--- Update all conquered smarts: re-apply injection, decay expired entries.
+-- @cost O(n) conquered smarts (max area_conquest_max_smarts)
+local function _update_conquered(now)
     local decay_sec = cfg.area_conquest_decay_hours * 3600
     local count = 0
     for smart_id, data in pairs(_conquered_smarts) do
-        if _check_decay(smart_id, data, now, decay_sec) then
+        if _check_conquest_decay(smart_id, data, now, decay_sec) then
             count = count + 1
             _decay_collector[count] = smart_id
         else
-            _check_monster_faction(smart_id, data)
-            _check_respawn(smart_id, data)
+            _check_conquest_respawn(smart_id, data)
         end
     end
     for i = 1, count do
         _conquered_smarts[_decay_collector[i]] = nil
         _decay_collector[i] = nil
     end
+end
+
+--- Update all infested smarts: re-apply exclusive spawn + faction, decay expired entries.
+-- @cost O(n) infested smarts (max infest_max_per_level * ~14 levels)
+local function _update_infested(now)
+    local decay_sec = cfg.infest_decay_hours * 3600
+    local count = 0
+    for smart_id, data in pairs(_infested_smarts) do
+        if _check_infest_decay(smart_id, data, now, decay_sec) then
+            count = count + 1
+            _decay_collector[count] = smart_id
+        else
+            _check_infest_respawn(smart_id, data)
+        end
+    end
+    for i = 1, count do
+        _infested_smarts[_decay_collector[i]] = nil
+        _decay_collector[i] = nil
+    end
+end
+
+local function _scan()
+    local now = xtime.game_sec()
+    _update_conquered(now)
+    _update_infested(now)
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
+end
+
+--- Check if a smart terrain is infested
+function is_infested(smart_id)
+    return smart_id and _infested_smarts[smart_id] ~= nil
+end
+
+--- Check if per-level infest cap allows more infestations
+function can_infest_on_level(level_id)
+    if not level_id then return false end
+    local count = 0
+    for _, data in pairs(_infested_smarts) do
+        if data.level_id == level_id then
+            count = count + 1
+            if count >= cfg.infest_max_per_level then return false end
+        end
+    end
+    return true
+end
+
+--- Infest a smart terrain with exclusive spawn injection
+function infest_smart(smart_id, faction, level_id)
+    if not smart_id or not faction or not level_id then return false end
+    if not cfg or not cfg.infest_enabled then return false end
+    if _infested_smarts[smart_id] then return false end
+    if not can_infest_on_level(level_id) then return false end
+    local smart = xobject.se(smart_id)
+    if not smart then return false end
+    if not xsmart.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.infest_spawn_num) then
+        ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
+        return false
+    end
+    _infested_smarts[smart_id] = { faction = faction, level_id = level_id, infested_at = xtime.game_sec() }
+    ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s level=%d", smart_id, faction, level_id)
+    return true
+end
+
+--- Clear infestation from a smart terrain
+function clear_infest(smart_id)
+    if not smart_id then return false end
+    if not _infested_smarts[smart_id] then return false end
+    local smart = xobject.se(smart_id)
+    if smart then xsmart.clear_exclusive_spawn(smart, INFEST_KEY) end
+    _infested_smarts[smart_id] = nil
+    ap_core_debug.debug("[MUTATOR.SMART] clear_infest: smart=%d", smart_id)
+    return true
 end
 
 local function _on_save_state(m_data)
     m_data.ap_ext_smart_mutator = {
         conquered_smarts = _conquered_smarts,
+        infested_smarts = _infested_smarts,
     }
 end
 
@@ -125,16 +213,17 @@ local function _on_load_state(m_data)
     local saved = m_data.ap_ext_smart_mutator or {}
     _conquered_smarts = {}
     _conquered_pending = saved.conquered_smarts or {}
+    _infested_smarts = {}
+    _infested_pending = saved.infested_smarts or {}
 end
 
-local function _on_game_load()
+local function _restore_conquered(now)
     if not _conquered_pending then return end
     if not cfg or not cfg.area_conquest_enabled then
         _conquered_pending = nil
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
         return
     end
-    local now = xtime.game_sec()
     local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
         if not data.faction then goto continue end
@@ -143,14 +232,38 @@ local function _on_game_load()
         ::continue::
     end
     _conquered_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: restored=%d", restored)
-    _update_conquered()
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d", restored)
+end
+
+local function _restore_infested(now)
+    if not _infested_pending then return end
+    if not cfg or not cfg.infest_enabled then
+        _infested_pending = nil
+        ap_core_debug.info("[MUTATOR.SMART] on_game_load: infest disabled, skipped restore")
+        return
+    end
+    local restored = 0
+    for smart_id, data in pairs(_infested_pending) do
+        if not data.faction or not data.level_id then goto continue end
+        _infested_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, infested_at = data.infested_at or now }
+        restored = restored + 1
+        ::continue::
+    end
+    _infested_pending = nil
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: infest restored=%d", restored)
+end
+
+local function _on_game_load()
+    local now = xtime.game_sec()
+    _restore_conquered(now)
+    _restore_infested(now)
+    _scan()
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
-    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _update_conquered)
+    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end

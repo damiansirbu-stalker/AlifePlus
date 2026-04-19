@@ -62,7 +62,7 @@ What you'll notice:
 - Stash traffic: NPCs walking to stashes, looting, ambushing, filling
 - Outlaws hunting whoever picked up an artefact
 - Retaliation and retreat loops after squad wipes
-- Territory flipping as stalkers and mutants claim empty outposts. Conquests decay if not held.
+- Territory flipping as stalkers and mutants claim empty outposts. Conquests decay if not held. Mutants infest lairs and buildings as nests.
 - Alpha mutants emerging from combat, accumulating kills, hit power buffs, and valuable loot
 - Predators closing in on wounded targets, allies rushing to help
 - NPCs trading real items at traders - artefacts for ammo, grenades, medkits
@@ -204,8 +204,11 @@ Opportunities
     - Fill - Stalker squad spots the stash and hides supplies inside.
 
   Area
-    - Conquer - Organized and aggressive factions claim empty territory. Ecologists, loners, and renegades never conquer.
-      Conquered territory decays over time if not held (decay hours configurable in MCM).
+    - Conquer - Organized and aggressive factions claim empty territory.
+      Both stalkers and mutants conquer. Ecologists, loners, and renegades never conquer. Cowardly mutants never conquer.
+      Conquest adds the conqueror's spawns alongside originals (shared injection). Territory decays over time (MCM configurable).
+    - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
+      Infestation replaces original spawns with the infesting species (exclusive injection). Per-level cap limits spread.
 
 Needs
 
@@ -238,6 +241,9 @@ Instincts
     Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.
   - Explore - Mutants wander to a different territory or lair during active hours.
   - Socialize - Pack animals move toward smart terrains where same-faction squads are present.
+  - Infest - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours.
+    Feral species infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and shelters.
+    Cowardly species are too weak to hold territory.
 
 Day/Night Cycle
   Stalkers and mutants follow a day/night activity cycle.

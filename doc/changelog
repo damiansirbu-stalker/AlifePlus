@@ -1,4 +1,16 @@
 next
+  Gameplay:
+    Changed: territory conquest is now additive. Conquering a smart terrain adds the conqueror's squads alongside original spawns instead of replacing them.
+    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns replaced by the infesting species. Per-level cap (MCM 1-5, default 1). Personality gated by territory and survival traits.
+  Core:
+    Changed: xsmart spawn injection API renamed. inject_conquest/clear_conquest -> set_shared_spawn/clear_shared_spawn (additive). New set_exclusive_spawn/clear_exclusive_spawn (faction filter, suppresses originals). Spawn key is now a caller parameter, no hardcoded AP constants in xlibs.
+    Added: infestation mutator in ap_ext_smart_mutator. Per-level cap, 60s faction re-apply scanner for online smarts, two-phase save/load restore, configurable decay.
+    Fixed: mutant instinct filters now check engine faction acceptance before selecting smart terrains.
+    Added: xsmart.accepts_mutant(smart, player_id) -- mirrors engine target_precondition gate 1.
+  MCM:
+    Added: instinct infest cause settings (enabled, threshold).
+    Added: instinct infest consequence settings (enabled, rush, personality floor/ceiling).
+    Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
 
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API

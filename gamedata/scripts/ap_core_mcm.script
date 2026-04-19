@@ -67,11 +67,13 @@ defaults = {
     cause_instinct_sleep_enabled = true,
     cause_instinct_explore_enabled = true,
     cause_instinct_socialize_enabled = true,
+    cause_instinct_infest_enabled = true,
     cause_instinct_scatter_threshold = 12,
     cause_instinct_feed_threshold = 12,
     cause_instinct_sleep_threshold = 12,
     cause_instinct_explore_threshold = 12,
     cause_instinct_socialize_threshold = 24,
+    cause_instinct_infest_threshold = 24,
 
     -- Consequence: Instinct Scatter
     consequence_instinct_scatter_enabled = true,
@@ -102,6 +104,12 @@ defaults = {
     consequence_instinct_socialize_rush = false,
     consequence_instinct_socialize_personality_min = 0.20,
     consequence_instinct_socialize_personality_max = 0.80,
+
+    -- Consequence: Instinct Infest
+    consequence_instinct_infest_enabled = true,
+    consequence_instinct_infest_rush = false,
+    consequence_instinct_infest_personality_min = 0.20,
+    consequence_instinct_infest_personality_max = 0.70,
 
     -- Cause: Area
     cause_area_enabled = true,
@@ -360,6 +368,12 @@ defaults = {
     area_conquest_mutate_smart = true,
     area_conquest_decay_hours = 72,
 
+    -- Infestation (exclusive spawn replacement)
+    infest_enabled = true,
+    infest_max_per_level = 1,
+    infest_spawn_num = 3,
+    infest_decay_hours = 0,
+
     -- Development
     log_level = "WARN",
     map_markers = false,
@@ -420,6 +434,8 @@ local _key_to_tab = {
     cause_instinct_sleep_threshold = "causes/instincts",
     cause_instinct_explore_threshold = "causes/instincts",
     cause_instinct_socialize_threshold = "causes/instincts",
+    cause_instinct_infest_enabled = "causes/instincts",
+    cause_instinct_infest_threshold = "causes/instincts",
     consequence_instinct_scatter_enabled = "consequences/instinct_scatter",
     consequence_instinct_scatter_rush = "consequences/instinct_scatter",
     consequence_instinct_scatter_personality_min = "consequences/instinct_scatter",
@@ -440,6 +456,14 @@ local _key_to_tab = {
     consequence_instinct_socialize_rush = "consequences/instinct_socialize",
     consequence_instinct_socialize_personality_min = "consequences/instinct_socialize",
     consequence_instinct_socialize_personality_max = "consequences/instinct_socialize",
+    consequence_instinct_infest_enabled = "consequences/instinct_infest",
+    consequence_instinct_infest_rush = "consequences/instinct_infest",
+    consequence_instinct_infest_personality_min = "consequences/instinct_infest",
+    consequence_instinct_infest_personality_max = "consequences/instinct_infest",
+    infest_enabled = "consequences/instinct_infest",
+    infest_max_per_level = "consequences/instinct_infest",
+    infest_spawn_num = "consequences/instinct_infest",
+    infest_decay_hours = "consequences/instinct_infest",
     cause_area_enabled = "causes/area",
     cause_area_smart_cooldown_sec = "causes/area",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
@@ -799,12 +823,14 @@ function on_mcm_load()
                             _check("cause_instinct_sleep_enabled"),
                             _check("cause_instinct_explore_enabled"),
                             _check("cause_instinct_socialize_enabled"),
+                            _check("cause_instinct_infest_enabled"),
                             { id = "div_thresholds", type = "line" },
                             _track("cause_instinct_scatter_threshold", 0.1, 48, 0.1),
                             _track("cause_instinct_feed_threshold", 0.1, 48, 0.1),
                             _track("cause_instinct_sleep_threshold", 0.1, 48, 0.1),
                             _track("cause_instinct_explore_threshold", 0.1, 48, 0.1),
                             _track("cause_instinct_socialize_threshold", 0.1, 48, 0.1),
+                            _track("cause_instinct_infest_threshold", 0.1, 48, 0.1),
                         },
                     },
                     {
@@ -1374,6 +1400,24 @@ function on_mcm_load()
                             _check("consequence_instinct_socialize_rush"),
                             _track("consequence_instinct_socialize_personality_min", 0, 1, 0.05),
                             _track("consequence_instinct_socialize_personality_max", 0, 1, 0.05),
+                        },
+                    },
+                    {
+                        id = "instinct_infest",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_instinct_infest_title"),
+                            _tag("ui_mcm_ap_consequences_instinct_infest_tag"),
+                            _desc("ui_mcm_ap_consequences_instinct_infest_desc"),
+                            _check("consequence_instinct_infest_enabled"),
+                            _check("consequence_instinct_infest_rush"),
+                            _track("consequence_instinct_infest_personality_min", 0, 1, 0.05),
+                            _track("consequence_instinct_infest_personality_max", 0, 1, 0.05),
+                            { id = "div_infest_mutator", type = "line" },
+                            _check("infest_enabled"),
+                            _track("infest_max_per_level", 1, 5, 1),
+                            _track("infest_spawn_num", 1, 5, 1),
+                            _track("infest_decay_hours", 0, 168, 4),
                         },
                     },
                 },

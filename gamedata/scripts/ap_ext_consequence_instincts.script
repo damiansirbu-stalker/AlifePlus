@@ -23,6 +23,7 @@ local _alignment_mutant
 local _species_explore
 local _species_socialize
 local _species_scatter
+local _species_infest
 local _food_chain_tier
 local _scatter_from
 
@@ -30,42 +31,65 @@ local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
 end
 
-local function _is_territory(smart)
-    return xsmart.is_territory(smart) and _not_base(smart)
+local function _make_territory_filter(player_id)
+    return function(smart)
+        return xsmart.is_territory(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
 end
 
-local function _is_lair(smart)
-    return xsmart.is_lair(smart) and _not_base(smart)
+local function _make_lair_filter(player_id)
+    return function(smart)
+        return xsmart.is_lair(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
 end
 
-local function _is_surge_shelter_not_base(smart)
-    return xsmart.has_surge_shelter(smart) and _not_base(smart)
+local function _make_surge_filter(player_id)
+    return function(smart)
+        return xsmart.has_surge_shelter(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
 end
 
-local function _is_territory_or_lair(smart)
-    return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _not_base(smart)
+local function _make_territory_or_lair_filter(player_id)
+    return function(smart)
+        return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_lair_or_surge_filter(player_id)
+    return function(smart)
+        return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
 end
 
 -- cowardly -> territory, feral -> lair, predator -> nil (fallback), aberrant -> surge
-local function _resolve_sleep_filter(species)
-    if _alignment_mutant_cowardly[species] then return _is_territory end
-    if _alignment_mutant_feral[species] then return _is_lair end
+local function _resolve_sleep_filter(species, player_id)
+    if _alignment_mutant_cowardly[species] then return _make_territory_filter(player_id) end
+    if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
     if _alignment_mutant_predator[species] then return nil end
-    if _alignment_mutant_aberrant[species] then return _is_surge_shelter_not_base end
-    return _is_territory
+    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
+    return _make_territory_filter(player_id)
 end
 
-local function _find_predator_sleep_smart(trace, position, level_id)
-    local lair_opts = { level_id = level_id, filter = _is_lair, max_distance = RANGE_SCENT }
-    local smart = ap_core_utils.find_smart_observed(trace, position, lair_opts)
+-- feral -> lair, predator -> lair or surge, aberrant -> surge
+local function _resolve_infest_filter(species, player_id)
+    if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
+    if _alignment_mutant_predator[species] then return _make_lair_or_surge_filter(player_id) end
+    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
+    return nil
+end
+
+local function _find_predator_sleep_smart(trace, position, level_id, player_id)
+    local lair_filter = _make_lair_filter(player_id)
+    local smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = lair_filter, max_distance = RANGE_SCENT })
     if smart then return smart end
-    local surge_opts = { level_id = level_id, filter = _is_surge_shelter_not_base, max_distance = RANGE_SCENT }
-    return ap_core_utils.find_smart_observed(trace, position, surge_opts)
+    local surge_filter = _make_surge_filter(player_id)
+    return ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = surge_filter, max_distance = RANGE_SCENT })
 end
 
 local function _build_socialize_filter(community, exclude_smart_id)
     return function(smart)
         if not _not_base(smart) then return false end
+        if not xsmart.accepts_mutant(smart, community) then return false end
         if smart.id == exclude_smart_id then return false end
         local squads = xsmart.get_smart_squads(smart.id)
         if not squads then return false end
@@ -86,6 +110,9 @@ local function _on_arrive(squad, args)
     ap_core_debug.observe(nil, ACTION.COMPLETE_INSTINCTS, function(trace)
         if args.dto_field then
             ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
+        end
+        if args.infest then
+            ap_ext_smart_mutator.infest_smart(args.target_smart_id, squad.player_id, args.level_id)
         end
         return { code = TRACE.OK, squad = squad.id, instinct = args.name, dst = args.dst_name }
     end)
@@ -111,16 +138,19 @@ local CONFIGS = {
         dto_field = "last_socialize_at",
         personality = { PERSONALITY.RELATION },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SOCIALIZE },
+    { instinct = "infest", consequence = CONSEQUENCE.INSTINCTS_INFEST, name = "instinct_infest",
+        dto_field = "last_infest_at", infest = true,
+        personality = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL },
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_INFEST },
 }
 
-local function _find_sleep_smart(trace, species, position, level_id)
+local function _find_sleep_smart(trace, species, position, level_id, player_id)
     if _alignment_mutant_predator[species] then
-        return _find_predator_sleep_smart(trace, position, level_id)
+        return _find_predator_sleep_smart(trace, position, level_id, player_id)
     end
-    local filter = _resolve_sleep_filter(species)
+    local filter = _resolve_sleep_filter(species, player_id)
     if not filter then return nil end
-    local find_opts = { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
-    return ap_core_utils.find_smart_observed(trace, position, find_opts)
+    return ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = filter, max_distance = RANGE_SCENT })
 end
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
@@ -138,9 +168,10 @@ local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
     return false
 end
 
-local function _build_safe_filter(threats)
+local function _build_safe_filter(threats, player_id)
     return function(smart)
         if not _not_base(smart) then return false end
+        if not xsmart.accepts_mutant(smart, player_id) then return false end
         local squads = xsmart.get_smart_squads(smart.id)
         if not squads then return true end
         for sq_id in pairs(squads) do
@@ -158,13 +189,13 @@ local _find_by_instinct = {
         local threats = _scatter_from[tier]
         if not threats then return nil end
         if not _has_nearby_threat(trace, event_data.position, event_data.level_id, event_data.squad_id, threats) then return nil end
-        local filter = _build_safe_filter(threats)
+        local filter = _build_safe_filter(threats, event_data.community)
         local opts = { level_id = event_data.level_id, filter = filter,
             max_distance = RANGE_EYE, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
     sleep = function(trace, event_data, _squad)
-        return _find_sleep_smart(trace, event_data.species, event_data.position, event_data.level_id)
+        return _find_sleep_smart(trace, event_data.species, event_data.position, event_data.level_id, event_data.community)
     end,
     socialize = function(trace, event_data, squad)
         local filter = _build_socialize_filter(event_data.community, squad.smart_id)
@@ -172,12 +203,25 @@ local _find_by_instinct = {
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
     explore = function(trace, event_data, squad)
-        local opts = { level_id = event_data.level_id, filter = _is_territory_or_lair,
+        local filter = _make_territory_or_lair_filter(event_data.community)
+        local opts = { level_id = event_data.level_id, filter = filter,
             max_distance = RANGE_SCENT, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
     feed = function(trace, event_data, _squad)
-        local opts = { level_id = event_data.level_id, filter = _is_territory, max_distance = RANGE_SCENT }
+        local filter = _make_territory_filter(event_data.community)
+        return ap_core_utils.find_smart_observed(trace, event_data.position, { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT })
+    end,
+    infest = function(trace, event_data, squad)
+        if not ap_ext_smart_mutator.can_infest_on_level(event_data.level_id) then return nil end
+        local base_filter = _resolve_infest_filter(event_data.species, event_data.community)
+        if not base_filter then return nil end
+        local filter = function(smart)
+            if ap_ext_smart_mutator.is_infested(smart.id) then return false end
+            return base_filter(smart)
+        end
+        local opts = { level_id = event_data.level_id, filter = filter,
+            max_distance = RANGE_SCENT, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
 }
@@ -215,7 +259,8 @@ local function _make_handler(entry)
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
-                        dst_name = smart:name() },
+                        dst_name = smart:name(), infest = entry.infest,
+                        target_smart_id = entry.infest and smart.id, level_id = entry.infest and event_data.level_id },
                     pre_release_gulag = entry.pre_release_gulag,
                 })
                 return res
@@ -245,10 +290,13 @@ function on_game_start()
     _species_explore = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
     _species_socialize = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
+    -- infest: feral + predator + aberrant (cowardly too weak to hold territory)
+    _species_infest = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator, _alignment_mutant_aberrant)
 
     CONFIGS[1].species_alignment = _species_scatter
     CONFIGS[4].species_alignment = _species_explore
     CONFIGS[5].species_alignment = _species_socialize
+    CONFIGS[6].species_alignment = _species_infest
 
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
