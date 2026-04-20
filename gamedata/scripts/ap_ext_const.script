@@ -296,6 +296,48 @@ CONSEQUENCE_DESCRIPTION = {
     [CONSEQUENCE.INSTINCTS_INFEST] = "Instinct Infest",
 }
 
+--- Consequence activity string IDs for external tooltip integration.
+--- Values are XML string IDs resolved via game.translate_string at lookup time,
+--- so MCM language switches take effect without reloading AP.
+--- Strings live in gamedata/configs/text/<lang>/ui_st_ap_activity.xml.
+CONSEQUENCE_ACTIVITY = {
+    [CONSEQUENCE.ALPHAKILL_TARGETED] = "ui_ap_activity_alphakill_targeted",
+    [CONSEQUENCE.MASSACRE_SCAVENGE] = "ui_ap_activity_massacre_scavenge",
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "ui_ap_activity_massacre_investigate",
+    [CONSEQUENCE.STASH_AMBUSH] = "ui_ap_activity_stash_ambush",
+    [CONSEQUENCE.STASH_LOOT] = "ui_ap_activity_stash_loot",
+    [CONSEQUENCE.STASH_FILL] = "ui_ap_activity_stash_fill",
+    [CONSEQUENCE.SQUADKILL_REVENGE] = "ui_ap_activity_squadkill_revenge",
+    [CONSEQUENCE.SQUADKILL_FLEE] = "ui_ap_activity_squadkill_flee",
+    [CONSEQUENCE.BASEKILL_SUPPORT] = "ui_ap_activity_basekill_support",
+    [CONSEQUENCE.BASEKILL_FLEE] = "ui_ap_activity_basekill_flee",
+    [CONSEQUENCE.WOUNDED_HUNT] = "ui_ap_activity_wounded_hunt",
+    [CONSEQUENCE.WOUNDED_HELP] = "ui_ap_activity_wounded_help",
+    [CONSEQUENCE.AREA_CONQUER] = "ui_ap_activity_area_conquer",
+    [CONSEQUENCE.HARVEST_ROB] = "ui_ap_activity_harvest_rob",
+    [CONSEQUENCE.HARVEST_HAUNT] = "ui_ap_activity_harvest_haunt",
+    [CONSEQUENCE.HUNGER_CAMPFIRE] = "ui_ap_activity_hunger_campfire",
+    [CONSEQUENCE.SLEEP_CAMPFIRE] = "ui_ap_activity_sleep_campfire",
+    [CONSEQUENCE.REST_CAMPFIRE] = "ui_ap_activity_rest_campfire",
+    [CONSEQUENCE.HEAL_SHELTER] = "ui_ap_activity_heal_shelter",
+    [CONSEQUENCE.SHELTER_INDOOR] = "ui_ap_activity_shelter_indoor",
+    [CONSEQUENCE.SHELTER_OUTDOOR] = "ui_ap_activity_shelter_outdoor",
+    [CONSEQUENCE.MONEY_HARVEST] = "ui_ap_activity_money_harvest",
+    [CONSEQUENCE.MONEY_HUNT] = "ui_ap_activity_money_hunt",
+    [CONSEQUENCE.SUPPLY_TRADER] = "ui_ap_activity_supply_trader",
+    [CONSEQUENCE.JOB_OUTPOST] = "ui_ap_activity_job_outpost",
+    [CONSEQUENCE.JOB_EXPLORE] = "ui_ap_activity_job_explore",
+    [CONSEQUENCE.JOB_RESEARCH] = "ui_ap_activity_job_research",
+    [CONSEQUENCE.SOCIAL_CAMPFIRE] = "ui_ap_activity_social_campfire",
+    [CONSEQUENCE.SOCIAL_BASE] = "ui_ap_activity_social_base",
+    [CONSEQUENCE.INSTINCTS_FEED] = "ui_ap_activity_instincts_feed",
+    [CONSEQUENCE.INSTINCTS_SLEEP] = "ui_ap_activity_instincts_sleep",
+    [CONSEQUENCE.INSTINCTS_EXPLORE] = "ui_ap_activity_instincts_explore",
+    [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "ui_ap_activity_instincts_socialize",
+    [CONSEQUENCE.INSTINCTS_SCATTER] = "ui_ap_activity_instincts_scatter",
+    [CONSEQUENCE.INSTINCTS_INFEST] = "ui_ap_activity_instincts_infest",
+}
+
 --- Stalker needs DTO field names
 NEED_FIELDS = {
     "last_hunger_at", "last_sleep_at", "last_rest_at",
@@ -313,6 +355,7 @@ function on_game_start()
     SCATTER_FROM[1] = xtable.merge(alignment_mutant_predator, alignment_mutant_aberrant)
     SCATTER_FROM[2] = xtable.merge(alignment_mutant_aberrant)
     ap_core_broker.register_descriptions(CONSEQUENCE_DESCRIPTION)
+    ap_core_broker.register_activities(CONSEQUENCE_ACTIVITY)
 end
 
 --- Item section lists for needs arrive_fn (GAMMA-verified)

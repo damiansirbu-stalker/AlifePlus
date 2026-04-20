@@ -427,6 +427,22 @@ end
 
 When a new entry is recorded for the same squad, the previous entry's `assigned` flag is set to false. Markers only display `assigned` entries. The FIFO is session-lifetime (resets on load, no save persistence).
 
+
+For a ready-to-display human-friendly phrase ("Investigating a massacre site"), use `get_squad_activity` — it maps the consequence to a translatable string from `gamedata/configs/text/<lang>/ui_st_ap_activity.xml`:
+
+```lua
+-- External mod tooltip:
+if ap_core_broker then
+    local label = ap_core_broker.get_squad_activity(squad_id)
+    if label then
+        tooltip:AppendLine(label)
+    end
+end
+```
+
+The phrase is resolved via `game.translate_string` on every call, so MCM language switches take effect immediately. Returns `nil` when the squad is not AP-scripted.
+
+
 ---
 
 ## Contact
