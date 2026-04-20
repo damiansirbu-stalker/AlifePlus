@@ -28,6 +28,7 @@ local _ap_record = nil
 local _record_seq = 0
 local _record_assigned = {}
 local _consequence_descriptions = nil
+local _consequence_activities = nil
 
 --- Register consequence description table (called from ext at init).
 --- Core stores reference, no core->ext import.
@@ -41,6 +42,34 @@ end
 --- Get consequence descriptions table (read by hud for markers)
 function get_descriptions()
     return _consequence_descriptions
+end
+
+--- Register consequence activity table (called from ext at init).
+--- Values are XML string IDs (ui_st_ap_activity.xml), resolved at query time
+--- via game.translate_string so MCM language changes take effect immediately.
+--- @safety SAFE - pure Lua reference assignment
+--- @cost O(1) | 0 luabind
+--- @param tbl table Maps CONSEQUENCE keys to XML string IDs
+function register_activities(tbl)
+    _consequence_activities = tbl
+end
+
+--- Human-friendly "what is this squad doing" string for tooltip integration.
+--- Returns nil if the squad is not currently AP-scripted, if no record exists,
+--- or if the consequence has no registered activity string. Translated at
+--- call time, so callers always get the current MCM language.
+--- @safety SAFE - pure Lua table read + luabind translate_string
+--- @cost O(1) | 1 luabind
+--- @param squad_id number Squad server ID
+--- @return string|nil Localized activity phrase, or nil when unavailable
+--- @export api
+function get_squad_activity(squad_id)
+    if not squad_id then return nil end
+    local entry = _record_assigned[squad_id]
+    if not entry or not entry.assigned then return nil end
+    local string_id = _consequence_activities and _consequence_activities[entry.consequence]
+    if not string_id then return nil end
+    return game.translate_string(string_id)
 end
 
 --- Record squad activity after SUCCESS. Appends to FIFO, marks previous entry for same squad as unassigned.
