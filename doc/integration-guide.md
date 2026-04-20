@@ -375,8 +375,10 @@ Direct access to AP domain systems. APIs may change between versions.
 | `is_protected(squad)` | boolean, reason, detail, name -- check all guards |
 | `get_owner(squad)` | string or nil -- ownership query |
 | `register_owner(name, filter_fn)` | register ownership filter (replaces on name match) |
-| `record(squad_id, cause, consequence, opts)` | record activity (markers + external queries) |
-| `get_record(squad_id)` | { cause, consequence, persistent, is_marked } or nil |
+| `record(squad_id, cause, consequence, opts)` | append to activity FIFO (markers, composer, external queries) |
+| `get_record(squad_id)` | latest assigned entry for squad, or nil |
+| `get_records(opts)` | query FIFO with AND-logic field matching, or all entries if no opts |
+| `clear_record(squad_id)` | clear assigned entry on entity death (unmarks marker) |
 | `register_descriptions(tbl)` | register consequence display labels for markers |
 | `get_scripted_ids()` | read-only reference to _ap_scripted_squads table |
 
@@ -397,24 +399,33 @@ ap_core_broker.script_squad(squad, smart, {
 
 ### Activity Record
 
-After a consequence scripts a squad, it calls `record()` to track what the squad is doing. External mods query this via `get_record()`.
+After a consequence scripts a squad, it calls `record()` to append an entry to a bounded FIFO (capacity 256). Each entry tracks what a squad is doing, with optional enriched fields for the news composer. External mods query the latest assigned entry per squad via `get_record()`.
 
 ```lua
 -- Consequence handler (after script_squad SUCCESS):
 ap_core_broker.record(squad.id, CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE)
 
+-- With enriched fields (for news composer):
+ap_core_broker.record(squad.id, CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
+    subject_faction = "dolg", subject_name = "Petro",
+    level_id = 14, location = "old factory",
+    game_hours = xlevel.get_game_hours(),
+})
+
 -- External mod (e.g. warfare map tooltips):
 if ap_core_broker then
     local r = ap_core_broker.get_record(squad_id)
     if r then
+        -- r.squad_id = 1337
         -- r.cause = "cause:massacre"
         -- r.consequence = "consequence:massacre_investigate"
-        -- r.persistent = false
+        -- r.assigned = true
+        -- r.subject_faction, r.subject_name, r.level_id, r.location (may be nil)
     end
 end
 ```
 
-Records are cleaned up automatically when squads are unscripted (unless `persistent = true`) or when entities die.
+When a new entry is recorded for the same squad, the previous entry's `assigned` flag is set to false. Markers only display `assigned` entries. The FIFO is session-lifetime (resets on load, no save persistence).
 
 ---
 

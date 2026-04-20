@@ -134,7 +134,7 @@ local function _handler(event_data)
             return ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance,
                 "text_pda_consequence_alphakill_targeted", { name = victim_name, location = location })
         end)
-        for i = 1, #moved do ap_core_hud.record(moved[i].id, CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED) end
+        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED) end
 
         return ap_core_debug.result_squads(moved, {
             code = RESULT.SUCCESS, reason = #moved .. "_hunters",

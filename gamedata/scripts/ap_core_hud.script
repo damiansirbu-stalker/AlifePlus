@@ -1,4 +1,4 @@
---- ap_core_hud: Activity record, PDA map markers, pipeline statistics, HUD overlay
+--- ap_core_hud: PDA map markers, pipeline statistics, HUD overlay
 --- Counters collect when statistics overlay is on OR log level is DEBUG. HUD displays when overlay is on.
 local pairs, string_format, tostring = pairs, string.format, tostring
 local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
@@ -12,78 +12,6 @@ local _debug_enabled = ap_core_debug.enabled
 
 
 --- ========================
---- Activity Record
---- ========================
-
-local _ap_record = {}
-local _consequence_descriptions = nil
-
---- Register consequence description table (called from ext at init).
---- Core stores reference, no core->ext import.
---- @safety SAFE - pure Lua reference assignment
---- @cost O(1) | 0 luabind
---- @param tbl table Maps CONSEQUENCE keys to display strings
-function register_descriptions(tbl)
-    _consequence_descriptions = tbl
-end
-
---- Record squad activity after SUCCESS. Written by consequence handlers.
---- Stores cause/consequence identity for markers and external queries (get_record).
---- @safety SAFE - pure Lua table write, nil-guarded on squad_id
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
---- @param cause string Cause key (CAUSE.X)
---- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil Options: persistent=true keeps record until entity dies
-function record(squad_id, cause, consequence, opts)
-    if not squad_id or not cause or not consequence then return end
-    opts = opts or {}
-    _ap_record[squad_id] = {
-        cause = cause,
-        consequence = consequence,
-        persistent = opts.persistent or false,
-        is_marked = false,
-    }
-    ap_core_debug.debug("[SQUAD] record: squad=%d cause=%s consequence=%s persistent=%s",
-        squad_id, cause or "nil", consequence or "nil", tostring(opts.persistent or false))
-end
-
---- Get activity record for a squad
---- Returns { cause, consequence, persistent, is_marked } or nil
---- @safety SAFE - pure Lua table read
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
---- @return table|nil Record entry or nil
---- @export api
-function get_record(squad_id)
-    return _ap_record[squad_id]
-end
-
---- Save record state (called from broker save)
-function save_record(m_data)
-    if not m_data.ap_core_hud then m_data.ap_core_hud = {} end
-    m_data.ap_core_hud.record = _ap_record
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] save: record=%d", xtable.count(_ap_record))
-    end
-end
-
---- Load record state (called from broker load, migrates from old save location)
-function load_record(m_data)
-    local hud_data = m_data.ap_core_hud
-    if hud_data and hud_data.record then
-        _ap_record = hud_data.record
-    else
-        local broker_data = m_data.ap_core_broker
-        _ap_record = (broker_data and broker_data.record) or {}
-    end
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] load: record=%d", xtable.count(_ap_record))
-    end
-end
-
-
---- ========================
 --- PDA Map Markers
 --- ========================
 
@@ -94,36 +22,35 @@ local VALIDATE_MARKERS_SEC = 20
 local _last_validate_at = 0
 
 local function _apply_markers()
-    for squad_id, entry in pairs(_ap_record) do
-        if entry.is_marked then goto continue end
-        local se = xobject.se(squad_id)
-        if not se then goto continue end
-        local desc = _consequence_descriptions and _consequence_descriptions[entry.consequence]
+    local descriptions = ap_core_broker.get_descriptions()
+    ap_core_broker.each_record({ assigned = true }, function(entry)
+        if entry.is_marked then return end
+        local se = xobject.se(entry.squad_id)
+        if not se then return end
+        local desc = descriptions and descriptions[entry.consequence]
         local full_label = (desc or entry.consequence) .. ": " .. xsquad.get_community_name(se)
-        xpda.mark_squad(squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
+        xpda.mark_squad(entry.squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
         entry.is_marked = true
-        ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", squad_id, full_label)
-        ::continue::
-    end
+        ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", entry.squad_id, full_label)
+    end)
 end
 
 local function _validate_markers()
     local now = clock()
-    for squad_id, entry in pairs(_ap_record) do
-        if not entry.is_marked then goto continue end
-        local se = xobject.se(squad_id)
-        local should_linger = not se or (not entry.persistent and not se.scripted_target)
+    ap_core_broker.each_record({ assigned = true }, function(entry)
+        if not entry.is_marked then return end
+        local se = xobject.se(entry.squad_id)
+        local should_linger = not se or not se.scripted_target
         if should_linger and not entry.remove_at then
             entry.remove_at = now + ap_core_const.MARKER_LINGER_SEC
-            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", squad_id, se and "unscripted" or "dead")
+            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", entry.squad_id, se and "unscripted" or "dead")
         end
         if entry.remove_at and now >= entry.remove_at then
-            xpda.unmark_squad(squad_id)
-            ap_core_debug.debug("[SQUAD] unmark: squad=%d", squad_id)
-            _ap_record[squad_id] = nil
+            xpda.unmark_squad(entry.squad_id)
+            entry.is_marked = false
+            ap_core_debug.debug("[SQUAD] unmark: squad=%d", entry.squad_id)
         end
-        ::continue::
-    end
+    end)
 end
 
 local function _update_markers()
@@ -142,11 +69,7 @@ local function _on_server_entity_on_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
     if not id then return end
-    local entry = _ap_record[id]
-    if entry then
-        if entry.is_marked then xpda.unmark_squad(id) end
-        _ap_record[id] = nil
-    end
+    ap_core_broker.clear_record(id)
 end
 
 
@@ -507,9 +430,7 @@ local function _on_first_update()
     if _was_enabled then _show_hud() end
     -- Markers
     xpda.clear_squad_markers()
-    for _, entry in pairs(_ap_record) do
-        entry.is_marked = false
-    end
+    ap_core_broker.each_record({ assigned = true }, function(entry) entry.is_marked = false end)
     _last_validate_at = 0
     if cfg.map_markers then
         CreateTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)

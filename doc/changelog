@@ -3,10 +3,15 @@ next
     Changed: territory conquest is now additive. Conquering a smart terrain adds the conqueror's squads alongside original spawns instead of replacing them.
     Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns replaced by the infesting species. Per-level cap (MCM 1-5, default 1). Personality gated by territory and survival traits.
   Core:
-    Changed: xsmart spawn injection API renamed. inject_conquest/clear_conquest -> set_shared_spawn/clear_shared_spawn (additive). New set_exclusive_spawn/clear_exclusive_spawn (faction filter, suppresses originals). Spawn key is now a caller parameter, no hardcoded AP constants in xlibs.
-    Added: infestation mutator in ap_ext_smart_mutator. Per-level cap, 60s faction re-apply scanner for online smarts, two-phase save/load restore, configurable decay.
-    Fixed: mutant instinct filters now check engine faction acceptance before selecting smart terrains.
-    Added: xsmart.accepts_mutant(smart, player_id) -- mirrors engine target_precondition gate 1.
+    Changed: activity record is now a bounded history (last 256 events). Queryable by squad, cause, faction, or any field.
+    Changed: xsmart spawn injection API renamed. set_shared_spawn/set_exclusive_spawn replace old inject/clear functions.
+    Added: mutant infestation mutator with per-level caps and decay.
+    Fixed: mutant instinct filters check engine faction acceptance before selecting smart terrains.
+  Integration:
+    Changed: activity record API moved to ap_core_broker. record(), get_record(), register_descriptions() now on broker.
+    Added: get_records(opts) -- query activity history with field matching.
+    Added: clear_record(squad_id) -- entity death cleanup.
+    Added: xttltable.create_fifo_cache :each(fn) iteration and on_evict callback.
   MCM:
     Added: instinct infest cause settings (enabled, threshold).
     Added: instinct infest consequence settings (enabled, rush, personality floor/ceiling).

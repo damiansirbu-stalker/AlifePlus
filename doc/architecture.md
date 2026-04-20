@@ -37,8 +37,8 @@ The pipeline, protection, squad lifecycle, rate limiting, tracing, and configura
 |------|------|
 | ap_core_producer | Gate chain, predicate evaluation, xbus publish |
 | ap_core_consumer | Dispatch: xbus subscribe, consequence iteration, result codes, rate gating |
-| ap_core_broker | Ownership registry, squad scripting lifecycle, arrival detection, protection |
-| ap_core_hud | Activity record, PDA map markers, pipeline statistics, HUD overlay |
+| ap_core_broker | Ownership registry, squad scripting lifecycle, activity record (FIFO), arrival detection, protection |
+| ap_core_hud | PDA map markers, pipeline statistics, HUD overlay |
 | ap_core_limiter | Rate limiting: cause counter, consequence token bucket, global consequence counter, cooldowns |
 | ap_core_debug | Logger, observe() tracing, result helpers. Zero overhead below DEBUG |
 | ap_core_utils | Event pub/sub wrappers, PDA dispatch, find_squads/find_smart with protection filters |
@@ -56,7 +56,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_cause_* | Cause predicates (one file per cause group) |
 | ap_ext_consequence_* | Consequence handlers (one or more files per cause) |
 | ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
-| ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest) |
+| ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest, mutant infestation) |
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
 | ap_ext_util | Domain gates: alignment, personality checks, FIFO-cached species resolution |
 | ap_ext_const | Community sets, faction lists, item pools |
@@ -206,17 +206,17 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 4. **Arrival** - `xsmart.is_arrived(squad, smart)`. On arrival: if smart is full and squad is online, fire the arrival handler then unscript (overflow). Otherwise, dispatch the registered `on_arrive` function, then enter wait state.
 5. **Wait** - `release_at = game_sec() + pre_release_gulag` (default 300s). When game time exceeds `release_at`, unscript. Game time advances during sleep/time-skip and survives save/load.
 
-**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Activity record persists to `m_data.ap_core_hud` (delegated via `ap_core_hud.save_record`/`load_record`, backward compatible with old saves that stored record in `m_data.ap_core_broker`). Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
+**Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Activity record is session-only (FIFO resets on load). Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
+
+**Activity record.** `record(squad_id, cause, consequence, opts)` appends an entry to a bounded FIFO (`xttltable.create_fifo_cache`, capacity 256). Each entry tracks squad activity with optional enriched fields (faction, name, location, game_hours) for the news composer. `_record_assigned[squad_id]` is a side index mapping each squad to its latest active entry. When a new entry is recorded for the same squad, the previous entry's `assigned` and `is_marked` flags are cleared. On FIFO eviction, the `on_evict` callback cleans up the assigned index and unmarks any stale map markers. `get_record(squad_id)` returns the latest assigned entry (O(1)). `get_records(opts)` queries the FIFO with AND-logic field matching. `clear_record(squad_id)` handles entity death: unmarks, clears assigned, removes from index. `register_descriptions(tbl)` maps consequence keys to display labels for markers.
 
 **Coordination.** `scripted_target` is the squad control field. Setting it routes the squad to `specific_update`. AP no longer sets `__lock` (clears it on acquisition). `scripted_target` alone is sufficient for routing; `__lock` was a redundant fallback guard. AP checks `scripted_target` at gate 2 (is_protected, via `xsquad.is_scripted`). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets `scripted_target` on acquire; `xsquad.release_squad` clears it on release; `xsquad.reassert_target` restores it if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
 ### HUD (ap_core_hud)
 
-`ap_core_hud` consolidates all visual output and activity tracking: the pipeline statistics overlay, activity record, and PDA map markers.
+`ap_core_hud` consolidates all visual output: the pipeline statistics overlay and PDA map markers. It reads activity data from `ap_core_broker` and owns no domain state.
 
-**Activity record.** `record(squad_id, cause, consequence, opts)` stores what a squad is doing after a successful consequence. `get_record(squad_id)` returns the entry. External mods query activity via `get_record`. `register_descriptions(tbl)` maps consequence keys to display labels for markers. Save/load delegated from broker via `save_record`/`load_record` (backward compatible with saves that stored record in `m_data.ap_core_broker`).
-
-**Markers.** Markers are derived from `_ap_record`. A 10s timer (`_apply_markers`) iterates record entries, resolves labels from `CONSEQUENCE_DESCRIPTION`, and calls `xpda.mark_squad`. A 20s timer (`_validate_markers`) removes marks for dead entities or unscripted non-persistent entries. The `persistent` flag (set via `record(id, cause, consequence, { persistent = true })`) keeps a marker until the entity dies regardless of scripted status (used by `alpha_promote`).
+**Markers.** Markers are derived from broker's activity record. A 10s timer (`_apply_markers`) iterates assigned entries via `each_record({ assigned = true })`, marks them with `xpda.mark_squad`. A 20s timer (`_validate_markers`) manages marker linger: entries where the entity died or the squad is no longer scripted get a linger timer, then unmark on expiry. Entity death is handled immediately via `_on_server_entity_on_unregister` -> `broker.clear_record()`.
 
 **Statistics overlay.** Pipeline counters (`r` for radiant, `x` for reactive) track events, gate admissions, cause publishes, consequence results, and blocker breakdown. `classify(result, is_radiant)` routes each consequence result to the appropriate counter. `UIStatsHUD` renders a compact table with R/X columns and a per-minute or percentage extra column. Six screen positions via MCM. Hides on PDA, inventory, and menus. Zero overhead when `statistics_position` is "off". Log dump every 10s with total and per-minute breakdowns.
 
@@ -267,17 +267,45 @@ Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha statu
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-Runtime smart terrain mutations for territory conquest. Both stalker and mutant factions can conquer smart terrains.
+Runtime smart terrain mutations for territory conquest and mutant infestation.
 
-**Mechanism.** `conquer_smart(smart_id, faction)` calls `xsmart.set_faction_controlled` which writes `respawn_params` entries for all 19 factions (12 stalker + 7 mutant) and sets `smart.faction` to the conqueror. The engine's `try_respawn` (smart_terrain.script:1665) only spawns entries where `v.faction == self.faction`, so only the conqueror's squads appear. Stalker factions spawn `*_sim_squad_novice/advanced/veteran` sections. Mutant factions spawn `simulation_*` sections mapped by species (e.g. `monster_predatory_day` spawns dogs and pseudodogs).
+#### Engine respawn mechanism
 
-**Volatility.** The engine rebuilds smart config from LTX on every load (`STATE_Read`), so the mutator uses two-phase restore (`load_state` reads to pending, `on_game_load` re-applies).
+The engine has two respawn pathways for smart terrains (src: smart_terrain.script:246-304, 1657-1700):
 
-**Monster faction revert.** `check_smart_faction` (smart_terrain.script:1209) only counts `IsStalker` NPCs. When only monsters occupy an online smart, `smart.faction` reverts to `default_faction`. A 60s periodic scanner (`_scan_conquered`) re-applies `smart.faction` for monster-conquered smarts.
+**Pathway 1: LTX respawn_params (~460 smarts).** Most smarts define spawn sections in LTX (e.g. `spawn_stalker@advanced` with `spawn_squads = stalker_sim_squad_novice`). These entries have NO `.faction` field. The respawn filter at line 1667 passes via `self.faction_controlled == nil` -- ALL params fire regardless of who occupies the smart. This is the natural population baseline: a Cordon smart configured to spawn loners will always spawn loners. Only 14 of ~490 smarts have `default_faction` in LTX; for the rest it is nil. The LTX spawn tables ARE the ground truth for what "belongs" at each smart.
 
-**Decay.** Conquered smarts revert to their original faction after `cfg.area_conquest_decay_hours` game hours (default 48). The scanner checks `xtime.game_sec() - conquered_at` and calls `clear_faction_controlled` on expired entries. Decay creates a natural territorial cycle: factions conquer, territory decays, other factions reconquer.
+**Pathway 2: faction_controlled (~16 vanilla smarts).** Smarts with `faction_controlled` in LTX generate `respawn_params` entries with a `.faction` field for each listed faction. The respawn filter at line 1667 gates spawning: `if v.faction == self.faction` -- only the faction matching `self.faction` spawns. Changing `self.faction` (via NPC presence or runtime mutation) switches which faction respawns. This is the engine's designed mechanism for dynamic territory control (src: smart_terrain.script:246-267).
+
+**Faction resolution.** `check_smart_faction` (src: smart_terrain.script:1209-1236) runs every update tick for ONLINE smarts. It counts `IsStalker` NPCs present and sets `self.faction` to the present faction. When empty: `self.faction = self.default_faction` (nil for most smarts). Monsters (`IsMonster`) are invisible to this function -- a smart occupied only by mutants reverts its faction as if empty. `check_smart_faction` runs AFTER `try_respawn` in the update cycle (line 1279 vs 1253), and only for online smarts.
+
+#### How AP uses the respawn mechanism
+
+**Mechanism (shared spawn).** `conquer_smart(smart_id, faction)` calls `xsmart.set_shared_spawn(smart, "ap_conquest", faction, spawn_num)`, which adds ONE `respawn_params` entry for the conqueror's faction. The entry has no `.faction` field and `faction_controlled` is NOT set. Because `faction_controlled` remains nil, the engine's respawn filter at line 1667 passes ALL entries unconditionally -- both the original LTX entries and the injected conquest entry fire. The conqueror's squads appear alongside the originals, competing for `max_population` slots. Squad sections come from `xsmart.SQUADS_BY_FACTION`: stalker factions spawn `*_sim_squad_novice/advanced/veteran`, mutant factions spawn `simulation_*` sections.
+
+**Coexistence.** On a `max_population=1` mutant lair, the conquest entry competes with the original mutant entry. The engine picks one eligible entry at random per respawn cycle (src: smart_terrain.script:1707). Result: sometimes a mutant spawns, sometimes the conqueror's squad. On a `max_population=3` stalker camp, the conqueror adds one squad slot alongside existing stalker spawns. Mixed presence, not replacement.
+
+**Revert.** `xsmart.clear_shared_spawn(smart, "ap_conquest")` removes the entry from `respawn_params`. The smart returns to its original LTX-only spawn tables. No other fields to undo -- `faction_controlled` and `smart.faction` were never modified.
+
+**Volatility.** The engine rebuilds `respawn_params` from LTX on every load (`STATE_Read` calls `read_params`), so the injected entry is lost. The mutator uses two-phase restore: `load_state` reads conquered smart data to `_conquered_pending`, `on_game_load` re-applies via `set_shared_spawn` after entities exist. A 60s periodic scanner also re-applies injections as a safety net. Load order: `load_state` (data only) -> `STATE_Read` (entities created, `read_params` rebuilds from LTX) -> `on_game_load` (safe to inject).
+
+**Decay.** Conquered smarts lose the conqueror's spawns after `cfg.area_conquest_decay_hours` game hours (default 72). The scanner checks `xtime.game_sec() - conquered_at` and calls `clear_shared_spawn` on expired entries. The original LTX spawns were never interrupted -- decay just removes the extra entry.
 
 **Eviction.** FIFO at `cfg.area_conquest_max_smarts` (default 50). Oldest conquest by game time is evicted when the cap is reached. Same-faction re-conquest refreshes the timestamp (LRU). Different-faction overwrites without eviction.
+
+#### How AP uses infestation
+
+**Mechanism (exclusive spawn).** `infest_smart(smart_id, faction, level_id)` calls `xsmart.set_exclusive_spawn(smart, "ap_infest", faction, spawn_num)`. This sets `smart.faction_controlled` to a non-nil value (activating the engine's faction gate at line 1667) and adds ONE `respawn_params` entry with a `.faction` field matching the infesting faction. LTX entries have no `.faction` field, so they fail the gate (`nil == faction` is false) and are suppressed. Only the infest entry spawns. The effect is exclusive replacement without deleting original entries.
+
+**Faction re-apply.** `check_smart_faction` runs every tick on online smarts and counts only `IsStalker` NPCs -- monsters are invisible. When only mutants occupy an online smart, `self.faction` reverts to `default_faction`, breaking the faction gate match. A 60s periodic scanner re-applies `smart.faction` via `set_exclusive_spawn` for all infested smarts.
+
+**Per-level cap.** `can_infest_on_level(level_id)` counts infested smarts with matching `level_id`. Rejects if count >= `cfg.infest_max_per_level` (default 1, MCM 1-5).
+
+**Volatility.** Same as conquest: engine rebuilds `faction_controlled`, `faction`, and `respawn_params` from LTX on every load. Two-phase restore re-applies all three in `_on_game_load`. The 60s scanner handles ongoing faction reversion for online smarts.
+
+**Decay.** Separate from conquest. `cfg.infest_decay_hours` (default 0 = permanent). `clear_exclusive_spawn` reverts `faction_controlled` to nil, `faction` to `default_faction`, and removes the infest entry. Original LTX spawns resume on next `try_respawn`.
+
+**Interaction with conquest.** If a smart is both conquered and infested, the exclusive spawn's faction gate suppresses the conquest entry (no `.faction` field). Infest wins at runtime. Both data tables coexist independently -- clearing infest restores conquest if it hasn't decayed.
 
 ### Object Mutator (ap_ext_object_mutator)
 
@@ -301,7 +329,7 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 | STASH | radiant | squad_on_update | not protected, alignment_human |
 | AREA | radiant | squad_on_update | not protected, alignment_area (human+mutant minus ecolog/stalker/renegade) |
 | NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring. Publishes per-need event (cause:hunger, cause:heal, etc.) |
-| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, etc.) |
+| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, cause:instinct_infest, etc.) |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
 
@@ -349,6 +377,7 @@ Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are r
 | INSTINCTS | instincts_sleep | mutant (all) | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
 | INSTINCTS | instincts_explore | mutant (cowardly+feral+predator) | wander to nearby territory or lair. Aberrant excluded (lair-bound). |
 | INSTINCTS | instincts_socialize | mutant (cowardly+feral) | move toward smart with same-faction squads. Predator and aberrant excluded (solitary). |
+| INSTINCTS | instincts_infest | mutant (feral+predator+aberrant) | claim smart terrain as nest with exclusive spawn injection. Cowardly excluded (too weak). Per-level cap. |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
 
@@ -487,6 +516,7 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 | sleep | dormant_period | dormant period only |
 | explore | active_period | active period only |
 | socialize | active_period | active period only |
+| infest | active_period | active period only |
 
 ### Invariants
 

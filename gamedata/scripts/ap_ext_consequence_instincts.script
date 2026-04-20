@@ -268,7 +268,7 @@ local function _make_handler(entry)
             if res.code ~= RESULT.SUCCESS then
                 return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
             end
-            ap_core_hud.record(event_data.squad_id, CAUSE.INSTINCTS, entry.consequence)
+            ap_core_broker.record(event_data.squad_id, CAUSE.INSTINCTS, entry.consequence)
 
             return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
         end)
