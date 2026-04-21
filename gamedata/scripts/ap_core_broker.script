@@ -49,7 +49,7 @@ end
 --- @param squad_id number Squad server ID
 --- @param cause string Cause key (CAUSE.X)
 --- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil Optional fields: subject_faction, subject_name, target, target_faction, target_name, level_id, location, game_hours, cause_id
+--- @param opts table|nil Optional fields: subject_faction, subject_name, target, target_faction, target_name, level_id, location, game_hours, cause_id, cons_id
 function record(squad_id, cause, consequence, opts)
     if not squad_id or not cause or not consequence then return end
     opts = opts or {}
@@ -74,22 +74,12 @@ function record(squad_id, cause, consequence, opts)
         location = opts.location,
         game_hours = opts.game_hours,
         cause_id = opts.cause_id,
+        cons_id = opts.cons_id,
     }
     _ap_record:set(_record_seq, entry)
     _record_assigned[squad_id] = entry
-    ap_core_debug.debug("[RECORD] append: squad=%d cause=%s consequence=%s seq=%d",
+    ap_core_debug.debug("[SQUAD] record: squad=%d cause=%s consequence=%s seq=%d",
         squad_id, cause, consequence, _record_seq)
-end
-
---- Get latest assigned record for a squad. Returns nil if squad has no active entry.
---- @safety SAFE - pure Lua table read
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
---- @return table|nil Record entry or nil
-function get_record(squad_id)
-    local entry = _record_assigned[squad_id]
-    if entry and entry.assigned then return entry end
-    return nil
 end
 
 --- Clear the assigned record for a squad (entity died, despawned).
@@ -111,20 +101,6 @@ local function _match(entry, opts)
         if entry[k] ~= v then return false end
     end
     return true
-end
-
---- Query the FIFO. Returns entries matching all fields in opts (AND logic).
---- Without opts returns all entries. Max 256 entries, O(n) scan.
---- @safety SAFE - pure Lua iteration and comparison
---- @cost O(capacity) | 0 luabind
---- @param opts table|nil Filter fields (any entry field is valid: squad_id, cause, consequence, assigned, subject_faction, level_id, etc.)
---- @return table Array of matching entries
-function get_records(opts)
-    local result = {}
-    _ap_record:each(function(entry)
-        if not opts or _match(entry, opts) then result[#result + 1] = entry end
-    end)
-    return result
 end
 
 --- Iterate records matching opts. Uses assigned index when opts.assigned=true (O(active squads)),

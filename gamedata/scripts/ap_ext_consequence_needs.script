@@ -245,21 +245,11 @@ local function _make_handler(entry)
             if res.code ~= RESULT.SUCCESS then
                 return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
             end
-            ap_core_broker.record(event_data.squad_id, CAUSE.NEEDS, entry.consequence)
+            ap_ext_news.record_event(squad, CAUSE.NEEDS, entry.consequence, {
+                cause_id = event_data._cause_id, subject_faction = event_data.community,
+                smart = smart, level_id = event_data.level_id,
+            })
 
-            ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-                local cmd_id = squad:commander_id()
-                local cmd_se = xobject.se(cmd_id)
-                local cmd_name = "A stalker"
-                if cmd_se then cmd_name = cmd_se:character_name() end
-                local location = ap_ext_news.get_location_description(nil, smart.position, event_data.level_id)
-                local pda_chance = cfg["consequence_" .. entry.name .. "_pda_chance"]
-                return ap_ext_news.send_pda(pda_chance,
-                    "text_pda_consequence_" .. entry.name, {
-                        name = cmd_name,
-                        location = location,
-                    })
-            end)
             return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community }
         end)
     end

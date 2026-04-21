@@ -142,14 +142,12 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         for i = 1, #moved do
-            ap_core_broker.record(moved[i].id, CAUSE.AMBUSH, CONSEQUENCE.AMBUSH_SETUP)
+            ap_ext_news.record_event(moved[i], CAUSE.AMBUSH, CONSEQUENCE.AMBUSH_SETUP, {
+                cause_id = event_data._cause_id,
+                subject_faction = moved[i]:get_squad_community(),
+                smart = smart, level_id = event_data.level_id,
+            })
         end
-
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_ext_news.get_location_description(nil, event_data.position, event_data.level_id)
-            return ap_ext_news.send_pda(cfg.consequence_ambush_setup_pda_chance,
-                "text_pda_consequence_ambush_setup", { location = location })
-        end)
 
         return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = smart.id })
     end)
@@ -170,8 +168,8 @@ Rules:
 - Enabled gate goes in `condition` function (consumer pre-gate), not inside the handler
 - Personality checked inside handler via `ap_ext_util.check_personality`
 - Wrap the handler body in `ap_core_debug.observe(trace, CONSEQUENCE.X, function() ... end)`
-- Wrap actions (move, PDA) in their own `observe` calls for structured tracing
-- Call `broker.record()` after successful script_squad
+- Wrap actions (move) in their own `observe` calls for structured tracing
+- Call `ap_ext_news.record_event()` after successful script_squad (composer dispatches PDA gossip from the journal; no per-consequence PDA call needed)
 - Use `find_squads_observed` for traced search (protections applied automatically)
 - Add `CONSEQUENCE.AMBUSH_SETUP = "consequence:ambush_setup"` to ap_core_const
 
@@ -218,7 +216,7 @@ Link arrival to squad: pass `on_arrive = CONSEQUENCE.AMBUSH_SETUP` in `script_sq
 3. Add MCM defaults to ap_core_mcm.defaults
 4. Create `ap_ext_cause_x.script` with predicate, register in on_game_start
 5. Create `ap_ext_consequence_x_verb.script` with handler, register in on_game_start
-6. Add PDA messages to ap_ext_messages if needed
+6. Add xgrammar voice entry to `ap_ext_news_data` CORPUS (anchor pools + templates) if desired
 7. Add MCM UI entries to ap_core_mcm menu builder
 8. Run validator: `stalker-manager.sh validate`
 

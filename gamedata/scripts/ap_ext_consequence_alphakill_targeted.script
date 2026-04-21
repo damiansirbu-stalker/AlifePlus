@@ -44,23 +44,16 @@ local function _on_arrive(squad, args)
         return
     end
     local target_squad = xobject.se(target_squad_id)
-    if not target_squad then
-        ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_lost")
-        return
-    end
+    if not target_squad then return end
     local level_id = xlevel.get_level_id(target_squad)
     if not level_id then return end
-    if xlevel.get_level_id(squad) ~= level_id then
-        ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_lost")
-        return
-    end
+    if xlevel.get_level_id(squad) ~= level_id then return end
     ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
         local smart = ap_core_utils.find_smart(target_squad.position, {
             level_id = level_id, max_distance = ap_core_const.RANGE_SCENT,
         })
         if not smart then return { code = TRACE.NO_SMART } end
         if xsmart.is_arrived(squad, smart) then
-            ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance, "text_pda_consequence_alphakill_targeted_found")
             return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
         end
         local res = ap_core_broker.script_squad(squad, smart, {
@@ -79,7 +72,6 @@ local function _handler(event_data)
     return ap_core_debug.observe(trace, CONSEQUENCE.ALPHAKILL_TARGETED, function()
         local killer_id, level_id = event_data.killer_id, event_data.level_id
         local position = event_data.position
-        local victim_name = event_data.name or "unknown"
         local victim_species = event_data.species
 
         if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
@@ -114,30 +106,34 @@ local function _handler(event_data)
 
         local moved = {}
         local dst_id = 0
-        local location = ap_ext_news.get_location_description(nil, nil, level_id)
+        local dst_smart = nil
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else
-                local smart = ap_core_utils.find_smart(killer_squad.position, {
+                dst_smart = ap_core_utils.find_smart(killer_squad.position, {
                     level_id = level_id, max_distance = RANGE_SCENT,
                 })
-                if not smart then return { code = TRACE.NO_SMART } end
-                dst_id = smart.id
-                _move_smart_chasers(hunters, smart, killer_squad.id, moved)
+                if not dst_smart then return { code = TRACE.NO_SMART } end
+                dst_id = dst_smart.id
+                _move_smart_chasers(hunters, dst_smart, killer_squad.id, moved)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #hunters - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_ext_news.send_pda(cfg.consequence_alphakill_targeted_pda_chance,
-                "text_pda_consequence_alphakill_targeted", { name = victim_name, location = location })
-        end)
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED) end
+        local killer_faction = killer_squad and killer_squad:get_squad_community() or nil
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED, {
+                cause_id = event_data._cause_id,
+                subject_faction = moved[i]:get_squad_community(),
+                target_squad = killer_squad, target_faction = killer_faction,
+                smart = dst_smart, level_id = level_id,
+            })
+        end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.SUCCESS, reason = #moved .. "_hunters",
+            code = RESULT.SUCCESS,
             dst_id = dst_id, level_id = level_id, actor = victim_species,
         })
     end)

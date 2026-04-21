@@ -315,6 +315,55 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 **Stalker rank** (`npc_on_before_hit`): outgoing hit power bonus and incoming hit power reduction for veteran+ stalkers (rank 12000+). Linear scaling from veteran to legend. Reads engine `character_rank()`, never manipulates it.
 
+### News Composer (ap_ext_news)
+
+Procedural PDA gossip composer. Transforms AP event telemetry into diegetic stalker radio chatter. Reads the activity FIFO, detects chainable relations between recent events, composes messages via xgrammar, and dispatches through xpda with an event-connected sender. The composer is a presentation layer: pipeline events never know about news, and news never mutates pipeline state.
+
+**Pipeline.** Consequence SUCCESS -> `record_event(squad, cause, consequence, opts)` captures subject/target names and faction at write time (names must survive entity death), resolves location via `xlevel.get_smart_display_name`, appends to broker FIFO. Composer tick (on MCM-randomized interval) scans the FIFO for chain relations, picks a single entry if none found, injects entry data as xgrammar rules, flattens a template, picks an event-connected online stalker as sender, calls `xpda.send`. Total cost per tick: one FIFO walk + ~50 luabind calls for sender filter (sliced across frames via xslice).
+
+**Journal = broker FIFO.** No separate journal module. `ap_core_broker` exposes a `xttltable.create_fifo_cache` with `record()`, `each_record()`, `clear_record()`. Entry shape includes `cause_id` (shared by all consequences from one cause publish, via `_cause_seq` in producer), `cons_id` (monotonic per journal append), `subject_faction/name`, `target/target_faction/target_name`, `level_id`, `location`, `game_hours`, `parent` (for explicit chain links from chase-style follow-ups). Session-lifetime only: FIFO clears on load, counters reset. Broker stays pure storage; news flags live in `ap_ext_news` sets, never on entries.
+
+**Grammar system (xgrammar).** `stalker-mods/xlibs/gamedata/scripts/xgrammar.script` is a Tracery port (177 LOC, pure Lua 5.1, Apache). Templates contain `#symbol#` slots that resolve recursively from rule tables. Templates thread through shared pools (`#opener#`, `#tail_flavor#`) and consequence-specific anchor pools (`#squadkill_verb_active#`, `#hunger_food_item#`). Data slots (`#subject#`, `#location#`, `#target#`, `#subject_name#`, `#target_name#`) are injected per event via `grammar:add_rule`. Effective variance per consequence: ~15 templates x 8 opener x 6 anchor pool x 6 tail pool x 18 flavor ≈ thousands of surface forms from ~150 source strings. The grammar is the voice — no synonym inflation; variety comes from data changing.
+
+**Registers / voice moods.** Six co-existing moods per consequence, drawn 3-4 per pool:
+
+| Mood | Scope | Markers |
+|------|-------|---------|
+| DRAMA | Death, alpha, base attacks | Profanity + hedging + scared (`Christ...`, `Fuck sake.`) |
+| CASUAL | Low-stakes observations | Hedged, textured (`apparently`, `looks like`) |
+| INTIMATE | Squad-internal comms | Dialogue form, uses names, `[crackle]` markers |
+| JADED | Veteran narrator | Sarcastic deadpan (`Tuesday.`, `Another one.`) |
+| DESPERATE | Emergency escalation | Clipped, repetitive (`Shit shit shit.`, `MEDIC!`) |
+| DOOMER | Russian fatalism overlay | Vodka refs, `Zone keeps score.`, philosophical |
+
+Same event fires different moods at random per compose tick. Voice rule: every template must carry at least one of — specific detail, profanity, squad personality, hedge, or radio-comms marker. No neutral textbook descriptions.
+
+**Weight tiers.** HIGH-weight events (stash, harvest, alpha, area_conquer, massacre, basekill, squadkill) get actionable/warning framing: intel a listener can act on (*"Bandits set up at the factory. Stay clear."*, *"Guy dropped an artefact near the tunnel. Fresh."*). LOW-weight events (needs, rest, social, sleep) get ambient flavor (*"Loners passing vodka at the bar."*). Weight gates which shared pool tails apply and biases the event picker's weighted random.
+
+**Anchor vocabulary.** Each consequence has an AP-term anchor pool the template threads through. `squadkill_revenge` pulls from `{"avengers already out", "payback cooking", "out for blood", "won't let it slide"}`. `area_conquer` from `{"claimed", "took", "seized", "locked down", "planted their flag"}`. Every generated message contains at least one anchor word from its consequence → player learns the AP vocabulary as gossip vocabulary.
+
+**Chain detection.** `_find_relation(FIFO)` scans recent entries for:
+
+| Chain | Pattern | Example framing |
+|-------|---------|-----------------|
+| cascade | 2+ entries share `cause_id` | "Mess at the factory — #e1# and #e2#. Same outfit." |
+| hot_zone | 2+ entries same `location` within time window | "#location# is hot. #count# contacts in an hour." |
+| retaliation | entry B.`subject_faction` == entry A.`target_faction`, B younger | "#A# hit #B# at #loc1#. Now #B# hunting at #loc2#." |
+| chase_resolved | entry B.`parent` == entry A.`cons_id` | "Those chasers out of #loc1#? #outcome# at #loc2#." |
+
+When a relation fires, composer uses chain-tier templates and injects both entries' data; else falls back to single-entry pick. Chain-tier gets stronger narrative framing (emergent storytelling from journal structure).
+
+**Dedup (two layers).**
+
+- Record-level: `_reported_cons_ids` set in ap_ext_news. Prevents re-using the same FIFO entry. Broker stays pure — no `_reported` flag on entries.
+- Text-level: ring buffer of last N rendered strings (MCM-configured, default 10). Reject if new == any in ring, try next pick. Catches templates resolving to the same sentence when two different journal entries hit the same pool draw.
+
+**Sender selection.** Event-connected NPC preferred: same-faction + same-level (witness) > same-faction (report) > any-friendly (rumor). Iterates `db.OnlineStalkers` once per tick, filters alive/human/non-story/non-enemy. Sender name + icon passed to `xpda.send`. Sliced across frames (`xslice.start`, step=1) to avoid a ~200-call luabind burst on stalker-dense saves.
+
+**MCM surface.** `news_enabled` (bool, master toggle). `news_interval_min_sec` + `news_interval_max_sec` (int sliders 60-600): each compose tick randomizes delay between them for non-mechanical cadence. No per-consequence gates — weight tiers + pool quality shape balance instead.
+
+**Invariants.** Session-lifetime (no save/load). Nil-safe on every lookup (`nil` subject_name, target, location all gracefully fall through to generic phrasings). Broker storage purity (`ap_ext_news` holds all news-layer state). Grammar rules immutable — per-event data goes through `add_rule` on a context-pushed copy, not global grammar state.
+
 ### Causes
 
 | Cause | Type | Callback(s) | Conditions |

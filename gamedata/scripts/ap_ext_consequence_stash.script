@@ -1,6 +1,6 @@
 --- ap_ext_consequence_stash: Config-table-driven consequences for stash interactions
 
-local table_concat, random = table.concat, math.random
+local random = math.random
 
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
@@ -72,14 +72,6 @@ local function _arrive_loot(squad, stash_id)
         local items = ap_core_debug.observe(trace, ACTION.LOOT_STASH, function()
             return xstash.loot_stash(stash_id)
         end)
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local notable = xstash.filter_notable_stash_items(items, 2)
-            if #notable == 0 then return { code = TRACE.NO_ITEMS } end
-            local names = {}
-            for i = 1, #notable do names[i] = ui_item.get_sec_name(notable[i]) end
-            return ap_ext_news.send_pda(cfg.consequence_stash_loot_pda_chance,
-                "text_pda_consequence_stash_loot_success", { items = table_concat(names, ", ") })
-        end)
         return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
     end)
 end
@@ -90,9 +82,6 @@ local function _arrive_fill(squad, stash_id, items)
         return
     end
     ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_fill: stash=%d squad=%d items=%d", stash_id, squad.id, #items)
-    ap_core_debug.observe(nil, ACTION.SEND_PDA, function()
-        return ap_ext_news.send_pda(cfg.consequence_stash_fill_pda_chance, "text_pda_consequence_stash_fill")
-    end)
 end
 
 local function _on_arrive(squad, args)
@@ -116,7 +105,6 @@ end
 
 local function _make_handler(entry)
     local rush_key = "consequence_" .. entry.name .. "_rush"
-    local pda_key = "consequence_" .. entry.name .. "_pda_chance"
 
     return function(event_data)
         local trace = event_data._trace
@@ -156,13 +144,10 @@ local function _make_handler(entry)
                 return res
             end)
             if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-            ap_core_broker.record(event_data.squad_id, CAUSE.STASH, entry.consequence)
-
-            if not entry.arrive_fn then
-                ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-                    return ap_ext_news.send_pda(cfg[pda_key], "text_pda_consequence_" .. entry.name)
-                end)
-            end
+            ap_ext_news.record_event(squad, CAUSE.STASH, entry.consequence, {
+                cause_id = event_data._cause_id, subject_faction = event_data.community,
+                smart = smart, level_id = event_data.level_id,
+            })
 
             return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, stash_id = stash_id, community = event_data.community }
         end)

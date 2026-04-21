@@ -247,6 +247,6 @@ All events MUST include `level_id` from where the event occurred.
 
 **Consequence responsibility:**
 - Use `event_data.level_id` for all location-based operations
-- Pass `level_id` to `get_location_description(se_obj, pos, level_id)`
+- Pass `level_id` to `ap_ext_news.record_event(squad, cause, consequence, { level_id = ... })` so the journal captures it
 
 Never use `get_actor_level_id()` as fallback. The player may be on a different level.

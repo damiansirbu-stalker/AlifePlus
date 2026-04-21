@@ -17,9 +17,9 @@ local function _handler(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.BASEKILL_FLEE, function()
         local smart, factions = event_data.smart, event_data.factions
-        local position, level_id = event_data.position, event_data.level_id
+        local level_id = event_data.level_id
 
-        if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
+        if not smart or not factions then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
         if not ap_ext_util.check_personality(_personality, event_data.faction,
             { name = CONSEQUENCE.BASEKILL_FLEE, p_min = cfg.consequence_basekill_flee_personality_min, p_max = cfg.consequence_basekill_flee_personality_max }) then
@@ -52,13 +52,13 @@ local function _handler(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = destination.id, rejected = #fleeing - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_FLEE) end
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_ext_news.get_location_description(nil, position, level_id)
-            return ap_ext_news.send_pda(cfg.consequence_basekill_flee_pda_chance, "text_pda_consequence_basekill_flee", { location = location })
-        end)
-
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_evacuated", dst_id = destination.id, faction = event_data.faction })
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_FLEE, {
+                cause_id = event_data._cause_id, subject_faction = event_data.faction,
+                smart = destination, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = destination.id, faction = event_data.faction })
     end)
 end
 

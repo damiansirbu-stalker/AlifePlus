@@ -39,17 +39,14 @@ local function _handler(event_data)
 
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then
-            ap_core_broker.record(killer_squad.id, CAUSE.ALPHA, CONSEQUENCE.ALPHA_PROMOTE)
-        end
-
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
             local se = xobject.se(killer_id)
-            if not se then return { code = TRACE.NO_ENTITY } end
-            local location = ap_ext_news.get_location_description(se, nil, level_id)
-            return ap_ext_news.send_pda(cfg.consequence_alpha_promote_pda_chance, "text_pda_consequence_alpha_promote", {
-                name = name, location = location, level = level,
+            local smart = se and ap_core_utils.find_smart(se.position, { level_id = level_id })
+            ap_ext_news.record_event(killer_squad, CAUSE.ALPHA, CONSEQUENCE.ALPHA_PROMOTE, {
+                cause_id = event_data._cause_id,
+                subject_faction = killer_squad:get_squad_community(),
+                smart = smart, level_id = level_id,
             })
-        end)
+        end
 
         return { code = RESULT.SUCCESS, reason = "alpha=" .. killer_id, id = killer_id, level = level, level_id = level_id }
     end)

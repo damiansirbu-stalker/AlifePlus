@@ -88,6 +88,7 @@ function goto_alpha()
 end
 
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local CAUSE = ap_core_const.CAUSE
 local NEEDS_ARRIVE_KEYS = {
     [CONSEQUENCE.HUNGER_CAMPFIRE] = true, [CONSEQUENCE.SLEEP_CAMPFIRE] = true, [CONSEQUENCE.REST_CAMPFIRE] = true,
     [CONSEQUENCE.HEAL_SHELTER] = true, [CONSEQUENCE.SHELTER_INDOOR] = true, [CONSEQUENCE.SHELTER_OUTDOOR] = true,
@@ -392,6 +393,82 @@ local function _demo_fire_next()
     ap_core_debug.debug("[TEST] needs_demo fired squad=%d faction=%s need=%s remaining=%d interval=%dms",
         squad.id, squad.player_id, demo_need.need, #_demo_queue, math_floor(interval_ms))
     _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
+end
+
+--- NEWS DEMO: seeds N fake journal entries using nearby squads and dispatches composer ticks.
+--- Proves the ap_ext_news pipeline end-to-end (record_event -> journal -> compose_tick -> xpda.send).
+
+local NEWS_DEMO_TICK_MS = 1500
+
+local NEWS_DEMO_CONSEQUENCES = {
+    { cause = CAUSE.MASSACRE, cons = CONSEQUENCE.MASSACRE_INVESTIGATE },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE },
+    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.HUNGER_CAMPFIRE },
+    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.JOB_OUTPOST },
+    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.SOCIAL_CAMPFIRE },
+    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.REST_CAMPFIRE },
+    { cause = CAUSE.AREA,     cons = CONSEQUENCE.AREA_CONQUER },
+}
+
+local _news_demo_remaining = 0
+local _news_demo_next_fire = 0
+local _news_demo_active = false
+
+local function _news_demo_tick()
+    if not _news_demo_active then return end
+    if _news_demo_remaining <= 0 then
+        _news_demo_active = false
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
+        _tip("News demo: complete")
+        ap_core_debug.debug("[TEST] news_demo complete")
+        return
+    end
+    local now = time_global()
+    if now < _news_demo_next_fire then return end
+    local res = ap_ext_news.compose_tick()
+    _news_demo_remaining = _news_demo_remaining - 1
+    _news_demo_next_fire = now + NEWS_DEMO_TICK_MS
+    ap_core_debug.debug("[TEST] news_demo tick remaining=%d code=%s cons=%s sender=%s",
+        _news_demo_remaining, res.code or "?", res.consequence or "?", res.sender or "?")
+end
+
+--- Seed N fake journal entries from nearby squads, then dispatch composer ticks
+--- @export console
+function news_demo()
+    ap_core_debug.debug("[TEST] news_demo pressed")
+    if _news_demo_active then
+        _news_demo_active = false
+        _news_demo_remaining = 0
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
+        _tip("News demo stopped")
+        return
+    end
+    local squads = _find_demo_squads(15)
+    if #squads == 0 then return _tip("No stalker squads nearby") end
+
+    local seeded = 0
+    for i = 1, #squads do
+        local pick = NEWS_DEMO_CONSEQUENCES[((i - 1) % #NEWS_DEMO_CONSEQUENCES) + 1]
+        local squad = squads[i]
+        local smart = xsquad.get_squad_smart(squad)
+        local level_id = xlevel.get_level_id(squad)
+        local subject_faction = squad.get_squad_community and squad:get_squad_community() or nil
+        ap_ext_news.record_event(squad, pick.cause, pick.cons, {
+            subject_faction = subject_faction,
+            target_faction = "bandit",
+            smart = smart,
+            level_id = level_id,
+        })
+        seeded = seeded + 1
+    end
+
+    _news_demo_remaining = seeded
+    _news_demo_next_fire = 0
+    _news_demo_active = true
+    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
+    _tip(string_format("News demo: seeded %d entries, dispatching...", seeded))
+    ap_core_debug.debug("[TEST] news_demo seeded=%d tick_ms=%d", seeded, NEWS_DEMO_TICK_MS)
 end
 
 --- @export console

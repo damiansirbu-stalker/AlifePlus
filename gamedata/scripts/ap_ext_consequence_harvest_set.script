@@ -48,8 +48,7 @@ end
 local function _make_on_arrive(opts)
     local consequence_key = opts.consequence_key
     local rush_key, gulag_key = opts.rush_key, opts.gulag_key
-    local max_chases_key, pda_chance_key = opts.max_chases_key, opts.pda_chance_key
-    local pda_lost_key, pda_found_key = opts.pda_lost_key, opts.pda_found_key
+    local max_chases_key = opts.max_chases_key
     return function(squad, args)
         local target_squad_id = args.target_squad_id
         if not target_squad_id then return end
@@ -59,23 +58,16 @@ local function _make_on_arrive(opts)
             return
         end
         local target_squad = xobject.se(target_squad_id)
-        if not target_squad then
-            ap_ext_news.send_pda(cfg[pda_chance_key], pda_lost_key)
-            return
-        end
+        if not target_squad then return end
         local level_id = xlevel.get_level_id(target_squad)
         if not level_id then return end
-        if xlevel.get_level_id(squad) ~= level_id then
-            ap_ext_news.send_pda(cfg[pda_chance_key], pda_lost_key)
-            return
-        end
+        if xlevel.get_level_id(squad) ~= level_id then return end
         ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
             local smart = ap_core_utils.find_smart(target_squad.position, {
                 level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
             })
             if not smart then return { code = TRACE.NO_SMART } end
             if xsmart.is_arrived(squad, smart) then
-                ap_ext_news.send_pda(cfg[pda_chance_key], pda_found_key)
                 return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
             end
             local res = ap_core_broker.script_squad(squad, smart, {
@@ -98,9 +90,6 @@ local _move_smart_rob = _make_move_smart_chasers(
 local _on_arrive_rob = _make_on_arrive({
     consequence_key = CONSEQUENCE.HARVEST_ROB, rush_key = "consequence_harvest_rob_rush",
     gulag_key = PRE_RELEASE_GULAG.HARVEST_ROB, max_chases_key = "consequence_harvest_rob_max_chases",
-    pda_chance_key = "consequence_harvest_rob_pda_chance",
-    pda_lost_key = "text_pda_consequence_harvest_rob_lost",
-    pda_found_key = "text_pda_consequence_harvest_rob_found",
 })
 
 local function _handler_rob(event_data)
@@ -136,30 +125,34 @@ local function _handler_rob(event_data)
 
         local moved = {}
         local dst_id = 0
-        local location = ap_ext_news.get_location_description(nil, position, level_id)
+        local dst_smart = nil
         ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
             if taker_is_player then
                 _move_actor_chasers(robbers, moved)
             else
-                local smart = ap_core_utils.find_smart(target_squad.position, {
+                dst_smart = ap_core_utils.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
                 })
-                if not smart then return { code = TRACE.NO_SMART } end
-                dst_id = smart.id
-                _move_smart_rob(robbers, smart, taker_squad_id, moved)
+                if not dst_smart then return { code = TRACE.NO_SMART } end
+                dst_id = dst_smart.id
+                _move_smart_rob(robbers, dst_smart, taker_squad_id, moved)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #robbers - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_ext_news.send_pda(cfg.consequence_harvest_rob_pda_chance,
-                "text_pda_consequence_harvest_rob", { location = location })
-        end)
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB) end
+        local taker_faction = target_squad and target_squad:get_squad_community() or nil
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
+                cause_id = event_data._cause_id,
+                subject_faction = moved[i]:get_squad_community(),
+                target_squad = target_squad, target_faction = taker_faction,
+                smart = dst_smart, level_id = level_id,
+            })
+        end
 
         return ap_core_debug.result_squads(moved, {
-            code = RESULT.SUCCESS, reason = #moved .. "_robbers", dst_id = dst_id,
+            code = RESULT.SUCCESS, dst_id = dst_id,
         })
     end)
 end
@@ -204,12 +197,14 @@ local function _handler_haunt(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT) end
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_ext_news.send_pda(cfg.consequence_harvest_haunt_pda_chance, "text_pda_consequence_harvest_haunt")
-        end)
-
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_haunters", dst_id = target_smart.id, species = "aberrant" })
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT, {
+                cause_id = event_data._cause_id,
+                subject_faction = moved[i]:get_squad_community(),
+                smart = target_smart, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = target_smart.id, species = "aberrant" })
     end)
 end
 

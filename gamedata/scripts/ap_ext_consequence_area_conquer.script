@@ -32,8 +32,6 @@ local function _on_arrive(squad, args)
     if not args then return end
     ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
     ap_ext_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
-    ap_ext_news.send_pda(cfg.consequence_area_conquer_pda_chance,
-        "text_pda_consequence_area_conquer", { smart = args.smart_name })
 end
 
 local function _handler(event_data)
@@ -67,13 +65,16 @@ local function _handler(event_data)
             res = ap_core_broker.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,
-                on_arrive_args = { target_smart_id = smart.id, smart_name = xlevel.get_smart_display_name(smart) },
+                on_arrive_args = { target_smart_id = smart.id },
                 pre_release_gulag = PRE_RELEASE_GULAG.AREA_CONQUER,
             })
             return res
         end)
         if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_core_broker.record(squad.id, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER)
+        ap_ext_news.record_event(squad, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER, {
+            cause_id = event_data._cause_id, subject_faction = event_data.community,
+            smart = smart, level_id = event_data.level_id,
+        })
 
         return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, identity = identity }
     end)

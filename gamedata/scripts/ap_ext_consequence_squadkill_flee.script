@@ -50,13 +50,13 @@ local function _handler(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = base.id, rejected = #fleeing - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.SQUADKILL, CONSEQUENCE.SQUADKILL_FLEE) end
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            local location = ap_ext_news.get_location_description(nil, position, level_id)
-            return ap_ext_news.send_pda(cfg.consequence_squadkill_flee_pda_chance, "text_pda_consequence_squadkill_flee", { location = location })
-        end)
-
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_fled", dst_id = base.id, faction = victim_faction })
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.SQUADKILL, CONSEQUENCE.SQUADKILL_FLEE, {
+                cause_id = event_data._cause_id, subject_faction = victim_faction,
+                smart = base, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = base.id, faction = victim_faction })
     end)
 end
 

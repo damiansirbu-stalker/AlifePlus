@@ -50,12 +50,14 @@ local function _handler(event_data)
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do ap_core_broker.record(moved[i].id, CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT) end
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            return ap_ext_news.send_pda(cfg.consequence_wounded_hunt_pda_chance, "text_pda_consequence_wounded_hunt")
-        end)
-
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, reason = #moved .. "_predators", dst_id = target_smart.id, species = "predator+aberrant" })
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT, {
+                cause_id = event_data._cause_id,
+                subject_faction = moved[i]:get_squad_community(),
+                smart = target_smart, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = target_smart.id, species = "predator+aberrant" })
     end)
 end
 

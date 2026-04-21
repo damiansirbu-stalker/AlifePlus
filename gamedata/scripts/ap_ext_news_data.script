@@ -1,0 +1,262 @@
+--- ap_ext_news_data: xgrammar rules for news composer
+---
+--- Shared pools (opener, hedge, tail_flavor, profane_*, name_fallback) are used across
+--- all consequences. Per-consequence pools (anchor pools + root rules) grow as the
+--- content pass ports consequences from doc/todo/news-corpus-adapted.md.
+---
+--- Slots filled at compose time by ap_ext_news:
+---   #subject#       acting squad faction (translated) or "stalkers"
+---   #target#        target faction (translated) or "" when absent
+---   #subject_name#  commander name, or random #name_fallback# when absent
+---   #target_name#   target commander name, or random #name_fallback# when absent
+---   #location#      smart terrain display name or "the Zone"
+---
+--- Coverage: 3/37 consequences (squadkill_revenge, hunger_campfire, area_conquer).
+--- See doc/todo/news-corpus-adapted.md for design and remaining content.
+
+DATA = {
+    -- =========================================================================
+    -- Shared pools
+    -- =========================================================================
+    opener = {
+        "", "", "", "", "", "",
+        "Christ...", "Fuck...", "Shit...", "Jesus...", "Damn...", "Goddamn.",
+        "Fuck me.", "Fuck sake.", "Fucking hell.", "Jesus fuck.",
+        "Blyat.", "Blyad...", "Suka blyat.", "Pizdets.", "Oh blyat.",
+        "Bastards.", "Motherfuckers.", "The fuck.", "What the fuck.",
+        "Man...", "Yeah, so...", "Heard this...", "Word is...", "Word came in.",
+        "PDA just buzzed.", "Get this -", "Listen...",
+        "Right, so...", "Ugh.", "Aight...", "So yeah...", "Check this -",
+        "Zone's at it again.", "Same shit.", "Another one.", "Zone keeps score.",
+        "Vodka won't fix this.", "Figures.", "Course it happened.",
+        "Fuck fuck fuck.", "Shit shit.", "Fuck - listen -", "Jesus, listen -",
+    },
+
+    hedge = {
+        "apparently", "I think", "looks like", "seems", "supposedly",
+        "from what I heard", "word is", "maybe", "might be", "could be",
+        "not sure but", "rumor is", "guy told me", "someone said",
+    },
+
+    tail_flavor = {
+        "", "", "", "", "", "",
+        " Zone doesn't care.", " Stay sharp.", " Watch your back.", " Yeah.",
+        " Fucking Zone.", " Bad fucking day.", " Shit's ugly.", " Jesus.",
+        " ...", " Over.", " Copy that.", " Out.",
+    },
+
+    -- English profanity, by tier (for future use; templates reference these directly)
+    profane_mild = {
+        "damn", "damned", "goddamn", "hell", "hellhole",
+        "shit", "shithole", "shitshow", "shitstorm", "bullshit", "horseshit",
+        "bastards", "bastard", "ass", "asshole", "asshat", "jackass", "dumbass",
+        "piss", "pissed", "prick", "dick", "dickhead", "bitch", "twat",
+    },
+    profane_strong = {
+        "fuck", "fucking", "fucked", "fucker", "fuckers", "motherfucker", "motherfuckers",
+        "fucked sideways", "fucked raw", "fuck me", "fuck sake", "fucking hell",
+        "bloody", "bloody hell",
+    },
+    profane_russian = {
+        "blyat", "blyad", "blyad'",
+        "suka", "sukas",
+        "mudak", "mudaki",
+        "pizdets",
+        "khuy", "khuyovo",
+        "yebanye", "yebaniy",
+        "govno", "govnishche",
+        "gnus",
+        "tvar'", "tvari",
+        "cherti",
+        "svoloch", "svolochi",
+    },
+    profane_zone = {
+        "fucking Zone", "fucking Sadovic", "Zone's a cunt", "Zone's a bitch",
+        "fucking Chernobyl", "damn blowout luck", "fucked by the Zone",
+        "Zone doesn't fuck around", "Zone takes everyone", "Monolith's balls",
+        "Strelok's ghost", "fucking anomaly",
+    },
+    profane_exclamation = {
+        "Fuck.", "Fuck me.", "Fuck sake.", "Fucking hell.", "Oh fuck.", "Jesus fuck.",
+        "Shit.", "Oh shit.", "Shit shit shit.", "Bullshit.",
+        "Christ.", "Jesus Christ.", "Jesus fucking Christ.",
+        "Blyat.", "Blyad.", "Suka blyat.", "Pizdets.", "Tvari.",
+        "Zone's teeth.", "Fucking Zone again.", "Goddamn it.",
+        "Bastards.", "The fuck.", "What the fuck.", "Are you fucking kidding.",
+    },
+
+    name_fallback = {
+        "Petro", "Sanya", "Kolya", "Vasya", "Yasha", "Mikhail", "Ivan",
+        "Andrei", "Lyosha", "Seryozha", "Grisha", "Zhenya", "Tolya",
+        "Slava", "the sarge", "the boss", "the squad lead",
+    },
+
+    -- =========================================================================
+    -- CONSEQUENCE: squadkill_revenge (DRAMA)
+    -- AP anchor words: lost a squad, wiped, gutted, avengers, payback, hunting
+    -- =========================================================================
+    squadkill_verb_active = {
+        "lost a squad", "lost a crew", "lost guys", "took heavy losses",
+        "got wiped", "got chewed up", "got buried", "had a squad gutted",
+        "had guys cut down", "had a crew hit hard",
+    },
+    squadkill_verb_passive = {
+        "wiped", "gutted", "slaughtered", "hit hard", "chewed up",
+        "buried", "cut down", "laid out", "jumped", "hammered",
+        "tore through", "ran down",
+    },
+    squadkill_revenge_tail = {
+        "Avengers already out.",
+        "Buddies are hunting now.",
+        "Payback's cooking.",
+        "Their guys won't let it slide.",
+        "Someone's gonna bleed for it.",
+        "Retaliation's moving.",
+        "Out for blood now.",
+        "They're coming for the bastards.",
+        "Hunt's on.",
+        "Going to be more bodies soon.",
+        "Avengers on the move.",
+        "Their crew won't stop till it's even.",
+    },
+    squadkill_revenge = {
+        "#opener# #subject# #squadkill_verb_active# to #target# near #location#. #squadkill_revenge_tail##tail_flavor#",
+        "#opener# #target# #squadkill_verb_passive# a #subject# crew at #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Heard #target# #squadkill_verb_passive# some #subject# near #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Another #subject# crew gone. #target# at it again near #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Shit show at #location#. #target# jumped a #subject# squad, #squadkill_verb_passive# 'em. #squadkill_revenge_tail##tail_flavor#",
+        "Word from #location# - #target# #squadkill_verb_passive# a #subject# squad. #squadkill_revenge_tail##tail_flavor#",
+        "Guy said #subject# #squadkill_verb_active# to #target# outside #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Apparently #target# #squadkill_verb_passive# some #subject# at #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Rumor is #subject# #squadkill_verb_active# to #target# at #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Stay the hell away from #location#. #subject# are hunting #target# after #target# #squadkill_verb_passive# their crew.",
+        "Heads up - #subject# pissed, hunting #target# at #location#. #squadkill_verb_passive# a whole squad apparently.",
+        "#location# is hot. #subject# avengers out, #target# in their sights.",
+        "Don't cross #location# tonight - #subject# are out for #target# blood.",
+        "Fuck... another #subject# crew down. #target# did it at #location#. #squadkill_revenge_tail##tail_flavor#",
+        "Christ. #subject# just lost a whole squad to #target# near #location#. Buddies out for blood now.",
+        "#target# #squadkill_verb_passive# a #subject# crew at #location#. Fucking ugly. Avengers moving.",
+        "Shit, #subject# #squadkill_verb_active# at #location#. #target# hit 'em. Going to be more bodies.",
+        "[crackle] ...yeah, #target# got 'em near #location#. All of them. Avengers rolling out. Over.",
+        "#subject# to command - we're after #target#. They #squadkill_verb_passive# our boys at #location#. Out.",
+    },
+
+    -- =========================================================================
+    -- CONSEQUENCE: hunger_campfire (INTIMATE)
+    -- AP anchor words: bite, rations, cooking, eating, fire, bread
+    -- =========================================================================
+    hunger_verb_observational = {
+        "stopped for a bite", "broke out the rations", "cooking up rations",
+        "eating around a fire", "holed up for food", "got a stew going",
+        "passed the bread around", "warming up food",
+    },
+    hunger_food_item = {
+        "rations", "stew", "bread", "bread and tushonka", "tushonka",
+        "hot grub", "salo", "some grub", "cold rations", "hardtack",
+    },
+    hunger_casual_tail = {
+        "", "", "", "",
+        "Quiet night.",
+        "Smelled alright.",
+        "Not moving for a bit.",
+        "Calm for once.",
+        "Nothing to report.",
+        "Peaceful, for the Zone.",
+        "Decent food, for once.",
+    },
+    hunger_campfire = {
+        "#opener# #subject# crew #hunger_verb_observational# at #location#. #hunger_casual_tail##tail_flavor#",
+        "Saw some #subject# #hunger_verb_observational# by #location#. #hunger_casual_tail##tail_flavor#",
+        "#subject# squad eating at #location#. #hedge# they're there a while.",
+        "Yeah, #subject# #hunger_verb_observational# at #location#. #hunger_casual_tail##tail_flavor#",
+        "Word is #subject# broke out #hunger_food_item# at #location#. #hunger_casual_tail##tail_flavor#",
+        "#subject# #hedge# stopped at #location# to eat.",
+        "[crackle] Hey #subject_name#, sit down, #hunger_food_item# is out. We're at #location# a while.",
+        "...yeah boss, stopping at #location#. Fire's hot, #hunger_food_item# up. Over.",
+        "Oi, #subject_name#, get the stew off before it burns, yeah?",
+        "Come on #subject_name#, eat. Zone's not going anywhere. Over.",
+        "#subject_name# to base - we're fed and resting at #location#. Over.",
+        "Pass the #hunger_food_item#, #subject_name#. Quit hoarding.",
+        "#subject_name#, you taking first watch or eating first?",
+        "[laughter] ...shut up and eat, #subject_name#. We got an hour.",
+        "Fire's lit at #location#. #subject# passing #hunger_food_item# around.",
+        "#subject_name# crew bedding down for a meal at #location#. Calm night.",
+        "Smell of #hunger_food_item# from #location#. #subject# made camp.",
+    },
+
+    -- =========================================================================
+    -- CONSEQUENCE: area_conquer (CASUAL / TACTICAL)
+    -- AP anchor words: claimed, took, territory, turf, seized, flag's up
+    -- =========================================================================
+    area_conquer_verb = {
+        "claimed", "took", "seized", "grabbed", "locked down",
+        "moved in on", "planted their flag at", "staked out",
+        "took over", "pushed into",
+    },
+    area_conquer_subject = {
+        "a #subject# squad", "#subject# crew", "the #subject#",
+        "a #subject# detachment", "some #subject#",
+    },
+    area_conquer_tail = {
+        "", "",
+        "#hedge# it's theirs now.",
+        "#location# flies their colors tonight.",
+        "Don't go waving the wrong badge there.",
+        "Stays theirs till someone kicks 'em out.",
+        "Another one on the map.",
+        "Zone shifts again.",
+        "Turf war's warming up.",
+        "Lines are redrawing.",
+    },
+    area_conquer = {
+        "#opener# #area_conquer_subject# #area_conquer_verb# #location#. #area_conquer_tail##tail_flavor#",
+        "#subject# #area_conquer_verb# #location#. #area_conquer_tail##tail_flavor#",
+        "#location# belongs to #subject# now. #area_conquer_tail##tail_flavor#",
+        "Heard #subject# #area_conquer_verb# #location#. #area_conquer_tail##tail_flavor#",
+        "Word is #subject# #area_conquer_verb# #location#. #area_conquer_tail##tail_flavor#",
+        "Guy says #subject# pushed into #location# and didn't leave. #area_conquer_tail##tail_flavor#",
+        "#hedge# #subject# own #location# now. #area_conquer_tail##tail_flavor#",
+        "If you're near #location# and not #subject#, keep moving. They took it.",
+        "#location# flies #subject# colors. Not a place to wander in blind.",
+        "#subject# posted up at #location#. Their turf now.",
+        "#location# - #subject#. Flag's up.",
+        "#subject# #area_conquer_verb# #location#. Mark the map.",
+    },
+
+    -- =========================================================================
+    -- CHAIN templates
+    -- Fired by _find_relation when two FIFO entries form a narrative pair.
+    -- Slots: #faction_a#, #faction_b#, #location_a#, #location_b#, #location#
+    -- chase_resolved deferred (needs parent field plumbing through call sites).
+    -- =========================================================================
+
+    -- retaliation: A's subject is B's target and vice versa (cross-faction reprisal)
+    chain_retaliation = {
+        "#faction_a# hit #faction_b# at #location_a#. Now #faction_b# is on them at #location_b#. Blood for blood.",
+        "#faction_a# started it at #location_a#. #faction_b# finishing it at #location_b#.",
+        "Turf war's on. #faction_a# took losses at #location_a#, #faction_b# took 'em at #location_b#. Both pissed.",
+        "#faction_a# and #faction_b# trading bodies. #location_a#, then #location_b#. Shit's escalating.",
+        "Back and forth between #faction_a# and #faction_b#. #location_a# to #location_b# and going.",
+        "#opener# #faction_a# got #faction_b# at #location_a#. #faction_b# got them right back at #location_b#.",
+    },
+
+    -- cascade: two entries share cause_id (one origin, multiple consequences fired)
+    chain_cascade = {
+        "#opener# Same mess at #location_a# and #location_b# - both sides moving off the same fight.",
+        "One incident, two reactions. #faction_a# at #location_a#, #faction_b# at #location_b#.",
+        "Heard it's all one thing - #faction_a# and #faction_b# both off the same trigger.",
+        "That fight at #location_a#? #faction_b# at #location_b# is connected. #hedge#.",
+        "Shit from #location_a# spilled over. #faction_b# reacting at #location_b# now.",
+        "Two sides of the same coin. #faction_a# and #faction_b# both at it off one event.",
+    },
+
+    -- hot_zone: same location within time window (multiple incidents clustering)
+    chain_hot_zone = {
+        "#location# is hot tonight. Multiple contacts in a short window.",
+        "Don't go near #location#. #faction_a# and #faction_b# both at it, #hedge# more coming.",
+        "#location# is bleeding. #faction_a# and #faction_b# crews both there.",
+        "Whatever's happening at #location#, it's not stopping. More reports than anyone can track.",
+        "#location# cooking hot. #faction_a# and #faction_b# both in the mix.",
+        "Stacking up at #location#. #faction_a# and #faction_b# in close range. Shit's gonna spark.",
+    },
+}

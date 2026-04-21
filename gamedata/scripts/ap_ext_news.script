@@ -1,19 +1,158 @@
---- ap_ext_news: PDA message dispatch, sender selection, location description
-local IsStalker, get_object_story_id, math_random = IsStalker, get_object_story_id, math.random
+--- ap_ext_news: PDA message dispatch, sender selection, event recording, news composer
+local IsStalker, get_object_story_id = IsStalker, get_object_story_id
+local math_random, math_floor, math_abs, string_format, string_gsub, string_match = math.random, math.floor, math.abs, string.format, string.gsub, string.match
 local TRACE = ap_core_const.TRACE
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
+
+--- Drama weights by cause. Higher = more likely to be picked by composer.
+--- HIGH tier: actionable / warning framing. LOW tier: ambient flavor.
+--- FIFO cap already bounds by recency; this table shapes WHICH of the recent events gets dispatched.
+local WEIGHT = {
+    [CAUSE.MASSACRE]   = 10,
+    [CAUSE.ALPHAKILL]  = 10,
+    [CAUSE.BASEKILL]   = 9,
+    [CAUSE.SQUADKILL]  = 8,
+    [CAUSE.ALPHA]      = 7,
+    [CAUSE.AREA]       = 7,
+    [CAUSE.HARVEST]    = 5,
+    [CAUSE.WOUNDED]    = 4,
+    [CAUSE.STASH]      = 3,
+    [CAUSE.NEEDS]      = 1,
+    [CAUSE.INSTINCTS]  = 1,
+}
 
 local alignment_human = ap_ext_const.alignment_human
 
---- Pick a random online stalker as PDA sender
---- Filters: alive stalker, not story NPC, human faction, not enemy of player
-local function _pick_pda_sender()
+local cfg = ap_core_mcm.cfg
+local COMPOSER_TIMER_EV = "ap_ext_news"
+local COMPOSE_TICK = "compose_tick"
+
+--- Monotonic counter for cons_id; session-lifetime, reset on load
+local _cons_seq = 0
+
+--- Dedup: cons_ids already dispatched. Avoids mutating broker entries.
+local _reported_cons_ids = {}
+
+--- Text-level dedup: fixed-size ring of last N rendered messages.
+--- Rejects repeat strings even across different journal entries.
+local TEXT_RING_SIZE = 16
+local _recent_msgs = {}
+local _recent_idx = 0
+
+local function _text_seen(msg)
+    for i = 1, #_recent_msgs do
+        if _recent_msgs[i] == msg then return true end
+    end
+    return false
+end
+
+local function _text_record(msg)
+    _recent_idx = (_recent_idx % TEXT_RING_SIZE) + 1
+    _recent_msgs[_recent_idx] = msg
+end
+
+--- xgrammar replacement engine. Built lazily in on_game_start from ap_ext_news_corpus.CORPUS.
+--- Drives grammar-path rendering for consequences the corpus covers; falls back to flat
+--- TEMPLATES + string.format for unported consequences.
+local _grammar = nil
+
+--- MVP templates: one per consequence. Grammar expansion is a follow-up step.
+--- Fields: %s subject_faction, %s location, %s target_faction (when present)
+local TEMPLATES = {
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "%s crew heading to investigate bodies near %s.",
+    [CONSEQUENCE.MASSACRE_SCAVENGE] = "Scavengers moving on %s bodies near %s.",
+    [CONSEQUENCE.SQUADKILL_REVENGE] = "%s lost a squad near %s. Avengers are hunting the %s who did it.",
+    [CONSEQUENCE.SQUADKILL_FLEE] = "%s took losses near %s. Rest of them pulled back to base.",
+    [CONSEQUENCE.BASEKILL_SUPPORT] = "%s base near %s under attack. Reinforcements moving.",
+    [CONSEQUENCE.BASEKILL_FLEE] = "%s evacuating base near %s. Heavy losses.",
+    [CONSEQUENCE.ALPHA_PROMOTE] = "Something big settled near %s. The pack follows it everywhere.",
+    [CONSEQUENCE.ALPHAKILL_TARGETED] = "Mutants tracking the %s who killed their alpha near %s.",
+    [CONSEQUENCE.WOUNDED_HUNT] = "Predators moving toward wounded near %s. %s scent in the air.",
+    [CONSEQUENCE.WOUNDED_HELP] = "%s rushing to help a wounded brother near %s.",
+    [CONSEQUENCE.HARVEST_ROB] = "%s chasing an artefact carrier near %s. %s won't like it.",
+    [CONSEQUENCE.HARVEST_HAUNT] = "Aberrant mutants converging near %s. Artefact pickup drew them.",
+    [CONSEQUENCE.AREA_CONQUER] = "%s claimed territory near %s.",
+    [CONSEQUENCE.STASH_LOOT] = "%s crew looting a stash near %s.",
+    [CONSEQUENCE.STASH_AMBUSH] = "%s setting up ambush at a stash near %s.",
+    [CONSEQUENCE.STASH_FILL] = "%s crew stashing gear near %s.",
+    [CONSEQUENCE.HUNGER_CAMPFIRE] = "%s crew stopped at %s for a bite.",
+    [CONSEQUENCE.SLEEP_CAMPFIRE] = "%s bedded down near %s.",
+    [CONSEQUENCE.REST_CAMPFIRE] = "%s resting up at %s.",
+    [CONSEQUENCE.HEAL_SHELTER] = "%s crew holed up at %s to patch wounds.",
+    [CONSEQUENCE.SHELTER_INDOOR] = "%s crew moved indoors near %s.",
+    [CONSEQUENCE.SHELTER_OUTDOOR] = "%s crew hunkered down by a fire near %s.",
+    [CONSEQUENCE.MONEY_HARVEST] = "%s went artefact hunting near %s.",
+    [CONSEQUENCE.MONEY_HUNT] = "%s crew hunting mutants for pelts near %s.",
+    [CONSEQUENCE.SUPPLY_TRADER] = "%s crew heading to trader near %s.",
+    [CONSEQUENCE.JOB_OUTPOST] = "%s taking up guard duty near %s.",
+    [CONSEQUENCE.JOB_EXPLORE] = "%s crew scouting unclaimed ground near %s.",
+    [CONSEQUENCE.JOB_RESEARCH] = "%s eggheads heading to anomaly field near %s.",
+    [CONSEQUENCE.SOCIAL_CAMPFIRE] = "%s gathered at %s.",
+    [CONSEQUENCE.SOCIAL_BASE] = "%s crew returning to base near %s.",
+    [CONSEQUENCE.INSTINCTS_SCATTER] = "Mutants fleeing something near %s.",
+    [CONSEQUENCE.INSTINCTS_FEED] = "Pack hunting near %s. Something or someone is prey.",
+    [CONSEQUENCE.INSTINCTS_SLEEP] = "Mutants bedding down in lair near %s.",
+    [CONSEQUENCE.INSTINCTS_EXPLORE] = "Mutants prowling territory near %s.",
+    [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "Pack gathering near %s.",
+    [CONSEQUENCE.INSTINCTS_INFEST] = "Mutants claiming lair near %s. New nest forming.",
+}
+
+
+--- Record a news-worthy event with captured subject/target context
+--- Names and factions captured at write time so the composer can use them after entities die
+--- @safety SAFE - nil-guarded on all lookups, opts optional
+--- @param squad se_squad Acting squad (subject)
+--- @param cause string Cause key (CAUSE.X)
+--- @param consequence string Consequence key (CONSEQUENCE.X)
+--- @param opts table|nil { cause_id, subject_faction, target_squad, target_faction, smart, level_id }
+function record_event(squad, cause, consequence, opts)
+    if not squad or not squad.id then return end
+    opts = opts or {}
+    local subject_name
+    local cmd_id = squad:commander_id()
+    if cmd_id then
+        local cmd_se = xobject.se(cmd_id)
+        if cmd_se then subject_name = cmd_se:character_name() end
+    end
+    local target_id, target_name
+    if opts.target_squad then
+        target_id = opts.target_squad.id
+        local t_cmd_id = opts.target_squad:commander_id()
+        if t_cmd_id then
+            local t_cmd_se = xobject.se(t_cmd_id)
+            if t_cmd_se then target_name = t_cmd_se:character_name() end
+        end
+    end
+    _cons_seq = _cons_seq + 1
+    ap_core_broker.record(squad.id, cause, consequence, {
+        cause_id = opts.cause_id,
+        cons_id = _cons_seq,
+        subject_faction = opts.subject_faction,
+        subject_name = subject_name,
+        target = target_id,
+        target_faction = opts.target_faction,
+        target_name = target_name,
+        level_id = opts.level_id,
+        location = opts.smart and xlevel.get_smart_display_name(opts.smart) or nil,
+        game_hours = math_floor(xtime.game_sec() / 3600),
+    })
+end
+
+--- Pick a PDA sender event-connected to the event, preferring same-faction witnesses
+--- Falls back to any friendly online stalker if no same-faction candidate exists
+--- @safety SAFE - nil-guarded, pure table iteration until final character_name/icon calls
+--- @param faction string|nil Subject faction (e.g. "dolg"); nil skips same-faction preference
+--- @return table|nil { name, icon } or nil when no candidates
+local function _pick_sender_for_event(faction)
     local online = db.OnlineStalkers
     if not online then return nil end
     local actor = db.actor
     if not actor then return nil end
     local actor_community = actor:character_community()
     local storage = db.storage
-    local candidates = {}
+    local same_faction, any_friendly = {}, {}
     for i = 1, #online do
         local id = online[i]
         local st = storage[id]
@@ -23,56 +162,209 @@ local function _pick_pda_sender()
         local community = npc:character_community()
         if not alignment_human[community] then goto continue end
         if game_relations.is_factions_enemies(actor_community, community) then goto continue end
-        candidates[#candidates + 1] = npc
+        if faction and community == faction then
+            same_faction[#same_faction + 1] = npc
+        else
+            any_friendly[#any_friendly + 1] = npc
+        end
         ::continue::
     end
-    local count = #candidates
-    ap_core_debug.debug("[PDA_SENDER] candidates=%d online=%d", count, #online)
-    if count > 0 then
-        local npc = candidates[math_random(count)]
-        return { name = npc:character_name(), icon = npc:character_icon() }
+    local pool = (#same_faction > 0) and same_faction or any_friendly
+    if #pool == 0 then
+        return nil
     end
+    local npc = pool[math_random(#pool)]
+    return { name = npc:character_name(), icon = npc:character_icon() }
 end
 
---- Get human-readable location description for an entity
---- @param se_obj userdata|nil Server entity (extracts position and level_id if provided)
---- @param pos vector|nil Position override
---- @param level_id number|nil Level ID override (use this for event-based locations)
-function get_location_description(se_obj, pos, level_id)
-    local entity_pos = pos
-    local entity_lvl = level_id
-
-    if se_obj then
-        entity_pos = entity_pos or se_obj.position
-        entity_lvl = entity_lvl or xlevel.get_level_id(se_obj)
-    end
-
-    if not entity_lvl then
-        entity_lvl = xlevel.get_actor_level_id()
-    end
-
-    return xlevel.get_location_name(entity_pos, entity_lvl)
+--- Strip "consequence:" prefix, returning the short symbol name used as grammar rule key
+local function _consequence_symbol(consequence)
+    return string_match(consequence, "^consequence:(.+)") or consequence
 end
 
---- Send a PDA message as zone gossip (chance gated, message resolved from key)
---- @param chance number PDA chance (0-100), 100 = always
---- @param key string ap_ext_messages key
---- @param params table|nil Substitution parameters for ap_ext_messages.get
-function send_pda(chance, key, params)
-    if not xmath.chance(chance) then
-        return { code = TRACE.CHANCE, key = key }
-    end
-    local msg = ap_ext_messages and ap_ext_messages.get(key, params)
-    if not msg then
-        ap_core_debug.debug("[SEND_PDA] no message: key=%s", key)
-        return { code = TRACE.NO_MSG, key = key }
-    end
-    local sender = _pick_pda_sender()
-    if not sender then
-        ap_core_debug.debug("[SEND_PDA] no sender available")
-        return { code = TRACE.NO_SENDER, key = key }
-    end
-    xpda.send(sender.name, msg, sender.icon)
-    ap_core_debug.debug("[SEND_PDA] sent: sender=%s key=%s", sender.name, key)
-    return { code = TRACE.SENT, key = key, sender = sender.name }
+--- Translate a raw faction key ("dolg") to display name ("Duty") via game.translate_string.
+--- Returns fallback when faction is nil; safe on empty result (translate returns input on miss).
+local function _faction_display(faction, fallback)
+    if not faction then return fallback end
+    return game.translate_string(faction)
 end
+
+--- Chain detection constants. hot_zone window is game-hours.
+--- Retaliation > cascade > hot_zone by narrative strength.
+local HOT_ZONE_WINDOW_HOURS = 3
+local CHAIN_STRENGTH = { retaliation = 3, cascade = 2, hot_zone = 1 }
+
+--- Find the strongest narrative relation between the picked entry and another unreported FIFO entry.
+--- Returns { kind, entry_a, entry_b } or nil when nothing correlates.
+--- Predicates:
+---   retaliation: A.subject == B.target AND A.target == B.subject (cross-faction reprisal)
+---   cascade: A.cause_id == B.cause_id (two consequences fired from same cause event)
+---   hot_zone: A.location == B.location AND |A.game_hours - B.game_hours| <= 3
+local function _find_relation(entry_a)
+    local best, best_strength = nil, 0
+    ap_core_broker.each_record(nil, function(entry_b)
+        if not entry_b.cons_id or entry_b.cons_id == entry_a.cons_id then return end
+        if _reported_cons_ids[entry_b.cons_id] then return end
+        local kind = nil
+        if entry_a.subject_faction and entry_a.target_faction
+           and entry_b.subject_faction and entry_b.target_faction
+           and entry_a.subject_faction == entry_b.target_faction
+           and entry_a.target_faction == entry_b.subject_faction then
+            kind = "retaliation"
+        elseif entry_a.cause_id and entry_b.cause_id and entry_a.cause_id == entry_b.cause_id then
+            kind = "cascade"
+        elseif entry_a.location and entry_b.location
+           and entry_a.location == entry_b.location
+           and entry_a.game_hours and entry_b.game_hours
+           and math_abs(entry_a.game_hours - entry_b.game_hours) <= HOT_ZONE_WINDOW_HOURS then
+            kind = "hot_zone"
+        end
+        if kind and CHAIN_STRENGTH[kind] > best_strength then
+            best = { kind = kind, entry_a = entry_a, entry_b = entry_b }
+            best_strength = CHAIN_STRENGTH[kind]
+        end
+    end)
+    return best
+end
+
+--- Render a two-entry chain relation via the chain_<kind> grammar rule.
+--- Returns nil when the corpus has no rule for the relation kind.
+local function _format_chain_message(relation)
+    local symbol = "chain_" .. relation.kind
+    if not (_grammar and _grammar._context[symbol]) then return nil end
+    local a, b = relation.entry_a, relation.entry_b
+    _grammar:push_rules({
+        faction_a = _faction_display(a.subject_faction, "stalkers"),
+        faction_b = _faction_display(b.subject_faction, "stalkers"),
+        location_a = a.location or "the Zone",
+        location_b = b.location or "the Zone",
+        location = a.location or "the Zone",
+    })
+    local result = _grammar:generate(symbol)
+    _grammar:pop_rules()
+    if result then
+        result = string_gsub(result, "^%s+", "")
+        result = string_gsub(result, "%s+$", "")
+        result = string_gsub(result, "  +", " ")
+    end
+    if not result or result == "" then return nil end
+    return result
+end
+
+--- Render a journal entry into gossip text. Grammar-path first (xgrammar rules),
+--- falls back to flat TEMPLATES + string.format for unported consequences.
+--- Returns nil when neither path can produce a message.
+local function _format_message(entry)
+    local symbol = _consequence_symbol(entry.consequence)
+    if _grammar and _grammar._context[symbol] then
+        _grammar:push_rules({
+            subject = _faction_display(entry.subject_faction, "stalkers"),
+            target = _faction_display(entry.target_faction, ""),
+            location = entry.location or "the Zone",
+            subject_name = entry.subject_name or "#name_fallback#",
+            target_name = entry.target_name or "#name_fallback#",
+        })
+        local result = _grammar:generate(symbol)
+        _grammar:pop_rules()
+        if result then
+            result = string_gsub(result, "^%s+", "")
+            result = string_gsub(result, "%s+$", "")
+            result = string_gsub(result, "  +", " ")
+        end
+        if result and result ~= "" then return result end
+    end
+    local tmpl = TEMPLATES[entry.consequence]
+    if not tmpl then return nil end
+    return string_format(tmpl,
+        entry.subject_faction or "A stalker",
+        entry.location or "the Zone",
+        entry.target_faction or "killers")
+end
+
+--- Pick one unreported entry via weighted random over cause-drama tiers.
+--- HIGH tier (massacre/alphakill/basekill/squadkill/alpha/area) beats LOW (needs/instincts)
+--- roughly 7-10:1, stopping drama events from drowning in the needs/instincts flood.
+--- FIFO cap bounds recency implicitly; this picker shapes tier distribution.
+--- Dedup uses _reported_cons_ids (module-local) -- broker entries stay pure.
+local function _pick_entry()
+    local entries, cumulative = {}, {}
+    local total = 0
+    ap_core_broker.each_record(nil, function(entry)
+        if not entry.cons_id or _reported_cons_ids[entry.cons_id] then return end
+        local weight = WEIGHT[entry.cause] or 1
+        total = total + weight
+        entries[#entries + 1] = entry
+        cumulative[#entries] = total
+    end)
+    if #entries == 0 then return nil end
+    local roll = math_random(total)
+    for i = 1, #entries do
+        if roll <= cumulative[i] then return entries[i] end
+    end
+    return entries[#entries]
+end
+
+--- Generate and dispatch one news message from the activity record
+--- Picks newest unreported entry, resolves template and sender, fires xpda.send
+--- Wrapped in observe so span timing + tid/path show up in DEBUG logs
+--- @safety SAFE - nil-guarded on empty journal, missing template, no sender
+--- @return table { code = TRACE.X, ... }
+function compose_tick()
+    if not cfg.news_enabled then return { code = TRACE.NONE } end
+    return ap_core_debug.observe(nil, ACTION.COMPOSE_NEWS, function(trace)
+        local entry = _pick_entry()
+        if not entry then return { code = TRACE.NONE } end
+        local relation = _find_relation(entry)
+        local msg, relation_type
+        if relation then
+            _reported_cons_ids[relation.entry_a.cons_id] = true
+            _reported_cons_ids[relation.entry_b.cons_id] = true
+            msg = _format_chain_message(relation)
+            relation_type = relation.kind
+        end
+        if not msg then
+            _reported_cons_ids[entry.cons_id] = true
+            msg = _format_message(entry)
+        end
+        if not msg then return { code = TRACE.NO_MSG, consequence = entry.consequence } end
+        if _text_seen(msg) then return { code = TRACE.DUP_TEXT, consequence = entry.consequence } end
+        local sender_faction = relation and relation.entry_a.subject_faction or entry.subject_faction
+        local sender = ap_core_debug.observe(trace, ACTION.PICK_SENDER, function()
+            local picked = _pick_sender_for_event(sender_faction)
+            if not picked then return { code = TRACE.NO_SENDER, faction = sender_faction or "?" } end
+            return { code = TRACE.OK, name = picked.name, icon = picked.icon }
+        end)
+        if sender.code ~= TRACE.OK then return { code = TRACE.NO_SENDER, consequence = entry.consequence } end
+        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
+            xpda.send(sender.name, msg, sender.icon)
+            return { code = TRACE.SENT, sender = sender.name, msg = msg }
+        end)
+        _text_record(msg)
+        return { code = TRACE.SENT, sender = sender.name, consequence = entry.consequence, relation = relation_type }
+    end)
+end
+
+--- Randomize next compose delay in [min, max] range so cadence feels human.
+--- Clamps min<=max to guard against MCM misconfiguration.
+local function _next_delay()
+    local lo, hi = cfg.news_interval_min_sec, cfg.news_interval_max_sec
+    if lo > hi then lo, hi = hi, lo end
+    return math_random(lo, hi)
+end
+
+local function _on_compose_timer()
+    ResetTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay())
+    compose_tick()
+    return false
+end
+
+function on_game_start()
+    _cons_seq = 0
+    _reported_cons_ids = {}
+    _recent_msgs = {}
+    _recent_idx = 0
+    _grammar = xgrammar.create_grammar(ap_ext_news_data.DATA)
+    _grammar:add_modifiers(xgrammar.base_modifiers)
+    CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay(), _on_compose_timer)
+end
+

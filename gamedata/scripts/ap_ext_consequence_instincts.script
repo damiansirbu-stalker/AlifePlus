@@ -268,7 +268,10 @@ local function _make_handler(entry)
             if res.code ~= RESULT.SUCCESS then
                 return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
             end
-            ap_core_broker.record(event_data.squad_id, CAUSE.INSTINCTS, entry.consequence)
+            ap_ext_news.record_event(squad, CAUSE.INSTINCTS, entry.consequence, {
+                cause_id = event_data._cause_id, subject_faction = event_data.community,
+                smart = smart, level_id = event_data.level_id,
+            })
 
             return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
         end)

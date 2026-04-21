@@ -191,17 +191,6 @@ function infest_smart(smart_id, faction, level_id)
     return true
 end
 
---- Clear infestation from a smart terrain
-function clear_infest(smart_id)
-    if not smart_id then return false end
-    if not _infested_smarts[smart_id] then return false end
-    local smart = xobject.se(smart_id)
-    if smart then xsmart.clear_exclusive_spawn(smart, INFEST_KEY) end
-    _infested_smarts[smart_id] = nil
-    ap_core_debug.debug("[MUTATOR.SMART] clear_infest: smart=%d", smart_id)
-    return true
-end
-
 local function _on_save_state(m_data)
     m_data.ap_ext_smart_mutator = {
         conquered_smarts = _conquered_smarts,
