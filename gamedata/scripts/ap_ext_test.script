@@ -395,80 +395,113 @@ local function _demo_fire_next()
     _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
 end
 
---- NEWS DEMO: seeds N fake journal entries using nearby squads and dispatches composer ticks.
---- Proves the ap_ext_news pipeline end-to-end (record_event -> journal -> compose_tick -> xpda.send).
+--- JOURNAL DEMO: periodically seeds random journal entries to exercise every consequence.
+--- Tests the news composer in isolation: FIFO -> grammar -> xpda. Bypasses the pipeline,
+--- so stats do not tick (use needs_demo for real-pipeline testing).
+--- The real composer (driven by MCM news_interval_*) picks seeded entries and dispatches.
+--- Toggle on/off. Set MCM news_interval_min/max_sec low (e.g. 1-3) for rapid feedback.
 
-local NEWS_DEMO_TICK_MS = 1500
+local JOURNAL_DEMO_SEED_INTERVAL_MS = 2000
 
-local NEWS_DEMO_CONSEQUENCES = {
-    { cause = CAUSE.MASSACRE, cons = CONSEQUENCE.MASSACRE_INVESTIGATE },
-    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE },
-    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE },
-    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.HUNGER_CAMPFIRE },
-    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.JOB_OUTPOST },
-    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.SOCIAL_CAMPFIRE },
-    { cause = CAUSE.NEEDS,    cons = CONSEQUENCE.REST_CAMPFIRE },
-    { cause = CAUSE.AREA,     cons = CONSEQUENCE.AREA_CONQUER },
+local JOURNAL_DEMO_EVENTS = {
+    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human",  needs_target = true  },
+    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant", needs_target = true  },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE,    kind = "human",  needs_target = true  },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE,       kind = "human",  needs_target = false },
+    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_SUPPORT,     kind = "human",  needs_target = false },
+    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_FLEE,        kind = "human",  needs_target = false },
+    { cause = CAUSE.ALPHA,     cons = CONSEQUENCE.ALPHA_PROMOTE,        kind = "mutant", needs_target = false },
+    { cause = CAUSE.ALPHAKILL, cons = CONSEQUENCE.ALPHAKILL_TARGETED,   kind = "mutant", needs_target = true  },
+    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HUNT,         kind = "mutant", needs_target = true  },
+    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HELP,         kind = "human",  needs_target = false },
+    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_ROB,          kind = "human",  needs_target = true  },
+    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_HAUNT,        kind = "mutant", needs_target = true  },
+    { cause = CAUSE.AREA,      cons = CONSEQUENCE.AREA_CONQUER,         kind = "human",  needs_target = false },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_LOOT,           kind = "human",  needs_target = false },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_AMBUSH,         kind = "human",  needs_target = false },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_FILL,           kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HUNGER_CAMPFIRE,      kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SLEEP_CAMPFIRE,       kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.REST_CAMPFIRE,        kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HEAL_SHELTER,         kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_INDOOR,       kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_OUTDOOR,      kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HARVEST,        kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HUNT,           kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SUPPLY_TRADER,        kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_OUTPOST,          kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_EXPLORE,          kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_RESEARCH,         kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_CAMPFIRE,      kind = "human",  needs_target = false },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_BASE,          kind = "human",  needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_FEED,       kind = "mutant", needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SLEEP,      kind = "mutant", needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_EXPLORE,    kind = "mutant", needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SOCIALIZE,  kind = "mutant", needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SCATTER,    kind = "mutant", needs_target = false },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_INFEST,     kind = "mutant", needs_target = false },
 }
 
-local _news_demo_remaining = 0
-local _news_demo_next_fire = 0
-local _news_demo_active = false
+local JOURNAL_DEMO_HUMAN_FACTIONS = {
+    "stalker", "bandit", "dolg", "freedom", "army", "csky",
+    "ecolog", "monolith", "renegade", "killer", "isg", "greh",
+}
 
-local function _news_demo_tick()
-    if not _news_demo_active then return end
-    if _news_demo_remaining <= 0 then
-        _news_demo_active = false
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
-        _tip("News demo: complete")
-        ap_core_debug.debug("[TEST] news_demo complete")
-        return
-    end
-    local now = time_global()
-    if now < _news_demo_next_fire then return end
-    local res = ap_ext_news.compose_tick()
-    _news_demo_remaining = _news_demo_remaining - 1
-    _news_demo_next_fire = now + NEWS_DEMO_TICK_MS
-    ap_core_debug.debug("[TEST] news_demo tick remaining=%d code=%s cons=%s sender=%s",
-        _news_demo_remaining, res.code or "?", res.consequence or "?", res.sender or "?")
+local JOURNAL_DEMO_MUTANT_FACTIONS = {
+    "monster_predatory_day", "monster_predatory_night", "monster_vegetarian",
+    "monster_zombied_day", "monster_zombied_night", "monster_special",
+}
+
+local _journal_demo_active = false
+local _journal_demo_next_seed = 0
+
+local function _journal_demo_seed_one()
+    local squads = _find_demo_squads(20)
+    if #squads == 0 then return nil end
+    local event = xmath.sample(JOURNAL_DEMO_EVENTS)
+    local squad = xmath.sample(squads)
+    local smart = xsquad.get_squad_smart(squad)
+    local level_id = xlevel.get_level_id(squad)
+    local subject_faction = (event.kind == "mutant")
+        and xmath.sample(JOURNAL_DEMO_MUTANT_FACTIONS)
+        or xmath.sample(JOURNAL_DEMO_HUMAN_FACTIONS)
+    local target_faction = event.needs_target and xmath.sample(JOURNAL_DEMO_HUMAN_FACTIONS) or nil
+    ap_ext_news.record_event(squad, event.cause, event.cons, {
+        subject_faction = subject_faction,
+        target_faction = target_faction,
+        smart = smart,
+        level_id = level_id,
+    })
+    return event
 end
 
---- Seed N fake journal entries from nearby squads, then dispatch composer ticks
+local function _journal_demo_tick()
+    if not _journal_demo_active then return end
+    local now = time_global()
+    if now < _journal_demo_next_seed then return end
+    _journal_demo_next_seed = now + JOURNAL_DEMO_SEED_INTERVAL_MS
+    local event = _journal_demo_seed_one()
+    if event then
+        ap_core_debug.debug("[TEST] journal_demo seeded cons=%s kind=%s", event.cons, event.kind)
+    end
+end
+
+--- Toggle perpetual random-event seeder. Real composer dispatches based on MCM interval.
 --- @export console
-function news_demo()
-    ap_core_debug.debug("[TEST] news_demo pressed")
-    if _news_demo_active then
-        _news_demo_active = false
-        _news_demo_remaining = 0
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
-        _tip("News demo stopped")
+function journal_demo()
+    ap_core_debug.debug("[TEST] journal_demo pressed")
+    if _journal_demo_active then
+        _journal_demo_active = false
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _journal_demo_tick)
+        _tip("Journal demo stopped")
+        ap_core_debug.debug("[TEST] journal_demo stopped")
         return
     end
-    local squads = _find_demo_squads(15)
-    if #squads == 0 then return _tip("No stalker squads nearby") end
-
-    local seeded = 0
-    for i = 1, #squads do
-        local pick = NEWS_DEMO_CONSEQUENCES[((i - 1) % #NEWS_DEMO_CONSEQUENCES) + 1]
-        local squad = squads[i]
-        local smart = xsquad.get_squad_smart(squad)
-        local level_id = xlevel.get_level_id(squad)
-        local subject_faction = squad.get_squad_community and squad:get_squad_community() or nil
-        ap_ext_news.record_event(squad, pick.cause, pick.cons, {
-            subject_faction = subject_faction,
-            target_faction = "bandit",
-            smart = smart,
-            level_id = level_id,
-        })
-        seeded = seeded + 1
-    end
-
-    _news_demo_remaining = seeded
-    _news_demo_next_fire = 0
-    _news_demo_active = true
-    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
-    _tip(string_format("News demo: seeded %d entries, dispatching...", seeded))
-    ap_core_debug.debug("[TEST] news_demo seeded=%d tick_ms=%d", seeded, NEWS_DEMO_TICK_MS)
+    _journal_demo_active = true
+    _journal_demo_next_seed = 0
+    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _journal_demo_tick)
+    _tip(string_format("Journal demo: seeding random event every %ds", JOURNAL_DEMO_SEED_INTERVAL_MS / 1000))
+    ap_core_debug.debug("[TEST] journal_demo started interval_ms=%d events=%d", JOURNAL_DEMO_SEED_INTERVAL_MS, #JOURNAL_DEMO_EVENTS)
 end
 
 --- @export console

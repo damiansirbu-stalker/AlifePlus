@@ -1,10 +1,9 @@
 --- ap_ext_news: PDA message dispatch, sender selection, event recording, news composer
 local IsStalker, get_object_story_id = IsStalker, get_object_story_id
 local ipairs, pairs = ipairs, pairs
-local math_random, math_floor, math_abs, string_gsub, string_match = math.random, math.floor, math.abs, string.gsub, string.match
+local math_random, math_floor, math_abs, string_gsub, string_match, string_upper = math.random, math.floor, math.abs, string.gsub, string.match, string.upper
 local TRACE = ap_core_const.TRACE
 local CAUSE = ap_core_const.CAUSE
-local ACTION = ap_core_const.ACTION
 
 --- Weighted random bias for event picker. Higher = more likely to be dispatched.
 local WEIGHT = {
@@ -21,30 +20,28 @@ local WEIGHT = {
     [CAUSE.INSTINCTS]  = 1,
 }
 
+--- Mutant engine factions have no localization; render as species plurals so templates like "#subject# pack" read naturally
+local MUTANT_FACTION_DISPLAY = {
+    monster_predatory_day   = "predators",
+    monster_predatory_night = "night predators",
+    monster_vegetarian      = "herbivores",
+    monster_zombied_day     = "zombies",
+    monster_zombied_night   = "zombies",
+    monster_special         = "aberrants",
+}
+
 local alignment_human = ap_ext_const.alignment_human
 
 local cfg = ap_core_mcm.cfg
 local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "compose_tick"
 
-local _cons_seq = 0
-local _reported_cons_ids = {}
-
+local DEDUP_CAPACITY = 512
 local TEXT_RING_SIZE = 16
-local _recent_msgs = {}
-local _recent_idx = 0
 
-local function _text_seen(msg)
-    for i = 1, #_recent_msgs do
-        if _recent_msgs[i] == msg then return true end
-    end
-    return false
-end
-
-local function _text_record(msg)
-    _recent_idx = (_recent_idx % TEXT_RING_SIZE) + 1
-    _recent_msgs[_recent_idx] = msg
-end
+local _cons_seq = 0
+local _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
+local _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
 
 local _grammar = nil
 
@@ -56,7 +53,7 @@ function record_event(squad, cause, consequence, opts)
     local cmd_id = squad:commander_id()
     if cmd_id then
         local cmd_se = xobject.se(cmd_id)
-        if cmd_se then subject_name = cmd_se:character_name() end
+        if cmd_se and IsStalker(nil, cmd_se:clsid()) then subject_name = cmd_se:character_name() end
     end
     local target_id, target_name
     if opts.target_squad then
@@ -64,7 +61,7 @@ function record_event(squad, cause, consequence, opts)
         local t_cmd_id = opts.target_squad:commander_id()
         if t_cmd_id then
             local t_cmd_se = xobject.se(t_cmd_id)
-            if t_cmd_se then target_name = t_cmd_se:character_name() end
+            if t_cmd_se and IsStalker(nil, t_cmd_se:clsid()) then target_name = t_cmd_se:character_name() end
         end
     end
     _cons_seq = _cons_seq + 1
@@ -111,7 +108,7 @@ local function _pick_sender_for_event(faction)
     if #pool == 0 then
         return nil
     end
-    local npc = pool[math_random(#pool)]
+    local npc = xmath.sample(pool)
     return { name = npc:character_name(), icon = npc:character_icon() }
 end
 
@@ -121,6 +118,8 @@ end
 
 local function _faction_display(faction, fallback)
     if not faction then return fallback end
+    local display = MUTANT_FACTION_DISPLAY[faction]
+    if display then return display end
     return game.translate_string(faction)
 end
 
@@ -132,7 +131,7 @@ local function _find_relation(entry_a)
     local best, best_strength = nil, 0
     ap_core_broker.each_record(nil, function(entry_b)
         if not entry_b.cons_id or entry_b.cons_id == entry_a.cons_id then return end
-        if _reported_cons_ids[entry_b.cons_id] then return end
+        if _reported_cons_ids:has(entry_b.cons_id) then return end
         local kind = nil
         if entry_a.subject_faction and entry_a.target_faction
            and entry_b.subject_faction and entry_b.target_faction
@@ -155,12 +154,25 @@ local function _find_relation(entry_a)
     return best
 end
 
+local function _clean_output(result)
+    if not result then return nil end
+    result = string_gsub(result, "^%s+", "")
+    result = string_gsub(result, "%s+$", "")
+    result = string_gsub(result, "  +", " ")
+    result = string_gsub(result, "%s+([%.,;!?])", "%1")
+    result = string_gsub(result, "^(%l)", string_upper)
+    result = string_gsub(result, "([%.%?!]%s+)(%l)", function(pre, c) return pre .. string_upper(c) end)
+    if result == "" then return nil end
+    return result
+end
+
 --- Render a two-entry chain relation via the chain_<kind> grammar rule.
---- Returns nil when the corpus has no rule for the relation kind.
+--- Returns nil when the corpus has no rule for the relation kind, or when both entries share subject_faction (avoids "X and X" artifacts).
 local function _format_chain_message(relation)
     local symbol = "chain_" .. relation.kind
     if not (_grammar and _grammar._context[symbol]) then return nil end
     local a, b = relation.entry_a, relation.entry_b
+    if a.subject_faction and a.subject_faction == b.subject_faction then return nil end
     _grammar:push_rules({
         faction_a = _faction_display(a.subject_faction, "stalkers"),
         faction_b = _faction_display(b.subject_faction, "stalkers"),
@@ -170,13 +182,7 @@ local function _format_chain_message(relation)
     })
     local result = _grammar:generate(symbol)
     _grammar:pop_rules()
-    if result then
-        result = string_gsub(result, "^%s+", "")
-        result = string_gsub(result, "%s+$", "")
-        result = string_gsub(result, "  +", " ")
-    end
-    if not result or result == "" then return nil end
-    return result
+    return _clean_output(result)
 end
 
 local function _format_message(entry)
@@ -191,67 +197,58 @@ local function _format_message(entry)
     })
     local result = _grammar:generate(symbol)
     _grammar:pop_rules()
-    if result then
-        result = string_gsub(result, "^%s+", "")
-        result = string_gsub(result, "%s+$", "")
-        result = string_gsub(result, "  +", " ")
-    end
-    if not result or result == "" then return nil end
-    return result
+    return _clean_output(result)
 end
 
 local function _pick_entry()
-    local entries, cumulative = {}, {}
-    local total = 0
+    local entries, weights = {}, {}
     ap_core_broker.each_record(nil, function(entry)
-        if not entry.cons_id or _reported_cons_ids[entry.cons_id] then return end
-        local weight = WEIGHT[entry.cause] or 1
-        total = total + weight
+        if not entry.cons_id or _reported_cons_ids:has(entry.cons_id) then return end
         entries[#entries + 1] = entry
-        cumulative[#entries] = total
+        weights[#entries] = WEIGHT[entry.cause] or 1
     end)
     if #entries == 0 then return nil end
-    local roll = math_random(total)
-    for i = 1, #entries do
-        if roll <= cumulative[i] then return entries[i] end
-    end
-    return entries[#entries]
+    return entries[xmath.weighted_choice(weights)]
 end
 
 --- Pick, chain-detect, render, and dispatch one news message from the activity FIFO
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
-    return ap_core_debug.observe(nil, ACTION.COMPOSE_NEWS, function(trace)
-        local entry = _pick_entry()
-        if not entry then return { code = TRACE.NONE } end
-        local relation = _find_relation(entry)
-        local msg, relation_type
-        if relation then
-            _reported_cons_ids[relation.entry_a.cons_id] = true
-            _reported_cons_ids[relation.entry_b.cons_id] = true
-            msg = _format_chain_message(relation)
+    local entry = _pick_entry()
+    if not entry then return { code = TRACE.NONE } end
+    local relation = _find_relation(entry)
+    local msg, relation_type
+    if relation then
+        msg = _format_chain_message(relation)
+        if msg then
+            _reported_cons_ids:set(relation.entry_a.cons_id, true)
+            _reported_cons_ids:set(relation.entry_b.cons_id, true)
             relation_type = relation.kind
         end
-        if not msg then
-            _reported_cons_ids[entry.cons_id] = true
-            msg = _format_message(entry)
-        end
-        if not msg then return { code = TRACE.NO_MSG, consequence = entry.consequence } end
-        if _text_seen(msg) then return { code = TRACE.DUP_TEXT, consequence = entry.consequence } end
-        local sender_faction = relation and relation.entry_a.subject_faction or entry.subject_faction
-        local sender = ap_core_debug.observe(trace, ACTION.PICK_SENDER, function()
-            local picked = _pick_sender_for_event(sender_faction)
-            if not picked then return { code = TRACE.NO_SENDER, faction = sender_faction or "?" } end
-            return { code = TRACE.OK, name = picked.name, icon = picked.icon }
-        end)
-        if sender.code ~= TRACE.OK then return { code = TRACE.NO_SENDER, consequence = entry.consequence } end
-        ap_core_debug.observe(trace, ACTION.SEND_PDA, function()
-            xpda.send(sender.name, msg, sender.icon)
-            return { code = TRACE.SENT, sender = sender.name, msg = msg }
-        end)
-        _text_record(msg)
-        return { code = TRACE.SENT, sender = sender.name, consequence = entry.consequence, relation = relation_type }
-    end)
+    end
+    if not msg then
+        msg = _format_message(entry)
+        if msg then _reported_cons_ids:set(entry.cons_id, true) end
+    end
+    if not msg then
+        ap_core_debug.debug("[PDA.NEWS] no_msg consequence=%s", entry.consequence)
+        return { code = TRACE.NO_MSG, consequence = entry.consequence }
+    end
+    if _recent_msgs:has(msg) then
+        ap_core_debug.debug("[PDA.NEWS] dup_text consequence=%s", entry.consequence)
+        return { code = TRACE.DUP_TEXT, consequence = entry.consequence }
+    end
+    local sender_faction = relation and relation.entry_a.subject_faction or entry.subject_faction
+    local picked = _pick_sender_for_event(sender_faction)
+    if not picked then
+        ap_core_debug.debug("[PDA.NEWS] no_sender consequence=%s faction=%s", entry.consequence, sender_faction or "?")
+        return { code = TRACE.NO_SENDER, consequence = entry.consequence }
+    end
+    xpda.send(picked.name, msg, picked.icon)
+    _recent_msgs:set(msg, true)
+    ap_core_debug.debug("[PDA.NEWS] sent sender=%s consequence=%s relation=%s msg=%s",
+        picked.name, entry.consequence, relation_type or "none", msg)
+    return { code = TRACE.SENT, sender = picked.name, consequence = entry.consequence, relation = relation_type }
 end
 
 local function _next_delay()
@@ -283,11 +280,9 @@ end
 
 function on_game_start()
     _cons_seq = 0
-    _reported_cons_ids = {}
-    _recent_msgs = {}
-    _recent_idx = 0
+    _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
+    _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
     _grammar = xgrammar.create_grammar(_assemble_rules())
     _grammar:add_modifiers(xgrammar.base_modifiers)
     CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay(), _on_compose_timer)
 end
-

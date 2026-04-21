@@ -359,7 +359,7 @@ When a relation fires, composer uses chain-tier templates and injects both entri
 - Record-level: `_reported_cons_ids` set in ap_ext_news. Prevents re-using the same FIFO entry. Broker stays pure — no `_reported` flag on entries.
 - Text-level: ring buffer of last N rendered strings (MCM-configured, default 10). Reject if new == any in ring, try next pick. Catches templates resolving to the same sentence when two different journal entries hit the same pool draw.
 
-**Sender selection.** Event-connected NPC preferred: same-faction + same-level (witness) > same-faction (report) > any-friendly (rumor). Iterates `db.OnlineStalkers` once per tick, filters alive/human/non-story/non-enemy. Sender name + icon passed to `xpda.send`. Sliced across frames (`xslice.start`, step=1) to avoid a ~200-call luabind burst on stalker-dense saves.
+**Sender selection.** Event-connected NPC preferred: same-faction + same-level (witness) > same-faction (report) > any-friendly (rumor). Iterates `db.OnlineStalkers` once per tick, filters alive/human/non-story/non-enemy. Sender name + icon passed to `xpda.send`. One inline iteration per compose tick. At the default 120-300s cadence the burst is bounded; `xslice` remains a future option if stalker density pushes per-tick cost above budget.
 
 **MCM surface.** `news_enabled` (bool, master toggle). `news_interval_min_sec` + `news_interval_max_sec` (int sliders 60-600): each compose tick randomizes delay between them for non-mechanical cadence. No per-consequence gates — weight tiers + pool quality shape balance instead.
 
