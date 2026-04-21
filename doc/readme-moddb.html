@@ -43,6 +43,9 @@
 <li>Predators closing in on wounded targets, allies rushing to help</li>
 <li>NPCs trading real items at traders - artefacts for ammo, grenades, medkits</li>
 <li>Campfire and base behavior driven by hunger, fatigue, social needs</li>
+<li>Day/night cycle: stalkers work and trade by day, rest and sleep at campfires by night.</li>
+<li>Nocturnal predators hunt at night and retreat to lairs at dawn. Diurnal mutants do the opposite.</li>
+<li>Prey scattering when a predator moves through. Kill the predator, prey returns over time.</li>
 <li>Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted</li>
 <li>Bandits looting and ambushing while Duty patrols and holds the line</li>
 <li>Loners chasing artefacts while Military stays close to base</li>
@@ -59,6 +62,13 @@
 <li>Reactive causes: triggered by combat, wounds, deaths, item use</li>
 <li>Radiant causes: triggered by movement, location, and needs</li>
 </ul>
+<p>Every action is bounded by awareness. Three range tiers govern how far a squad searches:</p>
+<ul>
+<li>EyeRange: what the squad can see. Opportunities like stashes and unclaimed territory.</li>
+<li>RadioRange: PDA radio. Stalkers hear about massacres, base attacks, trader locations.</li>
+<li>ScentRange: scent tracking. Mutants smell corpses, track wounded prey, follow trails.</li>
+</ul>
+<p>Range tiers are grounded in GSC's original AI design documents (PersonalEyeRange, EnemyDetectProbability). EyeRange validated empirically: nearest-neighbor distance measured in-engine across 14 levels.</p>
 <p>AlifePlus is first and foremost a framework. Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause predicate and a consequence handler. The pipeline handles protection, rate limiting, tracing, squad lifecycle, and PDA routing. New causes and consequences plug in without modifying core code.</p>
 <p>Other mods can integrate with AlifePlus at any level, from passively listening to events to registering new behaviors into the pipeline to coordinating squad control with their own alife logic. AP uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs) so any mod that respects the engine's own APIs will not conflict. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md">integration guide</a> for examples, API reference, and a concrete two-mod collaboration scenario.</p>
 <h2>Architecture</h2>
@@ -111,7 +121,8 @@
 </ul>
 <h3>Harvest (reactive)</h3>
 <ul>
-<li><b>Hunt</b> - Nearby outlaws pursue whoever picked up the artefact as it moves.</li>
+<li><b>Rob</b> - Nearby outlaws pursue whoever picked up the artefact as it moves.</li>
+<li><b>Haunt</b> - Aberrant mutants converge on the artefact pickup site.</li>
 </ul>
 <h3>Stash (radiant)</h3>
 <ul>
@@ -137,10 +148,21 @@
 <li><b>Social</b> - Finds a campfire or a safe location. Shares cigarettes and drinks.</li>
 </ul>
 <p>NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.<br />A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.</p>
+<h3>Instincts (radiant)</h3>
+<p>Mutants have instincts. Drives scored by deprivation, same as stalker needs. Scatter is binary (predator proximity). The strongest unmet instinct wins. Consequences search within eye or scent range and evaluate alignment and personality.</p>
+<ul>
+<li><b>Scatter</b> - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range. Food chain: cowardly fears feral/predator/aberrant, feral fears predator/aberrant, predator fears aberrant. Squads relocate to the nearest smart terrain with no higher-tier threats.</li>
+<li><b>Feed</b> - Mutants move to open territory during active hours. Predators and prey meet on shared hunting grounds.</li>
+<li><b>Sleep</b> - Mutants return to rest locations during dormant hours. Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.</li>
+<li><b>Explore</b> - Mutants wander to a different territory or lair during active hours.</li>
+<li><b>Socialize</b> - Pack animals move toward smart terrains where same-faction squads are present.</li>
+</ul>
+<h3>Day/Night Cycle</h3>
+<p>Stalkers and mutants follow a day/night activity cycle. During active hours, creatures feed, explore, work, and trade. During dormant hours, they seek shelter and sleep. Stalkers are active during the day and sleep at night. Nocturnal mutants -- bloodsuckers, lurkers, chimeras, zombies, fractures -- are active at night and sleep during the day. All other species are diurnal. The same mechanism gates both stalker needs and mutant instincts.</p>
 <h3>Alignment</h3>
-<p>GSC classified characters as principled, self-serving, or unprincipled. AlifePlus maps this to factions as a hard gate. Military never flees. Ecologists never conquer. Renegades never investigate. Outlaws never help the wounded. These are structural, not tunable.</p>
+<p>GSC classified characters as principled, self-serving, or unprincipled. AlifePlus maps this to factions as a hard gate. Military never flees. Ecologists never conquer. Renegades never investigate. Outlaws never help the wounded. These are structural, not tunable.<br />Mutant species operate on two independent axes.<br />Behavioral: cowardly (flesh, zombie, rats), feral (dogs, boars, snork, gigant), predator (bloodsucker, chimera, lurker), aberrant (controller, burer, poltergeist).<br />Activity: nocturnal (bloodsucker, lurker, chimera, zombie, fracture) vs diurnal.<br />Behavioral determines what a species does. Activity determines when.<br />These four tiers form a food chain. Each tier scatters from all higher tiers. Aberrant fear nothing.</p>
 <h3>Personality</h3>
-<p>Seven behavioral traits per faction (aggression, greed, survival, perception, territory, relation, discipline) derived from GSC's original AI design documents. A faction that passes the alignment gate rolls against its personality score for the relevant traits. Both stalker and mutant factions share the same system. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">manifesto</a> for full GSC evidence and source references.</p>
+<p>Every stalker faction and mutant species has a personality profile derived from GSC's original AI design documents. Traits include aggression, greed, survival, perception, territory, relation, and discipline. Each consequence checks at most two relevant traits, averages them, and rolls against the result clamped to a global floor and ceiling (MCM personality_min / personality_max). Both stalkers and mutants share the same system. Trait values are direct probabilities grounded in GSC lore. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">manifesto</a> for proof and source references.</p>
 <h2>Compatibility &amp; Safety</h2>
 <ul>
 <li>Tested with vanilla Anomaly 1.5.3, Demonized main, Demonized MT, and AOEngine (latest versions)</li>
