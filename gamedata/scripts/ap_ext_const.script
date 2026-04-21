@@ -296,6 +296,58 @@ CONSEQUENCE_DESCRIPTION = {
     [CONSEQUENCE.INSTINCTS_INFEST] = "Instinct Infest",
 }
 
+--- Consequence -> news grammar clause family binding.
+--- Used by ap_ext_news composer to pick which grammar rule (movement/pursuit/retreat/state/observation) renders the event.
+CONSEQUENCE_CLAUSE_FAMILY = {
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "movement",
+    [CONSEQUENCE.MASSACRE_SCAVENGE]    = "movement",
+    [CONSEQUENCE.SQUADKILL_REVENGE]    = "pursuit",
+    [CONSEQUENCE.SQUADKILL_FLEE]       = "retreat",
+    [CONSEQUENCE.BASEKILL_SUPPORT]     = "movement",
+    [CONSEQUENCE.BASEKILL_FLEE]        = "retreat",
+    [CONSEQUENCE.ALPHA_PROMOTE]        = "state",
+    [CONSEQUENCE.ALPHAKILL_TARGETED]   = "pursuit",
+    [CONSEQUENCE.WOUNDED_HUNT]         = "movement",
+    [CONSEQUENCE.WOUNDED_HELP]         = "movement",
+    [CONSEQUENCE.HARVEST_ROB]          = "pursuit",
+    [CONSEQUENCE.HARVEST_HAUNT]        = "movement",
+    [CONSEQUENCE.STASH_LOOT]           = "movement",
+    [CONSEQUENCE.STASH_AMBUSH]         = "observation",
+    [CONSEQUENCE.STASH_FILL]           = "movement",
+    [CONSEQUENCE.AREA_CONQUER]         = "movement",
+    [CONSEQUENCE.HUNGER_CAMPFIRE]      = "movement",
+    [CONSEQUENCE.SLEEP_CAMPFIRE]       = "movement",
+    [CONSEQUENCE.REST_CAMPFIRE]        = "movement",
+    [CONSEQUENCE.HEAL_SHELTER]         = "movement",
+    [CONSEQUENCE.SHELTER_INDOOR]       = "movement",
+    [CONSEQUENCE.SHELTER_OUTDOOR]      = "movement",
+    [CONSEQUENCE.MONEY_HARVEST]        = "movement",
+    [CONSEQUENCE.MONEY_HUNT]           = "movement",
+    [CONSEQUENCE.SUPPLY_TRADER]        = "movement",
+    [CONSEQUENCE.JOB_OUTPOST]          = "movement",
+    [CONSEQUENCE.JOB_EXPLORE]          = "movement",
+    [CONSEQUENCE.JOB_RESEARCH]         = "movement",
+    [CONSEQUENCE.SOCIAL_CAMPFIRE]      = "movement",
+    [CONSEQUENCE.SOCIAL_BASE]          = "movement",
+    [CONSEQUENCE.INSTINCTS_FEED]       = "movement",
+    [CONSEQUENCE.INSTINCTS_SLEEP]      = "movement",
+    [CONSEQUENCE.INSTINCTS_EXPLORE]    = "movement",
+    [CONSEQUENCE.INSTINCTS_SOCIALIZE]  = "movement",
+    [CONSEQUENCE.INSTINCTS_SCATTER]    = "retreat",
+    [CONSEQUENCE.INSTINCTS_INFEST]     = "movement",
+}
+
+--- Mutant engine faction -> XML display key. Resolved via game.translate_string at compose time.
+--- Engine factions have no user-facing localization; AP provides its own via `st_ap_news_mutant_*` keys.
+MUTANT_FACTION_DISPLAY_KEY = {
+    monster_predatory_day   = "st_ap_news_mutant_predatory_day",
+    monster_predatory_night = "st_ap_news_mutant_predatory_night",
+    monster_vegetarian      = "st_ap_news_mutant_vegetarian",
+    monster_zombied_day     = "st_ap_news_mutant_zombied_day",
+    monster_zombied_night   = "st_ap_news_mutant_zombied_night",
+    monster_special         = "st_ap_news_mutant_special",
+}
+
 --- Stalker needs DTO field names
 NEED_FIELDS = {
     "last_hunger_at", "last_sleep_at", "last_rest_at",

@@ -1,35 +1,15 @@
---- ap_ext_news: PDA message dispatch, sender selection, event recording, news composer
+--- ap_ext_news: Recursive generative grammar composer for PDA news
+
 local IsStalker, get_object_story_id = IsStalker, get_object_story_id
-local ipairs, pairs = ipairs, pairs
-local math_random, math_floor, math_abs, string_gsub, string_match, string_upper = math.random, math.floor, math.abs, string.gsub, string.match, string.upper
+local ipairs, pairs, type = ipairs, pairs, type
+local math_random, math_floor = math.random, math.floor
+local string_format, string_gsub, string_match, string_upper = string.format, string.gsub, string.match, string.upper
+local table_insert = table.insert
+local game_translate_string = game.translate_string
+
 local TRACE = ap_core_const.TRACE
 local CAUSE = ap_core_const.CAUSE
-
---- Weighted random bias for event picker. Higher = more likely to be dispatched.
-local WEIGHT = {
-    [CAUSE.MASSACRE]   = 10,
-    [CAUSE.ALPHAKILL]  = 10,
-    [CAUSE.BASEKILL]   = 9,
-    [CAUSE.SQUADKILL]  = 8,
-    [CAUSE.ALPHA]      = 7,
-    [CAUSE.AREA]       = 7,
-    [CAUSE.HARVEST]    = 5,
-    [CAUSE.WOUNDED]    = 4,
-    [CAUSE.STASH]      = 3,
-    [CAUSE.NEEDS]      = 1,
-    [CAUSE.INSTINCTS]  = 1,
-}
-
---- Mutant engine factions have no localization; render as species plurals so templates like "#subject# pack" read naturally
-local MUTANT_FACTION_DISPLAY = {
-    monster_predatory_day   = "predators",
-    monster_predatory_night = "night predators",
-    monster_vegetarian      = "herbivores",
-    monster_zombied_day     = "zombies",
-    monster_zombied_night   = "zombies",
-    monster_special         = "aberrants",
-}
-
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local alignment_human = ap_ext_const.alignment_human
 
 local cfg = ap_core_mcm.cfg
@@ -38,14 +18,135 @@ local COMPOSE_TICK = "compose_tick"
 
 local DEDUP_CAPACITY = 512
 local TEXT_RING_SIZE = 16
+local HOT_ZONE_WINDOW_HOURS = 3
 
+--- Weighted bias for entry picker. Higher = more likely to be dispatched.
+local WEIGHT = {
+    [CAUSE.MASSACRE]  = 10, [CAUSE.ALPHAKILL] = 10, [CAUSE.BASEKILL]  = 9,
+    [CAUSE.SQUADKILL] = 8,  [CAUSE.ALPHA]     = 7,  [CAUSE.AREA]      = 7,
+    [CAUSE.HARVEST]   = 5,  [CAUSE.WOUNDED]   = 4,  [CAUSE.STASH]     = 3,
+    [CAUSE.NEEDS]     = 1,  [CAUSE.INSTINCTS] = 1,
+}
+
+-- CONSEQUENCE -> clause_family binding lives in ap_ext_const (CONSEQUENCE_CLAUSE_FAMILY).
+-- Mutant engine factions resolve via XML keys (ap_ext_const.MUTANT_FACTION_DISPLAY_KEY).
+
+local _grammar = nil
+local _locale = nil
 local _cons_seq = 0
+local _cluster_size_ctx = 0
+local _ago_ctx = 0
 local _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
 local _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
 
-local _grammar = nil
+-- Walk-until-miss loader: collect {prefix}_001, _002, ... until the engine returns the id itself (miss)
+-- Empty string values are preserved (they act as weighted-random bias toward no-expansion).
+-- @complexity O(index_count) | 1 game.translate_string per index
+local function _load_pool(prefix)
+    local arr = {}
+    for index = 1, 999 do
+        local id = string_format("%s_%03d", prefix, index)
+        local text = game_translate_string(id)
+        if text == id or text == nil then return arr end
+        arr[#arr + 1] = text
+    end
+    return arr
+end
 
---- Record a news-worthy event to the broker FIFO, capturing names at write time
+-- Build the full grammar context from XML pools
+local function _build_rules()
+    local rules = {}
+    local shared_prefixes = {
+        "origin", "opener", "tail",
+        "clause_movement", "clause_pursuit", "clause_retreat",
+        "clause_state", "clause_observation",
+        "clause_cascade", "clause_hot_zone", "clause_retaliation", "clause_chase_resolved",
+        "actor", "target_ref", "place", "safe_place", "state_adj",
+    }
+    for _, key in ipairs(shared_prefixes) do
+        rules[key] = _load_pool("st_ap_news_" .. key)
+    end
+    -- Per-consequence verb pools
+    for _, cons_id in pairs(CONSEQUENCE) do
+        local name = string_match(cons_id, "^consequence:(.+)")
+        if name then rules["verb_" .. name] = _load_pool("st_ap_news_verb_" .. name) end
+    end
+    return rules
+end
+
+-- Detect current game language ("eng", "rus", etc.) from system.ltx
+local function _detect_locale()
+    if not ini_sys then return "eng" end
+    local lang = ini_sys:r_string_ex("string_table", "language")
+    if lang and lang ~= "" then return lang end
+    return "eng"
+end
+
+-- Function rules: computed per compose tick from game state
+local function _fn_time()
+    local hour = math_floor((xtime.game_sec() % 86400) / 3600)
+    if _locale == "rus" then
+        if hour < 5 then return "ночью" end
+        if hour < 9 then return "на рассвете" end
+        if hour < 18 then return "" end
+        if hour < 22 then return "вечером" end
+        return "ночью"
+    end
+    if hour < 5 then return "late" end
+    if hour < 9 then return "at dawn" end
+    if hour < 18 then return "" end
+    if hour < 22 then return "after dark" end
+    return "late"
+end
+
+local function _fn_count()
+    local count = _cluster_size_ctx
+    if count <= 1 then return "" end
+    if _locale == "rus" then
+        if count == 2 then return "пара" end
+        if count == 3 then return "три" end
+        if count <= 5 then return "несколько" end
+        return "много"
+    end
+    if count == 2 then return "two" end
+    if count == 3 then return "three" end
+    if count <= 5 then return "a handful of" end
+    return "multiple"
+end
+
+local function _fn_ago()
+    if _ago_ctx <= 0 then return "" end
+    if _locale == "rus" then
+        if _ago_ctx < 2 then return "недавно" end
+        return "пару часов назад"
+    end
+    if _ago_ctx < 2 then return "" end
+    return "a while back"
+end
+
+local _level_ctx = nil
+local function _fn_level()
+    if not _level_ctx then return "" end
+    return xlevel.get_level_name(_level_ctx) or ""
+end
+
+-- Register locale-specific modifiers
+local function _register_modifiers(grammar)
+    grammar:add_modifiers(xgrammar.base_modifiers)
+    if _locale == "rus" then
+        grammar:add_modifiers({
+            ["and"]  = xgrammar.make_list_and_modifier("и", false),
+            ["then"] = xgrammar.make_list_then_modifier("потом"),
+        })
+    else
+        grammar:add_modifiers({
+            ["and"]  = xgrammar.make_list_and_modifier("and", true),
+            ["then"] = xgrammar.make_list_then_modifier("then"),
+        })
+    end
+end
+
+--- Record a news-worthy event to broker FIFO, capturing names at write time
 function record_event(squad, cause, consequence, opts)
     if not squad or not squad.id then return end
     opts = opts or {}
@@ -66,21 +167,225 @@ function record_event(squad, cause, consequence, opts)
     end
     _cons_seq = _cons_seq + 1
     ap_core_broker.record(squad.id, cause, consequence, {
-        cause_id = opts.cause_id,
-        cons_id = _cons_seq,
+        cause_id        = opts.cause_id,
+        cons_id         = _cons_seq,
+        parent          = opts.parent,
         subject_faction = opts.subject_faction,
-        subject_name = subject_name,
-        target = target_id,
-        target_faction = opts.target_faction,
-        target_name = target_name,
-        level_id = opts.level_id,
-        location = opts.smart and xlevel.get_smart_display_name(opts.smart) or nil,
-        game_hours = math_floor(xtime.game_sec() / 3600),
+        subject_name    = subject_name,
+        target          = target_id,
+        target_faction  = opts.target_faction,
+        target_name     = target_name,
+        level_id        = opts.level_id,
+        location        = opts.smart and xlevel.get_smart_display_name(opts.smart) or nil,
+        game_hours      = math_floor(xtime.game_sec() / 3600),
     })
 end
 
+-- Faction display: mutant engine factions resolve via XML key table; humans via engine translation
+local function _faction_display(faction)
+    if not faction then return nil end
+    local mutant_key = ap_ext_const.MUTANT_FACTION_DISPLAY_KEY[faction]
+    if mutant_key then return game_translate_string(mutant_key) end
+    return game_translate_string(faction)
+end
+
+-- Collect all unreported FIFO entries
+local function _collect_unreported()
+    local entries = {}
+    ap_core_broker.each_record(nil, function(entry)
+        if entry.cons_id and not _reported_cons_ids:has(entry.cons_id) then
+            entries[#entries + 1] = entry
+        end
+    end)
+    return entries
+end
+
+-- Find strongest relation. Returns { kind, members = {...} } or nil.
+-- Priority: retaliation > chase_resolved > cascade > hot_zone.
+-- Match A+B as retaliation: A attacked B (subject/target factions), B now attacks A
+local function _is_retaliation_pair(first, second)
+    return first.subject_faction and first.target_faction
+        and second.subject_faction == first.target_faction
+        and second.target_faction == first.subject_faction
+end
+
+-- Scan from index+1 for a retaliation partner of entries[index]
+local function _retaliation_partner(entries, index)
+    for j = index + 1, #entries do
+        if _is_retaliation_pair(entries[index], entries[j]) then return entries[j] end
+    end
+    return nil
+end
+
+-- Find pair: A.subject_faction == B.target_faction AND A.target_faction == B.subject_faction
+-- @complexity O(n^2) entries | 0 luabind
+local function _find_retaliation(entries)
+    for i = 1, #entries do
+        local partner = _retaliation_partner(entries, i)
+        if partner then return { kind = "retaliation", members = { entries[i], partner } } end
+    end
+    return nil
+end
+
+-- Scan all indices for an entry that points back to entries[index] via parent
+local function _chase_partner(entries, index)
+    for j = 1, #entries do
+        if j ~= index and entries[j].parent == entries[index].cons_id then return entries[j] end
+    end
+    return nil
+end
+
+-- Find pair where B.parent == A.cons_id (chase-style follow-up)
+-- @complexity O(n^2) entries | 0 luabind
+local function _find_chase_resolved(entries)
+    for i = 1, #entries do
+        local partner = _chase_partner(entries, i)
+        if partner then return { kind = "chase_resolved", members = { entries[i], partner } } end
+    end
+    return nil
+end
+
+-- Pick largest cluster above threshold from a group table
+local function _largest_cluster(groups, min_size)
+    local best
+    for _, group in pairs(groups) do
+        if #group >= min_size and (not best or #group > #best) then best = group end
+    end
+    return best
+end
+
+-- Find N-way cascade: cluster by cause_id, size >= 2
+local function _find_cascade(entries)
+    local by_cause = {}
+    for _, entry in ipairs(entries) do
+        if entry.cause_id then
+            by_cause[entry.cause_id] = by_cause[entry.cause_id] or {}
+            table_insert(by_cause[entry.cause_id], entry)
+        end
+    end
+    local best = _largest_cluster(by_cause, 2)
+    if best then return { kind = "cascade", members = best } end
+    return nil
+end
+
+-- Find N-way hot_zone: cluster by location within time window, size >= 2
+local function _find_hot_zone(entries, now_hours)
+    local by_location = {}
+    for _, entry in ipairs(entries) do
+        local fresh = entry.game_hours and (now_hours - entry.game_hours) <= HOT_ZONE_WINDOW_HOURS
+        if entry.location and fresh then
+            by_location[entry.location] = by_location[entry.location] or {}
+            table_insert(by_location[entry.location], entry)
+        end
+    end
+    local best = _largest_cluster(by_location, 2)
+    if best then return { kind = "hot_zone", members = best } end
+    return nil
+end
+
+-- Find strongest relation. Priority: retaliation > chase_resolved > cascade > hot_zone.
+local function _find_relation(entries)
+    local now_hours = math_floor(xtime.game_sec() / 3600)
+    return _find_retaliation(entries)
+        or _find_chase_resolved(entries)
+        or _find_cascade(entries)
+        or _find_hot_zone(entries, now_hours)
+end
+
+-- Pick a single entry from unreported FIFO, weighted by cause
+local function _pick_single(entries)
+    if not entries or #entries == 0 then return nil end
+    local weights = {}
+    for index, entry in ipairs(entries) do weights[index] = WEIGHT[entry.cause] or 1 end
+    return entries[xmath.weighted_choice(weights)]
+end
+
+-- Push per-event rules into grammar for single-entry render
+local function _push_single_rules(entry, consequence_name)
+    local verbs = _grammar._context["verb_" .. consequence_name]
+    if type(verbs) ~= "table" or #verbs == 0 then verbs = { "" } end
+    _level_ctx = entry.level_id
+    _ago_ctx = (entry.game_hours and math_floor(xtime.game_sec() / 3600) - entry.game_hours) or 0
+    _grammar:push_rules({
+        subject      = _faction_display(entry.subject_faction) or "stalkers",
+        name         = entry.subject_name or "",
+        target       = _faction_display(entry.target_faction) or "",
+        target_name  = entry.target_name or "",
+        location     = entry.location or "the Zone",
+        clause       = "#clause_" .. (ap_ext_const.CONSEQUENCE_CLAUSE_FAMILY[entry.consequence] or "movement") .. "#",
+        verb         = verbs,
+    })
+end
+
+-- Push pairwise chain data (retaliation, chase_resolved)
+local function _push_pair_rules(relation)
+    local first, second = relation.members[1], relation.members[2]
+    _level_ctx = first.level_id
+    _grammar:push_rules({
+        faction_a  = _faction_display(first.subject_faction) or "stalkers",
+        faction_b  = _faction_display(second.subject_faction) or "stalkers",
+        location_a = first.location or "the Zone",
+        location_b = second.location or "the Zone",
+        subject    = _faction_display(first.subject_faction) or "stalkers",
+        location   = first.location or "the Zone",
+        clause     = "#clause_" .. relation.kind .. "#",
+    })
+end
+
+-- Collect unique factions and locations from a cluster of entries
+local function _collect_cluster_data(members)
+    local factions, locations = {}, {}
+    local seen_faction, seen_location = {}, {}
+    for _, entry in ipairs(members) do
+        local faction = _faction_display(entry.subject_faction)
+        if faction and not seen_faction[faction] then
+            seen_faction[faction] = true
+            factions[#factions + 1] = faction
+        end
+        if entry.location and not seen_location[entry.location] then
+            seen_location[entry.location] = true
+            locations[#locations + 1] = entry.location
+        end
+    end
+    return factions, locations
+end
+
+-- Push N-way cluster data (cascade, hot_zone) as list rules for #list.and# joining
+local function _push_cluster_rules(relation)
+    local factions, locations = _collect_cluster_data(relation.members)
+    _grammar:push_rules({
+        location = (relation.members[1] and relation.members[1].location) or "the Zone",
+        clause   = "#clause_" .. relation.kind .. "#",
+    })
+    _grammar:add_list_rule("factions", factions)
+    _grammar:add_list_rule("locations", locations)
+end
+
+-- Push per-relation rules for chain render
+local function _push_chain_rules(relation)
+    _cluster_size_ctx = #relation.members
+    if relation.kind == "retaliation" or relation.kind == "chase_resolved" then
+        _push_pair_rules(relation)
+        return
+    end
+    _push_cluster_rules(relation)
+end
+
+-- Clean output: trim, dedupe whitespace, capitalize first and post-sentence
+local function _clean_output(result)
+    if not result or result == "" then return nil end
+    result = string_gsub(result, "^%s+", "")
+    result = string_gsub(result, "%s+$", "")
+    result = string_gsub(result, "  +", " ")
+    result = string_gsub(result, "%s+([%.,;!?])", "%1")
+    result = string_gsub(result, "^(%l)", string_upper)
+    result = string_gsub(result, "([%.%?!]%s+)(%l)", function(pre, c) return pre .. string_upper(c) end)
+    if result == "" then return nil end
+    return result
+end
+
 -- Prefer same-faction stalker as sender; fall back to any friendly online stalker
-local function _pick_sender_for_event(faction)
+local function _pick_sender(faction)
     local online = db.OnlineStalkers
     if not online then return nil end
     local actor = db.actor
@@ -104,151 +409,83 @@ local function _pick_sender_for_event(faction)
         end
         ::continue::
     end
+    if #same_faction == 0 and #any_friendly == 0 then return nil end
     local pool = (#same_faction > 0) and same_faction or any_friendly
-    if #pool == 0 then
-        return nil
-    end
     local npc = xmath.sample(pool)
     return { name = npc:character_name(), icon = npc:character_icon() }
-end
-
-local function _consequence_symbol(consequence)
-    return string_match(consequence, "^consequence:(.+)") or consequence
-end
-
-local function _faction_display(faction, fallback)
-    if not faction then return fallback end
-    local display = MUTANT_FACTION_DISPLAY[faction]
-    if display then return display end
-    return game.translate_string(faction)
-end
-
-local HOT_ZONE_WINDOW_HOURS = 3
-local CHAIN_STRENGTH = { retaliation = 3, cascade = 2, hot_zone = 1 }
-
--- Find the strongest narrative pair (retaliation > cascade > hot_zone) between entry_a and another unreported FIFO entry
-local function _find_relation(entry_a)
-    local best, best_strength = nil, 0
-    ap_core_broker.each_record(nil, function(entry_b)
-        if not entry_b.cons_id or entry_b.cons_id == entry_a.cons_id then return end
-        if _reported_cons_ids:has(entry_b.cons_id) then return end
-        local kind = nil
-        if entry_a.subject_faction and entry_a.target_faction
-           and entry_b.subject_faction and entry_b.target_faction
-           and entry_a.subject_faction == entry_b.target_faction
-           and entry_a.target_faction == entry_b.subject_faction then
-            kind = "retaliation"
-        elseif entry_a.cause_id and entry_b.cause_id and entry_a.cause_id == entry_b.cause_id then
-            kind = "cascade"
-        elseif entry_a.location and entry_b.location
-           and entry_a.location == entry_b.location
-           and entry_a.game_hours and entry_b.game_hours
-           and math_abs(entry_a.game_hours - entry_b.game_hours) <= HOT_ZONE_WINDOW_HOURS then
-            kind = "hot_zone"
-        end
-        if kind and CHAIN_STRENGTH[kind] > best_strength then
-            best = { kind = kind, entry_a = entry_a, entry_b = entry_b }
-            best_strength = CHAIN_STRENGTH[kind]
-        end
-    end)
-    return best
-end
-
-local function _clean_output(result)
-    if not result then return nil end
-    result = string_gsub(result, "^%s+", "")
-    result = string_gsub(result, "%s+$", "")
-    result = string_gsub(result, "  +", " ")
-    result = string_gsub(result, "%s+([%.,;!?])", "%1")
-    result = string_gsub(result, "^(%l)", string_upper)
-    result = string_gsub(result, "([%.%?!]%s+)(%l)", function(pre, c) return pre .. string_upper(c) end)
-    if result == "" then return nil end
-    return result
-end
-
---- Render a two-entry chain relation via the chain_<kind> grammar rule.
---- Returns nil when the corpus has no rule for the relation kind, or when both entries share subject_faction (avoids "X and X" artifacts).
-local function _format_chain_message(relation)
-    local symbol = "chain_" .. relation.kind
-    if not (_grammar and _grammar._context[symbol]) then return nil end
-    local a, b = relation.entry_a, relation.entry_b
-    if a.subject_faction and a.subject_faction == b.subject_faction then return nil end
-    _grammar:push_rules({
-        faction_a = _faction_display(a.subject_faction, "stalkers"),
-        faction_b = _faction_display(b.subject_faction, "stalkers"),
-        location_a = a.location or "the Zone",
-        location_b = b.location or "the Zone",
-        location = a.location or "the Zone",
-    })
-    local result = _grammar:generate(symbol)
-    _grammar:pop_rules()
-    return _clean_output(result)
-end
-
-local function _format_message(entry)
-    local symbol = _consequence_symbol(entry.consequence)
-    if not (_grammar and _grammar._context[symbol]) then return nil end
-    _grammar:push_rules({
-        subject = _faction_display(entry.subject_faction, "stalkers"),
-        target = _faction_display(entry.target_faction, ""),
-        location = entry.location or "the Zone",
-        subject_name = entry.subject_name or "#name_fallback#",
-        target_name = entry.target_name or "#name_fallback#",
-    })
-    local result = _grammar:generate(symbol)
-    _grammar:pop_rules()
-    return _clean_output(result)
-end
-
-local function _pick_entry()
-    local entries, weights = {}, {}
-    ap_core_broker.each_record(nil, function(entry)
-        if not entry.cons_id or _reported_cons_ids:has(entry.cons_id) then return end
-        entries[#entries + 1] = entry
-        weights[#entries] = WEIGHT[entry.cause] or 1
-    end)
-    if #entries == 0 then return nil end
-    return entries[xmath.weighted_choice(weights)]
 end
 
 --- Pick, chain-detect, render, and dispatch one news message from the activity FIFO
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
-    local entry = _pick_entry()
-    if not entry then return { code = TRACE.NONE } end
-    local relation = _find_relation(entry)
-    local msg, relation_type
+
+    -- Rebuild grammar if locale changed
+    local current_locale = _detect_locale()
+    if current_locale ~= _locale then
+        _locale = current_locale
+        _grammar = xgrammar.create_grammar(_build_rules())
+        _grammar:add_rule("time",  _fn_time)
+        _grammar:add_rule("count", _fn_count)
+        _grammar:add_rule("ago",   _fn_ago)
+        _grammar:add_rule("level", _fn_level)
+        _register_modifiers(_grammar)
+    end
+
+    local entries = _collect_unreported()
+    if #entries == 0 then return { code = TRACE.NONE } end
+
+    local relation = _find_relation(entries)
+    local msg, relation_kind, sender_faction, reported = nil, nil, nil, {}
+
     if relation then
-        msg = _format_chain_message(relation)
-        if msg then
-            _reported_cons_ids:set(relation.entry_a.cons_id, true)
-            _reported_cons_ids:set(relation.entry_b.cons_id, true)
-            relation_type = relation.kind
+        _push_chain_rules(relation)
+        local raw = _grammar:generate("origin")
+        msg = _clean_output(raw)
+        _grammar:pop_rules()
+        if msg and relation.members then
+            relation_kind = relation.kind
+            sender_faction = relation.members[1].subject_faction
+            for _, chain_entry in ipairs(relation.members) do reported[#reported + 1] = chain_entry.cons_id end
         end
     end
+
     if not msg then
-        msg = _format_message(entry)
-        if msg then _reported_cons_ids:set(entry.cons_id, true) end
+        local entry = _pick_single(entries)
+        if not entry then return { code = TRACE.NONE } end
+        local cons_name = string_match(entry.consequence, "^consequence:(.+)") or ""
+        _cluster_size_ctx = 1
+        _push_single_rules(entry, cons_name)
+        local raw = _grammar:generate("origin")
+        msg = _clean_output(raw)
+        _grammar:pop_rules()
+        if msg then
+            sender_faction = entry.subject_faction
+            reported[#reported + 1] = entry.cons_id
+        end
     end
+
     if not msg then
-        ap_core_debug.debug("[PDA.NEWS] no_msg consequence=%s", entry.consequence)
-        return { code = TRACE.NO_MSG, consequence = entry.consequence }
+        ap_core_debug.debug("[PDA.NEWS] no_msg locale=%s", _locale)
+        return { code = TRACE.NO_MSG }
     end
     if _recent_msgs:has(msg) then
-        ap_core_debug.debug("[PDA.NEWS] dup_text consequence=%s", entry.consequence)
-        return { code = TRACE.DUP_TEXT, consequence = entry.consequence }
+        ap_core_debug.debug("[PDA.NEWS] dup_text locale=%s", _locale)
+        return { code = TRACE.DUP_TEXT }
     end
-    local sender_faction = relation and relation.entry_a.subject_faction or entry.subject_faction
-    local picked = _pick_sender_for_event(sender_faction)
+
+    local picked = _pick_sender(sender_faction)
     if not picked then
-        ap_core_debug.debug("[PDA.NEWS] no_sender consequence=%s faction=%s", entry.consequence, sender_faction or "?")
-        return { code = TRACE.NO_SENDER, consequence = entry.consequence }
+        ap_core_debug.debug("[PDA.NEWS] no_sender faction=%s", sender_faction or "?")
+        return { code = TRACE.NO_SENDER }
     end
+
     xpda.send(picked.name, msg, picked.icon)
     _recent_msgs:set(msg, true)
-    ap_core_debug.debug("[PDA.NEWS] sent sender=%s consequence=%s relation=%s msg=%s",
-        picked.name, entry.consequence, relation_type or "none", msg)
-    return { code = TRACE.SENT, sender = picked.name, consequence = entry.consequence, relation = relation_type }
+    if #reported > 0 then
+        for _, cid in ipairs(reported) do _reported_cons_ids:set(cid, true) end
+    end
+    ap_core_debug.debug("[PDA.NEWS] sent sender=%s relation=%s msg=%s", picked.name, relation_kind or "none", msg)
+    return { code = TRACE.SENT, sender = picked.name, relation = relation_kind }
 end
 
 local function _next_delay()
@@ -263,26 +500,12 @@ local function _on_compose_timer()
     return false
 end
 
-local function _assemble_rules()
-    local out = {}
-    for _, src in ipairs({
-        ap_ext_news_data_shared.DATA,
-        ap_ext_news_data_reactive.DATA,
-        ap_ext_news_data_needs.DATA,
-        ap_ext_news_data_world.DATA,
-        ap_ext_news_data_instincts.DATA,
-        ap_ext_news_data_chain.DATA,
-    }) do
-        for k, v in pairs(src) do out[k] = v end
-    end
-    return out
-end
-
 function on_game_start()
     _cons_seq = 0
+    _cluster_size_ctx = 0
+    _ago_ctx = 0
+    _locale = nil
     _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
     _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
-    _grammar = xgrammar.create_grammar(_assemble_rules())
-    _grammar:add_modifiers(xgrammar.base_modifiers)
-    CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay(), _on_compose_timer)
+    CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, 30, _on_compose_timer)
 end

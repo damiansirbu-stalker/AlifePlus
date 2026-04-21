@@ -245,6 +245,30 @@ Instincts
     Feral species infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and shelters.
     Cowardly species are too weak to hold territory.
 
+News: Emergent Zone Gossip
+  Every AP event surfaces as PDA chatter.
+  Stalkers on your frequency talk about what happened: a massacre at the dump, bandits raiding a stash,
+  predators stalking wounded prey, Duty pushing into contested territory.
+
+  Every message assembles at runtime from a recursive grammar tree of small building blocks
+  (openers, verbs, actor forms, place references, tails) composed with live event data
+  (faction, location, commander names, time of day, cluster size).
+  The corpus holds around 200 fragments per language and the grammar produces millions of distinct sentences from them.
+
+  Chain detection reads the journal and narrates connected events.
+  Hot zones surface when a single location takes multiple hits in a short window.
+  Cascades surface when several factions react to the same trigger.
+  Retaliations surface when a faction that just hit someone gets hit back elsewhere.
+  Chase-resolved surfaces when a pursuit from hours ago finally catches up.
+
+  English and Russian ship together.
+  Each language has its own branches through the same rule tree; adding a new locale takes one XML file.
+
+  The sender is picked from online stalkers: same-faction first, any friendly stalker otherwise.
+  The tick drops when no stalker qualifies.
+
+  MCM exposes a master toggle and interval sliders from 60 to 600 seconds between messages.
+
 Day/Night Cycle
   Stalkers and mutants follow a day/night activity cycle.
   During active hours, creatures feed, explore, work, and trade.

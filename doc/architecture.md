@@ -60,8 +60,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
 | ap_ext_util | Domain gates: alignment, personality checks, FIFO-cached species resolution |
 | ap_ext_const | Community sets, faction lists, item pools |
-| ap_ext_news | News composer (event FIFO, xgrammar rendering, xpda dispatch) |
-| ap_ext_news_data_* | xgrammar rule tables (shared, reactive, needs, world, instincts, chain) |
+| ap_ext_news | News composer (recursive grammar walk, chain detection, xpda dispatch) |
 | ap_ext_test | In-game debug commands |
 
 ---
@@ -318,52 +317,90 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 ### News Composer (ap_ext_news)
 
-Procedural PDA gossip composer. Transforms AP event telemetry into diegetic stalker radio chatter. Reads the activity FIFO, detects chainable relations between recent events, composes messages via xgrammar, and dispatches through xpda with an event-connected sender. The composer is a presentation layer: pipeline events never know about news, and news never mutates pipeline state.
+Procedural PDA news composer. Transforms AP event telemetry into stalker radio chatter via a recursive generative grammar. No pre-written sentences anywhere: every message is assembled at compose time from tiny building blocks (openers, actor forms, verbs, place forms, tails) routed through a small rule tree, with live event data (faction, location, names, time) injected per tick. The composer is a presentation layer — pipeline events never know about news, and news never mutates pipeline state.
 
-**Pipeline.** Consequence SUCCESS -> `record_event(squad, cause, consequence, opts)` captures subject/target names and faction at write time (names must survive entity death), resolves location via `xlevel.get_smart_display_name`, appends to broker FIFO. Composer tick (on MCM-randomized interval) scans the FIFO for chain relations, picks a single entry if none found, injects entry data as xgrammar rules, flattens a template, picks an event-connected online stalker as sender, calls `xpda.send`. Total cost per tick: one FIFO walk + ~50 luabind calls for sender filter (sliced across frames via xslice).
+**Emergent news.** AP's gameplay emerges from cause->consequence chains. The news layer matches that principle: every sentence emerges from grammar composition over live data. The news corpus holds ~200 fragments per locale; those fragments produce ~10 million distinct sentences per locale via rule composition. Same mechanism as the gameplay: small primitives, combinatorial output, no scripting.
 
-**Journal = broker FIFO.** No separate journal module. `ap_core_broker` exposes a `xttltable.create_fifo_cache` with `record()`, `each_record()`, `clear_record()`. Entry shape includes `cause_id` (shared by all consequences from one cause publish, via `_cause_seq` in producer), `cons_id` (monotonic per journal append), `subject_faction/name`, `target/target_faction/target_name`, `level_id`, `location`, `game_hours`, `parent` (for explicit chain links from chase-style follow-ups). Session-lifetime only: FIFO clears on load, counters reset. Broker stays pure storage; news flags live in `ap_ext_news` sets, never on entries.
+**Pipeline.** Consequence SUCCESS -> `record_event(squad, cause, consequence, opts)` captures subject/target names and faction at write time (names must survive entity death), resolves location via `xlevel.get_smart_display_name`, appends to broker FIFO. Composer tick (on MCM-randomized interval 60-600s) scans the FIFO for chain relations, picks a single entry if none found, injects entry data as grammar rules, generates from `#origin#`, picks an event-connected online stalker as sender, calls `xpda.send`. Total cost per tick: one FIFO walk + ~50 luabind calls for sender filter.
 
-**Grammar system (xgrammar).** `stalker-mods/xlibs/gamedata/scripts/xgrammar.script` is a Tracery port (177 LOC, pure Lua 5.1, Apache). Templates contain `#symbol#` slots that resolve recursively from rule tables. Templates thread through shared pools (`#opener#`, `#tail_flavor#`) and consequence-specific anchor pools (`#squadkill_verb_active#`, `#hunger_food_item#`). Data slots (`#subject#`, `#location#`, `#target#`, `#subject_name#`, `#target_name#`) are injected per event via `grammar:add_rule`. Effective variance per consequence: ~15 templates x 8 opener x 6 anchor pool x 6 tail pool x 18 flavor ≈ thousands of surface forms from ~150 source strings. The grammar is the voice — no synonym inflation; variety comes from data changing.
+**Journal = broker FIFO.** No separate journal module. `ap_core_broker` exposes a `xttltable.create_fifo_cache` with `record()`, `each_record()`, `clear_record()`. Entry shape includes `cause_id` (shared by all consequences from one cause publish), `cons_id` (monotonic per journal append), `subject_faction/name`, `target/target_faction/target_name`, `level_id`, `location`, `game_hours`, `parent` (for explicit chain links from chase-style follow-ups). Session-lifetime only: FIFO clears on load, counters reset. Broker stays pure storage; news flags live in `ap_ext_news` sets, never on entries.
 
-**Registers / voice moods.** Six co-existing moods per consequence, drawn 3-4 per pool:
+**Grammar engine (xgrammar).** `stalker-mods/xlibs/gamedata/scripts/xgrammar.script` is a Tracery port (pure Lua 5.1, Apache). Rule symbols `#sym#` expand recursively from a rule table. Grammar additions shipped for AP news:
 
-| Mood | Scope | Markers |
-|------|-------|---------|
-| DRAMA | Death, alpha, base attacks | Profanity + hedging + scared (`Christ...`, `Fuck sake.`) |
-| CASUAL | Low-stakes observations | Hedged, textured (`apparently`, `looks like`) |
-| INTIMATE | Squad-internal comms | Dialogue form, uses names, `[crackle]` markers |
-| JADED | Veteran narrator | Sarcastic deadpan (`Tuesday.`, `Another one.`) |
-| DESPERATE | Emergency escalation | Clipped, repetitive (`Shit shit shit.`, `MEDIC!`) |
-| DOOMER | Russian fatalism overlay | Vodka refs, `Zone keeps score.`, philosophical |
+| Syntax | Meaning |
+|---|---|
+| `#?sym#` | Optional slot: 50% expand, 50% skip |
+| `#a\|b\|"literal"#` | Fallback chain: first non-empty wins |
+| `#list.and#` | Locale-aware list join with conjunction (English Oxford comma, Russian no Oxford) |
+| `#list.then#` | Sequential join ("X, then Y, then Z" / "X, потом Y, потом Z") |
+| `grammar:add_list_rule(sym, array)` | Mark a rule as list-typed so modifiers receive the whole array |
 
-Same event fires different moods at random per compose tick. Voice rule: every template must carry at least one of — specific detail, profanity, squad personality, hedge, or radio-comms marker. No neutral textbook descriptions.
+**Grammar tree.** Rule symbols shared across all consequences, expanded recursively:
 
-**Weight tiers.** HIGH-weight events (stash, harvest, alpha, area_conquer, massacre, basekill, squadkill) get actionable/warning framing: intel a listener can act on (*"Bandits set up at the factory. Stay clear."*, *"Guy dropped an artefact near the tunnel. Fresh."*). LOW-weight events (needs, rest, social, sleep) get ambient flavor (*"Loners passing vodka at the bar."*). Weight gates which shared pool tails apply and biases the event picker's weighted random.
+```
+origin              -> "#opener# #clause#.#?tail#"
+clause              -> #clause_movement# | #clause_pursuit# | #clause_retreat#
+                     | #clause_state#    | #clause_observation# | #clause_chain#
+clause_movement     -> "#actor# #verb# #location#" (5 variants)
+clause_pursuit      -> "#actor# #verb# #target_ref#" (5 variants)
+clause_retreat      -> "#actor# #verb# #safe_place#" (5 variants)
+clause_state        -> "#actor# #verb#" (4 variants)
+clause_observation  -> "#actor# #verb# #location#" (4 variants)
+clause_chain        -> #clause_cascade# | #clause_hot_zone# | #clause_retaliation# | #clause_chase_resolved#
+actor               -> 5 variants: "#subject#", "a #subject# squad", "the #subject# boys", ...
+place               -> 4 variants: "#location#", "near #location#", "#location# area", ...
+opener              -> 10 variants including empty (weighted bias)
+tail                -> 5 variants
+```
 
-**Anchor vocabulary.** Each consequence has an AP-term anchor pool the template threads through. `squadkill_revenge` pulls from `{"avengers already out", "payback cooking", "out for blood", "won't let it slide"}`. `area_conquer` from `{"claimed", "took", "seized", "locked down", "planted their flag"}`. Every generated message contains at least one anchor word from its consequence → player learns the AP vocabulary as gossip vocabulary.
+Per consequence: only a verb pool (~4 entries) and a clause-family tag bound in `ap_ext_const.CONSEQUENCE_CLAUSE_FAMILY`. Total content: ~210 XML ids per locale (66 shared + 144 per-consequence verbs + mutant display plurals).
 
-**Chain detection.** `_find_relation(FIFO)` scans recent entries for:
+**Distinct sentences per consequence:** `opener(8) × clause(5) × actor(3) × verb(4) × tail_opt(6) × faction(~10) × location(~10)` ≈ **288,000 distinct surface forms for a single consequence in a single context**. Across 36 consequences with per-scenario data variation: **~10 million distinct sentences per locale** from ~210 source fragments. Classical template system (pre-xgrammar) produced ~15k sentences from 147 hardcoded templates — ratio ~700x more variety from 3x less text.
 
-| Chain | Pattern | Example framing |
-|-------|---------|-----------------|
-| cascade | 2+ entries share `cause_id` | "Mess at the factory — #e1# and #e2#. Same outfit." |
-| hot_zone | 2+ entries same `location` within time window | "#location# is hot. #count# contacts in an hour." |
-| retaliation | entry B.`subject_faction` == entry A.`target_faction`, B younger | "#A# hit #B# at #loc1#. Now #B# hunting at #loc2#." |
-| chase_resolved | entry B.`parent` == entry A.`cons_id` | "Those chasers out of #loc1#? #outcome# at #loc2#." |
+**Content lives in XML.** English: `configs/text/eng/ui_st_ap_news.xml`. Russian: `configs/text/rus/ui_st_ap_news.xml` (windows-1251). 100% parity between locales — both ship complete on same merge, no partial state. Loaded at boot via walk-until-miss: composer asks `game.translate_string("st_ap_news_<pool>_<NNN>")` starting at 001, stops when engine returns the id itself (miss marker). Zero engine calls per tick after load.
 
-When a relation fires, composer uses chain-tier templates and injects both entries' data; else falls back to single-entry pick. Chain-tier gets stronger narrative framing (emergent storytelling from journal structure).
+**Function rules (composer-side, Lua only).** Four data rules computed from game state, registered via `grammar:add_rule(sym, fn)`:
+
+| Rule | Source | Output |
+|---|---|---|
+| `#time#` | `xtime.game_sec()` -> hour bucket | "at dawn", "late", "after dark" (locale-aware) |
+| `#count#` | current cluster size | "two", "three", "a handful of", "multiple" |
+| `#ago#` | now - entry.game_hours | "a while back", "" (zero if recent) |
+| `#level#` | `xlevel.get_level_name(level_id)` | "Garbage", "Cordon" (localized via engine) |
+
+**Locale routing.** Detected at boot via `ini_sys:r_string_ex("string_table", "language")`. Rebuilt on language change (detected per tick). Engine's CStringTable handles the English fallback for missing Russian keys — validator blocks merge if id sets differ, so fallback never activates in production.
+
+**Chain detection.** `_find_relation(entries)` scans unreported FIFO entries for:
+
+| Chain | Pattern | Shape |
+|---|---|---|
+| retaliation | A.subject == B.target AND A.target == B.subject | pairwise |
+| chase_resolved | B.parent == A.cons_id | pairwise |
+| cascade | N entries share `cause_id`, size >= 2 | N-way |
+| hot_zone | N entries same location within HOT_ZONE_WINDOW_HOURS | N-way |
+
+Priority: retaliation > chase_resolved > cascade > hot_zone (retaliation needs specific faction pairs; cascade/hot_zone cluster opportunistically). N-way clusters render through `#factions.and#` and `#locations.and#` list modifiers. Chain clauses live in their own rule families (`clause_cascade_NNN` etc.), selected via the composer pushing `clause = "#clause_<kind>#"` before `generate("origin")`.
 
 **Dedup (two layers).**
 
-- Record-level: `_reported_cons_ids` set in ap_ext_news. Prevents re-using the same FIFO entry. Broker stays pure — no `_reported` flag on entries.
-- Text-level: ring buffer of last N rendered strings (MCM-configured, default 10). Reject if new == any in ring, try next pick. Catches templates resolving to the same sentence when two different journal entries hit the same pool draw.
+- Record-level: `_reported_cons_ids` FIFO cache in `ap_ext_news` (512 capacity). Prevents re-using the same journal entry.
+- Text-level: ring buffer of last N rendered strings (16 entries). Rejects if new == any in ring. Catches two different entries rolling the same surface form.
 
-**Sender selection.** Event-connected NPC preferred: same-faction + same-level (witness) > same-faction (report) > any-friendly (rumor). Iterates `db.OnlineStalkers` once per tick, filters alive/human/non-story/non-enemy. Sender name + icon passed to `xpda.send`. One inline iteration per compose tick. At the default 120-300s cadence the burst is bounded; `xslice` remains a future option if stalker density pushes per-tick cost above budget.
+**Sender selection.** Event-connected NPC preferred: same-faction online stalker > any friendly online stalker. Iterates `db.OnlineStalkers`, filters alive/human/non-story/non-enemy. Sender name + icon passed to `xpda.send`. One inline iteration per compose tick.
 
-**MCM surface.** `news_enabled` (bool, master toggle). `news_interval_min_sec` + `news_interval_max_sec` (int sliders 60-600): each compose tick randomizes delay between them for non-mechanical cadence. No per-consequence gates — weight tiers + pool quality shape balance instead.
+**MCM surface.** `news_enabled` (bool, master toggle). `news_interval_min_sec` + `news_interval_max_sec` (int sliders 60-600): each compose tick randomizes delay between them for non-mechanical cadence.
 
-**Invariants.** Session-lifetime (no save/load). Nil-safe on every lookup (`nil` subject_name, target, location all gracefully fall through to generic phrasings). Broker storage purity (`ap_ext_news` holds all news-layer state). Grammar rules immutable — per-event data goes through `add_rule` on a context-pushed copy, not global grammar state.
+**Data in `ap_ext_const`.** Grammar is data, not logic. Tables lifted out of the composer:
+
+- `CONSEQUENCE_CLAUSE_FAMILY` — 36 consequence -> clause family ("movement", "pursuit", etc.)
+- `MUTANT_FACTION_DISPLAY_KEY` — engine mutant faction -> XML id for localized display ("predators" / "хищники")
+
+**Invariants.**
+- Session-lifetime (no save/load). FIFO resets on load, dedup caches reset, grammar rebuilt.
+- Nil-safe on every data slot (empty string, fallback chain, or clause family that doesn't need the slot).
+- Broker storage purity (`ap_ext_news` holds all news-layer state; broker stores only event facts).
+- User-facing text is in XML. Composer has zero hardcoded display strings.
+- Grammar rules immutable — per-event data goes through `push_rules` on a context-pushed copy, popped after each generate call.
 
 ### Causes
 

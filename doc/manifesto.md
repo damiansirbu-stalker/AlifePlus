@@ -84,6 +84,46 @@ You are not special.
 
 ---
 
+### Emergent Narration
+
+If the gameplay is emergent, the narration of it should be emergent too.
+Nothing describing what happened in the Zone is pre-written.
+
+AlifePlus events fire from cause-consequence chains: a death, a massacre, a territory claim, a pack scattering.
+The news layer that surfaces these events to the player uses the same principle.
+No canned sentences.
+Every PDA message is composed at runtime from a recursive grammar: small primitive pieces (openers, verbs, actor forms, place references, connectives) combine through rule expansion, with live event data (faction, location, time, commander names) injected per tick.
+Roughly 200 text fragments compose into millions of distinct sentences.
+Same fight, different day, different words.
+Same primitives, different locale.
+
+GSC designed news exactly this way.
+An NPC who saw a kill recorded the event, passed it to a trader, who broadcast to all nearby stalkers [8].
+The witness chain carried the news.
+If the witness died before sending it, the news never happened.
+
+> "To notify player about the offline activity, we used news, which were generated if some character could see an event or its consequences."
+> Dmitriy Iassenev, Game Developer (2008) [1]
+
+AlifePlus implements this explicitly.
+Consequences record events to a journal (ring buffer, session-only).
+The composer reads the journal, detects patterns between recent events (cascade, hot zone, retaliation, chase resolved), and narrates them through the grammar tree.
+Event-connected stalkers are preferred as senders: a same-faction witness first, a friendly stalker second.
+When no witness is available, the tick is wasted and no message goes out.
+
+The grammar itself is localized.
+English and Russian ship together with identical ID coverage.
+Russian is natively authored, not translated word for word.
+Each locale provides its own branches through the same rule symbols, so a new language is an XML file, not a code change.
+
+> "A discovered character corpse... Pre-mortem PDA Signal (sent to all known Traders; conveys the cause of death: perishing in an anomaly, death by monsters, death by Stalker weaponry, death due to a status effect, or death by a physical object)."
+> [8]
+
+Pre-written text locks the simulation to a finite phrasebook.
+Grammar over live data lets the Zone keep finding new words for things that are already different every time.
+
+---
+
 ## Architecture
 
 ### Event Pipeline
