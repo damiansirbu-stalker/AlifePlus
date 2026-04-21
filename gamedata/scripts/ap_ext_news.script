@@ -1,14 +1,12 @@
 --- ap_ext_news: PDA message dispatch, sender selection, event recording, news composer
 local IsStalker, get_object_story_id = IsStalker, get_object_story_id
-local math_random, math_floor, math_abs, string_format, string_gsub, string_match = math.random, math.floor, math.abs, string.format, string.gsub, string.match
+local ipairs, pairs = ipairs, pairs
+local math_random, math_floor, math_abs, string_gsub, string_match = math.random, math.floor, math.abs, string.gsub, string.match
 local TRACE = ap_core_const.TRACE
 local CAUSE = ap_core_const.CAUSE
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 
---- Drama weights by cause. Higher = more likely to be picked by composer.
---- HIGH tier: actionable / warning framing. LOW tier: ambient flavor.
---- FIFO cap already bounds by recency; this table shapes WHICH of the recent events gets dispatched.
+--- Weighted random bias for event picker. Higher = more likely to be dispatched.
 local WEIGHT = {
     [CAUSE.MASSACRE]   = 10,
     [CAUSE.ALPHAKILL]  = 10,
@@ -29,14 +27,9 @@ local cfg = ap_core_mcm.cfg
 local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "compose_tick"
 
---- Monotonic counter for cons_id; session-lifetime, reset on load
 local _cons_seq = 0
-
---- Dedup: cons_ids already dispatched. Avoids mutating broker entries.
 local _reported_cons_ids = {}
 
---- Text-level dedup: fixed-size ring of last N rendered messages.
---- Rejects repeat strings even across different journal entries.
 local TEXT_RING_SIZE = 16
 local _recent_msgs = {}
 local _recent_idx = 0
@@ -53,60 +46,9 @@ local function _text_record(msg)
     _recent_msgs[_recent_idx] = msg
 end
 
---- xgrammar replacement engine. Built lazily in on_game_start from ap_ext_news_corpus.CORPUS.
---- Drives grammar-path rendering for consequences the corpus covers; falls back to flat
---- TEMPLATES + string.format for unported consequences.
 local _grammar = nil
 
---- MVP templates: one per consequence. Grammar expansion is a follow-up step.
---- Fields: %s subject_faction, %s location, %s target_faction (when present)
-local TEMPLATES = {
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "%s crew heading to investigate bodies near %s.",
-    [CONSEQUENCE.MASSACRE_SCAVENGE] = "Scavengers moving on %s bodies near %s.",
-    [CONSEQUENCE.SQUADKILL_REVENGE] = "%s lost a squad near %s. Avengers are hunting the %s who did it.",
-    [CONSEQUENCE.SQUADKILL_FLEE] = "%s took losses near %s. Rest of them pulled back to base.",
-    [CONSEQUENCE.BASEKILL_SUPPORT] = "%s base near %s under attack. Reinforcements moving.",
-    [CONSEQUENCE.BASEKILL_FLEE] = "%s evacuating base near %s. Heavy losses.",
-    [CONSEQUENCE.ALPHA_PROMOTE] = "Something big settled near %s. The pack follows it everywhere.",
-    [CONSEQUENCE.ALPHAKILL_TARGETED] = "Mutants tracking the %s who killed their alpha near %s.",
-    [CONSEQUENCE.WOUNDED_HUNT] = "Predators moving toward wounded near %s. %s scent in the air.",
-    [CONSEQUENCE.WOUNDED_HELP] = "%s rushing to help a wounded brother near %s.",
-    [CONSEQUENCE.HARVEST_ROB] = "%s chasing an artefact carrier near %s. %s won't like it.",
-    [CONSEQUENCE.HARVEST_HAUNT] = "Aberrant mutants converging near %s. Artefact pickup drew them.",
-    [CONSEQUENCE.AREA_CONQUER] = "%s claimed territory near %s.",
-    [CONSEQUENCE.STASH_LOOT] = "%s crew looting a stash near %s.",
-    [CONSEQUENCE.STASH_AMBUSH] = "%s setting up ambush at a stash near %s.",
-    [CONSEQUENCE.STASH_FILL] = "%s crew stashing gear near %s.",
-    [CONSEQUENCE.HUNGER_CAMPFIRE] = "%s crew stopped at %s for a bite.",
-    [CONSEQUENCE.SLEEP_CAMPFIRE] = "%s bedded down near %s.",
-    [CONSEQUENCE.REST_CAMPFIRE] = "%s resting up at %s.",
-    [CONSEQUENCE.HEAL_SHELTER] = "%s crew holed up at %s to patch wounds.",
-    [CONSEQUENCE.SHELTER_INDOOR] = "%s crew moved indoors near %s.",
-    [CONSEQUENCE.SHELTER_OUTDOOR] = "%s crew hunkered down by a fire near %s.",
-    [CONSEQUENCE.MONEY_HARVEST] = "%s went artefact hunting near %s.",
-    [CONSEQUENCE.MONEY_HUNT] = "%s crew hunting mutants for pelts near %s.",
-    [CONSEQUENCE.SUPPLY_TRADER] = "%s crew heading to trader near %s.",
-    [CONSEQUENCE.JOB_OUTPOST] = "%s taking up guard duty near %s.",
-    [CONSEQUENCE.JOB_EXPLORE] = "%s crew scouting unclaimed ground near %s.",
-    [CONSEQUENCE.JOB_RESEARCH] = "%s eggheads heading to anomaly field near %s.",
-    [CONSEQUENCE.SOCIAL_CAMPFIRE] = "%s gathered at %s.",
-    [CONSEQUENCE.SOCIAL_BASE] = "%s crew returning to base near %s.",
-    [CONSEQUENCE.INSTINCTS_SCATTER] = "Mutants fleeing something near %s.",
-    [CONSEQUENCE.INSTINCTS_FEED] = "Pack hunting near %s. Something or someone is prey.",
-    [CONSEQUENCE.INSTINCTS_SLEEP] = "Mutants bedding down in lair near %s.",
-    [CONSEQUENCE.INSTINCTS_EXPLORE] = "Mutants prowling territory near %s.",
-    [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "Pack gathering near %s.",
-    [CONSEQUENCE.INSTINCTS_INFEST] = "Mutants claiming lair near %s. New nest forming.",
-}
-
-
---- Record a news-worthy event with captured subject/target context
---- Names and factions captured at write time so the composer can use them after entities die
---- @safety SAFE - nil-guarded on all lookups, opts optional
---- @param squad se_squad Acting squad (subject)
---- @param cause string Cause key (CAUSE.X)
---- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil { cause_id, subject_faction, target_squad, target_faction, smart, level_id }
+--- Record a news-worthy event to the broker FIFO, capturing names at write time
 function record_event(squad, cause, consequence, opts)
     if not squad or not squad.id then return end
     opts = opts or {}
@@ -140,11 +82,7 @@ function record_event(squad, cause, consequence, opts)
     })
 end
 
---- Pick a PDA sender event-connected to the event, preferring same-faction witnesses
---- Falls back to any friendly online stalker if no same-faction candidate exists
---- @safety SAFE - nil-guarded, pure table iteration until final character_name/icon calls
---- @param faction string|nil Subject faction (e.g. "dolg"); nil skips same-faction preference
---- @return table|nil { name, icon } or nil when no candidates
+-- Prefer same-faction stalker as sender; fall back to any friendly online stalker
 local function _pick_sender_for_event(faction)
     local online = db.OnlineStalkers
     if not online then return nil end
@@ -177,29 +115,19 @@ local function _pick_sender_for_event(faction)
     return { name = npc:character_name(), icon = npc:character_icon() }
 end
 
---- Strip "consequence:" prefix, returning the short symbol name used as grammar rule key
 local function _consequence_symbol(consequence)
     return string_match(consequence, "^consequence:(.+)") or consequence
 end
 
---- Translate a raw faction key ("dolg") to display name ("Duty") via game.translate_string.
---- Returns fallback when faction is nil; safe on empty result (translate returns input on miss).
 local function _faction_display(faction, fallback)
     if not faction then return fallback end
     return game.translate_string(faction)
 end
 
---- Chain detection constants. hot_zone window is game-hours.
---- Retaliation > cascade > hot_zone by narrative strength.
 local HOT_ZONE_WINDOW_HOURS = 3
 local CHAIN_STRENGTH = { retaliation = 3, cascade = 2, hot_zone = 1 }
 
---- Find the strongest narrative relation between the picked entry and another unreported FIFO entry.
---- Returns { kind, entry_a, entry_b } or nil when nothing correlates.
---- Predicates:
----   retaliation: A.subject == B.target AND A.target == B.subject (cross-faction reprisal)
----   cascade: A.cause_id == B.cause_id (two consequences fired from same cause event)
----   hot_zone: A.location == B.location AND |A.game_hours - B.game_hours| <= 3
+-- Find the strongest narrative pair (retaliation > cascade > hot_zone) between entry_a and another unreported FIFO entry
 local function _find_relation(entry_a)
     local best, best_strength = nil, 0
     ap_core_broker.each_record(nil, function(entry_b)
@@ -251,41 +179,27 @@ local function _format_chain_message(relation)
     return result
 end
 
---- Render a journal entry into gossip text. Grammar-path first (xgrammar rules),
---- falls back to flat TEMPLATES + string.format for unported consequences.
---- Returns nil when neither path can produce a message.
 local function _format_message(entry)
     local symbol = _consequence_symbol(entry.consequence)
-    if _grammar and _grammar._context[symbol] then
-        _grammar:push_rules({
-            subject = _faction_display(entry.subject_faction, "stalkers"),
-            target = _faction_display(entry.target_faction, ""),
-            location = entry.location or "the Zone",
-            subject_name = entry.subject_name or "#name_fallback#",
-            target_name = entry.target_name or "#name_fallback#",
-        })
-        local result = _grammar:generate(symbol)
-        _grammar:pop_rules()
-        if result then
-            result = string_gsub(result, "^%s+", "")
-            result = string_gsub(result, "%s+$", "")
-            result = string_gsub(result, "  +", " ")
-        end
-        if result and result ~= "" then return result end
+    if not (_grammar and _grammar._context[symbol]) then return nil end
+    _grammar:push_rules({
+        subject = _faction_display(entry.subject_faction, "stalkers"),
+        target = _faction_display(entry.target_faction, ""),
+        location = entry.location or "the Zone",
+        subject_name = entry.subject_name or "#name_fallback#",
+        target_name = entry.target_name or "#name_fallback#",
+    })
+    local result = _grammar:generate(symbol)
+    _grammar:pop_rules()
+    if result then
+        result = string_gsub(result, "^%s+", "")
+        result = string_gsub(result, "%s+$", "")
+        result = string_gsub(result, "  +", " ")
     end
-    local tmpl = TEMPLATES[entry.consequence]
-    if not tmpl then return nil end
-    return string_format(tmpl,
-        entry.subject_faction or "A stalker",
-        entry.location or "the Zone",
-        entry.target_faction or "killers")
+    if not result or result == "" then return nil end
+    return result
 end
 
---- Pick one unreported entry via weighted random over cause-drama tiers.
---- HIGH tier (massacre/alphakill/basekill/squadkill/alpha/area) beats LOW (needs/instincts)
---- roughly 7-10:1, stopping drama events from drowning in the needs/instincts flood.
---- FIFO cap bounds recency implicitly; this picker shapes tier distribution.
---- Dedup uses _reported_cons_ids (module-local) -- broker entries stay pure.
 local function _pick_entry()
     local entries, cumulative = {}, {}
     local total = 0
@@ -304,11 +218,7 @@ local function _pick_entry()
     return entries[#entries]
 end
 
---- Generate and dispatch one news message from the activity record
---- Picks newest unreported entry, resolves template and sender, fires xpda.send
---- Wrapped in observe so span timing + tid/path show up in DEBUG logs
---- @safety SAFE - nil-guarded on empty journal, missing template, no sender
---- @return table { code = TRACE.X, ... }
+--- Pick, chain-detect, render, and dispatch one news message from the activity FIFO
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
     return ap_core_debug.observe(nil, ACTION.COMPOSE_NEWS, function(trace)
@@ -344,8 +254,6 @@ function compose_tick()
     end)
 end
 
---- Randomize next compose delay in [min, max] range so cadence feels human.
---- Clamps min<=max to guard against MCM misconfiguration.
 local function _next_delay()
     local lo, hi = cfg.news_interval_min_sec, cfg.news_interval_max_sec
     if lo > hi then lo, hi = hi, lo end
@@ -358,12 +266,27 @@ local function _on_compose_timer()
     return false
 end
 
+local function _assemble_rules()
+    local out = {}
+    for _, src in ipairs({
+        ap_ext_news_data_shared.DATA,
+        ap_ext_news_data_reactive.DATA,
+        ap_ext_news_data_needs.DATA,
+        ap_ext_news_data_world.DATA,
+        ap_ext_news_data_instincts.DATA,
+        ap_ext_news_data_chain.DATA,
+    }) do
+        for k, v in pairs(src) do out[k] = v end
+    end
+    return out
+end
+
 function on_game_start()
     _cons_seq = 0
     _reported_cons_ids = {}
     _recent_msgs = {}
     _recent_idx = 0
-    _grammar = xgrammar.create_grammar(ap_ext_news_data.DATA)
+    _grammar = xgrammar.create_grammar(_assemble_rules())
     _grammar:add_modifiers(xgrammar.base_modifiers)
     CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay(), _on_compose_timer)
 end

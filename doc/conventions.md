@@ -57,7 +57,6 @@ Single word preferred. UPPER_SNAKE in constants.
 | MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
 | MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
-| PDA message key | `text_pda_consequence_{name}` | `text_pda_consequence_massacre_scavenge` |
 | Script file (cause) | `ap_cause_{name}.script` | `ap_cause_massacre.script` |
 | Script file (consequence) | `ap_consequence_{name}.script` | `ap_consequence_massacre_scavenge.script` |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
@@ -158,7 +157,6 @@ Rules:
 |---------|------|---------|
 | `consequence_{name}_enabled` | bool | true |
 | `consequence_{name}_chance` | 0-100 | 10 |
-| `consequence_{name}_pda_chance` | 0-100 | 20 |
 
 ### Development
 

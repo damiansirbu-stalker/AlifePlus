@@ -60,7 +60,8 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
 | ap_ext_util | Domain gates: alignment, personality checks, FIFO-cached species resolution |
 | ap_ext_const | Community sets, faction lists, item pools |
-| ap_ext_messages | PDA message templates |
+| ap_ext_news | News composer (event FIFO, xgrammar rendering, xpda dispatch) |
+| ap_ext_news_data_* | xgrammar rule tables (shared, reactive, needs, world, instincts, chain) |
 | ap_ext_test | In-game debug commands |
 
 ---
