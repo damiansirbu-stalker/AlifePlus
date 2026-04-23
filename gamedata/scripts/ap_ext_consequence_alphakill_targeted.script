@@ -122,12 +122,10 @@ local function _handler(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
-        local killer_faction = killer_squad and killer_squad:get_squad_community() or nil
         for i = 1, #moved do
             ap_ext_news.record_event(moved[i], CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED, {
                 cause_id = event_data._cause_id,
-                subject_faction = moved[i]:get_squad_community(),
-                target_squad = killer_squad, target_faction = killer_faction,
+                other_squad = killer_squad,
                 smart = dst_smart, level_id = level_id,
             })
         end

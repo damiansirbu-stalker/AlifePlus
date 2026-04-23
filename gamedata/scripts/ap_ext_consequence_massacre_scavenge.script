@@ -51,8 +51,7 @@ local function _handler(event_data)
         for i = 1, #moved do
             ap_ext_news.record_event(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_SCAVENGE, {
                 cause_id = event_data._cause_id,
-                subject_faction = moved[i]:get_squad_community(),
-                target_faction = event_data.faction,
+                other_squad = event_data.victim_squad,
                 smart = smart, level_id = level_id,
             })
         end

@@ -106,21 +106,20 @@ If the witness died before sending it, the news never happened.
 > Dmitriy Iassenev, Game Developer (2008) [1]
 
 AlifePlus implements this explicitly.
-Consequences record events to a journal (ring buffer, session-only).
-The composer reads the journal, detects patterns between recent events (cascade, hot zone, retaliation, chase resolved), and narrates them through the grammar tree.
+Consequences record events to a journal (ring buffer, session-only, ids only).
+The composer reads the journal, groups siblings by `cause_id`, and renders either a per-consequence template or a per-cause composite from localized XML pools.
+Display data (factions, names, species, locations) is resolved lazily at compose time from the live server-entity registry, so an entry survives the loss of its participants and still renders from whatever is still resolvable.
 Event-connected stalkers are preferred as senders: a same-faction witness first, a friendly stalker second.
 When no witness is available, the tick is wasted and no message goes out.
 
-The grammar itself is localized.
-English and Russian ship together with identical ID coverage.
-Russian is natively authored, not translated word for word.
-Each locale provides its own branches through the same rule symbols, so a new language is an XML file, not a code change.
+The templates are localized.
+Each locale is its own XML file. A new language is an XML file, not a code change.
 
 > "A discovered character corpse... Pre-mortem PDA Signal (sent to all known Traders; conveys the cause of death: perishing in an anomaly, death by monsters, death by Stalker weaponry, death due to a status effect, or death by a physical object)."
 > [8]
 
 Pre-written text locks the simulation to a finite phrasebook.
-Grammar over live data lets the Zone keep finding new words for things that are already different every time.
+Templates parameterized on live event data let the Zone keep finding new combinations for things that are already different every time.
 
 ---
 

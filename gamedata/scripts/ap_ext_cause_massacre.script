@@ -22,12 +22,16 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     local count = ap_core_utils.count_until_threshold(deaths, smart.id, cfg.cause_massacre_threshold)
     if not count then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
+    local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
+
     return {
         cause = CAUSE.MASSACRE,
         smart = smart,
         position = smart.position,
         level_id = xlevel.get_level_id(smart),
         faction = xcreature.community(se_victim),
+        victim_squad = squad,
+        killer_squad = killer_squad,
         total_deaths = count,
     }
 end

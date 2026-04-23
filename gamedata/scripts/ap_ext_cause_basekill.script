@@ -10,7 +10,7 @@ local cfg = ap_core_mcm.cfg
 local deaths = nil
 local _alignment_human
 
-local function _on_squad_npc_death(trace, squad, _npc, _killer)
+local function _on_squad_npc_death(trace, squad, _npc, se_killer)
     if not cfg.cause_basekill_enabled then return { code = RESULT.FAILED_RULES } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
 
@@ -31,6 +31,8 @@ local function _on_squad_npc_death(trace, squad, _npc, _killer)
         factions = xsmart.get_smart_factions(smart)
     end
 
+    local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
+
     return {
         cause = CAUSE.BASEKILL,
         smart = smart,
@@ -38,6 +40,7 @@ local function _on_squad_npc_death(trace, squad, _npc, _killer)
         level_id = xlevel.get_level_id(smart),
         factions = factions,
         faction = faction,
+        killer_squad = killer_squad,
         death_count = count,
     }
 end

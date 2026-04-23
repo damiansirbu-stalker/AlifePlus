@@ -257,84 +257,63 @@ ALPHA_LOOT = {
 --- Values match MCM menu names (spaces, no \n).
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 
-CONSEQUENCE_DESCRIPTION = {
-    [CONSEQUENCE.ALPHA_PROMOTE] = "Alpha Promote",
-    [CONSEQUENCE.ALPHAKILL_TARGETED] = "AlphaKill Targeted",
-    [CONSEQUENCE.MASSACRE_SCAVENGE] = "Massacre Scavenge",
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "Massacre Investigate",
-    [CONSEQUENCE.STASH_AMBUSH] = "Stash Ambush",
-    [CONSEQUENCE.STASH_LOOT] = "Stash Loot",
-    [CONSEQUENCE.STASH_FILL] = "Stash Fill",
-    [CONSEQUENCE.SQUADKILL_REVENGE] = "SquadKill Revenge",
-    [CONSEQUENCE.SQUADKILL_FLEE] = "SquadKill Flee",
-    [CONSEQUENCE.BASEKILL_SUPPORT] = "BaseKill Support",
-    [CONSEQUENCE.BASEKILL_FLEE] = "BaseKill Flee",
-    [CONSEQUENCE.WOUNDED_HUNT] = "Wounded Hunt",
-    [CONSEQUENCE.WOUNDED_HELP] = "Wounded Help",
-    [CONSEQUENCE.AREA_CONQUER] = "Area Conquer",
-    [CONSEQUENCE.HARVEST_ROB] = "Harvest Rob",
-    [CONSEQUENCE.HARVEST_HAUNT] = "Harvest Haunt",
-    [CONSEQUENCE.HUNGER_CAMPFIRE] = "Hunger Campfire",
-    [CONSEQUENCE.SLEEP_CAMPFIRE] = "Sleep Campfire",
-    [CONSEQUENCE.REST_CAMPFIRE] = "Rest Campfire",
-    [CONSEQUENCE.HEAL_SHELTER] = "Heal Shelter",
-    [CONSEQUENCE.SHELTER_INDOOR] = "Shelter Indoor",
-    [CONSEQUENCE.SHELTER_OUTDOOR] = "Shelter Outdoor",
-    [CONSEQUENCE.MONEY_HARVEST] = "Money Harvest",
-    [CONSEQUENCE.MONEY_HUNT] = "Money Hunt",
-    [CONSEQUENCE.SUPPLY_TRADER] = "Supply Trader",
-    [CONSEQUENCE.JOB_OUTPOST] = "Job Outpost",
-    [CONSEQUENCE.JOB_EXPLORE] = "Job Explore",
-    [CONSEQUENCE.JOB_RESEARCH] = "Job Research",
-    [CONSEQUENCE.SOCIAL_CAMPFIRE] = "Social Campfire",
-    [CONSEQUENCE.SOCIAL_BASE] = "Social Base",
-    [CONSEQUENCE.INSTINCTS_FEED] = "Instinct Feed",
-    [CONSEQUENCE.INSTINCTS_SLEEP] = "Instinct Sleep",
-    [CONSEQUENCE.INSTINCTS_EXPLORE] = "Instinct Explore",
-    [CONSEQUENCE.INSTINCTS_SOCIALIZE] = "Instinct Socialize",
-    [CONSEQUENCE.INSTINCTS_SCATTER] = "Instinct Scatter",
-    [CONSEQUENCE.INSTINCTS_INFEST] = "Instinct Infest",
+--- Consequence -> XML id for localized marker activity text. Resolved via game.translate_string at HUD render.
+CONSEQUENCE_ACTIVITY = {
+    [CONSEQUENCE.ALPHA_PROMOTE]        = "st_ap_activity_alpha_promote",
+    [CONSEQUENCE.ALPHAKILL_TARGETED]   = "st_ap_activity_alphakill_targeted",
+    [CONSEQUENCE.MASSACRE_SCAVENGE]    = "st_ap_activity_massacre_scavenge",
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "st_ap_activity_massacre_investigate",
+    [CONSEQUENCE.STASH_AMBUSH]         = "st_ap_activity_stash_ambush",
+    [CONSEQUENCE.STASH_LOOT]           = "st_ap_activity_stash_loot",
+    [CONSEQUENCE.STASH_FILL]           = "st_ap_activity_stash_fill",
+    [CONSEQUENCE.SQUADKILL_REVENGE]    = "st_ap_activity_squadkill_revenge",
+    [CONSEQUENCE.SQUADKILL_FLEE]       = "st_ap_activity_squadkill_flee",
+    [CONSEQUENCE.BASEKILL_SUPPORT]     = "st_ap_activity_basekill_support",
+    [CONSEQUENCE.BASEKILL_FLEE]        = "st_ap_activity_basekill_flee",
+    [CONSEQUENCE.WOUNDED_HUNT]         = "st_ap_activity_wounded_hunt",
+    [CONSEQUENCE.WOUNDED_HELP]         = "st_ap_activity_wounded_help",
+    [CONSEQUENCE.AREA_CONQUER]         = "st_ap_activity_area_conquer",
+    [CONSEQUENCE.HARVEST_ROB]          = "st_ap_activity_harvest_rob",
+    [CONSEQUENCE.HARVEST_HAUNT]        = "st_ap_activity_harvest_haunt",
+    [CONSEQUENCE.HUNGER_CAMPFIRE]      = "st_ap_activity_hunger_campfire",
+    [CONSEQUENCE.SLEEP_CAMPFIRE]       = "st_ap_activity_sleep_campfire",
+    [CONSEQUENCE.REST_CAMPFIRE]        = "st_ap_activity_rest_campfire",
+    [CONSEQUENCE.HEAL_SHELTER]         = "st_ap_activity_heal_shelter",
+    [CONSEQUENCE.SHELTER_INDOOR]       = "st_ap_activity_shelter_indoor",
+    [CONSEQUENCE.SHELTER_OUTDOOR]      = "st_ap_activity_shelter_outdoor",
+    [CONSEQUENCE.MONEY_HARVEST]        = "st_ap_activity_money_harvest",
+    [CONSEQUENCE.MONEY_HUNT]           = "st_ap_activity_money_hunt",
+    [CONSEQUENCE.SUPPLY_TRADER]        = "st_ap_activity_supply_trader",
+    [CONSEQUENCE.JOB_OUTPOST]          = "st_ap_activity_job_outpost",
+    [CONSEQUENCE.JOB_EXPLORE]          = "st_ap_activity_job_explore",
+    [CONSEQUENCE.JOB_RESEARCH]         = "st_ap_activity_job_research",
+    [CONSEQUENCE.SOCIAL_CAMPFIRE]      = "st_ap_activity_social_campfire",
+    [CONSEQUENCE.SOCIAL_BASE]          = "st_ap_activity_social_base",
+    [CONSEQUENCE.INSTINCTS_FEED]       = "st_ap_activity_instincts_feed",
+    [CONSEQUENCE.INSTINCTS_SLEEP]      = "st_ap_activity_instincts_sleep",
+    [CONSEQUENCE.INSTINCTS_EXPLORE]    = "st_ap_activity_instincts_explore",
+    [CONSEQUENCE.INSTINCTS_SOCIALIZE]  = "st_ap_activity_instincts_socialize",
+    [CONSEQUENCE.INSTINCTS_SCATTER]    = "st_ap_activity_instincts_scatter",
+    [CONSEQUENCE.INSTINCTS_INFEST]     = "st_ap_activity_instincts_infest",
 }
 
---- Consequence -> news grammar clause family binding.
---- Used by ap_ext_news composer to pick which grammar rule (movement/pursuit/retreat/state/observation) renders the event.
-CONSEQUENCE_CLAUSE_FAMILY = {
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "movement",
-    [CONSEQUENCE.MASSACRE_SCAVENGE]    = "movement",
-    [CONSEQUENCE.SQUADKILL_REVENGE]    = "pursuit",
-    [CONSEQUENCE.SQUADKILL_FLEE]       = "retreat",
-    [CONSEQUENCE.BASEKILL_SUPPORT]     = "movement",
-    [CONSEQUENCE.BASEKILL_FLEE]        = "retreat",
-    [CONSEQUENCE.ALPHA_PROMOTE]        = "state",
-    [CONSEQUENCE.ALPHAKILL_TARGETED]   = "pursuit",
-    [CONSEQUENCE.WOUNDED_HUNT]         = "movement",
-    [CONSEQUENCE.WOUNDED_HELP]         = "movement",
-    [CONSEQUENCE.HARVEST_ROB]          = "pursuit",
-    [CONSEQUENCE.HARVEST_HAUNT]        = "movement",
-    [CONSEQUENCE.STASH_LOOT]           = "movement",
-    [CONSEQUENCE.STASH_AMBUSH]         = "observation",
-    [CONSEQUENCE.STASH_FILL]           = "movement",
-    [CONSEQUENCE.AREA_CONQUER]         = "movement",
-    [CONSEQUENCE.HUNGER_CAMPFIRE]      = "movement",
-    [CONSEQUENCE.SLEEP_CAMPFIRE]       = "movement",
-    [CONSEQUENCE.REST_CAMPFIRE]        = "movement",
-    [CONSEQUENCE.HEAL_SHELTER]         = "movement",
-    [CONSEQUENCE.SHELTER_INDOOR]       = "movement",
-    [CONSEQUENCE.SHELTER_OUTDOOR]      = "movement",
-    [CONSEQUENCE.MONEY_HARVEST]        = "movement",
-    [CONSEQUENCE.MONEY_HUNT]           = "movement",
-    [CONSEQUENCE.SUPPLY_TRADER]        = "movement",
-    [CONSEQUENCE.JOB_OUTPOST]          = "movement",
-    [CONSEQUENCE.JOB_EXPLORE]          = "movement",
-    [CONSEQUENCE.JOB_RESEARCH]         = "movement",
-    [CONSEQUENCE.SOCIAL_CAMPFIRE]      = "movement",
-    [CONSEQUENCE.SOCIAL_BASE]          = "movement",
-    [CONSEQUENCE.INSTINCTS_FEED]       = "movement",
-    [CONSEQUENCE.INSTINCTS_SLEEP]      = "movement",
-    [CONSEQUENCE.INSTINCTS_EXPLORE]    = "movement",
-    [CONSEQUENCE.INSTINCTS_SOCIALIZE]  = "movement",
-    [CONSEQUENCE.INSTINCTS_SCATTER]    = "retreat",
-    [CONSEQUENCE.INSTINCTS_INFEST]     = "movement",
+local CAUSE = ap_core_const.CAUSE
+
+--- Weighted bias for news composer entry pick. Higher = more likely dispatched.
+NEWS_WEIGHT_BY_CAUSE = {
+    [CAUSE.MASSACRE]  = 10, [CAUSE.ALPHAKILL] = 10, [CAUSE.BASEKILL]  = 9,
+    [CAUSE.SQUADKILL] = 8,  [CAUSE.ALPHA]     = 7,  [CAUSE.AREA]      = 7,
+    [CAUSE.HARVEST]   = 5,  [CAUSE.WOUNDED]   = 4,  [CAUSE.STASH]     = 3,
+    [CAUSE.NEEDS]     = 1,  [CAUSE.INSTINCTS] = 1,
+}
+
+--- Sibling count -> XML id for localized count word (`#count#` slot in cause-broadcast templates).
+NEWS_COUNT_KEY = {
+    [2] = "st_ap_news_count_two",
+    [3] = "st_ap_news_count_three",
+    [4] = "st_ap_news_count_four",
+    [5] = "st_ap_news_count_five",
+    many = "st_ap_news_count_many",
 }
 
 --- Mutant engine faction -> XML display key. Resolved via game.translate_string at compose time.
@@ -346,6 +325,31 @@ MUTANT_FACTION_DISPLAY_KEY = {
     monster_zombied_day     = "st_ap_news_mutant_zombied_day",
     monster_zombied_night   = "st_ap_news_mutant_zombied_night",
     monster_special         = "st_ap_news_mutant_special",
+}
+
+--- xcreature species string -> XML display key (plural form for #species# slot).
+--- Resolved inline via game.translate_string; missing species -> empty slot -> variant filter drop.
+SPECIES_DISPLAY_KEY = {
+    bloodsucker = "st_ap_news_species_bloodsucker",
+    boar        = "st_ap_news_species_boar",
+    burer       = "st_ap_news_species_burer",
+    chimera     = "st_ap_news_species_chimera",
+    controller  = "st_ap_news_species_controller",
+    dog         = "st_ap_news_species_dog",
+    flesh       = "st_ap_news_species_flesh",
+    gigant      = "st_ap_news_species_gigant",
+    psy_dog     = "st_ap_news_species_psy_dog",
+    pseudodog   = "st_ap_news_species_pseudodog",
+    snork       = "st_ap_news_species_snork",
+    tushkano    = "st_ap_news_species_tushkano",
+    cat         = "st_ap_news_species_cat",
+    fracture    = "st_ap_news_species_fracture",
+    zombie      = "st_ap_news_species_zombie",
+    poltergeist = "st_ap_news_species_poltergeist",
+    rat         = "st_ap_news_species_rat",
+    karlik      = "st_ap_news_species_karlik",
+    psysucker   = "st_ap_news_species_psysucker",
+    lurker      = "st_ap_news_species_lurker",
 }
 
 --- Stalker needs DTO field names
@@ -364,7 +368,7 @@ function on_game_start()
     SCATTER_FROM[0] = xtable.merge(alignment_mutant_feral, alignment_mutant_predator, alignment_mutant_aberrant)
     SCATTER_FROM[1] = xtable.merge(alignment_mutant_predator, alignment_mutant_aberrant)
     SCATTER_FROM[2] = xtable.merge(alignment_mutant_aberrant)
-    ap_core_broker.register_descriptions(CONSEQUENCE_DESCRIPTION)
+    ap_core_broker.register_activities(CONSEQUENCE_ACTIVITY)
 end
 
 --- Item section lists for needs arrive_fn (GAMMA-verified)

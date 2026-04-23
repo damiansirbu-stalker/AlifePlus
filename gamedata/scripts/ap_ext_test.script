@@ -2,9 +2,9 @@
 
 local pairs, ipairs, pcall = pairs, ipairs, pcall
 local table_sort, table_remove, math_min = table.sort, table.remove, math.min
-local math_floor, math_huge = math.floor, math.huge
+local math_floor, math_huge, math_random = math.floor, math.huge, math.random
 local string_format, time_global = string.format, time_global
-local character_community, IsStalker = character_community, IsStalker
+local character_community, IsStalker, IsMonster = character_community, IsStalker, IsMonster
 local UnregisterScriptCallback, RegisterScriptCallback = UnregisterScriptCallback, RegisterScriptCallback
 
 local ARTEFACTS = {
@@ -310,30 +310,33 @@ local _demo_active = false
 local _demo_need_idx = 0
 local _demo_saved_causes = nil
 
---- Check if online NPC is a valid demo candidate (alive stalker, not actor)
-local function _is_demo_candidate(npc_id)
+--- Check if online NPC is a valid demo candidate (alive, not actor, passes type predicate)
+local function _is_demo_candidate(npc_id, is_type)
     local obj = xobject.go(npc_id)
     if not obj then return false end
     if not obj:alive() then return false end
-    if not IsStalker(obj) then return false end
     if obj:id() == 0 then return false end
+    local type_ok = is_type(obj)
+    if not type_ok then return false end
     return true, obj
 end
 
---- Find nearby online stalker squads sorted by distance
-local function _find_demo_squads(max_count)
+--- Find nearby online squads sorted by distance. Alignment defaults to humans, type to IsStalker.
+local function _find_demo_squads(max_count, alignment, is_type)
+    alignment = alignment or ap_ext_const.alignment_human
+    is_type = is_type or IsStalker
     local actor = db.actor
     if not actor then return {} end
     local actor_pos = actor:position()
     local seen = {}
     local candidates = {}
     for npc_id in pairs(db.storage) do
-        local ok, obj = _is_demo_candidate(npc_id)
+        local ok, obj = _is_demo_candidate(npc_id, is_type)
         if not ok then goto skip end
         local squad = xsquad.get_squad_by_member(npc_id)
         if not squad then goto skip end
         if seen[squad.id] then goto skip end
-        if not ap_ext_const.alignment_human[squad.player_id] then goto skip end
+        if not alignment[squad.player_id] then goto skip end
         seen[squad.id] = true
         candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
         ::skip::
@@ -395,113 +398,155 @@ local function _demo_fire_next()
     _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
 end
 
---- JOURNAL DEMO: periodically seeds random journal entries to exercise every consequence.
---- Tests the news composer in isolation: FIFO -> grammar -> xpda. Bypasses the pipeline,
+--- NEWS DEMO: periodically seeds random broker records to exercise every consequence.
+--- Tests the news composer in isolation: FIFO -> composer -> xpda. Bypasses the pipeline,
 --- so stats do not tick (use needs_demo for real-pipeline testing).
---- The real composer (driven by MCM news_interval_*) picks seeded entries and dispatches.
+--- Mutant-subject consequences seed from nearby mutant squads so #subject_species# populates.
+--- Reactive pair causes (massacre/squadkill/basekill/wounded/harvest) occasionally emit a
+--- sibling record with the same cause_id to exercise cause-broadcast and pair-composite branches.
 --- Toggle on/off. Set MCM news_interval_min/max_sec low (e.g. 1-3) for rapid feedback.
 
-local JOURNAL_DEMO_SEED_INTERVAL_MS = 2000
+local NEWS_DEMO_SEED_INTERVAL_MS = 2000
+local NEWS_DEMO_PAIR_CHANCE_PCT = 30
 
-local JOURNAL_DEMO_EVENTS = {
-    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human",  needs_target = true  },
-    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant", needs_target = true  },
-    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE,    kind = "human",  needs_target = true  },
-    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE,       kind = "human",  needs_target = false },
-    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_SUPPORT,     kind = "human",  needs_target = false },
-    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_FLEE,        kind = "human",  needs_target = false },
-    { cause = CAUSE.ALPHA,     cons = CONSEQUENCE.ALPHA_PROMOTE,        kind = "mutant", needs_target = false },
-    { cause = CAUSE.ALPHAKILL, cons = CONSEQUENCE.ALPHAKILL_TARGETED,   kind = "mutant", needs_target = true  },
-    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HUNT,         kind = "mutant", needs_target = true  },
-    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HELP,         kind = "human",  needs_target = false },
-    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_ROB,          kind = "human",  needs_target = true  },
-    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_HAUNT,        kind = "mutant", needs_target = true  },
-    { cause = CAUSE.AREA,      cons = CONSEQUENCE.AREA_CONQUER,         kind = "human",  needs_target = false },
-    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_LOOT,           kind = "human",  needs_target = false },
-    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_AMBUSH,         kind = "human",  needs_target = false },
-    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_FILL,           kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HUNGER_CAMPFIRE,      kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SLEEP_CAMPFIRE,       kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.REST_CAMPFIRE,        kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HEAL_SHELTER,         kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_INDOOR,       kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_OUTDOOR,      kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HARVEST,        kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HUNT,           kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SUPPLY_TRADER,        kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_OUTPOST,          kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_EXPLORE,          kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_RESEARCH,         kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_CAMPFIRE,      kind = "human",  needs_target = false },
-    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_BASE,          kind = "human",  needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_FEED,       kind = "mutant", needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SLEEP,      kind = "mutant", needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_EXPLORE,    kind = "mutant", needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SOCIALIZE,  kind = "mutant", needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SCATTER,    kind = "mutant", needs_target = false },
-    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_INFEST,     kind = "mutant", needs_target = false },
+-- event.kind = alignment of subject squad; event.other = alignment of opposing squad (or nil)
+local NEWS_DEMO_EVENTS = {
+    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human",  other = "human"  },
+    { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant", other = "human"  },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE,    kind = "human",  other = "human"  },
+    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE,       kind = "human",  other = "human"  },
+    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_SUPPORT,     kind = "human",  other = "human"  },
+    { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_FLEE,        kind = "human",  other = "human"  },
+    { cause = CAUSE.ALPHA,     cons = CONSEQUENCE.ALPHA_PROMOTE,        kind = "mutant", other = nil      },
+    { cause = CAUSE.ALPHAKILL, cons = CONSEQUENCE.ALPHAKILL_TARGETED,   kind = "mutant", other = "human"  },
+    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HUNT,         kind = "mutant", other = "human"  },
+    { cause = CAUSE.WOUNDED,   cons = CONSEQUENCE.WOUNDED_HELP,         kind = "human",  other = "human"  },
+    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_ROB,          kind = "human",  other = "human"  },
+    { cause = CAUSE.HARVEST,   cons = CONSEQUENCE.HARVEST_HAUNT,        kind = "mutant", other = "human"  },
+    { cause = CAUSE.AREA,      cons = CONSEQUENCE.AREA_CONQUER,         kind = "human",  other = nil      },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_LOOT,           kind = "human",  other = nil      },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_AMBUSH,         kind = "human",  other = nil      },
+    { cause = CAUSE.STASH,     cons = CONSEQUENCE.STASH_FILL,           kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HUNGER_CAMPFIRE,      kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SLEEP_CAMPFIRE,       kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.REST_CAMPFIRE,        kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.HEAL_SHELTER,         kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_INDOOR,       kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SHELTER_OUTDOOR,      kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HARVEST,        kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.MONEY_HUNT,           kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SUPPLY_TRADER,        kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_OUTPOST,          kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_EXPLORE,          kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.JOB_RESEARCH,         kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_CAMPFIRE,      kind = "human",  other = nil      },
+    { cause = CAUSE.NEEDS,     cons = CONSEQUENCE.SOCIAL_BASE,          kind = "human",  other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_FEED,       kind = "mutant", other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SLEEP,      kind = "mutant", other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_EXPLORE,    kind = "mutant", other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SOCIALIZE,  kind = "mutant", other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_SCATTER,    kind = "mutant", other = nil      },
+    { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_INFEST,     kind = "mutant", other = nil      },
 }
 
-local JOURNAL_DEMO_HUMAN_FACTIONS = {
-    "stalker", "bandit", "dolg", "freedom", "army", "csky",
-    "ecolog", "monolith", "renegade", "killer", "isg", "greh",
+-- Reactive pair causes: same cause_id in both entries groups them for cause-broadcast and pair-composite
+local NEWS_DEMO_PAIR_SIBLINGS = {
+    [CONSEQUENCE.MASSACRE_INVESTIGATE] = { cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant" },
+    [CONSEQUENCE.MASSACRE_SCAVENGE]    = { cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human"  },
+    [CONSEQUENCE.SQUADKILL_REVENGE]    = { cons = CONSEQUENCE.SQUADKILL_FLEE,       kind = "human"  },
+    [CONSEQUENCE.SQUADKILL_FLEE]       = { cons = CONSEQUENCE.SQUADKILL_REVENGE,    kind = "human"  },
+    [CONSEQUENCE.BASEKILL_SUPPORT]     = { cons = CONSEQUENCE.BASEKILL_FLEE,        kind = "human"  },
+    [CONSEQUENCE.BASEKILL_FLEE]        = { cons = CONSEQUENCE.BASEKILL_SUPPORT,     kind = "human"  },
+    [CONSEQUENCE.WOUNDED_HUNT]         = { cons = CONSEQUENCE.WOUNDED_HELP,         kind = "human"  },
+    [CONSEQUENCE.WOUNDED_HELP]         = { cons = CONSEQUENCE.WOUNDED_HUNT,         kind = "mutant" },
+    [CONSEQUENCE.HARVEST_ROB]          = { cons = CONSEQUENCE.HARVEST_HAUNT,        kind = "mutant" },
+    [CONSEQUENCE.HARVEST_HAUNT]        = { cons = CONSEQUENCE.HARVEST_ROB,          kind = "human"  },
 }
 
-local JOURNAL_DEMO_MUTANT_FACTIONS = {
-    "monster_predatory_day", "monster_predatory_night", "monster_vegetarian",
-    "monster_zombied_day", "monster_zombied_night", "monster_special",
-}
+local _news_demo_active = false
+local _news_demo_next_seed = 0
+local _news_demo_cause_seq = 0
 
-local _journal_demo_active = false
-local _journal_demo_next_seed = 0
-
-local function _journal_demo_seed_one()
-    local squads = _find_demo_squads(20)
-    if #squads == 0 then return nil end
-    local event = xmath.sample(JOURNAL_DEMO_EVENTS)
-    local squad = xmath.sample(squads)
-    local smart = xsquad.get_squad_smart(squad)
-    local level_id = xlevel.get_level_id(squad)
-    local subject_faction = (event.kind == "mutant")
-        and xmath.sample(JOURNAL_DEMO_MUTANT_FACTIONS)
-        or xmath.sample(JOURNAL_DEMO_HUMAN_FACTIONS)
-    local target_faction = event.needs_target and xmath.sample(JOURNAL_DEMO_HUMAN_FACTIONS) or nil
-    ap_ext_news.record_event(squad, event.cause, event.cons, {
-        subject_faction = subject_faction,
-        target_faction = target_faction,
-        smart = smart,
-        level_id = level_id,
-    })
-    return event
+-- Resolve alignment set + type predicate for subject-squad search
+local function _news_demo_alignment(kind)
+    if kind == "mutant" then return ap_ext_const.alignment_mutant, IsMonster end
+    return ap_ext_const.alignment_human, IsStalker
 end
 
-local function _journal_demo_tick()
-    if not _journal_demo_active then return end
+local function _news_demo_pick_squad(kind)
+    if not kind then return nil end
+    local alignment, is_type = _news_demo_alignment(kind)
+    local squads = _find_demo_squads(20, alignment, is_type)
+    if #squads == 0 then return nil end
+    return xmath.sample(squads)
+end
+
+-- Seed one record into the broker FIFO. Returns true on write, false if no squad available.
+local function _news_demo_seed_record(squad, cause, consequence, cause_id, other_kind)
+    if not squad then return false end
+    local smart = xsquad.get_squad_smart(squad)
+    local level_id = xlevel.get_level_id(squad)
+    local other_squad = _news_demo_pick_squad(other_kind)
+    ap_ext_news.record_event(squad, cause, consequence, {
+        cause_id    = cause_id,
+        other_squad = other_squad,
+        smart       = smart,
+        level_id    = level_id,
+    })
+    return true
+end
+
+local function _news_demo_seed_one()
+    local event = xmath.sample(NEWS_DEMO_EVENTS)
+    local squad = _news_demo_pick_squad(event.kind)
+    if not squad then return nil end
+    _news_demo_cause_seq = _news_demo_cause_seq + 1
+    local cause_id = _news_demo_cause_seq
+    _news_demo_seed_record(squad, event.cause, event.cons, cause_id, event.other)
+    -- Occasional pair-sibling: same cause_id, opposite consequence of the pair
+    local pair = NEWS_DEMO_PAIR_SIBLINGS[event.cons]
+    if pair and math_random(100) <= NEWS_DEMO_PAIR_CHANCE_PCT then
+        local pair_squad = _news_demo_pick_squad(pair.kind)
+        if pair_squad then
+            _news_demo_seed_record(pair_squad, event.cause, pair.cons, cause_id, event.other)
+            return event, pair
+        end
+    end
+    return event, nil
+end
+
+local function _news_demo_tick()
+    if not _news_demo_active then return end
     local now = time_global()
-    if now < _journal_demo_next_seed then return end
-    _journal_demo_next_seed = now + JOURNAL_DEMO_SEED_INTERVAL_MS
-    local event = _journal_demo_seed_one()
-    if event then
-        ap_core_debug.debug("[TEST] journal_demo seeded cons=%s kind=%s", event.cons, event.kind)
+    if now < _news_demo_next_seed then return end
+    _news_demo_next_seed = now + NEWS_DEMO_SEED_INTERVAL_MS
+    local event, pair = _news_demo_seed_one()
+    if event and pair then
+        ap_core_debug.debug("[TEST] news_demo seeded cons=%s + pair=%s cause_id=%d",
+            event.cons, pair.cons, _news_demo_cause_seq)
+    elseif event then
+        ap_core_debug.debug("[TEST] news_demo seeded cons=%s cause_id=%d",
+            event.cons, _news_demo_cause_seq)
     end
 end
 
 --- Toggle perpetual random-event seeder. Real composer dispatches based on MCM interval.
 --- @export console
-function journal_demo()
-    ap_core_debug.debug("[TEST] journal_demo pressed")
-    if _journal_demo_active then
-        _journal_demo_active = false
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _journal_demo_tick)
-        _tip("Journal demo stopped")
-        ap_core_debug.debug("[TEST] journal_demo stopped")
+function news_demo()
+    ap_core_debug.debug("[TEST] news_demo pressed")
+    if _news_demo_active then
+        _news_demo_active = false
+        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
+        _tip("News demo stopped")
+        ap_core_debug.debug("[TEST] news_demo stopped")
         return
     end
-    _journal_demo_active = true
-    _journal_demo_next_seed = 0
-    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _journal_demo_tick)
-    _tip(string_format("Journal demo: seeding random event every %ds", JOURNAL_DEMO_SEED_INTERVAL_MS / 1000))
-    ap_core_debug.debug("[TEST] journal_demo started interval_ms=%d events=%d", JOURNAL_DEMO_SEED_INTERVAL_MS, #JOURNAL_DEMO_EVENTS)
+    _news_demo_active = true
+    _news_demo_next_seed = 0
+    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
+    _tip(string_format("News demo: seeding random event every %ds", NEWS_DEMO_SEED_INTERVAL_MS / 1000))
+    ap_core_debug.debug("[TEST] news_demo started interval_ms=%d events=%d pair_chance_pct=%d",
+        NEWS_DEMO_SEED_INTERVAL_MS, #NEWS_DEMO_EVENTS, NEWS_DEMO_PAIR_CHANCE_PCT)
 end
 
 --- @export console

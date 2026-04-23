@@ -24,7 +24,7 @@ local function _evaluate(_trace, item, npc)
 
     local taker_is_player = npc == nil
 
-    local position, level_id, taker_squad_id
+    local position, level_id, taker_squad_id, taker_squad
     if taker_is_player then
         local actor = db.actor
         if not actor then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ACTOR } end
@@ -37,6 +37,7 @@ local function _evaluate(_trace, item, npc)
         local protected, reason, detail, pname = ap_core_broker.is_protected(squad)
         if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
         taker_squad_id = squad.id
+        taker_squad = squad
         level_id = xlevel.get_level_id(squad)
     end
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
@@ -48,6 +49,7 @@ local function _evaluate(_trace, item, npc)
         taker_is_player = taker_is_player,
         taker_id = taker_is_player and 0 or npc:id(),
         taker_squad_id = taker_squad_id,
+        taker_squad = taker_squad,
         artefact_section = section,
         position = position,
         level_id = level_id,

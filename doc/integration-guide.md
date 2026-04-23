@@ -216,7 +216,7 @@ Link arrival to squad: pass `on_arrive = CONSEQUENCE.AMBUSH_SETUP` in `script_sq
 3. Add MCM defaults to ap_core_mcm.defaults
 4. Create `ap_ext_cause_x.script` with predicate, register in on_game_start
 5. Create `ap_ext_consequence_x_verb.script` with handler, register in on_game_start
-6. Add xgrammar voice entry to `ap_ext_news_data` CORPUS (anchor pools + templates) if desired
+6. (Optional) Add 5 templates at `st_ap_news_tpl_<consequence>_001..005` in `gamedata/configs/text/eng/ui_st_ap_news.xml` so the consequence surfaces in PDA news
 7. Add MCM UI entries to ap_core_mcm menu builder
 8. Run validator: `stalker-manager.sh validate`
 

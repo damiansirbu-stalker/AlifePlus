@@ -22,13 +22,15 @@ local VALIDATE_MARKERS_SEC = 20
 local _last_validate_at = 0
 
 local function _apply_markers()
-    local descriptions = ap_core_broker.get_descriptions()
+    local activities = ap_core_broker.get_activities()
     ap_core_broker.each_record({ assigned = true }, function(entry)
         if entry.is_marked then return end
         local se = xobject.se(entry.squad_id)
         if not se then return end
-        local desc = descriptions and descriptions[entry.consequence]
-        local full_label = (desc or entry.consequence) .. ": " .. xsquad.get_community_name(se)
+        local id = activities and activities[entry.consequence]
+        local activity = id and game.translate_string(id) or entry.consequence
+        if id and activity == id then activity = entry.consequence end
+        local full_label = activity .. ": " .. xsquad.get_community_name(se)
         xpda.mark_squad(entry.squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
         entry.is_marked = true
         ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", entry.squad_id, full_label)

@@ -21,22 +21,22 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
     if not _alignment_human[victim_faction] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = victim_faction } end
     local killer_faction = nil
     local killer_id = nil
-    local killer_squad_id = nil
+    local killer_squad = nil
 
     if killer then
         killer_id = killer.id
-        local killer_squad = xsquad.get_squad_by_member(killer_id)
+        killer_squad = xsquad.get_squad_by_member(killer_id)
         killer_faction = killer_squad and killer_squad.get_squad_community and killer_squad:get_squad_community()
-        killer_squad_id = killer_squad and killer_squad.id
     end
 
     return {
         cause = CAUSE.SQUADKILL,
         squad_id = squad.id,
+        victim_squad = squad,
         last_npc_id = npc and npc.id,
         killer_id = killer_id,
         killer_faction = killer_faction,
-        killer_squad_id = killer_squad_id,
+        killer_squad = killer_squad,
         victim_faction = victim_faction,
         position = npc and npc.position,
         level_id = npc and xlevel.get_level_id(npc),

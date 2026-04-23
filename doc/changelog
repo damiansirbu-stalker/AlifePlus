@@ -1,39 +1,29 @@
 next
   Summary: PDA news system, mutant infestation, additive territory conquest
   Gameplay:
-    Changed: territory conquest is now additive. Conquering a smart terrain adds the conqueror's squads alongside original spawns instead of replacing them.
-    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns replaced by the infesting species.
-           Per-level cap (MCM 1-5, default 1). Personality gated by territory and survival traits.
-    Added: emergent PDA news system. Zone events surface as radio chatter from event-connected stalkers.
-           A recursive generative grammar composes each message at runtime from around 200 text fragments per language.
-           The corpus produces millions of distinct sentences through rule composition, so the feed reads different every time.
-           Chain detection narrates hot zones, cascades, retaliations, and chase-resolved pursuits as connected stories.
-           Mutant factions render as species plurals (predators, night predators, zombies, herbivores, aberrants) drawn from localized text.
-    Added: full Russian localization for the news system.
-           English and Russian ship together with matching ID coverage.
-           Each language provides natural branches through the same rule tree, so a new locale takes one XML file.
+    Changed: territory conquest is additive now. Conquering a smart terrain adds the conqueror's squads alongside original spawns instead of replacing them.
+    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests, and original spawns are replaced by the infesting species. Per-level cap (MCM 1-5, default 1). Personality gated by territory and survival traits.
+    Added: PDA news system. Your PDA surfaces recent squad activity as chatter from an online stalker on your frequency. Every line names the faction, commander, location, level, and time as tactical information rather than flavor.
+    Added: paired news. When one event triggers two responses (a squad investigating their own dead while mutants scavenge the bodies, one crew running while another from the same faction hunts the killer), a single line narrates both sides instead of sending two separate messages.
+    Added: pattern news. The news system scans recent activity for cross-entry patterns and sends lines that read like the narrator noticed something. Six patterns: a survivor of a killed squad already working elsewhere, two factions trading hits across a level, one location every crew wants, a faction running its whole roster through one map, a squad logging hits all night, a mutant outbreak on one level.
+    Added: mutant pack lines use species (bloodsuckers, chimeras, lurkers, aberrants) instead of generic "monsters".
+    Added: map marker activity labels localized, English and Russian.
+    Added: English and Russian ship together for news and marker labels. Stalker register throughout, loners talk like loners.
     Removed: old per-consequence PDA templates and chance sliders.
   MCM:
-    Added: instinct infest cause settings (enabled, threshold).
-    Added: instinct infest consequence settings (enabled, rush, personality floor/ceiling).
+    Added: instinct infest cause and consequence settings (enabled, threshold, rush, personality floor and ceiling).
     Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
-    Added: News tab with master toggle and compose interval sliders (1 to 600 seconds).
+    Added: News tab with master toggle and compose interval sliders covering 60 to 600 seconds.
     Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab now.
   Integration:
-    Changed: activity record API moved to ap_core_broker. record(), get_record(), register_descriptions() now on broker.
-    Added: get_records(opts) for querying activity history with field matching.
-    Added: clear_record(squad_id) for entity death cleanup.
-    Added: xttltable.create_fifo_cache :each(fn) iteration and on_evict callback.
-    Added: xgrammar, a replacement-grammar engine in xlibs. Symbols expand recursively, slots are nil-safe, weighted selection via xmath, modifier chains (capitalize, pluralize, articles).
-           General-purpose, any mod can use it for procedural text.
-    Added: ap_ext_news.record_event(squad, cause, consequence, opts). Consequences call it on SUCCESS to log to the journal.
-           The composer reads the journal on its own timer and picks one event per tick.
-    Changed: xlevel.get_smart_display_name now cascades through Anomaly's smart_names.ltx, then Warfare's "st_<name>_name" key, then the level name, then a cleaned raw fallback.
-             Named smarts render as "Rookie Village", unnamed fall back to their level, no more raw LTX IDs.
-    Changed: xsmart spawn injection API renamed. set_shared_spawn/set_exclusive_spawn replace the old inject/clear functions.
+    Changed: activity record API moved to ap_core_broker (record, get_record, get_records, clear_record, register_descriptions).
+    Added: ap_ext_news.record_event(subject_squad, cause, consequence, opts). Consequences call it on SUCCESS. Record stores ids only. Display resolves at compose time so handlers stay cheap.
+    Added: opts.cause_id and opts.other_squad on record_event. cause_id groups siblings for paired and pattern dispatch. other_squad carries the opposing party (killer, bleeder, taker) for two-party events.
+    Added: template id conventions for modders authoring news pools. Per-consequence st_ap_news_tpl_<consequence>_NNN. Cause-broadcast st_ap_news_tpl_cause_<cause>_NNN. Paired st_ap_news_tpl_cause_<cause>_pair_<a>_<b>_NNN with consequences in alphabetical order. Pattern st_ap_news_tpl_intersect_<pattern>_NNN where pattern is one of busy_squad, grudge, hot_faction, hot_location, outbreak, survivor.
+    Added: xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
+    Changed: xsmart spawn injection renamed. set_shared_spawn and set_exclusive_spawn replace inject/clear.
   Fixed:
     Fixed: mutant instinct filters check engine faction acceptance before selecting smart terrains.
-    Fixed: xgrammar no longer crashes on bracketed text like [crackle] or [yawn]. Anything inside brackets without a colon passes through as literal.
 
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API

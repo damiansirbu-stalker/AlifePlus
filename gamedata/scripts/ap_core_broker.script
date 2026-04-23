@@ -27,59 +27,61 @@ local _arrival_handlers = {}
 local _ap_record = nil
 local _record_seq = 0
 local _record_assigned = {}
-local _consequence_descriptions = nil
+local _consequence_activities = nil
 
---- Register consequence description table (called from ext at init).
+--- Register consequence activity table (called from ext at init).
+--- Values are XML ids resolved via game.translate_string at HUD render time.
 --- Core stores reference, no core->ext import.
 --- @safety SAFE - pure Lua reference assignment
 --- @cost O(1) | 0 luabind
---- @param tbl table Maps CONSEQUENCE keys to display strings
-function register_descriptions(tbl)
-    _consequence_descriptions = tbl
+--- @param tbl table Maps CONSEQUENCE keys to XML activity ids (e.g. "st_ap_activity_stash_loot")
+function register_activities(tbl)
+    _consequence_activities = tbl
 end
 
---- Get consequence descriptions table (read by hud for markers)
-function get_descriptions()
-    return _consequence_descriptions
+--- Get consequence activity id table (read by HUD for markers).
+function get_activities()
+    return _consequence_activities
 end
 
 --- Record squad activity after SUCCESS. Appends to FIFO, marks previous entry for same squad as unassigned.
---- @safety SAFE - pure Lua table write, nil-guarded on squad_id
+--- Schema stores IDs only (subject, other, smart, level). Display data resolved lazily at compose time via alife_object.
+--- game_hours is the single event-time snapshot (unrecoverable at compose time).
+--- Returns the monotonic cons_id so callers can reference the entry later (dedup rings, etc).
+--- @safety SAFE - pure Lua table write, nil-guarded on subject_squad_id
 --- @cost O(1) | 0 luabind
---- @param squad_id number Squad server ID
+--- @param subject_squad_id number Subject squad server ID (the actor)
 --- @param cause string Cause key (CAUSE.X)
 --- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil Optional fields: subject_faction, subject_name, target, target_faction, target_name, level_id, location, game_hours, cause_id, cons_id
-function record(squad_id, cause, consequence, opts)
-    if not squad_id or not cause or not consequence then return end
+--- @param opts table|nil Optional fields: other_squad_id, smart_id, level_id, game_hours, cause_id
+--- @return number|nil cons_id Monotonic journal slot id, or nil if args invalid
+function record(subject_squad_id, cause, consequence, opts)
+    if not subject_squad_id or not cause or not consequence then return nil end
     opts = opts or {}
-    local prev = _record_assigned[squad_id]
+    local prev = _record_assigned[subject_squad_id]
     if prev then
         prev.assigned = false
         prev.is_marked = false
     end
     _record_seq = _record_seq + 1
     local entry = {
-        squad_id = squad_id,
+        squad_id = subject_squad_id,
         cause = cause,
         consequence = consequence,
         assigned = true,
         is_marked = false,
-        subject_faction = opts.subject_faction,
-        subject_name = opts.subject_name,
-        target = opts.target,
-        target_faction = opts.target_faction,
-        target_name = opts.target_name,
+        other_squad_id = opts.other_squad_id,
+        smart_id = opts.smart_id,
         level_id = opts.level_id,
-        location = opts.location,
         game_hours = opts.game_hours,
         cause_id = opts.cause_id,
-        cons_id = opts.cons_id,
+        cons_id = _record_seq,
     }
     _ap_record:set(_record_seq, entry)
-    _record_assigned[squad_id] = entry
+    _record_assigned[subject_squad_id] = entry
     ap_core_debug.debug("[SQUAD] record: squad=%d cause=%s consequence=%s seq=%d",
-        squad_id, cause, consequence, _record_seq)
+        subject_squad_id, cause, consequence, _record_seq)
+    return _record_seq
 end
 
 --- Clear the assigned record for a squad (entity died, despawned).

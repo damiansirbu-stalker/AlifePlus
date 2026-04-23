@@ -1,11 +1,11 @@
---- ap_ext_news: Recursive generative grammar composer for PDA news
+--- ap_ext_news: Flat-template PDA news composer. Per-consequence + cause-broadcast templates in ui_st_ap_news.xml.
 
 local IsStalker, get_object_story_id = IsStalker, get_object_story_id
-local ipairs, pairs, type = ipairs, pairs, type
+local ipairs, pairs = ipairs, pairs
 local math_random, math_floor = math.random, math.floor
-local string_format, string_gsub, string_match, string_upper = string.format, string.gsub, string.match, string.upper
-local table_insert = table.insert
+local string_format, string_gsub, string_find = string.format, string.gsub, string.find
 local game_translate_string = game.translate_string
+local xobject_se = xobject.se
 
 local TRACE = ap_core_const.TRACE
 local CAUSE = ap_core_const.CAUSE
@@ -17,64 +17,92 @@ local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "compose_tick"
 
 local DEDUP_CAPACITY = 512
-local TEXT_RING_SIZE = 16
-local HOT_ZONE_WINDOW_HOURS = 3
+local CONS_COOLDOWN_SIZE = 3
+local MAX_TEMPLATE_VARIANTS = 20
+local CAUSE_BROADCAST_MIN_SIBLINGS = 2
+local CAUSE_BROADCAST_CHANCE_PCT = 70
 
---- Weighted bias for entry picker. Higher = more likely to be dispatched.
-local WEIGHT = {
-    [CAUSE.MASSACRE]  = 10, [CAUSE.ALPHAKILL] = 10, [CAUSE.BASEKILL]  = 9,
-    [CAUSE.SQUADKILL] = 8,  [CAUSE.ALPHA]     = 7,  [CAUSE.AREA]      = 7,
-    [CAUSE.HARVEST]   = 5,  [CAUSE.WOUNDED]   = 4,  [CAUSE.STASH]     = 3,
-    [CAUSE.NEEDS]     = 1,  [CAUSE.INSTINCTS] = 1,
+local NEWS_WEIGHT_BY_CAUSE = ap_ext_const.NEWS_WEIGHT_BY_CAUSE
+local NEWS_COUNT_KEY = ap_ext_const.NEWS_COUNT_KEY
+
+-- Reactive pair causes: sibling entries sharing cause_id whose consequences match the pair
+-- get a dedicated pool that narrates both responses together. Pair pool is tried before
+-- cause-broadcast. Consequence pair listed in alphabetical order (stable pool key).
+local PAIR_CONSEQUENCES_BY_CAUSE = {
+    ["cause:massacre"]  = { "massacre_investigate", "massacre_scavenge" },
+    ["cause:squadkill"] = { "squadkill_flee",       "squadkill_revenge" },
+    ["cause:basekill"]  = { "basekill_flee",        "basekill_support"  },
+    ["cause:wounded"]   = { "wounded_help",         "wounded_hunt"      },
+    ["cause:harvest"]   = { "harvest_haunt",        "harvest_rob"       },
 }
 
--- CONSEQUENCE -> clause_family binding lives in ap_ext_const (CONSEQUENCE_CLAUSE_FAMILY).
--- Mutant engine factions resolve via XML keys (ap_ext_const.MUTANT_FACTION_DISPLAY_KEY).
+-- Intersected-news patterns. One O(n<=256) FIFO scan per compose tick, first-match-wins
+-- in priority order. Renders a line that reads like the narrator noticed a pattern.
+local INTERSECTED_PATTERN_ORDER = { "survivor", "grudge", "outbreak", "hot_location", "hot_faction", "busy_squad" }
+local INTERSECTED_BUSY_SQUAD_MIN = 3
+local INTERSECTED_HOT_FACTION_MIN = 4
+local INTERSECTED_HOT_LOCATION_MIN = 3
+local INTERSECTED_HOT_LOCATION_MIN_FACTIONS = 2
+local INTERSECTED_GRUDGE_MIN = 2
+local INTERSECTED_OUTBREAK_MIN = 3
+local CAUSE_INSTINCTS_KEY = "cause:instincts"
+local CONS_SQUADKILL_FLEE_KEY = "consequence:squadkill_flee"
 
-local _grammar = nil
+local _templates_by_consequence = {}
+local _templates_by_cause = {}
+local _templates_by_pair = {}
+local _templates_by_intersect = {}
 local _locale = nil
-local _cons_seq = 0
-local _cluster_size_ctx = 0
-local _ago_ctx = 0
 local _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
-local _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
+local _recent_cons = xttltable.create_fifo_cache({ capacity = CONS_COOLDOWN_SIZE })
 
--- Walk-until-miss loader: collect {prefix}_001, _002, ... until the engine returns the id itself (miss)
--- Empty string values are preserved (they act as weighted-random bias toward no-expansion).
--- @complexity O(index_count) | 1 game.translate_string per index
+-- Load a numbered template pool: walk prefix_001..N until miss/empty
+-- @cost O(N) | N luabind (one-time at template build / locale change)
 local function _load_pool(prefix)
     local arr = {}
-    for index = 1, 999 do
-        local id = string_format("%s_%03d", prefix, index)
+    for i = 1, MAX_TEMPLATE_VARIANTS do
+        local id = string_format("%s_%03d", prefix, i)
         local text = game_translate_string(id)
-        if text == id or text == nil then return arr end
+        if text == id or text == nil or text == "" then return arr end
         arr[#arr + 1] = text
     end
     return arr
 end
 
--- Build the full grammar context from XML pools
-local function _build_rules()
-    local rules = {}
-    local shared_prefixes = {
-        "origin", "opener", "tail",
-        "clause_movement", "clause_pursuit", "clause_retreat",
-        "clause_state", "clause_observation",
-        "clause_cascade", "clause_hot_zone", "clause_retaliation", "clause_chase_resolved",
-        "actor", "target_ref", "place", "safe_place", "state_adj",
-    }
-    for _, key in ipairs(shared_prefixes) do
-        rules[key] = _load_pool("st_ap_news_" .. key)
-    end
-    -- Per-consequence verb pools
+-- Build per-consequence, per-cause, and per-pair template tables
+local function _build_templates()
+    local by_cons = {}
     for _, cons_id in pairs(CONSEQUENCE) do
-        local name = string_match(cons_id, "^consequence:(.+)")
-        if name then rules["verb_" .. name] = _load_pool("st_ap_news_verb_" .. name) end
+        local name = cons_id:match("^consequence:(.+)")
+        if name then by_cons[name] = _load_pool("st_ap_news_tpl_" .. name) end
     end
-    return rules
+    local by_cause = {}
+    for _, cause_id in pairs(CAUSE) do
+        local name = cause_id:match("^cause:(.+)")
+        if name then by_cause[name] = _load_pool("st_ap_news_tpl_cause_" .. name) end
+    end
+    local by_pair = {}
+    for cause_full, pair in pairs(PAIR_CONSEQUENCES_BY_CAUSE) do
+        local cause_name = cause_full:match("^cause:(.+)")
+        local prefix = "st_ap_news_tpl_cause_" .. cause_name .. "_pair_" .. pair[1] .. "_" .. pair[2]
+        by_pair[cause_name] = _load_pool(prefix)
+    end
+    local by_intersect = {}
+    for i = 1, #INTERSECTED_PATTERN_ORDER do
+        local name = INTERSECTED_PATTERN_ORDER[i]
+        by_intersect[name] = _load_pool("st_ap_news_tpl_intersect_" .. name)
+    end
+    return by_cons, by_cause, by_pair, by_intersect
 end
 
--- Detect current game language ("eng", "rus", etc.) from system.ltx
+-- XML lookup that returns empty string on miss (never leaks the key id as the value)
+local function _xml(key)
+    local v = game_translate_string(key)
+    if v and v ~= key and v ~= "" then return v end
+    return ""
+end
+
+-- Detect current game language from system.ltx
 local function _detect_locale()
     if not ini_sys then return "eng" end
     local lang = ini_sys:r_string_ex("string_table", "language")
@@ -82,106 +110,22 @@ local function _detect_locale()
     return "eng"
 end
 
--- Function rules: computed per compose tick from game state
-local function _fn_time()
-    local hour = math_floor((xtime.game_sec() % 86400) / 3600)
-    if _locale == "rus" then
-        if hour < 5 then return "ночью" end
-        if hour < 9 then return "на рассвете" end
-        if hour < 18 then return "" end
-        if hour < 22 then return "вечером" end
-        return "ночью"
-    end
-    if hour < 5 then return "late" end
-    if hour < 9 then return "at dawn" end
-    if hour < 18 then return "" end
-    if hour < 22 then return "after dark" end
-    return "late"
-end
-
-local function _fn_count()
-    local count = _cluster_size_ctx
-    if count <= 1 then return "" end
-    if _locale == "rus" then
-        if count == 2 then return "пара" end
-        if count == 3 then return "три" end
-        if count <= 5 then return "несколько" end
-        return "много"
-    end
-    if count == 2 then return "two" end
-    if count == 3 then return "three" end
-    if count <= 5 then return "a handful of" end
-    return "multiple"
-end
-
-local function _fn_ago()
-    if _ago_ctx <= 0 then return "" end
-    if _locale == "rus" then
-        if _ago_ctx < 2 then return "недавно" end
-        return "пару часов назад"
-    end
-    if _ago_ctx < 2 then return "" end
-    return "a while back"
-end
-
-local _level_ctx = nil
-local function _fn_level()
-    if not _level_ctx then return "" end
-    return xlevel.get_level_name(_level_ctx) or ""
-end
-
--- Register locale-specific modifiers
-local function _register_modifiers(grammar)
-    grammar:add_modifiers(xgrammar.base_modifiers)
-    if _locale == "rus" then
-        grammar:add_modifiers({
-            ["and"]  = xgrammar.make_list_and_modifier("и", false),
-            ["then"] = xgrammar.make_list_then_modifier("потом"),
-        })
-    else
-        grammar:add_modifiers({
-            ["and"]  = xgrammar.make_list_and_modifier("and", true),
-            ["then"] = xgrammar.make_list_then_modifier("then"),
-        })
-    end
-end
-
---- Record a news-worthy event to broker FIFO, capturing names at write time
-function record_event(squad, cause, consequence, opts)
-    if not squad or not squad.id then return end
+--- Record a news-worthy event to broker FIFO. Stores IDs only. Display data resolved lazily at compose.
+--- game_hours is the single event-time snapshot (the moment is unrecoverable at compose).
+--- @cost O(1) | 1-2 luabind trivial (squad.id reads) + 2 luabind medium (xtime.game_sec)
+function record_event(subject_squad, cause, consequence, opts)
+    if not subject_squad or not subject_squad.id then return end
     opts = opts or {}
-    local subject_name
-    local cmd_id = squad:commander_id()
-    if cmd_id then
-        local cmd_se = xobject.se(cmd_id)
-        if cmd_se and IsStalker(nil, cmd_se:clsid()) then subject_name = cmd_se:character_name() end
-    end
-    local target_id, target_name
-    if opts.target_squad then
-        target_id = opts.target_squad.id
-        local t_cmd_id = opts.target_squad:commander_id()
-        if t_cmd_id then
-            local t_cmd_se = xobject.se(t_cmd_id)
-            if t_cmd_se and IsStalker(nil, t_cmd_se:clsid()) then target_name = t_cmd_se:character_name() end
-        end
-    end
-    _cons_seq = _cons_seq + 1
-    ap_core_broker.record(squad.id, cause, consequence, {
-        cause_id        = opts.cause_id,
-        cons_id         = _cons_seq,
-        parent          = opts.parent,
-        subject_faction = opts.subject_faction,
-        subject_name    = subject_name,
-        target          = target_id,
-        target_faction  = opts.target_faction,
-        target_name     = target_name,
-        level_id        = opts.level_id,
-        location        = opts.smart and xlevel.get_smart_display_name(opts.smart) or nil,
-        game_hours      = math_floor(xtime.game_sec() / 3600),
+    ap_core_broker.record(subject_squad.id, cause, consequence, {
+        cause_id       = opts.cause_id,
+        other_squad_id = opts.other_squad and opts.other_squad.id or nil,
+        smart_id       = opts.smart and opts.smart.id or nil,
+        level_id       = opts.level_id,
+        game_hours     = math_floor(xtime.game_sec() / 3600),
     })
 end
 
--- Faction display: mutant engine factions resolve via XML key table; humans via engine translation
+-- Mutant engine factions resolve via XML key table; humans via engine translation
 local function _faction_display(faction)
     if not faction then return nil end
     local mutant_key = ap_ext_const.MUTANT_FACTION_DISPLAY_KEY[faction]
@@ -189,7 +133,123 @@ local function _faction_display(faction)
     return game_translate_string(faction)
 end
 
--- Collect all unreported FIFO entries
+-- Mutant species (from xcreature) -> localized plural via SPECIES_DISPLAY_KEY
+local function _species_display(species)
+    if not species then return nil end
+    local key = ap_ext_const.SPECIES_DISPLAY_KEY[species]
+    if not key then return nil end
+    return _xml(key)
+end
+
+-- Hours-since descriptor for #ago#: resolved inline from XML, empty on recent or miss
+local function _ago_text(game_hours_then)
+    if not game_hours_then then return "" end
+    local delta = math_floor(xtime.game_sec() / 3600) - game_hours_then
+    if delta <= 0 then return "" end
+    return _xml(delta < 2 and "st_ap_news_ago_recent" or "st_ap_news_ago_hours")
+end
+
+-- Word form for a count (siblings + 1 including the focal entry), resolved inline from XML
+local function _count_text(n)
+    if n < 2 then return "" end
+    local key = NEWS_COUNT_KEY[n] or NEWS_COUNT_KEY.many
+    return _xml(key)
+end
+
+-- Resolve slots for one side of a record entry (subject or other). Lazy: hits xobject.se + xlibs at compose time.
+-- Returns {faction, name, species} tuple, all possibly empty strings. No snapshotted data.
+-- @cost O(1) | 1 luabind medium (xobject.se) + resolver costs (cached where possible)
+local function _side_slots(squad_id)
+    if not squad_id then return "", "", "" end
+    local se = xobject_se(squad_id)
+    if not se then return "", "", "" end
+    local faction = _faction_display(se.player_id) or ""
+    local name = xsquad.get_commander_name(se) or ""
+    local species = _species_display(xcreature.get_mutant_species(se)) or ""
+    return faction, name, species
+end
+
+-- Resolve location display from smart_id (stable, smarts do not despawn mid-session)
+local function _location_display(smart_id)
+    if not smart_id then return "" end
+    local smart = xobject_se(smart_id)
+    if not smart then return "" end
+    return xlevel.get_smart_display_name(smart) or ""
+end
+
+-- Build slot table for a focal entry (entry_a) with optional pair partner (entry_b).
+-- Non-suffixed slots mirror entry_a. _a/_b suffixed slots carry both sides; _b fills
+-- from entry_b when present, else empty strings (per-consequence / cause-broadcast fallback).
+local function _slots_for(entry_a, entry_b, count_n)
+    local a_fac, a_name, a_spec = _side_slots(entry_a.squad_id)
+    local o_fac, o_name, o_spec = _side_slots(entry_a.other_squad_id)
+    local b_fac, b_name, b_spec = "", "", ""
+    if entry_b then b_fac, b_name, b_spec = _side_slots(entry_b.squad_id) end
+    return {
+        subject_faction   = a_fac, subject_name      = a_name, subject_species   = a_spec,
+        subject_faction_a = a_fac, subject_name_a    = a_name, subject_species_a = a_spec,
+        subject_faction_b = b_fac, subject_name_b    = b_name, subject_species_b = b_spec,
+        other_faction     = o_fac, other_name        = o_name, other_species     = o_spec,
+        location = _location_display(entry_a.smart_id),
+        level    = entry_a.level_id and (xlevel.get_level_name(entry_a.level_id) or "") or "",
+        ago      = _ago_text(entry_a.game_hours),
+        count    = _count_text(count_n or 0),
+    }
+end
+
+-- Substitute slot table into template. Longer/suffixed tokens first to avoid prefix collisions.
+local function _substitute(template, slots)
+    local result = template
+    -- Pair-specific tokens: must match before the non-suffixed equivalents
+    result = string_gsub(result, "#subject_faction_a#", slots.subject_faction_a)
+    result = string_gsub(result, "#subject_faction_b#", slots.subject_faction_b)
+    result = string_gsub(result, "#subject_species_a#", slots.subject_species_a)
+    result = string_gsub(result, "#subject_species_b#", slots.subject_species_b)
+    result = string_gsub(result, "#subject_name_a#", slots.subject_name_a)
+    result = string_gsub(result, "#subject_name_b#", slots.subject_name_b)
+    -- Non-suffixed tokens
+    result = string_gsub(result, "#subject_faction#", slots.subject_faction)
+    result = string_gsub(result, "#subject_species#", slots.subject_species)
+    result = string_gsub(result, "#subject_name#", slots.subject_name)
+    result = string_gsub(result, "#other_faction#", slots.other_faction)
+    result = string_gsub(result, "#other_species#", slots.other_species)
+    result = string_gsub(result, "#other_name#", slots.other_name)
+    result = string_gsub(result, "#location#", slots.location)
+    result = string_gsub(result, "#level#", slots.level)
+    result = string_gsub(result, "#ago#", slots.ago)
+    result = string_gsub(result, "#count#", slots.count)
+    return result
+end
+
+-- Filter variants by required-data availability. Falls back to the full set if filter empties.
+local function _filter_variants(variants, slots)
+    local ok = {}
+    for i = 1, #variants do
+        local v = variants[i]
+        local need_sname  = string_find(v, "#subject_name#", 1, true)      and slots.subject_name == ""
+        local need_sspec  = string_find(v, "#subject_species#", 1, true)   and slots.subject_species == ""
+        local need_ofac   = string_find(v, "#other_faction#", 1, true)     and slots.other_faction == ""
+        local need_oname  = string_find(v, "#other_name#", 1, true)        and slots.other_name == ""
+        local need_ospec  = string_find(v, "#other_species#", 1, true)     and slots.other_species == ""
+        local need_level  = string_find(v, "#level#", 1, true)             and slots.level == ""
+        local need_ago    = string_find(v, "#ago#", 1, true)               and slots.ago == ""
+        local need_loc    = string_find(v, "#location#", 1, true)          and slots.location == ""
+        local need_sfac_a = string_find(v, "#subject_faction_a#", 1, true) and slots.subject_faction_a == ""
+        local need_sfac_b = string_find(v, "#subject_faction_b#", 1, true) and slots.subject_faction_b == ""
+        local need_sspec_a = string_find(v, "#subject_species_a#", 1, true) and slots.subject_species_a == ""
+        local need_sspec_b = string_find(v, "#subject_species_b#", 1, true) and slots.subject_species_b == ""
+        local need_sname_a = string_find(v, "#subject_name_a#", 1, true)   and slots.subject_name_a == ""
+        local need_sname_b = string_find(v, "#subject_name_b#", 1, true)   and slots.subject_name_b == ""
+        if not (need_sname or need_sspec or need_ofac or need_oname or need_ospec or need_level or need_ago or need_loc
+                or need_sfac_a or need_sfac_b or need_sspec_a or need_sspec_b or need_sname_a or need_sname_b) then
+            ok[#ok + 1] = v
+        end
+    end
+    if #ok == 0 then return variants end
+    return ok
+end
+
+-- Collect unreported FIFO entries
 local function _collect_unreported()
     local entries = {}
     ap_core_broker.each_record(nil, function(entry)
@@ -200,188 +260,36 @@ local function _collect_unreported()
     return entries
 end
 
--- Find strongest relation. Returns { kind, members = {...} } or nil.
--- Priority: retaliation > chase_resolved > cascade > hot_zone.
--- Match A+B as retaliation: A attacked B (subject/target factions), B now attacks A
-local function _is_retaliation_pair(first, second)
-    return first.subject_faction and first.target_faction
-        and second.subject_faction == first.target_faction
-        and second.target_faction == first.subject_faction
-end
-
--- Scan from index+1 for a retaliation partner of entries[index]
-local function _retaliation_partner(entries, index)
-    for j = index + 1, #entries do
-        if _is_retaliation_pair(entries[index], entries[j]) then return entries[j] end
-    end
-    return nil
-end
-
--- Find pair: A.subject_faction == B.target_faction AND A.target_faction == B.subject_faction
--- @complexity O(n^2) entries | 0 luabind
-local function _find_retaliation(entries)
+-- Find entries in the same list sharing cause_id (including the focal one)
+local function _cause_siblings(entry, entries)
+    if not entry.cause_id then return { entry } end
+    local siblings = {}
     for i = 1, #entries do
-        local partner = _retaliation_partner(entries, i)
-        if partner then return { kind = "retaliation", members = { entries[i], partner } } end
+        if entries[i].cause_id == entry.cause_id then siblings[#siblings + 1] = entries[i] end
     end
-    return nil
+    return siblings
 end
 
--- Scan all indices for an entry that points back to entries[index] via parent
-local function _chase_partner(entries, index)
-    for j = 1, #entries do
-        if j ~= index and entries[j].parent == entries[index].cons_id then return entries[j] end
-    end
-    return nil
-end
-
--- Find pair where B.parent == A.cons_id (chase-style follow-up)
--- @complexity O(n^2) entries | 0 luabind
-local function _find_chase_resolved(entries)
-    for i = 1, #entries do
-        local partner = _chase_partner(entries, i)
-        if partner then return { kind = "chase_resolved", members = { entries[i], partner } } end
-    end
-    return nil
-end
-
--- Pick largest cluster above threshold from a group table
-local function _largest_cluster(groups, min_size)
-    local best
-    for _, group in pairs(groups) do
-        if #group >= min_size and (not best or #group > #best) then best = group end
-    end
-    return best
-end
-
--- Find N-way cascade: cluster by cause_id, size >= 2
-local function _find_cascade(entries)
-    local by_cause = {}
-    for _, entry in ipairs(entries) do
-        if entry.cause_id then
-            by_cause[entry.cause_id] = by_cause[entry.cause_id] or {}
-            table_insert(by_cause[entry.cause_id], entry)
-        end
-    end
-    local best = _largest_cluster(by_cause, 2)
-    if best then return { kind = "cascade", members = best } end
-    return nil
-end
-
--- Find N-way hot_zone: cluster by location within time window, size >= 2
-local function _find_hot_zone(entries, now_hours)
-    local by_location = {}
-    for _, entry in ipairs(entries) do
-        local fresh = entry.game_hours and (now_hours - entry.game_hours) <= HOT_ZONE_WINDOW_HOURS
-        if entry.location and fresh then
-            by_location[entry.location] = by_location[entry.location] or {}
-            table_insert(by_location[entry.location], entry)
-        end
-    end
-    local best = _largest_cluster(by_location, 2)
-    if best then return { kind = "hot_zone", members = best } end
-    return nil
-end
-
--- Find strongest relation. Priority: retaliation > chase_resolved > cascade > hot_zone.
-local function _find_relation(entries)
-    local now_hours = math_floor(xtime.game_sec() / 3600)
-    return _find_retaliation(entries)
-        or _find_chase_resolved(entries)
-        or _find_cascade(entries)
-        or _find_hot_zone(entries, now_hours)
-end
-
--- Pick a single entry from unreported FIFO, weighted by cause
-local function _pick_single(entries)
-    if not entries or #entries == 0 then return nil end
+-- Pick focal entry from FIFO, weighted by cause
+local function _pick_entry(entries)
+    if #entries == 0 then return nil end
     local weights = {}
-    for index, entry in ipairs(entries) do weights[index] = WEIGHT[entry.cause] or 1 end
+    for i, entry in ipairs(entries) do weights[i] = NEWS_WEIGHT_BY_CAUSE[entry.cause] or 1 end
     return entries[xmath.weighted_choice(weights)]
 end
 
--- Push per-event rules into grammar for single-entry render
-local function _push_single_rules(entry, consequence_name)
-    local verbs = _grammar._context["verb_" .. consequence_name]
-    if type(verbs) ~= "table" or #verbs == 0 then verbs = { "" } end
-    _level_ctx = entry.level_id
-    _ago_ctx = (entry.game_hours and math_floor(xtime.game_sec() / 3600) - entry.game_hours) or 0
-    _grammar:push_rules({
-        subject      = _faction_display(entry.subject_faction) or "stalkers",
-        name         = entry.subject_name or "",
-        target       = _faction_display(entry.target_faction) or "",
-        target_name  = entry.target_name or "",
-        location     = entry.location or "the Zone",
-        clause       = "#clause_" .. (ap_ext_const.CONSEQUENCE_CLAUSE_FAMILY[entry.consequence] or "movement") .. "#",
-        verb         = verbs,
-    })
-end
-
--- Push pairwise chain data (retaliation, chase_resolved)
-local function _push_pair_rules(relation)
-    local first, second = relation.members[1], relation.members[2]
-    _level_ctx = first.level_id
-    _grammar:push_rules({
-        faction_a  = _faction_display(first.subject_faction) or "stalkers",
-        faction_b  = _faction_display(second.subject_faction) or "stalkers",
-        location_a = first.location or "the Zone",
-        location_b = second.location or "the Zone",
-        subject    = _faction_display(first.subject_faction) or "stalkers",
-        location   = first.location or "the Zone",
-        clause     = "#clause_" .. relation.kind .. "#",
-    })
-end
-
--- Collect unique factions and locations from a cluster of entries
-local function _collect_cluster_data(members)
-    local factions, locations = {}, {}
-    local seen_faction, seen_location = {}, {}
-    for _, entry in ipairs(members) do
-        local faction = _faction_display(entry.subject_faction)
-        if faction and not seen_faction[faction] then
-            seen_faction[faction] = true
-            factions[#factions + 1] = faction
-        end
-        if entry.location and not seen_location[entry.location] then
-            seen_location[entry.location] = true
-            locations[#locations + 1] = entry.location
-        end
-    end
-    return factions, locations
-end
-
--- Push N-way cluster data (cascade, hot_zone) as list rules for #list.and# joining
-local function _push_cluster_rules(relation)
-    local factions, locations = _collect_cluster_data(relation.members)
-    _grammar:push_rules({
-        location = (relation.members[1] and relation.members[1].location) or "the Zone",
-        clause   = "#clause_" .. relation.kind .. "#",
-    })
-    _grammar:add_list_rule("factions", factions)
-    _grammar:add_list_rule("locations", locations)
-end
-
--- Push per-relation rules for chain render
-local function _push_chain_rules(relation)
-    _cluster_size_ctx = #relation.members
-    if relation.kind == "retaliation" or relation.kind == "chase_resolved" then
-        _push_pair_rules(relation)
-        return
-    end
-    _push_cluster_rules(relation)
-end
-
--- Clean output: trim, dedupe whitespace, capitalize first and post-sentence
+-- Clean output: trim, dedupe whitespace, strip space-before-punctuation, collapse artifacts from empty slots
 local function _clean_output(result)
     if not result or result == "" then return nil end
     result = string_gsub(result, "^%s+", "")
     result = string_gsub(result, "%s+$", "")
     result = string_gsub(result, "  +", " ")
     result = string_gsub(result, "%s+([%.,;!?])", "%1")
-    result = string_gsub(result, "^(%l)", string_upper)
-    result = string_gsub(result, "([%.%?!]%s+)(%l)", function(pre, c) return pre .. string_upper(c) end)
+    result = string_gsub(result, ",%s*,", ",")
+    result = string_gsub(result, "%(%s*%)", "")
+    result = string_gsub(result, "  +", " ")
     if result == "" then return nil end
-    return result
+    return xstring.capitalize_first(result)
 end
 
 -- Prefer same-faction stalker as sender; fall back to any friendly online stalker
@@ -415,77 +323,259 @@ local function _pick_sender(faction)
     return { name = npc:character_name(), icon = npc:character_icon() }
 end
 
---- Pick, chain-detect, render, and dispatch one news message from the activity FIFO
+-- Resolve cause short name from a cause id (e.g. "cause:massacre" -> "massacre")
+local function _cause_short(cause_id)
+    if not cause_id then return nil end
+    return cause_id:match("^cause:(.+)")
+end
+
+-- Memoized faction lookup per intersect scan. Returns player_id string or nil.
+-- Underscore-prefixed memo name so the bone-tables rule skips it (scan-local, GC'd on return).
+local function _entry_faction(squad_id, _fac_memo)
+    if not squad_id then return nil end
+    local cached = _fac_memo[squad_id]
+    if cached == false then return nil end
+    if cached then return cached end
+    local se = xobject_se(squad_id)
+    local faction = se and se.player_id or false
+    _fac_memo[squad_id] = faction
+    return faction or nil
+end
+
+-- Append entry to a keyed bucket inside ctx[map_name]; creates the bucket on first hit.
+local function _bucket_append(ctx, map_name, key, entry)
+    local bucket = ctx[map_name][key] or {}
+    bucket[#bucket + 1] = entry
+    ctx[map_name][key] = bucket
+end
+
+-- Bucket a single entry into all intersection maps in one pass. ctx holds all bucket tables + memo.
+local function _bucket_entry(entry, ctx)
+    if entry.squad_id then _bucket_append(ctx, "by_squad", entry.squad_id, entry) end
+    if entry.smart_id then _bucket_append(ctx, "by_smart", entry.smart_id, entry) end
+    if entry.cause == CAUSE_INSTINCTS_KEY and entry.level_id then
+        _bucket_append(ctx, "by_instincts_level", entry.level_id, entry)
+    end
+    local subject_fac = _entry_faction(entry.squad_id, ctx._fac_memo)
+    if not subject_fac then return end
+    if entry.level_id then
+        _bucket_append(ctx, "by_fac_level", subject_fac .. "|" .. entry.level_id, entry)
+    end
+    if not entry.other_squad_id then return end
+    local other_fac = _entry_faction(entry.other_squad_id, ctx._fac_memo)
+    if not other_fac then return end
+    _bucket_append(ctx, "by_pair", subject_fac .. "|" .. other_fac, entry)
+end
+
+-- Survivor pattern: squadkill_flee followed by a later active consequence for same squad.
+-- Returns the later (active) entry as focal, or nil.
+local function _find_survivor_focal(list)
+    if #list < 2 then return nil end
+    local has_flee, later = false, nil
+    for i = 1, #list do
+        if list[i].consequence == CONS_SQUADKILL_FLEE_KEY then has_flee = true
+        elseif has_flee then later = list[i] end
+    end
+    if has_flee and later then return later end
+    return nil
+end
+
+-- Return (latest_entry, list) for the first bucket whose size >= min_size. Generic size match.
+local function _match_by_size(buckets, min_size)
+    for _, list in pairs(buckets) do
+        if #list >= min_size then return list[#list], list end
+    end
+    return nil
+end
+
+-- Count distinct factions represented across a list of entries
+local function _count_distinct_factions(list, _fac_memo)
+    local distinct = {}
+    for i = 1, #list do
+        local faction = _entry_faction(list[i].squad_id, _fac_memo)
+        if faction then distinct[faction] = true end
+    end
+    local distinct_count = 0
+    for _ in pairs(distinct) do distinct_count = distinct_count + 1 end
+    return distinct_count
+end
+
+-- Hot-location predicate: list size >= min AND distinct factions >= min
+local function _is_hot_location(list, _fac_memo)
+    if #list < INTERSECTED_HOT_LOCATION_MIN then return false end
+    return _count_distinct_factions(list, _fac_memo) >= INTERSECTED_HOT_LOCATION_MIN_FACTIONS
+end
+
+-- Hot-location match across all smart buckets
+local function _match_hot_location(by_smart, _fac_memo)
+    for _, list in pairs(by_smart) do
+        if _is_hot_location(list, _fac_memo) then return list[#list], list end
+    end
+    return nil
+end
+
+-- Survivor match across all squad buckets
+local function _match_survivor(by_squad)
+    for _, list in pairs(by_squad) do
+        local focal = _find_survivor_focal(list)
+        if focal then return focal, list end
+    end
+    return nil
+end
+
+-- Scan the unreported FIFO once for cross-entry patterns. First-match-wins in priority order.
+-- Priority: survivor -> grudge -> outbreak -> hot_location -> hot_faction -> busy_squad.
+-- @cost O(n) bucket pass | up to ~n luabind trivial per scan (xobject.se memoized per squad_id)
+local function _find_intersected(entries)
+    if #entries < INTERSECTED_GRUDGE_MIN then return nil end
+    local ctx = {
+        _fac_memo = {},
+        by_squad = {}, by_pair = {}, by_instincts_level = {}, by_smart = {}, by_fac_level = {},
+    }
+    for i = 1, #entries do _bucket_entry(entries[i], ctx) end
+
+    local focal, list
+    focal, list = _match_survivor(ctx.by_squad)
+    if focal then return "survivor", focal, list end
+    focal, list = _match_by_size(ctx.by_pair, INTERSECTED_GRUDGE_MIN)
+    if focal then return "grudge", focal, list end
+    focal, list = _match_by_size(ctx.by_instincts_level, INTERSECTED_OUTBREAK_MIN)
+    if focal then return "outbreak", focal, list end
+    focal, list = _match_hot_location(ctx.by_smart, ctx._fac_memo)
+    if focal then return "hot_location", focal, list end
+    focal, list = _match_by_size(ctx.by_fac_level, INTERSECTED_HOT_FACTION_MIN)
+    if focal then return "hot_faction", focal, list end
+    focal, list = _match_by_size(ctx.by_squad, INTERSECTED_BUSY_SQUAD_MIN)
+    if focal then return "busy_squad", focal, list end
+    return nil
+end
+
+-- Render + dispatch an intersected match. Returns a TRACE result table on send, nil otherwise.
+-- Extracted so compose_tick stays flat (one guard-clause call, no nested if pyramid).
+local function _try_render_intersect(entries)
+    local pattern, focal, matched = _find_intersected(entries)
+    if not pattern then return nil end
+    local pool = _templates_by_intersect[pattern]
+    if not pool or #pool == 0 then return nil end
+    local slots = _slots_for(focal, nil, #matched)
+    local filtered = _filter_variants(pool, slots)
+    local template = filtered[math_random(#filtered)]
+    local msg = _clean_output(_substitute(template, slots))
+    if not msg then return nil end
+    local focal_se = xobject_se(focal.squad_id)
+    local focal_faction_key = focal_se and focal_se.player_id or nil
+    local picked = _pick_sender(focal_faction_key)
+    if not picked then return nil end
+    xpda.send(picked.name, msg, picked.icon)
+    _recent_cons:set(focal.consequence, true)
+    for i = 1, #matched do _reported_cons_ids:set(matched[i].cons_id, true) end
+    ap_core_debug.debug("[PDA.NEWS] sent sender=%s kind=intersect pattern=%s n=%d msg=%s",
+        picked.name, pattern, #matched, msg)
+    return { code = TRACE.SENT, sender = picked.name, kind = "intersect", pattern = pattern }
+end
+
+-- Find the pair (entry_a, entry_b) in siblings for the cause's registered pair consequences.
+-- Returns both entries in sorted (a, b) consequence order, or nil if either is missing.
+local function _pair_siblings(entry, siblings)
+    local pair = PAIR_CONSEQUENCES_BY_CAUSE[entry.cause]
+    if not pair or #siblings < 2 then return nil end
+    local a_cons = "consequence:" .. pair[1]
+    local b_cons = "consequence:" .. pair[2]
+    local entry_a, entry_b
+    for i = 1, #siblings do
+        local cons_key = siblings[i].consequence
+        if cons_key == a_cons and not entry_a then entry_a = siblings[i]
+        elseif cons_key == b_cons and not entry_b then entry_b = siblings[i] end
+    end
+    if entry_a and entry_b then return entry_a, entry_b end
+    return nil
+end
+
+-- Pick a template pool and kind. Order of preference: pair-composite, cause-broadcast, per-consequence.
+-- Returns (pool, kind, count_n, cons_name_or_nil, entry_a_or_nil, entry_b_or_nil).
+local function _pick_template(entry, siblings)
+    local sib_count = #siblings
+    if sib_count >= CAUSE_BROADCAST_MIN_SIBLINGS then
+        local cause_name = _cause_short(entry.cause)
+        -- Pair-composite: exact pair present and pool non-empty
+        local a, b = _pair_siblings(entry, siblings)
+        if a and b then
+            local pool = cause_name and _templates_by_pair[cause_name]
+            if pool and #pool > 0 then return pool, "pair", sib_count, nil, a, b end
+        end
+        -- Cause-broadcast: dice roll
+        if math_random(100) <= CAUSE_BROADCAST_CHANCE_PCT then
+            local pool = cause_name and _templates_by_cause[cause_name]
+            if pool and #pool > 0 then return pool, "cause", sib_count end
+        end
+    end
+    local cons_name = entry.consequence:match("^consequence:(.+)") or ""
+    local pool = _templates_by_consequence[cons_name]
+    return pool, "consequence", 1, cons_name
+end
+
+--- Pick one unreported entry, render its template, dispatch via xpda. Cause-broadcasts mark all siblings reported.
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
 
-    -- Rebuild grammar if locale changed
     local current_locale = _detect_locale()
     if current_locale ~= _locale then
         _locale = current_locale
-        _grammar = xgrammar.create_grammar(_build_rules())
-        _grammar:add_rule("time",  _fn_time)
-        _grammar:add_rule("count", _fn_count)
-        _grammar:add_rule("ago",   _fn_ago)
-        _grammar:add_rule("level", _fn_level)
-        _register_modifiers(_grammar)
+        _templates_by_consequence, _templates_by_cause, _templates_by_pair, _templates_by_intersect = _build_templates()
     end
 
     local entries = _collect_unreported()
     if #entries == 0 then return { code = TRACE.NONE } end
 
-    local relation = _find_relation(entries)
-    local msg, relation_kind, sender_faction, reported = nil, nil, nil, {}
+    -- Intersected-news: cross-entry pattern scan runs before per-consequence / cause / pair dispatch
+    local ix_result = _try_render_intersect(entries)
+    if ix_result then return ix_result end
 
-    if relation then
-        _push_chain_rules(relation)
-        local raw = _grammar:generate("origin")
-        msg = _clean_output(raw)
-        _grammar:pop_rules()
-        if msg and relation.members then
-            relation_kind = relation.kind
-            sender_faction = relation.members[1].subject_faction
-            for _, chain_entry in ipairs(relation.members) do reported[#reported + 1] = chain_entry.cons_id end
+    local preferred = {}
+    for i = 1, #entries do
+        if not _recent_cons:has(entries[i].consequence) then
+            preferred[#preferred + 1] = entries[i]
         end
     end
+    local pick_pool = (#preferred > 0) and preferred or entries
 
-    if not msg then
-        local entry = _pick_single(entries)
-        if not entry then return { code = TRACE.NONE } end
-        local cons_name = string_match(entry.consequence, "^consequence:(.+)") or ""
-        _cluster_size_ctx = 1
-        _push_single_rules(entry, cons_name)
-        local raw = _grammar:generate("origin")
-        msg = _clean_output(raw)
-        _grammar:pop_rules()
-        if msg then
-            sender_faction = entry.subject_faction
-            reported[#reported + 1] = entry.cons_id
-        end
+    local entry = _pick_entry(pick_pool)
+    if not entry then return { code = TRACE.NONE } end
+
+    local siblings = _cause_siblings(entry, entries)
+    local pool, kind, count_n, cons_name, entry_a, entry_b = _pick_template(entry, siblings)
+    if not pool or #pool == 0 then
+        ap_core_debug.debug("[PDA.NEWS] no_templates kind=%s cons=%s", kind, cons_name or "?")
+        _reported_cons_ids:set(entry.cons_id, true)
+        return { code = TRACE.NO_TEMPLATES }
     end
 
+    local slots = (kind == "pair") and _slots_for(entry_a, entry_b, count_n)
+                                   or _slots_for(entry, nil, count_n)
+    local filtered = _filter_variants(pool, slots)
+    local template = filtered[math_random(#filtered)]
+    local msg = _clean_output(_substitute(template, slots))
     if not msg then
-        ap_core_debug.debug("[PDA.NEWS] no_msg locale=%s", _locale)
+        ap_core_debug.debug("[PDA.NEWS] no_msg kind=%s", kind)
         return { code = TRACE.NO_MSG }
     end
-    if _recent_msgs:has(msg) then
-        ap_core_debug.debug("[PDA.NEWS] dup_text locale=%s", _locale)
-        return { code = TRACE.DUP_TEXT }
-    end
-
-    local picked = _pick_sender(sender_faction)
+    local subject_se = xobject_se(entry.squad_id)
+    local subject_faction_key = subject_se and subject_se.player_id or nil
+    local picked = _pick_sender(subject_faction_key)
     if not picked then
-        ap_core_debug.debug("[PDA.NEWS] no_sender faction=%s", sender_faction or "?")
+        ap_core_debug.debug("[PDA.NEWS] no_sender faction=%s", subject_faction_key or "?")
         return { code = TRACE.NO_SENDER }
     end
 
     xpda.send(picked.name, msg, picked.icon)
-    _recent_msgs:set(msg, true)
-    if #reported > 0 then
-        for _, cid in ipairs(reported) do _reported_cons_ids:set(cid, true) end
+    _recent_cons:set(entry.consequence, true)
+    if kind == "cause" or kind == "pair" then
+        for i = 1, #siblings do _reported_cons_ids:set(siblings[i].cons_id, true) end
+    else
+        _reported_cons_ids:set(entry.cons_id, true)
     end
-    ap_core_debug.debug("[PDA.NEWS] sent sender=%s relation=%s msg=%s", picked.name, relation_kind or "none", msg)
-    return { code = TRACE.SENT, sender = picked.name, relation = relation_kind }
+    ap_core_debug.debug("[PDA.NEWS] sent sender=%s kind=%s n=%d msg=%s", picked.name, kind, count_n, msg)
+    return { code = TRACE.SENT, sender = picked.name, kind = kind }
 end
 
 local function _next_delay()
@@ -502,10 +592,8 @@ end
 
 function on_game_start()
     _cons_seq = 0
-    _cluster_size_ctx = 0
-    _ago_ctx = 0
     _locale = nil
     _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
-    _recent_msgs = xttltable.create_fifo_cache({ capacity = TEXT_RING_SIZE })
+    _recent_cons = xttltable.create_fifo_cache({ capacity = CONS_COOLDOWN_SIZE })
     CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, 30, _on_compose_timer)
 end
