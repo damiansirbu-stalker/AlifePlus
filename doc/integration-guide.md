@@ -377,7 +377,8 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_record(squad_id)` | latest assigned entry for squad, or nil |
 | `get_records(opts)` | query FIFO with AND-logic field matching, or all entries if no opts |
 | `clear_record(squad_id)` | clear assigned entry on entity death (unmarks marker) |
-| `register_descriptions(tbl)` | register consequence display labels for markers |
+| `register_activities(tbl)` | register CONSEQUENCE -> XML-id map for localized activity labels |
+| `get_activities()` | CONSEQUENCE -> XML-id map registered by ext (read-only view) |
 | `get_scripted_ids()` | read-only reference to _ap_scripted_squads table |
 
 `script_squad` does not check protection. Caller must verify:
@@ -397,33 +398,83 @@ ap_core_broker.script_squad(squad, smart, {
 
 ### Activity Record
 
-After a consequence scripts a squad, it calls `record()` to append an entry to a bounded FIFO (capacity 256). Each entry tracks what a squad is doing, with optional enriched fields for the news composer. External mods query the latest assigned entry per squad via `get_record()`.
+After a consequence scripts a squad, AP appends an entry to a bounded FIFO (capacity 256). The broker stores ids and event-time facts only. Display data (faction names, commander names, species, locations) resolves lazily at compose time from the live server-entity registry. External mods query the latest assigned entry per squad via `get_record()` and render the label via `get_activities()` + `game.translate_string()`.
+
+Schema (per entry):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `squad_id` | number | subject squad server id |
+| `other_squad_id` | number or nil | opposing party (killer, bleeder, taker) in two-party events |
+| `cause` | string | CAUSE.X enum (e.g. `"cause:massacre"`) |
+| `consequence` | string | CONSEQUENCE.X enum (e.g. `"consequence:massacre_investigate"`) |
+| `cons_id` | number | monotonic sequence id assigned by broker |
+| `cause_id` | number or nil | shared by siblings of one cause publish; groups siblings for news dispatch |
+| `smart_id` | number or nil | acting smart terrain |
+| `level_id` | number or nil | acting level |
+| `game_hours` | number | event-time snapshot (hours) |
+| `assigned` | boolean | true until a newer record replaces this one for the same squad |
+| `is_marked` | boolean | broker-managed HUD marker flag |
+
+Record fields carry no display text. Resolve at render via public xlibs + engine APIs.
+
+When a new entry is recorded for the same squad, the previous entry's `assigned` flag is set to false. Map markers only display `assigned` entries. The FIFO is session-lifetime (resets on load, no save persistence).
+
+---
+
+### Warfare map tooltip: display AP activity
+
+Goal: when your warfare map UI hovers a squad, append what the squad is doing according to AlifePlus ("investigating massacre", "holding outpost", "hunting a bleeder"). Labels are localized. Both English and Russian ship with AP. Copy-paste example, warfare author edits only the call site at the bottom:
 
 ```lua
--- Consequence handler (after script_squad SUCCESS):
-ap_core_broker.record(squad.id, CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE)
+--- Return localized AP activity label for a squad, or nil if nothing to show.
+--- Graceful no-op when AlifePlus is absent, squad is owned by warfare, or squad has no record.
+local function get_ap_activity_label(squad_id)
+    if not ap_core_broker then return nil end
 
--- With enriched fields (for news composer):
-ap_core_broker.record(squad.id, CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
-    subject_faction = "dolg", subject_name = "Petro",
-    level_id = 14, location = "old factory",
-    game_hours = xlevel.get_game_hours(),
-})
+    local record = ap_core_broker.get_record(squad_id)
+    if not record then return nil end
 
--- External mod (e.g. warfare map tooltips):
-if ap_core_broker then
-    local r = ap_core_broker.get_record(squad_id)
-    if r then
-        -- r.squad_id = 1337
-        -- r.cause = "cause:massacre"
-        -- r.consequence = "consequence:massacre_investigate"
-        -- r.assigned = true
-        -- r.subject_faction, r.subject_name, r.level_id, r.location (may be nil)
-    end
+    local activities = ap_core_broker.get_activities()
+    local label_id = activities and activities[record.consequence]
+    if not label_id then return nil end
+
+    local label = game.translate_string(label_id)
+    if not label or label == label_id or label == "" then return nil end
+    return label
+end
+
+-- Call site (warfare's tooltip builder, wherever you assemble the hover text):
+local ap_label = get_ap_activity_label(squad.id)
+if ap_label then
+    tooltip_text = tooltip_text .. "\n" .. ap_label
 end
 ```
 
-When a new entry is recorded for the same squad, the previous entry's `assigned` flag is set to false. Markers only display `assigned` entries. The FIFO is session-lifetime (resets on load, no save persistence).
+Notes for warfare authors:
+
+- Call `get_record()` fresh on every render tick. Records mutate as squads move between consequences.
+- Don't cache the activity table; `get_activities()` returns a table reference, cost is one hash lookup.
+- Locale switch (English/Russian) works automatically because the resolve happens at render time via `game.translate_string`.
+- A nil return means the squad has no recent AP activity (or is warfare-owned). Render nothing.
+- Squads warfare owns are already excluded from AP via the ownership registry (`ap_core_broker.register_owner("warfare", ...)`, registered by default). They get no record, so `get_record` returns nil, so you render nothing. No additional filtering needed on warfare's side.
+
+Typical label outputs (EN): "investigating massacre", "scavenging bodies", "reinforcing base", "evacuating base", "hunting bleeder", "holding outpost", "exploring", "resting", "camping", "at trader", "working anomalies". 36 labels total, one per AP consequence. Full map: `ap_ext_const.CONSEQUENCE_ACTIVITY` keys.
+
+---
+
+### Warfare news: suppress AP messages for warfare-owned squads
+
+AP's PDA news surfaces activity for squads AP controls. Warfare-owned squads are already skipped at the protection gate (via the default `register_owner("warfare", ...)` registration), so they never enter the news pipeline. If warfare overrides the default filter (to scope warfare ownership more precisely), the same registration handles the suppression:
+
+```lua
+-- In warfare's on_game_start, after warfare's own ownership markers are defined:
+ap_core_broker.register_owner("warfare", function(squad)
+    return squad.registered_with_warfare == true  -- warfare's existing flag
+end)
+```
+
+`register_owner` replaces the existing filter on name match. This lets warfare scope ownership natively and override AP's default proxy from `ap_core_compat`. After registration, AP excludes matching squads at four layers (producer gate, cause predicate, `find_squads`, and squad scripting), so warfare-owned squads are fully invisible to AP.
 
 ---
 
