@@ -31,7 +31,7 @@ end
 local function _on_arrive(squad, args)
     if not args then return end
     ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
-    ap_ext_smart_mutator.conquer_smart(args.target_smart_id, squad.player_id)
+    ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity)
 end
 
 local function _handler(event_data)
@@ -65,7 +65,7 @@ local function _handler(event_data)
             res = ap_core_broker.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,
-                on_arrive_args = { target_smart_id = smart.id },
+                on_arrive_args = { target_smart_id = smart.id, identity = identity },
                 pre_release_gulag = PRE_RELEASE_GULAG.AREA_CONQUER,
             })
             return res

@@ -42,8 +42,8 @@ local INTERSECTED_HOT_LOCATION_MIN = 3
 local INTERSECTED_HOT_LOCATION_MIN_FACTIONS = 2
 local INTERSECTED_GRUDGE_MIN = 2
 local INTERSECTED_OUTBREAK_MIN = 3
-local CAUSE_INSTINCTS_KEY = "cause:instincts"
-local CONS_SQUADKILL_FLEE_KEY = "consequence:squadkill_flee"
+local CAUSE_INSTINCTS_KEY = CAUSE.INSTINCTS
+local CONS_SQUADKILL_FLEE_KEY = CONSEQUENCE.SQUADKILL_FLEE
 
 local _templates_by_consequence, _templates_by_cause, _templates_by_pair, _templates_by_intersect = {}, {}, {}, {}
 local _locale = nil
@@ -590,7 +590,6 @@ local function _on_compose_timer()
 end
 
 function on_game_start()
-    _cons_seq = 0
     _locale = nil
     _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
     _recent_cons = xttltable.create_fifo_cache({ capacity = CONS_COOLDOWN_SIZE })

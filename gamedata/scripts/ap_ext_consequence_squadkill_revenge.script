@@ -82,7 +82,7 @@ local function _handler(event_data)
 
         if not killer_squad_id and not is_player_kill then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER_SQUAD } end
         if not position or not victim_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
-        if is_player_kill and not game_relations.is_factions_enemies(victim_faction, "actor_stalker") then
+        if is_player_kill and not game_relations.is_factions_enemies(victim_faction, get_actor_true_community()) then
             return { code = RESULT.FAILED_RULES, reason = REASON.FRIENDLY_FACTION }
         end
 

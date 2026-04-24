@@ -157,6 +157,10 @@ end
 --- @param handlers table Indexed array of registered handlers for this callback
 --- @param on_map boolean|nil On-map status for ratio logging
 local function _eval_reactive_handlers(handlers, on_map, ...)
+    -- Lua 5.1 vararg fan-out: we dispatch the same ... to N handlers in the loop below.
+    -- Capturing {...} once + unpack(args) per handler is the only way to preserve args
+    -- across loop iterations. Allocation is ~50us/sec in dense combat; acceptable cost
+    -- for reactive pipeline fan-out.
     local args = {...}
     for i = 1, #handlers do
         local entry = handlers[i]

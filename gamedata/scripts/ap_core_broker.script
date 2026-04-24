@@ -181,7 +181,9 @@ function is_protected(squad)
 end
 
 
---- Release squad from AP scripted control and return to simulation (accepts squad_id or squad object)
+--- Release squad from AP scripted control. Accepts squad_id (number) for "entity already gone"
+--- cleanup path, or squad userdata for "entity still live" release path. Number skips the
+--- xsquad.release_squad call since there's nothing to release against.
 local function _unscript_squad(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
@@ -411,10 +413,12 @@ local function _on_save_state(m_data)
 end
 
 local function _on_load_state(m_data)
-    local saved = m_data.ap_core_broker or {}
-    _ap_scripted_squads = saved.ap_scripted_squads or {}
+    local saved = m_data.ap_core_broker
+    if type(saved) ~= "table" then saved = {} end
+    local ss = saved.ap_scripted_squads
+    _ap_scripted_squads = (type(ss) == "table") and ss or {}
     for _, data in pairs(_ap_scripted_squads) do
-        if data.arrived then data.release_at = 0 end
+        if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
     _ap_record = _create_record_fifo()
     _record_seq = 0

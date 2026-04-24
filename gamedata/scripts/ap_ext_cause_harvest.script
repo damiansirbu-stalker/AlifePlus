@@ -6,9 +6,11 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 
 local cfg = ap_core_mcm.cfg
-local os_clock = os.clock
 
-local _pickup_at = {}
+local _pickup_cooldown = xttltable.create_ttl_table({
+    default_ttl = ap_core_const.HARVEST_COOLDOWN_SEC,
+    clock = os.clock,
+})
 
 local function _evaluate(_trace, item, npc)
     if not cfg.cause_harvest_enabled then return { code = RESULT.FAILED_RULES } end
@@ -17,8 +19,7 @@ local function _evaluate(_trace, item, npc)
     local section = item:section()
     if not IsArtefact(item) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ARTEFACT, section = section } end
 
-    local now = os_clock()
-    if _pickup_at[section] and now - _pickup_at[section] < ap_core_const.HARVEST_COOLDOWN_SEC then
+    if _pickup_cooldown:has(section) then
         return { code = RESULT.FAILED_RULES }
     end
 
@@ -42,7 +43,7 @@ local function _evaluate(_trace, item, npc)
     end
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
-    _pickup_at[section] = now
+    _pickup_cooldown:set(section, true)
 
     return {
         cause = CAUSE.HARVEST,

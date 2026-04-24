@@ -20,10 +20,6 @@ local _alignment_mutant_feral
 local _alignment_mutant_predator
 local _alignment_mutant_aberrant
 local _alignment_mutant
-local _species_explore
-local _species_socialize
-local _species_scatter
-local _species_infest
 local _food_chain_tier
 local _scatter_from
 
@@ -112,7 +108,7 @@ local function _on_arrive(squad, args)
             ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
         end
         if args.infest then
-            ap_ext_smart_mutator.infest_smart(args.target_smart_id, squad.player_id, args.level_id)
+            ap_ext_smart_mutator.infest_smart(args.target_smart_id, args.species, args.level_id)
         end
         return { code = TRACE.OK, squad = squad.id, instinct = args.name, dst = args.dst_name }
     end)
@@ -245,6 +241,16 @@ local function _make_handler(entry)
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
 
+            if entry.instinct == "infest" then
+                local has_alpha = false
+                for member_id in xsquad.iter_member_ids(squad) do
+                    if ap_ext_tracker.is_alpha(member_id) then has_alpha = true; break end
+                end
+                if not has_alpha then
+                    return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA }
+                end
+            end
+
             local finder = _find_by_instinct[entry.instinct]
             local smart = finder and finder(trace, event_data, squad)
 
@@ -260,7 +266,8 @@ local function _make_handler(entry)
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = entry.dto_field, name = entry.name,
                         dst_name = smart:name(), infest = entry.infest,
-                        target_smart_id = entry.infest and smart.id, level_id = entry.infest and event_data.level_id },
+                        target_smart_id = entry.infest and smart.id, level_id = entry.infest and event_data.level_id,
+                        species = entry.infest and event_data.species },
                     pre_release_gulag = entry.pre_release_gulag,
                 })
                 return res
@@ -287,19 +294,16 @@ function on_game_start()
     _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
     _scatter_from = ap_ext_const.SCATTER_FROM
 
+    -- Deferred attach: species_alignment sets depend on xtable.merge, which needs
+    -- alignment_mutant_* tables loaded from ap_ext_const.on_game_start.
     -- scatter: cowardly + feral + predator (tier 0-2, aberrant never scatter)
-    _species_scatter = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
+    CONFIGS[1].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- explore: cowardly + feral + predator (aberrant are lair-bound, never wander)
-    _species_explore = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
+    CONFIGS[4].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
-    _species_socialize = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
+    CONFIGS[5].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
     -- infest: feral + predator + aberrant (cowardly too weak to hold territory)
-    _species_infest = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator, _alignment_mutant_aberrant)
-
-    CONFIGS[1].species_alignment = _species_scatter
-    CONFIGS[4].species_alignment = _species_explore
-    CONFIGS[5].species_alignment = _species_socialize
-    CONFIGS[6].species_alignment = _species_infest
+    CONFIGS[6].species_alignment = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator, _alignment_mutant_aberrant)
 
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]

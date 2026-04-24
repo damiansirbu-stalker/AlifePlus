@@ -208,9 +208,11 @@ local function _is_hud_visible()
     return true
 end
 
+-- 2s visibility poll: GUI_on_show/GUI_on_hide callbacks do not fire for PDA transitions,
+-- so the stats overlay must poll to hide itself when the PDA is open.
 local function _on_visibility_timer()
     if _hud then _hud:Show(_is_hud_visible()) end
-    ResetTimeEvent("ap_stats", "vis", 1)
+    ResetTimeEvent("ap_stats", "vis", 2)
 end
 
 -- HUD layout: single table with R and X value columns + extra column (/m or %)
@@ -362,7 +364,7 @@ local function _show_hud()
         _hud = UIStatsHUD()
         get_hud():AddDialogToRender(_hud)
     end
-    CreateTimeEvent("ap_stats", "vis", 1, _on_visibility_timer)
+    CreateTimeEvent("ap_stats", "vis", 2, _on_visibility_timer)
     ap_core_debug.info("[STATS] HUD on")
 end
 
@@ -432,6 +434,7 @@ local function _on_first_update()
     if _was_enabled then _show_hud() end
     -- Markers
     xpda.clear_squad_markers()
+    -- Force re-mark after level transition (engine wipes markers). FIFO empty on fresh load.
     ap_core_broker.each_record({ assigned = true }, function(entry) entry.is_marked = false end)
     _last_validate_at = 0
     if cfg.map_markers then

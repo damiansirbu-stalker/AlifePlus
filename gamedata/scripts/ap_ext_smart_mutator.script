@@ -1,6 +1,6 @@
 --- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, infestation, decay)
 
-local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
+local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
 local math_huge, math_floor = math.huge, math.floor
 local CALLBACK = ap_core_const.CALLBACK
 
@@ -199,11 +199,14 @@ local function _on_save_state(m_data)
 end
 
 local function _on_load_state(m_data)
-    local saved = m_data.ap_ext_smart_mutator or {}
+    local saved = m_data.ap_ext_smart_mutator
+    if type(saved) ~= "table" then saved = {} end
     _conquered_smarts = {}
-    _conquered_pending = saved.conquered_smarts or {}
+    local cs = saved.conquered_smarts
+    _conquered_pending = (type(cs) == "table") and cs or {}
     _infested_smarts = {}
-    _infested_pending = saved.infested_smarts or {}
+    local is = saved.infested_smarts
+    _infested_pending = (type(is) == "table") and is or {}
 end
 
 local function _restore_conquered(now)
@@ -215,6 +218,7 @@ local function _restore_conquered(now)
     end
     local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
+        if type(data) ~= "table" then goto continue end
         if not data.faction then goto continue end
         _conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or now }
         restored = restored + 1
@@ -233,6 +237,7 @@ local function _restore_infested(now)
     end
     local restored = 0
     for smart_id, data in pairs(_infested_pending) do
+        if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
         _infested_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, infested_at = data.infested_at or now }
         restored = restored + 1
@@ -249,10 +254,35 @@ local function _on_game_load()
     _scan()
 end
 
+local function _on_server_entity_on_register(se_obj, type_name)
+    if not ap_core_debug.enabled() then return end
+    if type_name ~= "se_sim_squad_scripted" and type_name ~= "online_offline_group" then return end
+    if not se_obj or not se_obj.clsid then return end
+    if se_obj:clsid() ~= clsid.online_offline_group_s then return end
+    local smart_id = se_obj.smart_id or se_obj.assigned_target_id
+    if not smart_id then return end
+    local section = se_obj.section_name and se_obj:section_name() or "?"
+    local conq = _conquered_smarts[smart_id]
+    if conq then
+        ap_core_debug.debug("[MUTATOR.SMART] conquest_spawn: smart=%d identity=%s section=%s squad=%d",
+            smart_id, conq.faction, section, se_obj.id)
+    end
+    local inf = _infested_smarts[smart_id]
+    if inf then
+        ap_core_debug.debug("[MUTATOR.SMART] infest_spawn: smart=%d identity=%s section=%s squad=%d",
+            smart_id, inf.faction, section, se_obj.id)
+    end
+end
+
 function on_game_start()
+    _conquered_smarts = {}
+    _infested_smarts = {}
+    _conquered_pending = nil
+    _infested_pending = nil
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_REGISTER, _on_server_entity_on_register)
     CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end
