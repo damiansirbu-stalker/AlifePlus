@@ -374,8 +374,7 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_owner(squad)` | string or nil -- ownership query |
 | `register_owner(name, filter_fn)` | register ownership filter (replaces on name match) |
 | `record(squad_id, cause, consequence, opts)` | append to activity FIFO (markers, composer, external queries) |
-| `get_record(squad_id)` | latest assigned entry for squad, or nil |
-| `get_records(opts)` | query FIFO with AND-logic field matching, or all entries if no opts |
+| `each_record(opts, fn)` | iterate FIFO entries that match `opts` (AND-logic field filter), calling `fn(entry)` per match |
 | `clear_record(squad_id)` | clear assigned entry on entity death (unmarks marker) |
 | `register_activities(tbl)` | register CONSEQUENCE -> XML-id map for localized activity labels |
 | `get_activities()` | CONSEQUENCE -> XML-id map registered by ext (read-only view) |
@@ -432,7 +431,10 @@ Goal: when your warfare map UI hovers a squad, append what the squad is doing ac
 local function get_ap_activity_label(squad_id)
     if not ap_core_broker then return nil end
 
-    local record = ap_core_broker.get_record(squad_id)
+    local record
+    ap_core_broker.each_record({ squad_id = squad_id, assigned = true }, function(entry)
+        record = entry
+    end)
     if not record then return nil end
 
     local activities = ap_core_broker.get_activities()
@@ -453,11 +455,11 @@ end
 
 Notes for warfare authors:
 
-- Call `get_record()` fresh on every render tick. Records mutate as squads move between consequences.
+- Call `each_record` fresh on every render tick. Records mutate as squads move between consequences.
 - Don't cache the activity table; `get_activities()` returns a table reference, cost is one hash lookup.
 - Locale switch (English/Russian) works automatically because the resolve happens at render time via `game.translate_string`.
 - A nil return means the squad has no recent AP activity (or is warfare-owned). Render nothing.
-- Squads warfare owns are already excluded from AP via the ownership registry (`ap_core_broker.register_owner("warfare", ...)`, registered by default). They get no record, so `get_record` returns nil, so you render nothing. No additional filtering needed on warfare's side.
+- Squads warfare owns are already excluded from AP via the ownership registry (`ap_core_broker.register_owner("warfare", ...)`, registered by default). They get no record, so `each_record` yields nothing, so you render nothing. No additional filtering needed on warfare's side.
 
 Typical label outputs (EN): "investigating massacre", "scavenging bodies", "reinforcing base", "evacuating base", "hunting bleeder", "holding outpost", "exploring", "resting", "camping", "at trader", "working anomalies". 36 labels total, one per AP consequence. Full map: `ap_ext_const.CONSEQUENCE_ACTIVITY` keys.
 
