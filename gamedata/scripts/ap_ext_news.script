@@ -20,7 +20,7 @@ local DEDUP_CAPACITY = 512
 local CONS_COOLDOWN_SIZE = 3
 local MAX_TEMPLATE_VARIANTS = 20
 local CAUSE_BROADCAST_MIN_SIBLINGS = 2
-local CAUSE_BROADCAST_CHANCE_PCT = 70
+local CAUSE_BROADCAST_CHANCE_PCT = 90
 
 local NEWS_WEIGHT_BY_CAUSE = ap_ext_const.NEWS_WEIGHT_BY_CAUSE
 local NEWS_COUNT_KEY = ap_ext_const.NEWS_COUNT_KEY
@@ -180,18 +180,23 @@ end
 -- Build slot table for a focal entry (entry_a) with optional pair partner (entry_b).
 -- Non-suffixed slots mirror entry_a. _a/_b suffixed slots carry both sides; _b fills
 -- from entry_b when present, else empty strings (per-consequence / cause-broadcast fallback).
+-- Location falls back to level name when smart lookup resolves nothing (xlibs stays pure,
+-- fallback is a mod-layer decision to keep news flowing rather than drop the event).
 local function _slots_for(entry_a, entry_b, count_n)
     local a_fac, a_name, a_spec = _side_slots(entry_a.squad_id)
     local o_fac, o_name, o_spec = _side_slots(entry_a.other_squad_id)
     local b_fac, b_name, b_spec = "", "", ""
     if entry_b then b_fac, b_name, b_spec = _side_slots(entry_b.squad_id) end
+    local level = entry_a.level_id and (xlevel.get_level_name(entry_a.level_id) or "") or ""
+    local location = _location_display(entry_a.smart_id)
+    if location == "" then location = level end
     return {
         subject_faction   = a_fac, subject_name      = a_name, subject_species   = a_spec,
         subject_faction_a = a_fac, subject_name_a    = a_name, subject_species_a = a_spec,
         subject_faction_b = b_fac, subject_name_b    = b_name, subject_species_b = b_spec,
         other_faction     = o_fac, other_name        = o_name, other_species     = o_spec,
-        location = _location_display(entry_a.smart_id),
-        level    = entry_a.level_id and (xlevel.get_level_name(entry_a.level_id) or "") or "",
+        location = location,
+        level    = level,
         ago      = _ago_text(entry_a.game_hours),
         count    = _count_text(count_n or 0),
     }
