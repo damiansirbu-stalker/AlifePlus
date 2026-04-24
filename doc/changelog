@@ -1,29 +1,30 @@
 next
-  Summary: PDA news system, mutant infestation, additive territory conquest
+  Summary: PDA news system (English and Russian), mutant infestation with alpha gate, species-pure mutant spawns, additive territory conquest, personality ceiling retune
   Gameplay:
-    Changed: territory conquest is additive now. Conquering a smart terrain adds the conqueror's squads alongside original spawns instead of replacing them.
-    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests, and original spawns are replaced by the infesting species. Per-level cap (MCM 1-5, default 1). Personality gated by territory and survival traits.
-    Added: PDA news system. Your PDA surfaces recent squad activity as chatter from an online stalker on your frequency. Every line names the faction, commander, location, level, and time as tactical information rather than flavor.
-    Added: paired news. When one event triggers two responses (a squad investigating their own dead while mutants scavenge the bodies, one crew running while another from the same faction hunts the killer), a single line narrates both sides instead of sending two separate messages.
-    Added: pattern news. The news system scans recent activity for cross-entry patterns and sends lines that read like the narrator noticed something. Six patterns: a survivor of a killed squad already working elsewhere, two factions trading hits across a level, one location every crew wants, a faction running its whole roster through one map, a squad logging hits all night, a mutant outbreak on one level.
-    Added: mutant pack lines use species (bloodsuckers, chimeras, lurkers, aberrants) instead of generic "monsters".
-    Added: map marker activity labels localized, English and Russian.
-    Added: English and Russian ship together for news and marker labels. Stalker register throughout, loners talk like loners.
-    Removed: old per-consequence PDA templates and chance sliders.
+    Added: PDA news system. Recent squad activity surfaces as radio chatter from an online stalker on your frequency. Each line names the faction, commander, location, level, and elapsed time.
+    Added: paired news. One event that fires two sibling consequences ships as a single line instead of two messages. Covers massacre, squadkill, basekill, wounded, harvest.
+    Added: pattern news. The composer scans recent activity for recurring patterns and ships one summary line per match. Six patterns: survivor, grudge, outbreak, hot_location, hot_faction, busy_squad.
+    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns are replaced by the infesting species. Only squads carrying an alpha can infest. Per-level cap (MCM 1-5, default 1).
+    Changed: territory conquest is additive. Conquerors add spawns alongside originals instead of replacing them.
+    Changed: species-pure spawns on mutant-claimed smart terrains. Each nest spawns one species instead of mixed packs. Stalker conquest unchanged.
+    Changed: personality ceiling retuned from 0.80 to 0.70 across every consequence. Floor stays at 0.20.
+  Localization:
+    Added: PDA news ships in English and Russian. Stalker register throughout, loners talk like loners.
+    Added: PDA map marker activity labels in English and Russian.
+    Added: mutant species names in news (bloodsuckers, chimeras, lurkers, psy dogs) instead of generic "monsters".
   MCM:
+    Added: News tab with master toggle and compose interval sliders (1-600 seconds, default 30-100).
     Added: instinct infest cause and consequence settings (enabled, threshold, rush, personality floor and ceiling).
     Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
-    Added: News tab with master toggle and compose interval sliders covering 60 to 600 seconds.
-    Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab now.
+    Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab.
   Integration:
     Changed: activity record API moved to ap_core_broker (record, get_record, get_records, clear_record, register_descriptions).
-    Added: ap_ext_news.record_event(subject_squad, cause, consequence, opts). Consequences call it on SUCCESS. Record stores ids only. Display resolves at compose time so handlers stay cheap.
-    Added: opts.cause_id and opts.other_squad on record_event. cause_id groups siblings for paired and pattern dispatch. other_squad carries the opposing party (killer, bleeder, taker) for two-party events.
-    Added: template id conventions for modders authoring news pools. Per-consequence st_ap_news_tpl_<consequence>_NNN. Cause-broadcast st_ap_news_tpl_cause_<cause>_NNN. Paired st_ap_news_tpl_cause_<cause>_pair_<a>_<b>_NNN with consequences in alphabetical order. Pattern st_ap_news_tpl_intersect_<pattern>_NNN where pattern is one of busy_squad, grudge, hot_faction, hot_location, outbreak, survivor.
+    Added: ap_ext_news.record_event(subject_squad, cause, consequence, opts) with cause_id and other_squad for paired and pattern dispatch.
+    Added: template id conventions for news pools. Per-consequence, cause-broadcast, paired, pattern.
+    Changed: xsmart spawn injection renamed to set_shared_spawn and set_exclusive_spawn. Identity argument accepts mutant species alongside stalker factions.
     Added: xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
-    Changed: xsmart spawn injection renamed. set_shared_spawn and set_exclusive_spawn replace inject/clear.
   Fixed:
-    Fixed: mutant instinct filters check engine faction acceptance before selecting smart terrains.
+    Fixed: squadkill_revenge chased the player after the player's actor_stalker relation drifted hostile from own-faction kills.
 
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
