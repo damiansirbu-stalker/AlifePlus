@@ -7,9 +7,7 @@ local string_format, string_gsub, string_find = string.format, string.gsub, stri
 local game_translate_string = game.translate_string
 local xobject_se = xobject.se
 
-local TRACE = ap_core_const.TRACE
-local CAUSE = ap_core_const.CAUSE
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local TRACE, CAUSE, CONSEQUENCE = ap_core_const.TRACE, ap_core_const.CAUSE, ap_core_const.CONSEQUENCE
 local alignment_human = ap_ext_const.alignment_human
 
 local cfg = ap_core_mcm.cfg
@@ -17,13 +15,12 @@ local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "compose_tick"
 
 local DEDUP_CAPACITY = 512
-local CONS_COOLDOWN_SIZE = 3
+local CONS_COOLDOWN_SIZE = 20
 local MAX_TEMPLATE_VARIANTS = 20
 local CAUSE_BROADCAST_MIN_SIBLINGS = 2
 local CAUSE_BROADCAST_CHANCE_PCT = 90
 
-local NEWS_WEIGHT_BY_CAUSE = ap_ext_const.NEWS_WEIGHT_BY_CAUSE
-local NEWS_COUNT_KEY = ap_ext_const.NEWS_COUNT_KEY
+local NEWS_WEIGHT_BY_CAUSE, NEWS_COUNT_KEY = ap_ext_const.NEWS_WEIGHT_BY_CAUSE, ap_ext_const.NEWS_COUNT_KEY
 
 -- Reactive pair causes: sibling entries sharing cause_id whose consequences match the pair
 -- get a dedicated pool that narrates both responses together. Pair pool is tried before
@@ -48,10 +45,7 @@ local INTERSECTED_OUTBREAK_MIN = 3
 local CAUSE_INSTINCTS_KEY = "cause:instincts"
 local CONS_SQUADKILL_FLEE_KEY = "consequence:squadkill_flee"
 
-local _templates_by_consequence = {}
-local _templates_by_cause = {}
-local _templates_by_pair = {}
-local _templates_by_intersect = {}
+local _templates_by_consequence, _templates_by_cause, _templates_by_pair, _templates_by_intersect = {}, {}, {}, {}
 local _locale = nil
 local _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
 local _recent_cons = xttltable.create_fifo_cache({ capacity = CONS_COOLDOWN_SIZE })
