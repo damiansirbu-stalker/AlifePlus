@@ -4,7 +4,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local RANGE_EYE = ap_core_const.RANGE_EYE
 
@@ -61,7 +61,7 @@ local function _handler(event_data)
         _smart_cooldown:set(smart.id, true)
 
         local res
-        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             res = ap_core_broker.script_squad(squad, smart, {
                 rush = cfg.consequence_area_conquer_rush,
                 on_arrive = CONSEQUENCE.AREA_CONQUER,

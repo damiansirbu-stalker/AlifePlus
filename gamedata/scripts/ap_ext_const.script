@@ -253,50 +253,6 @@ ALPHA_LOOT = {
 }
 
 
---- Consequence display labels for PDA markers and external queries.
---- Values match MCM menu names (spaces, no \n).
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-
---- Consequence -> XML id for localized marker activity text. Resolved via game.translate_string at HUD render.
-CONSEQUENCE_ACTIVITY = {
-    [CONSEQUENCE.ALPHA_PROMOTE]        = "st_ap_activity_alpha_promote",
-    [CONSEQUENCE.ALPHAKILL_TARGETED]   = "st_ap_activity_alphakill_targeted",
-    [CONSEQUENCE.MASSACRE_SCAVENGE]    = "st_ap_activity_massacre_scavenge",
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "st_ap_activity_massacre_investigate",
-    [CONSEQUENCE.STASH_AMBUSH]         = "st_ap_activity_stash_ambush",
-    [CONSEQUENCE.STASH_LOOT]           = "st_ap_activity_stash_loot",
-    [CONSEQUENCE.STASH_FILL]           = "st_ap_activity_stash_fill",
-    [CONSEQUENCE.SQUADKILL_REVENGE]    = "st_ap_activity_squadkill_revenge",
-    [CONSEQUENCE.SQUADKILL_FLEE]       = "st_ap_activity_squadkill_flee",
-    [CONSEQUENCE.BASEKILL_SUPPORT]     = "st_ap_activity_basekill_support",
-    [CONSEQUENCE.BASEKILL_FLEE]        = "st_ap_activity_basekill_flee",
-    [CONSEQUENCE.WOUNDED_HUNT]         = "st_ap_activity_wounded_hunt",
-    [CONSEQUENCE.WOUNDED_HELP]         = "st_ap_activity_wounded_help",
-    [CONSEQUENCE.AREA_CONQUER]         = "st_ap_activity_area_conquer",
-    [CONSEQUENCE.HARVEST_ROB]          = "st_ap_activity_harvest_rob",
-    [CONSEQUENCE.HARVEST_HAUNT]        = "st_ap_activity_harvest_haunt",
-    [CONSEQUENCE.HUNGER_CAMPFIRE]      = "st_ap_activity_hunger_campfire",
-    [CONSEQUENCE.SLEEP_CAMPFIRE]       = "st_ap_activity_sleep_campfire",
-    [CONSEQUENCE.REST_CAMPFIRE]        = "st_ap_activity_rest_campfire",
-    [CONSEQUENCE.HEAL_SHELTER]         = "st_ap_activity_heal_shelter",
-    [CONSEQUENCE.SHELTER_INDOOR]       = "st_ap_activity_shelter_indoor",
-    [CONSEQUENCE.SHELTER_OUTDOOR]      = "st_ap_activity_shelter_outdoor",
-    [CONSEQUENCE.MONEY_HARVEST]        = "st_ap_activity_money_harvest",
-    [CONSEQUENCE.MONEY_HUNT]           = "st_ap_activity_money_hunt",
-    [CONSEQUENCE.SUPPLY_TRADER]        = "st_ap_activity_supply_trader",
-    [CONSEQUENCE.JOB_OUTPOST]          = "st_ap_activity_job_outpost",
-    [CONSEQUENCE.JOB_EXPLORE]          = "st_ap_activity_job_explore",
-    [CONSEQUENCE.JOB_RESEARCH]         = "st_ap_activity_job_research",
-    [CONSEQUENCE.SOCIAL_CAMPFIRE]      = "st_ap_activity_social_campfire",
-    [CONSEQUENCE.SOCIAL_BASE]          = "st_ap_activity_social_base",
-    [CONSEQUENCE.INSTINCTS_FEED]       = "st_ap_activity_instincts_feed",
-    [CONSEQUENCE.INSTINCTS_SLEEP]      = "st_ap_activity_instincts_sleep",
-    [CONSEQUENCE.INSTINCTS_EXPLORE]    = "st_ap_activity_instincts_explore",
-    [CONSEQUENCE.INSTINCTS_SOCIALIZE]  = "st_ap_activity_instincts_socialize",
-    [CONSEQUENCE.INSTINCTS_SCATTER]    = "st_ap_activity_instincts_scatter",
-    [CONSEQUENCE.INSTINCTS_INFEST]     = "st_ap_activity_instincts_infest",
-}
-
 local CAUSE = ap_core_const.CAUSE
 
 --- Weighted bias for news composer entry pick. Higher = more likely dispatched.
@@ -368,7 +324,6 @@ function on_game_start()
     SCATTER_FROM[0] = xtable.merge(alignment_mutant_feral, alignment_mutant_predator, alignment_mutant_aberrant)
     SCATTER_FROM[1] = xtable.merge(alignment_mutant_predator, alignment_mutant_aberrant)
     SCATTER_FROM[2] = xtable.merge(alignment_mutant_aberrant)
-    ap_core_broker.register_activities(CONSEQUENCE_ACTIVITY)
 end
 
 --- Item section lists for needs arrive_fn (GAMMA-verified)

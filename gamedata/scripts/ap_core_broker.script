@@ -27,22 +27,6 @@ local _arrival_handlers = {}
 local _ap_record = nil
 local _record_seq = 0
 local _record_assigned = {}
-local _consequence_activities = nil
-
---- Register consequence activity table (called from ext at init).
---- Values are XML ids resolved via game.translate_string at HUD render time.
---- Core stores reference, no core->ext import.
---- @safety SAFE - pure Lua reference assignment
---- @cost O(1) | 0 luabind
---- @param tbl table Maps CONSEQUENCE keys to XML activity ids (e.g. "st_ap_activity_stash_loot")
-function register_activities(tbl)
-    _consequence_activities = tbl
-end
-
---- Get consequence activity id table (read by HUD for markers).
-function get_activities()
-    return _consequence_activities
-end
 
 --- Record squad activity after SUCCESS. Appends to FIFO, marks previous entry for same squad as unassigned.
 --- Schema stores IDs only (subject, other, smart, level). Display data resolved lazily at compose time via alife_object.
@@ -59,17 +43,13 @@ function record(subject_squad_id, cause, consequence, opts)
     if not subject_squad_id or not cause or not consequence then return nil end
     opts = opts or {}
     local prev = _record_assigned[subject_squad_id]
-    if prev then
-        prev.assigned = false
-        prev.is_marked = false
-    end
+    if prev then prev.assigned = false end
     _record_seq = _record_seq + 1
     local entry = {
         squad_id = subject_squad_id,
         cause = cause,
         consequence = consequence,
         assigned = true,
-        is_marked = false,
         other_squad_id = opts.other_squad_id,
         smart_id = opts.smart_id,
         level_id = opts.level_id,
@@ -85,16 +65,14 @@ function record(subject_squad_id, cause, consequence, opts)
 end
 
 --- Clear the assigned record for a squad (entity died, despawned).
---- Unmarks the map marker and removes from the assigned index.
+--- Pure entry drop. HUD owns marker lifecycle and unmarks via its own callback.
 --- @safety SAFE - pure Lua table write
---- @cost O(1) | 0-1 luabind (xpda.unmark_squad if marked)
+--- @cost O(1) | 0 luabind
 --- @param squad_id number Squad server ID
 function clear_record(squad_id)
     local entry = _record_assigned[squad_id]
     if not entry then return end
-    if entry.is_marked then xpda.unmark_squad(squad_id) end
     entry.assigned = false
-    entry.is_marked = false
     _record_assigned[squad_id] = nil
 end
 
@@ -105,20 +83,50 @@ local function _match(entry, opts)
     return true
 end
 
---- Iterate records matching opts. Uses assigned index when opts.assigned=true (O(active squads)),
---- falls back to full FIFO scan otherwise (O(capacity)).
---- @param opts table|nil Filter fields (AND logic). { assigned = true } iterates live entries only.
---- @param fn function(entry) Called for each matching entry
-function each_record(opts, fn)
+--- Get all records matching opts (AND logic on field equality).
+--- Uses assigned index when opts.assigned=true (O(active squads)), else full FIFO scan (O(capacity)).
+--- @param opts table|nil Filter fields. { assigned = true } reads live entries only.
+--- @return table Array of matching entries (caller-owned, may sort or filter further)
+function get_records(opts)
+    local list = {}
     if opts and opts.assigned then
         for _, entry in pairs(_record_assigned) do
-            if entry.assigned and _match(entry, opts) then fn(entry) end
+            if entry.assigned and _match(entry, opts) then list[#list + 1] = entry end
         end
-        return
+    else
+        _ap_record:each(function(entry)
+            if not opts or _match(entry, opts) then list[#list + 1] = entry end
+        end)
     end
-    _ap_record:each(function(entry)
-        if not opts or _match(entry, opts) then fn(entry) end
-    end)
+    return list
+end
+
+--- Get the most-recent record matching opts (highest cons_id).
+--- O(1) fast path: { squad_id = X, assigned = true } hits the assigned index directly.
+--- General path scans matching entries and returns the one with the highest cons_id.
+--- @param opts table Filter fields (AND logic). Required.
+--- @return table|nil Most-recent matching entry or nil
+function get_record(opts)
+    if not opts then return nil end
+    if opts.squad_id and opts.assigned then
+        local entry = _record_assigned[opts.squad_id]
+        if entry and entry.assigned and _match(entry, opts) then return entry end
+        return nil
+    end
+    local best
+    local function _consider(entry)
+        if not best or (entry.cons_id and entry.cons_id > (best.cons_id or 0)) then best = entry end
+    end
+    if opts.assigned then
+        for _, entry in pairs(_record_assigned) do
+            if entry.assigned and _match(entry, opts) then _consider(entry) end
+        end
+    else
+        _ap_record:each(function(entry)
+            if _match(entry, opts) then _consider(entry) end
+        end)
+    end
+    return best
 end
 
 
@@ -396,7 +404,6 @@ local function _on_record_evict(entry)
     if entry.assigned and _record_assigned[entry.squad_id] == entry then
         _record_assigned[entry.squad_id] = nil
     end
-    if entry.is_marked then xpda.unmark_squad(entry.squad_id) end
 end
 
 local function _create_record_fifo()

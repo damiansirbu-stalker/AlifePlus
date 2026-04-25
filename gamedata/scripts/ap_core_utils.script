@@ -1,6 +1,6 @@
 --- ap_core_utils: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 
 --- Subscribe to an event with logging
@@ -92,7 +92,7 @@ end
 --- @return table Array of squad server objects
 function find_squads_observed(trace, position, opts)
     local squads
-    ap_core_debug.observe(trace, ACTION.FIND_TARGETS, function()
+    ap_core_debug.observe(trace, PHASE.FIND_TARGETS, function()
         squads = find_squads(position, opts)
         return ap_core_debug.result_squads(squads)
     end)
@@ -132,7 +132,7 @@ end
 --- @return table|nil Smart server object or nil
 function find_smart_observed(trace, position, opts)
     local smart
-    ap_core_debug.observe(trace, ACTION.FIND_DESTINATION, function()
+    ap_core_debug.observe(trace, PHASE.FIND_DESTINATION, function()
         smart = find_smart(position, opts)
         if not smart then return { code = TRACE.EMPTY } end
         return { code = TRACE.OK, id = smart.id }

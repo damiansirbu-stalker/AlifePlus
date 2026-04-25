@@ -254,24 +254,33 @@ local function _on_game_load()
     _scan()
 end
 
-local function _on_server_entity_on_register(se_obj, type_name)
+-- Deferred trace: respawn_point_prop_section is set in try_respawn AFTER SIMBOARD:create_squad
+-- returns (smart_terrain.script:1720-1721), so reading it requires waiting one tick. Filtering on
+-- AP's own injection keys proves the AP entry won the roll vs coexisting LTX entries.
+-- @cost 1-2 luabind (xobject.se + section_name) per AP-attributed spawn; 0 for non-AP spawns
+local function _trace_spawn_deferred(squad_id, smart_id)
+    local squad = xobject.se(squad_id)
+    if not squad then return true end
+    local prop = squad.respawn_point_prop_section
+    if prop ~= CONQUEST_KEY and prop ~= INFEST_KEY then return true end
+    local data = (prop == CONQUEST_KEY) and _conquered_smarts[smart_id] or _infested_smarts[smart_id]
+    local faction = data and data.faction or "?"
+    local section = squad.section_name and squad:section_name() or "?"
+    local tag = (prop == CONQUEST_KEY) and "conquest_spawn" or "infest_spawn"
+    ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d faction=%s section=%s squad=%d",
+        tag, smart_id, faction, section, squad_id)
+    return true
+end
+
+-- squad_on_npc_creation fires once per NPC member, BEFORE try_respawn writes respawn_point_*.
+-- CreateTimeEvent is idempotent on (ev_id, act_id) (_g.script:345), so multi-NPC squads register
+-- once and the rest are no-ops. Delay 0 fires next ProcessEventQueue tick, by which point
+-- try_respawn has completed and the marker fields are visible.
+-- @cost 1 enabled() check (~150ns) per NPC when DEBUG off; 1 CreateTimeEvent per NPC when on
+local function _on_npc_creation(squad, _, spawn_smart)
     if not ap_core_debug.enabled() then return end
-    if type_name ~= "se_sim_squad_scripted" and type_name ~= "online_offline_group" then return end
-    if not se_obj or not se_obj.clsid then return end
-    if se_obj:clsid() ~= clsid.online_offline_group_s then return end
-    local smart_id = se_obj.smart_id or se_obj.assigned_target_id
-    if not smart_id then return end
-    local section = se_obj.section_name and se_obj:section_name() or "?"
-    local conq = _conquered_smarts[smart_id]
-    if conq then
-        ap_core_debug.debug("[MUTATOR.SMART] conquest_spawn: smart=%d identity=%s section=%s squad=%d",
-            smart_id, conq.faction, section, se_obj.id)
-    end
-    local inf = _infested_smarts[smart_id]
-    if inf then
-        ap_core_debug.debug("[MUTATOR.SMART] infest_spawn: smart=%d identity=%s section=%s squad=%d",
-            smart_id, inf.faction, section, se_obj.id)
-    end
+    if not spawn_smart then return end
+    CreateTimeEvent("ap_trace_spawn", squad.id, 0, _trace_spawn_deferred, squad.id, spawn_smart.id)
 end
 
 function on_game_start()
@@ -282,7 +291,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
-    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_REGISTER, _on_server_entity_on_register)
+    RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_CREATION, _on_npc_creation)
     CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end

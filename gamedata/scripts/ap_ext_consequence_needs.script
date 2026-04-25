@@ -7,7 +7,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local RANGE_RADIO = ap_core_const.RANGE_RADIO
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -168,14 +168,14 @@ local function _dispatch_arrive(trace, go, args)
     end
     local sections = args.section_key and NEEDS_SECTIONS[args.section_key]
     if sections then
-        ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+        ap_core_debug.observe(trace, PHASE.ARRIVE, function()
             local consumed = _consume(go, sections)
             return { code = consumed and TRACE.OK or TRACE.NONE, consumed = consumed }
         end)
         return "consume"
     end
     if args.arrive_fn == "trade" then
-        ap_core_debug.observe(trace, ACTION.ARRIVE_ACTION, function()
+        ap_core_debug.observe(trace, PHASE.ARRIVE, function()
             local sold, bought = _arrive_trade(go)
             return { code = sold and TRACE.OK or TRACE.NO_ARTEFACT, sold = sold, bought = bought }
         end)
@@ -187,7 +187,7 @@ end
 --- Reset need timestamp and run arrive action on arrival at destination
 local function _on_arrive(squad, args)
     if not args or not args.dto_field then return end
-    ap_core_debug.observe(nil, ACTION.COMPLETE_NEEDS, function(trace)
+    ap_core_debug.observe(nil, PHASE.COMPLETE_NEEDS, function(trace)
         local now = xtime.game_sec()
         ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, now)
         local cmd_id = squad:commander_id()
@@ -231,7 +231,7 @@ local function _make_handler(entry)
             end
 
             local res
-            ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,

@@ -251,11 +251,13 @@ end
 -- Collect unreported FIFO entries
 local function _collect_unreported()
     local entries = {}
-    ap_core_broker.each_record(nil, function(entry)
+    local recs = ap_core_broker.get_records()
+    for i = 1, #recs do
+        local entry = recs[i]
         if entry.cons_id and not _reported_cons_ids:has(entry.cons_id) then
             entries[#entries + 1] = entry
         end
-    end)
+    end
     return entries
 end
 

@@ -21,38 +21,49 @@ local UPDATE_MARKERS_SEC = 10
 local VALIDATE_MARKERS_SEC = 20
 local _last_validate_at = 0
 
+-- Marker render-state, owned exclusively by HUD. Keyed by squad_id.
+-- { consequence = "...", remove_at = number|nil }
+-- consequence: tracked so we re-mark when the squad's activity changes (label update).
+-- remove_at: set when the squad enters linger; nil otherwise.
+local _marker_state = {}
+
+local function _mark_one(entry)
+    local state = _marker_state[entry.squad_id]
+    if state and state.consequence == entry.consequence then return end
+    local se = xobject.se(entry.squad_id)
+    if not se then return end
+    local info = ap_core_const.CONSEQUENCE_INFO[entry.consequence]
+    local key = info and info.action_key
+    local action = key and game.translate_string(key)
+    if not action or action == key or action == "" then action = entry.consequence end
+    local full_label = action .. ": " .. xsquad.get_community_name(se)
+    xpda.mark_squad(entry.squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
+    _marker_state[entry.squad_id] = { consequence = entry.consequence }
+    ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", entry.squad_id, full_label)
+end
+
 local function _apply_markers()
-    local activities = ap_core_broker.get_activities()
-    ap_core_broker.each_record({ assigned = true }, function(entry)
-        if entry.is_marked then return end
-        local se = xobject.se(entry.squad_id)
-        if not se then return end
-        local id = activities and activities[entry.consequence]
-        local activity = id and game.translate_string(id) or entry.consequence
-        if id and activity == id then activity = entry.consequence end
-        local full_label = activity .. ": " .. xsquad.get_community_name(se)
-        xpda.mark_squad(entry.squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
-        entry.is_marked = true
-        ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", entry.squad_id, full_label)
-    end)
+    local records = ap_core_broker.get_records({ assigned = true })
+    for i = 1, #records do _mark_one(records[i]) end
 end
 
 local function _validate_markers()
     local now = clock()
-    ap_core_broker.each_record({ assigned = true }, function(entry)
-        if not entry.is_marked then return end
-        local se = xobject.se(entry.squad_id)
-        local should_linger = not se or not se.scripted_target
-        if should_linger and not entry.remove_at then
-            entry.remove_at = now + ap_core_const.MARKER_LINGER_SEC
-            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", entry.squad_id, se and "unscripted" or "dead")
+    for squad_id, state in pairs(_marker_state) do
+        local entry = ap_core_broker.get_record({ squad_id = squad_id, assigned = true })
+        local se = entry and xobject.se(squad_id)
+        local should_linger = not entry or not se or not se.scripted_target
+        if should_linger and not state.remove_at then
+            state.remove_at = now + ap_core_const.MARKER_LINGER_SEC
+            local reason = (not entry) and "evicted" or (not se and "dead" or "unscripted")
+            ap_core_debug.debug("[SQUAD] mark_linger: squad=%d reason=%s", squad_id, reason)
         end
-        if entry.remove_at and now >= entry.remove_at then
-            xpda.unmark_squad(entry.squad_id)
-            entry.is_marked = false
-            ap_core_debug.debug("[SQUAD] unmark: squad=%d", entry.squad_id)
+        if state.remove_at and now >= state.remove_at then
+            xpda.unmark_squad(squad_id)
+            _marker_state[squad_id] = nil
+            ap_core_debug.debug("[SQUAD] unmark: squad=%d", squad_id)
         end
-    end)
+    end
 end
 
 local function _update_markers()
@@ -71,6 +82,10 @@ local function _on_server_entity_on_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
     if not id then return end
+    if _marker_state[id] then
+        xpda.unmark_squad(id)
+        _marker_state[id] = nil
+    end
     ap_core_broker.clear_record(id)
 end
 
@@ -432,10 +447,9 @@ local function _on_first_update()
     _was_enabled = enabled()
     if _was_counters then _start_collecting() end
     if _was_enabled then _show_hud() end
-    -- Markers
+    -- Markers: engine wipes markers on level transition; clear our shadow state too.
     xpda.clear_squad_markers()
-    -- Force re-mark after level transition (engine wipes markers). FIFO empty on fresh load.
-    ap_core_broker.each_record({ assigned = true }, function(entry) entry.is_marked = false end)
+    _marker_state = {}
     _last_validate_at = 0
     if cfg.map_markers then
         CreateTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)

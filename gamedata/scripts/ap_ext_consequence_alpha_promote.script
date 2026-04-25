@@ -4,7 +4,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 
 local cfg = ap_core_mcm.cfg
@@ -26,7 +26,7 @@ local function _handler(event_data)
         local kills = event_data.kills
 
         local updated
-        ap_core_debug.observe(trace, ACTION.UPDATE_ALPHA, function()
+        ap_core_debug.observe(trace, PHASE.UPDATE_ALPHA, function()
             updated = ap_ext_tracker.update_alpha(killer_id, {
                 kills = kills, name = name, level_id = level_id,
             })

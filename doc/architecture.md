@@ -187,7 +187,7 @@ Hierarchical tracing via `observe()` in `ap_core_debug`. Each trace carries a mo
 ```
 [CAUSE.NEEDS] [tid=42 path=CAUSE.NEEDS] ok id=1337 drive=4.2 [0.15ms]
 [CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
-[ACTION.FIND_DESTINATION] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE/ACTION.FIND_DESTINATION] ok id=445 [0.12ms]
+[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
 ```
 
 Below DEBUG log level: `observe()` is a bare passthrough (calls the function, returns the result). `trace()` returns a null singleton. Cost: one `enabled()` check (~150ns) per call. The `_null_trace` and associated no-ops are pre-allocated singletons - no allocation at non-debug levels.
@@ -208,7 +208,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 **Save/load.** `_ap_scripted_squads` persists to `m_data.ap_core_broker`. Activity record is session-only (FIFO resets on load). Engine-side `scripted_target` persists natively across save/load (`sim_squad_scripted` STATE_Write/STATE_Read). Arrival handler functions are transient - they are re-registered every load via `consumer.register` opts. On load, squads marked as arrived get `release_at = 0` (immediate release on next scan).
 
-**Activity record.** `record(squad_id, cause, consequence, opts)` appends an entry to a bounded FIFO (`xttltable.create_fifo_cache`, capacity 256). Each entry tracks squad activity with optional enriched fields (faction, name, location, game_hours) for the news composer. `_record_assigned[squad_id]` is a side index mapping each squad to its latest active entry. When a new entry is recorded for the same squad, the previous entry's `assigned` and `is_marked` flags are cleared. On FIFO eviction, the `on_evict` callback cleans up the assigned index and unmarks any stale map markers. `get_record(squad_id)` returns the latest assigned entry (O(1)). `get_records(opts)` queries the FIFO with AND-logic field matching. `clear_record(squad_id)` handles entity death: unmarks, clears assigned, removes from index. `register_descriptions(tbl)` maps consequence keys to display labels for markers.
+**Activity record.** `record(squad_id, cause, consequence, opts)` appends an entry to a bounded FIFO (`xttltable.create_fifo_cache`, capacity 256). Each entry stores ids and event-time facts only -- display data resolves lazily at render. `_record_assigned[squad_id]` is a side index mapping each squad to its currently-assigned entry. When a new entry is recorded for the same squad, the previous entry's `assigned` flag flips to false. On FIFO eviction, the `on_evict` callback cleans up the assigned index. `get_record(opts)` returns the most-recent matching entry; `{ squad_id = X, assigned = true }` is the O(1) hot path via the index. `get_records(opts)` returns an array of all matches. `clear_record(squad_id)` is a pure entry drop (broker stays out of HUD/marker concerns; HUD owns marker lifecycle). Localized rendering uses `ap_core_const.CONSEQUENCE_INFO[consequence]` directly: each entry has `name_key` (short caption) and `action_key` (full action phrase) XML ids resolved via `game.translate_string`.
 
 **Coordination.** `scripted_target` is the squad control field. Setting it routes the squad to `specific_update`. AP no longer sets `__lock` (clears it on acquisition). `scripted_target` alone is sufficient for routing; `__lock` was a redundant fallback guard. AP checks `scripted_target` at gate 2 (is_protected, via `xsquad.is_scripted`). Two alife mods that both check `scripted_target` before claiming a squad will not conflict. `xsquad.control_squad` sets `scripted_target` on acquire; `xsquad.release_squad` clears it on release; `xsquad.reassert_target` restores it if overwritten. The ownership registry (`register_owner`) adds identity on top: it tells AP WHO owns a squad, not just that it's owned. Warfare and BAO are registered by default in `ap_core_compat`.
 
@@ -216,7 +216,7 @@ Below DEBUG log level: `observe()` is a bare passthrough (calls the function, re
 
 `ap_core_hud` consolidates all visual output: the pipeline statistics overlay and PDA map markers. It reads activity data from `ap_core_broker` and owns no domain state.
 
-**Markers.** Markers are derived from broker's activity record. A 10s timer (`_apply_markers`) iterates assigned entries via `each_record({ assigned = true })`, marks them with `xpda.mark_squad`. A 20s timer (`_validate_markers`) manages marker linger: entries where the entity died or the squad is no longer scripted get a linger timer, then unmark on expiry. Entity death is handled immediately via `_on_server_entity_on_unregister` -> `broker.clear_record()`.
+**Markers.** HUD owns the marker lifecycle end-to-end via a private `_marker_state[squad_id] = { consequence, remove_at }` table. An apply pass reads `broker.get_records({ assigned = true })`, resolves the action phrase via `ap_core_const.CONSEQUENCE_INFO[entry.consequence].action_key` + `game.translate_string`, marks via `xpda.mark_squad` for any squad whose tracked consequence has changed (or has no marker yet), and updates `_marker_state`. A validate pass iterates `_marker_state` itself: for each squad without a live scripted record (entry evicted, entity died, or `scripted_target` cleared), start a linger timer; once expired, unmark and drop the slot. Entity death triggers `_on_server_entity_on_unregister`, which unmarks immediately and calls `broker.clear_record`. The broker holds no marker state.
 
 **Statistics overlay.** Pipeline counters (`r` for radiant, `x` for reactive) track events, gate admissions, cause publishes, consequence results, and blocker breakdown. `classify(result, is_radiant)` routes each consequence result to the appropriate counter. `UIStatsHUD` renders a compact table with R/X columns and a per-minute or percentage extra column. Six screen positions via MCM. Hides on PDA, inventory, and menus. Zero overhead when `statistics_position` is "off". Log dump every 10s with total and per-minute breakdowns.
 
@@ -334,7 +334,7 @@ Transforms AP event telemetry into stalker radio chatter via flat per-consequenc
 | `smart_id` | `opts.smart.id` | acting location; resolved to display name at compose |
 | `level_id` | `opts.level_id` | resolved to display name at compose |
 | `game_hours` | `xtime.game_sec() / 3600` | single event-time snapshot |
-| `assigned` / `is_marked` | broker-managed | HUD marker lifecycle |
+| `assigned` | broker-managed | true while this is the squad's current entry; flips to false on supersede or clear |
 
 State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news` ring buffers, never on entries.
 

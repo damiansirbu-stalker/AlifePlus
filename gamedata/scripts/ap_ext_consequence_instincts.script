@@ -6,7 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local RANGE_EYE = ap_core_const.RANGE_EYE
@@ -103,7 +103,7 @@ end
 
 local function _on_arrive(squad, args)
     if not args then return end
-    ap_core_debug.observe(nil, ACTION.COMPLETE_INSTINCTS, function(trace)
+    ap_core_debug.observe(nil, PHASE.COMPLETE_INSTINCTS, function(trace)
         if args.dto_field then
             ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
         end
@@ -260,7 +260,7 @@ local function _make_handler(entry)
             end
 
             local res
-            ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,

@@ -6,7 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
 local PERSONALITY = ap_ext_const.PERSONALITY
@@ -68,8 +68,8 @@ local function _arrive_loot(squad, stash_id)
         ap_core_debug.debug("[CONSEQUENCE.STASH] arrive_loot: stash=%d protected", stash_id)
         return
     end
-    ap_core_debug.observe(nil, ACTION.COMPLETE_STASH_LOOT, function(trace)
-        local items = ap_core_debug.observe(trace, ACTION.LOOT_STASH, function()
+    ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_LOOT, function(trace)
+        local items = ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
             return xstash.loot_stash(stash_id)
         end)
         return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
@@ -134,7 +134,7 @@ local function _make_handler(entry)
 
             local arrive_args = _build_arrive_args(entry.arrive_fn, stash_id)
             local res
-            ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg[rush_key],
                     on_arrive = arrive_args and entry.consequence or nil,

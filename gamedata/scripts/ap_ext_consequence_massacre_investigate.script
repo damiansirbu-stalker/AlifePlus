@@ -7,7 +7,7 @@ local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PERSONALITY = ap_ext_const.PERSONALITY
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local cfg = ap_core_mcm.cfg
@@ -39,7 +39,7 @@ local function _handler(event_data)
 
         local moved = {}
         local last_reason
-        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
                 local res = ap_core_broker.script_squad(squad, smart, { rush = cfg.consequence_massacre_investigate_rush, pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_INVESTIGATE })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end

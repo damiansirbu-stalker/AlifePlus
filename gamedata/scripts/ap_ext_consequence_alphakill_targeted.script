@@ -7,7 +7,7 @@ local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PERSONALITY = ap_ext_const.PERSONALITY
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local TRACE = ap_core_const.TRACE
@@ -48,7 +48,7 @@ local function _on_arrive(squad, args)
     local level_id = xlevel.get_level_id(target_squad)
     if not level_id then return end
     if xlevel.get_level_id(squad) ~= level_id then return end
-    ap_core_debug.observe(nil, ACTION.CHASE_TARGET, function()
+    ap_core_debug.observe(nil, PHASE.CHASE_TARGET, function()
         local smart = ap_core_utils.find_smart(target_squad.position, {
             level_id = level_id, max_distance = ap_core_const.RANGE_SCENT,
         })
@@ -107,7 +107,7 @@ local function _handler(event_data)
         local moved = {}
         local dst_id = 0
         local dst_smart = nil
-        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else

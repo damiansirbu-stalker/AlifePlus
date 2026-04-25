@@ -86,7 +86,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local CAUSE = ap_core_const.CAUSE
-local ACTION = ap_core_const.ACTION
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
 local cfg = ap_core_mcm.cfg
@@ -128,7 +128,7 @@ local function _handler(event_data)
 
         -- ACTION: script squads, record activity
         local moved = {}
-        ap_core_debug.observe(trace, ACTION.MOVE_SQUAD, function()
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for i = 1, #squads do
                 local res = ap_core_broker.script_squad(squads[i], smart, {
                     rush = cfg.consequence_ambush_setup_rush,
@@ -374,11 +374,27 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_owner(squad)` | string or nil -- ownership query |
 | `register_owner(name, filter_fn)` | register ownership filter (replaces on name match) |
 | `record(squad_id, cause, consequence, opts)` | append to activity FIFO (markers, composer, external queries) |
-| `each_record(opts, fn)` | iterate FIFO entries that match `opts` (AND-logic field filter), calling `fn(entry)` per match |
-| `clear_record(squad_id)` | clear assigned entry on entity death (unmarks marker) |
-| `register_activities(tbl)` | register CONSEQUENCE -> XML-id map for localized activity labels |
-| `get_activities()` | CONSEQUENCE -> XML-id map registered by ext (read-only view) |
+| `get_record(opts)` | return the most-recent record matching `opts` (AND-logic) or nil. `{ squad_id, assigned = true }` is O(1) |
+| `get_records(opts)` | return array of records matching `opts` (AND-logic). `{ assigned = true }` reads live entries only |
+| `clear_record(squad_id)` | clear assigned entry on entity death (pure entry drop -- broker stays out of marker lifecycle) |
+| `register_arrival_handler(key, fn)` | register on-arrival callback by key; consumer.register also accepts an `on_arrive` opt that wires this for you |
 | `get_scripted_ids()` | read-only reference to _ap_scripted_squads table |
+
+---
+
+### Const (ap_core_const)
+
+Read-only static tables and enums that integrators reference directly. No registration needed.
+
+| Symbol | Use |
+|--------|-----|
+| `CAUSE` | enum of cause event names (e.g. `CAUSE.MASSACRE` -> `"cause:massacre"`). Use as xbus event keys. |
+| `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Match to `record.consequence`. |
+| `CONSEQUENCE_INFO` | per-consequence `{ name_key, action_key }`. `name_key` is the short caption ("Massacre Investigate"); `action_key` is the full action phrase ("Investigating a Massacre Site"). Both XML ids resolved via `game.translate_string`. |
+| `CONSEQUENCE_PHASE` | trace-only enum used by `observe()` for sub-phase paths (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.). Integrators rarely need this; it shows up in DEBUG-level traces. |
+| `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_EVAL, FAILED_ACTION, DISABLED). |
+| `REASON` | reason codes for skip/failure traces (NIL_ARGS, IS_OWNED, NO_SQUAD, ...). |
+| `RANGE_EYE` / `RANGE_RADIO` / `RANGE_SCENT` | range tier constants in meters. Use when calling `ap_core_utils.find_squads`/`find_smart`. |
 
 `script_squad` does not check protection. Caller must verify:
 
@@ -397,7 +413,7 @@ ap_core_broker.script_squad(squad, smart, {
 
 ### Activity Record
 
-After a consequence scripts a squad, AP appends an entry to a bounded FIFO (capacity 256). The broker stores ids and event-time facts only. Display data (faction names, commander names, species, locations) resolves lazily at compose time from the live server-entity registry. External mods query the latest assigned entry per squad via `get_record()` and render the label via `get_activities()` + `game.translate_string()`.
+After a consequence scripts a squad, AP appends an entry to a bounded FIFO (capacity 256). The broker stores ids and event-time facts only. Display data (faction names, commander names, species, locations) resolves lazily at compose time from the live server-entity registry. External mods query the squad's currently-assigned record via `get_record({ squad_id, assigned = true })` and render the localized action phrase via `ap_core_const.CONSEQUENCE_INFO[record.consequence].action_key` + `game.translate_string()`.
 
 Schema (per entry):
 
@@ -412,8 +428,7 @@ Schema (per entry):
 | `smart_id` | number or nil | acting smart terrain |
 | `level_id` | number or nil | acting level |
 | `game_hours` | number | event-time snapshot (hours) |
-| `assigned` | boolean | true until a newer record replaces this one for the same squad |
-| `is_marked` | boolean | broker-managed HUD marker flag |
+| `assigned` | boolean | true while this is the squad's current entry; flips to false on supersede or clear |
 
 Record fields carry no display text. Resolve at render via public xlibs + engine APIs.
 
@@ -423,45 +438,42 @@ When a new entry is recorded for the same squad, the previous entry's `assigned`
 
 ### Warfare map tooltip: display AP activity
 
-Goal: when your warfare map UI hovers a squad, append what the squad is doing according to AlifePlus ("investigating massacre", "holding outpost", "hunting a bleeder"). Labels are localized. Both English and Russian ship with AP. Copy-paste example, warfare author edits only the call site at the bottom:
+Goal: when your warfare map UI hovers a squad, append what the squad is doing according to AlifePlus ("Investigating a Massacre Site", "Guarding an Outpost", "Hunting the Wounded"). Strings are localized. Both English and Russian ship with AP. Copy-paste example, warfare author edits only the call site at the bottom:
 
 ```lua
---- Return localized AP activity label for a squad, or nil if nothing to show.
+--- Return localized AP action phrase for a squad, or nil if nothing to show.
 --- Graceful no-op when AlifePlus is absent, squad is owned by warfare, or squad has no record.
-local function get_ap_activity_label(squad_id)
-    if not ap_core_broker then return nil end
+local function get_ap_action(squad_id)
+    if not ap_core_broker or not ap_core_const then return nil end
 
-    local record
-    ap_core_broker.each_record({ squad_id = squad_id, assigned = true }, function(entry)
-        record = entry
-    end)
+    local record = ap_core_broker.get_record({ squad_id = squad_id, assigned = true })
     if not record then return nil end
 
-    local activities = ap_core_broker.get_activities()
-    local label_id = activities and activities[record.consequence]
-    if not label_id then return nil end
+    local info = ap_core_const.CONSEQUENCE_INFO[record.consequence]
+    if not info then return nil end
 
-    local label = game.translate_string(label_id)
-    if not label or label == label_id or label == "" then return nil end
-    return label
+    local text = game.translate_string(info.action_key)
+    if not text or text == info.action_key or text == "" then return nil end
+    return text
 end
 
 -- Call site (warfare's tooltip builder, wherever you assemble the hover text):
-local ap_label = get_ap_activity_label(squad.id)
-if ap_label then
-    tooltip_text = tooltip_text .. "\n" .. ap_label
+local ap_action = get_ap_action(squad.id)
+if ap_action then
+    tooltip_text = tooltip_text .. "\n" .. ap_action
 end
 ```
 
 Notes for warfare authors:
 
-- Call `each_record` fresh on every render tick. Records mutate as squads move between consequences.
-- Don't cache the activity table; `get_activities()` returns a table reference, cost is one hash lookup.
+- Call `get_record` fresh on every render tick. Records mutate as squads move between consequences.
+- `ap_core_const.CONSEQUENCE_INFO` is a static const table — read it directly, don't cache.
+- Each entry has both `action_key` (full phrase shown to the player) and `name_key` (short caption for config / debug). Pick whichever fits your UI.
 - Locale switch (English/Russian) works automatically because the resolve happens at render time via `game.translate_string`.
 - A nil return means the squad has no recent AP activity (or is warfare-owned). Render nothing.
-- Squads warfare owns are already excluded from AP via the ownership registry (`ap_core_broker.register_owner("warfare", ...)`, registered by default). They get no record, so `each_record` yields nothing, so you render nothing. No additional filtering needed on warfare's side.
+- Squads warfare owns are already excluded from AP via the ownership registry (`ap_core_broker.register_owner("warfare", ...)`, registered by default). They get no record, so `get_record` returns nil, so you render nothing. No additional filtering needed on warfare's side.
 
-Typical label outputs (EN): "investigating massacre", "scavenging bodies", "reinforcing base", "evacuating base", "hunting bleeder", "holding outpost", "exploring", "resting", "camping", "at trader", "working anomalies". 36 labels total, one per AP consequence. Full map: `ap_ext_const.CONSEQUENCE_ACTIVITY` keys.
+Typical action outputs (EN): "Investigating a Massacre Site", "Scavenging a Massacre Site", "Reinforcing Attacked Base", "Evacuating Attacked Base", "Hunting the Wounded", "Guarding an Outpost", "Out Exploring", "Heading to a Campfire to Rest", "Restocking at Trader", "Harvesting Artefacts". 36 entries total, one per AP consequence. Full map: `ap_core_const.CONSEQUENCE_INFO` keys.
 
 ---
 

@@ -8,6 +8,8 @@ next
     Changed: territory conquest is additive. Conquerors add spawns alongside originals instead of replacing them.
     Changed: species-pure spawns on mutant-claimed smart terrains. Each nest spawns one species instead of mixed packs. Stalker conquest unchanged.
     Changed: personality ceiling retuned from 0.80 to 0.70 across every consequence. Floor stays at 0.20.
+  Core:
+    Added: spawn attribution tracing. When DEBUG log level is enabled, every squad spawned by area_conquer or instinct_infest is logged with smart, faction, and section. Filters on the AP-injected respawn_params section, so coexisting LTX-entry spawns on the same smart do not produce false positives.
   Localization:
     Added: PDA news ships in English and Russian. Stalker register throughout, loners talk like loners.
     Added: PDA map marker activity labels in English and Russian.
@@ -18,11 +20,12 @@ next
     Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
     Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab.
   Integration:
-    Changed: activity record API moved to ap_core_broker (record, each_record, clear_record, register_activities, get_activities).
-    Added: ap_ext_news.record_event(subject_squad, cause, consequence, opts) with cause_id and other_squad for paired and pattern dispatch.
-    Added: template id conventions for news pools. Per-consequence, cause-broadcast, paired, pattern.
-    Changed: xsmart spawn injection renamed to set_shared_spawn and set_exclusive_spawn. Identity argument accepts mutant species alongside stalker factions.
-    Added: xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
+    Activity record. Write via ap_core_broker.record(squad_id, cause, consequence, opts). Read via get_record(opts) (O(1) for { squad_id, assigned = true }) or get_records(opts) for bulk. clear_record(squad_id) on entity death.
+    Localized rendering. ap_core_const.CONSEQUENCE_INFO[consequence] returns { name_key, action_key }: name_key resolves to a short caption ("Massacre Investigate"), action_key to the full action phrase ("Investigating a Massacre Site"). Both XML ids; resolve via game.translate_string. EN and RU ship.
+    Trace paths. ap_core_const.CONSEQUENCE_PHASE supplies sub-phase identifiers for ap_core_debug.observe (FIND_TARGETS, MOVE_SQUAD, ARRIVE, ...) at DEBUG log level.
+    News dispatch. ap_ext_news.record_event(subject_squad, cause, consequence, opts). opts.cause_id groups siblings for paired dispatch; opts.other_squad enables two-party templates. Template pools follow per-consequence, cause-broadcast, paired, and pattern id conventions.
+    Spawn injection. xsmart.set_shared_spawn(smart, key, identity, num) adds a respawn entry alongside originals (conquest pattern). xsmart.set_exclusive_spawn(smart, key, identity, num) replaces them (infest pattern). Identity accepts stalker factions and mutant species.
+    xlibs helpers. xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
   Fixed:
     Fixed: squadkill_revenge chased the player after the player's actor_stalker relation drifted hostile from own-faction kills.
 
