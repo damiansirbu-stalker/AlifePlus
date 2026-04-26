@@ -104,21 +104,6 @@ local function _detect_locale()
     return "eng"
 end
 
---- Record a news-worthy event to broker FIFO. Stores IDs only. Display data resolved lazily at compose.
---- game_hours is the single event-time snapshot (the moment is unrecoverable at compose).
---- @cost O(1) | 1-2 luabind trivial (squad.id reads) + 2 luabind medium (xtime.game_sec)
-function record_event(subject_squad, cause, consequence, opts)
-    if not subject_squad or not subject_squad.id then return end
-    opts = opts or {}
-    ap_core_broker.record(subject_squad.id, cause, consequence, {
-        cause_id       = opts.cause_id,
-        other_squad_id = opts.other_squad and opts.other_squad.id or nil,
-        smart_id       = opts.smart and opts.smart.id or nil,
-        level_id       = opts.level_id,
-        game_hours     = math_floor(xtime.game_sec() / 3600),
-    })
-end
-
 -- Mutant engine factions resolve via XML key table; humans via engine translation
 local function _faction_display(faction)
     if not faction then return nil end
@@ -133,6 +118,43 @@ local function _species_display(species)
     local key = ap_ext_const.SPECIES_DISPLAY_KEY[species]
     if not key then return nil end
     return _xml(key)
+end
+
+-- Capture one side's display facts. Returns 5 nils for nil squad.
+local function _capture_side(squad)
+    if not squad then return nil, nil, nil, nil, nil end
+    local faction = squad.player_id
+    local species = xcreature.get_mutant_species(squad)
+    return faction, _faction_display(faction), xsquad.get_commander_name(squad), species, _species_display(species)
+end
+
+--- Append a consequence to the activity log (broker FIFO). Used by news, HUD markers, and
+--- external integrators. Captures squad facts (faction/name/species, raw + translated) at
+--- record time so dead/unregistered squads remain renderable. Smart/level/time stay lazy.
+--- @cost O(1) | ~6 luabind per side + 4 game.translate_string for display strings
+function record_event(subject_squad, cause, consequence, opts)
+    if not subject_squad or not subject_squad.id then return end
+    opts = opts or {}
+    local other = opts.other_squad
+    local s_fac, s_facd, s_name, s_spec, s_specd = _capture_side(subject_squad)
+    local o_fac, o_facd, o_name, o_spec, o_specd = _capture_side(other)
+    ap_core_broker.record(subject_squad.id, cause, consequence, {
+        cause_id                = opts.cause_id,
+        other_squad_id          = other and other.id or nil,
+        smart_id                = opts.smart and opts.smart.id or nil,
+        level_id                = opts.level_id,
+        game_hours              = math_floor(xtime.game_sec() / 3600),
+        subject_faction         = s_fac,
+        subject_faction_display = s_facd,
+        subject_name            = s_name,
+        subject_species         = s_spec,
+        subject_species_display = s_specd,
+        other_faction           = o_fac,
+        other_faction_display   = o_facd,
+        other_name              = o_name,
+        other_species           = o_spec,
+        other_species_display   = o_specd,
+    })
 end
 
 -- Hours-since descriptor for #ago#: resolved inline from XML, empty on recent or miss
@@ -150,16 +172,13 @@ local function _count_text(n)
     return _xml(key)
 end
 
--- Resolve slots for one side of a record entry (subject or other). Lazy: hits xobject.se + xlibs at compose time.
--- Returns {faction, name, species} tuple, all possibly empty strings. No snapshotted data.
--- @cost O(1) | 1 luabind medium (xobject.se) + resolver costs (cached where possible)
-local function _side_slots(squad_id)
-    if not squad_id then return "", "", "" end
-    local se = xobject_se(squad_id)
-    if not se then return "", "", "" end
-    local faction = _faction_display(se.player_id) or ""
-    local name = xsquad.get_commander_name(se) or ""
-    local species = _species_display(xcreature.get_mutant_species(se)) or ""
+-- Resolve slots for one side of a record entry from pre-translated display fields.
+-- "prefix" is "subject" or "other"; reads entry.<prefix>_faction_display/_name/_species_display.
+-- @cost O(1) | 0 luabind (pure Lua reads, translation happened at record_event)
+local function _side_slots(entry, prefix)
+    local faction = entry[prefix .. "_faction_display"] or ""
+    local name = entry[prefix .. "_name"] or ""
+    local species = entry[prefix .. "_species_display"] or ""
     return faction, name, species
 end
 
@@ -177,10 +196,10 @@ end
 -- Location falls back to level name when smart lookup resolves nothing (xlibs stays pure,
 -- fallback is a mod-layer decision to keep news flowing rather than drop the event).
 local function _slots_for(entry_a, entry_b, count_n)
-    local a_fac, a_name, a_spec = _side_slots(entry_a.squad_id)
-    local o_fac, o_name, o_spec = _side_slots(entry_a.other_squad_id)
+    local a_fac, a_name, a_spec = _side_slots(entry_a, "subject")
+    local o_fac, o_name, o_spec = _side_slots(entry_a, "other")
     local b_fac, b_name, b_spec = "", "", ""
-    if entry_b then b_fac, b_name, b_spec = _side_slots(entry_b.squad_id) end
+    if entry_b then b_fac, b_name, b_spec = _side_slots(entry_b, "subject") end
     local level = entry_a.level_id and (xlevel.get_level_name(entry_a.level_id) or "") or ""
     local location = _location_display(entry_a.smart_id)
     if location == "" then location = level end
@@ -330,19 +349,6 @@ local function _cause_short(cause_id)
     return cause_id:match("^cause:(.+)")
 end
 
--- Memoized faction lookup per intersect scan. Returns player_id string or nil.
--- Underscore-prefixed memo name so the bone-tables rule skips it (scan-local, GC'd on return).
-local function _entry_faction(squad_id, _fac_memo)
-    if not squad_id then return nil end
-    local cached = _fac_memo[squad_id]
-    if cached == false then return nil end
-    if cached then return cached end
-    local se = xobject_se(squad_id)
-    local faction = se and se.player_id or false
-    _fac_memo[squad_id] = faction
-    return faction or nil
-end
-
 -- Append entry to a keyed bucket inside ctx[map_name]; creates the bucket on first hit.
 local function _bucket_append(ctx, map_name, key, entry)
     local bucket = ctx[map_name][key] or {}
@@ -350,20 +356,20 @@ local function _bucket_append(ctx, map_name, key, entry)
     ctx[map_name][key] = bucket
 end
 
--- Bucket a single entry into all intersection maps in one pass. ctx holds all bucket tables + memo.
+-- Bucket a single entry into all intersection maps in one pass. Reads captured faction fields
+-- directly from the entry (no live entity lookup needed since record_event captures eagerly).
 local function _bucket_entry(entry, ctx)
     if entry.squad_id then _bucket_append(ctx, "by_squad", entry.squad_id, entry) end
     if entry.smart_id then _bucket_append(ctx, "by_smart", entry.smart_id, entry) end
     if entry.cause == CAUSE_INSTINCTS_KEY and entry.level_id then
         _bucket_append(ctx, "by_instincts_level", entry.level_id, entry)
     end
-    local subject_fac = _entry_faction(entry.squad_id, ctx._fac_memo)
+    local subject_fac = entry.subject_faction
     if not subject_fac then return end
     if entry.level_id then
         _bucket_append(ctx, "by_fac_level", subject_fac .. "|" .. entry.level_id, entry)
     end
-    if not entry.other_squad_id then return end
-    local other_fac = _entry_faction(entry.other_squad_id, ctx._fac_memo)
+    local other_fac = entry.other_faction
     if not other_fac then return end
     _bucket_append(ctx, "by_pair", subject_fac .. "|" .. other_fac, entry)
 end
@@ -390,10 +396,10 @@ local function _match_by_size(buckets, min_size)
 end
 
 -- Count distinct factions represented across a list of entries
-local function _count_distinct_factions(list, _fac_memo)
+local function _count_distinct_factions(list)
     local distinct = {}
     for i = 1, #list do
-        local faction = _entry_faction(list[i].squad_id, _fac_memo)
+        local faction = list[i].subject_faction
         if faction then distinct[faction] = true end
     end
     local distinct_count = 0
@@ -402,15 +408,15 @@ local function _count_distinct_factions(list, _fac_memo)
 end
 
 -- Hot-location predicate: list size >= min AND distinct factions >= min
-local function _is_hot_location(list, _fac_memo)
+local function _is_hot_location(list)
     if #list < INTERSECTED_HOT_LOCATION_MIN then return false end
-    return _count_distinct_factions(list, _fac_memo) >= INTERSECTED_HOT_LOCATION_MIN_FACTIONS
+    return _count_distinct_factions(list) >= INTERSECTED_HOT_LOCATION_MIN_FACTIONS
 end
 
 -- Hot-location match across all smart buckets
-local function _match_hot_location(by_smart, _fac_memo)
+local function _match_hot_location(by_smart)
     for _, list in pairs(by_smart) do
-        if _is_hot_location(list, _fac_memo) then return list[#list], list end
+        if _is_hot_location(list) then return list[#list], list end
     end
     return nil
 end
@@ -430,7 +436,6 @@ end
 local function _find_intersected(entries)
     if #entries < INTERSECTED_GRUDGE_MIN then return nil end
     local ctx = {
-        _fac_memo = {},
         by_squad = {}, by_pair = {}, by_instincts_level = {}, by_smart = {}, by_fac_level = {},
     }
     for i = 1, #entries do _bucket_entry(entries[i], ctx) end
@@ -442,7 +447,7 @@ local function _find_intersected(entries)
     if focal then return "grudge", focal, list end
     focal, list = _match_by_size(ctx.by_instincts_level, INTERSECTED_OUTBREAK_MIN)
     if focal then return "outbreak", focal, list end
-    focal, list = _match_hot_location(ctx.by_smart, ctx._fac_memo)
+    focal, list = _match_hot_location(ctx.by_smart)
     if focal then return "hot_location", focal, list end
     focal, list = _match_by_size(ctx.by_fac_level, INTERSECTED_HOT_FACTION_MIN)
     if focal then return "hot_faction", focal, list end
@@ -463,9 +468,7 @@ local function _try_render_intersect(entries)
     local template = filtered[math_random(#filtered)]
     local msg = _clean_output(_substitute(template, slots))
     if not msg then return nil end
-    local focal_se = xobject_se(focal.squad_id)
-    local focal_faction_key = focal_se and focal_se.player_id or nil
-    local picked = _pick_sender(focal_faction_key)
+    local picked = _pick_sender(focal.subject_faction)
     if not picked then return nil end
     xpda.send(picked.name, msg, picked.icon)
     _recent_cons:set(focal.consequence, true)
@@ -494,6 +497,9 @@ end
 
 -- Pick a template pool and kind. Order of preference: pair-composite, cause-broadcast, per-consequence.
 -- Returns (pool, kind, count_n, cons_name_or_nil, entry_a_or_nil, entry_b_or_nil).
+-- Cause-broadcast and pair require sib_count >= 2, structurally only reachable for the 5 reactive
+-- paired causes (massacre/squadkill/basekill/wounded/harvest). Radiant causes are 1:1 by architecture
+-- invariant 7 (cascade stops on first SUCCESS); ALPHA/ALPHAKILL each have a single consequence.
 local function _pick_template(entry, siblings)
     local sib_count = #siblings
     if sib_count >= CAUSE_BROADCAST_MIN_SIBLINGS then
@@ -560,11 +566,9 @@ function compose_tick()
         ap_core_debug.debug("[PDA.NEWS] no_msg kind=%s", kind)
         return { code = TRACE.NO_MSG }
     end
-    local subject_se = xobject_se(entry.squad_id)
-    local subject_faction_key = subject_se and subject_se.player_id or nil
-    local picked = _pick_sender(subject_faction_key)
+    local picked = _pick_sender(entry.subject_faction)
     if not picked then
-        ap_core_debug.debug("[PDA.NEWS] no_sender faction=%s", subject_faction_key or "?")
+        ap_core_debug.debug("[PDA.NEWS] no_sender faction=%s", entry.subject_faction or "?")
         return { code = TRACE.NO_SENDER }
     end
 

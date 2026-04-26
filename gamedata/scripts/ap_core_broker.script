@@ -29,15 +29,16 @@ local _record_seq = 0
 local _record_assigned = {}
 
 --- Record squad activity after SUCCESS. Appends to FIFO, marks previous entry for same squad as unassigned.
---- Schema stores IDs only (subject, other, smart, level). Display data resolved lazily at compose time via alife_object.
---- game_hours is the single event-time snapshot (unrecoverable at compose time).
+--- Schema stores IDs + event-time display facts captured at record time (faction key, commander name,
+--- species). Captured eagerly so dead/unregistered squads remain renderable. Smart/level/time stay
+--- lazy (smart_id/level_id are stable references; game_hours is math at compose).
 --- Returns the monotonic cons_id so callers can reference the entry later (dedup rings, etc).
 --- @safety SAFE - pure Lua table write, nil-guarded on subject_squad_id
---- @cost O(1) | 0 luabind
+--- @cost O(1) | 0 luabind (resolution happens in caller)
 --- @param subject_squad_id number Subject squad server ID (the actor)
 --- @param cause string Cause key (CAUSE.X)
 --- @param consequence string Consequence key (CONSEQUENCE.X)
---- @param opts table|nil Optional fields: other_squad_id, smart_id, level_id, game_hours, cause_id
+--- @param opts table|nil Fields: other_squad_id, smart_id, level_id, game_hours, cause_id, subject_faction, subject_name, subject_species, other_faction, other_name, other_species
 --- @return number|nil cons_id Monotonic journal slot id, or nil if args invalid
 function record(subject_squad_id, cause, consequence, opts)
     if not subject_squad_id or not cause or not consequence then return nil end
@@ -56,6 +57,16 @@ function record(subject_squad_id, cause, consequence, opts)
         game_hours = opts.game_hours,
         cause_id = opts.cause_id,
         cons_id = _record_seq,
+        subject_faction         = opts.subject_faction,
+        subject_faction_display = opts.subject_faction_display,
+        subject_name            = opts.subject_name,
+        subject_species         = opts.subject_species,
+        subject_species_display = opts.subject_species_display,
+        other_faction           = opts.other_faction,
+        other_faction_display   = opts.other_faction_display,
+        other_name              = opts.other_name,
+        other_species           = opts.other_species,
+        other_species_display   = opts.other_species_display,
     }
     _ap_record:set(_record_seq, entry)
     _record_assigned[subject_squad_id] = entry

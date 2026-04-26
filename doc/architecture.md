@@ -319,7 +319,7 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 Transforms AP event telemetry into stalker radio chatter via flat per-consequence and per-cause templates in `ui_st_ap_news.xml`. The composer substitutes slot values into chosen templates. There is no grammar engine. It is a presentation layer with one-way dataflow: pipeline emits, news consumes, and news never writes back to pipeline state.
 
-**Pipeline.** Consequence SUCCESS calls `record_event(subject_squad, cause, consequence, opts)`. The function writes the subject squad id, the optional other squad id, the smart id, the level id, and the event-time game hour to the broker FIFO. Display data (faction names, commander names, species, location, level name) is not captured — it is resolved lazily at compose time from the live server-entity registry. The composer tick fires on an MCM-randomized 60-600s interval, scans the FIFO for unreported entries, applies the consequence cooldown filter, picks one weighted by cause, picks a template, substitutes slots, picks a sender, and calls `xpda.send`.
+**Pipeline.** Consequence SUCCESS calls `record_event(subject_squad, cause, consequence, opts)`. The function writes the subject and (optional) other squad ids, the smart and level ids, the event-time game hour, and eagerly captures squad-derived display facts for both sides: faction key + localized faction display, commander name, species + localized species plural. Smart and level remain lazy (their ids are session-stable; resolution at compose time is one extra `xobject.se` per tick). The composer tick fires on an MCM-randomized interval (slider 1-600s, defaults 30-100s), scans the FIFO for unreported entries, applies the consequence cooldown filter, picks one weighted by cause, picks a template, substitutes slots, picks a sender, and calls `xpda.send`.
 
 **Record schema (broker FIFO).** `ap_core_broker.record` stores IDs + event-time facts only. Fields per entry:
 
@@ -334,6 +334,12 @@ Transforms AP event telemetry into stalker radio chatter via flat per-consequenc
 | `smart_id` | `opts.smart.id` | acting location; resolved to display name at compose |
 | `level_id` | `opts.level_id` | resolved to display name at compose |
 | `game_hours` | `xtime.game_sec() / 3600` | single event-time snapshot |
+| `subject_faction` | `subject_squad.player_id` at record time | engine faction key (e.g. `"stalker"`, `"monster_predatory_day"`); intersect bucketing reads this |
+| `subject_faction_display` | `_faction_display(subject_faction)` at record time | localized string (`"Loners"`, `"predators"`); feeds `#subject_faction#` slot |
+| `subject_name` | `xsquad.get_commander_name(subject_squad)` at record time | commander's character name; nil for empty / mutant / unbound squads |
+| `subject_species` | `xcreature.get_mutant_species(subject_squad)` at record time | xcreature species (`"bloodsucker"`); nil for stalker squads; intersect bucketing reads this |
+| `subject_species_display` | `_species_display(subject_species)` at record time | localized plural (`"bloodsuckers"`); nil if species not in `SPECIES_DISPLAY_KEY` |
+| `other_*` (5 fields) | same five resolved from `opts.other_squad` if present | all nil for single-actor consequences |
 | `assigned` | broker-managed | true while this is the squad's current entry; flips to false on supersede or clear |
 
 State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news` ring buffers, never on entries.
@@ -363,18 +369,18 @@ State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news`
 
 Per-consequence renders the focal entry alone. Cause-broadcast renders a broader scene when at least two unreported entries share the same `cause_id`, replacing N individual dispatches with one. The composer rolls `CAUSE_BROADCAST_CHANCE_PCT` (70%) when siblings are present, falling back to per-consequence on miss. Only the five reactive pair causes (MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST) can accumulate siblings sharing a `cause_id` — radiant causes are one-consequence-per-cause by invariant 7.
 
-**Slots.** Every template uses some subset of these ten slots, populated per draw by `_slots_for_entry`:
+**Slots.** Every template uses some subset of these slots, populated per compose tick by `_slots_for(entry_a, entry_b, count_n)`. Squad-side values come pre-resolved from the entry (eager capture at record_event); smart and level resolve lazily at compose. Pair-composite templates use `_a` / `_b` suffixed variants of the subject slots:
 
 | Slot | Source (at compose time) |
 |---|---|
-| `#subject_faction#` | `xobject.se(squad_id).player_id` → `_faction_display` (mutant key map or engine translate) |
-| `#subject_name#` | `xsquad.get_commander_name(xobject.se(squad_id))` |
-| `#subject_species#` | `xcreature.get_mutant_species(xobject.se(squad_id))` → `_species_display` |
-| `#other_faction#` | same as subject_faction via `other_squad_id` |
-| `#other_name#` | same as subject_name via `other_squad_id` |
-| `#other_species#` | same as subject_species via `other_squad_id` |
-| `#location#` | `xlevel.get_smart_display_name(xobject.se(smart_id))` |
-| `#level#` | `xlevel.get_level_name(level_id)` |
+| `#subject_faction#` | `entry.subject_faction_display` (resolved at record_event) |
+| `#subject_name#` | `entry.subject_name` (resolved at record_event) |
+| `#subject_species#` | `entry.subject_species_display` (resolved at record_event) |
+| `#other_faction#` | `entry.other_faction_display` (resolved at record_event) |
+| `#other_name#` | `entry.other_name` (resolved at record_event) |
+| `#other_species#` | `entry.other_species_display` (resolved at record_event) |
+| `#location#` | `xlevel.get_smart_display_name(xobject.se(smart_id))` (lazy; smarts session-stable) |
+| `#level#` | `xlevel.get_level_name(level_id)` (lazy) |
 | `#ago#` | hours-since `game_hours`: empty (recent), `_ago_recent`, or `_ago_hours` |
 | `#count#` | sibling count word, resolved from `NEWS_COUNT_KEY` table (`two`, `three`, `four`, `five`, `many`) |
 
@@ -406,14 +412,16 @@ Cause-broadcast marks all siblings reported in one shot. Per-consequence marks o
 
 **Invariants.**
 
-- Record stores IDs + event-time facts only. No denormalized display data. `game_hours` is the single snapshot.
-- Display data resolves lazily at compose time. xlibs resolvers return nil on miss; the composer supplies the empty-slot fallback. xlibs stays pure.
+- Squad-derived display facts (faction key + display, commander name, species + display) are captured eagerly at record time. Smart/level/time stay lazy. Death-resilience: dead or unregistered squads remain renderable from stored strings.
+- Smart and level display resolve lazily at compose via `xobject.se` + xlibs resolvers (smarts and levels have stable ids and never go invalid mid-session).
 - State is session-lifetime. FIFO resets on load, dedup rings reset, template pools rebuild.
 - Empty slots are nil-safe. Either the variant filter rejects the variant, or the slot substitutes to empty string and `_clean_output` collapses the gap.
-- Broker storage stays pure event facts. All news-layer state lives in `ap_ext_news` module locals.
+- Broker storage holds event facts AND eagerly-captured squad display strings. News-only state (dedup rings, recent-cons cooldown, template pools) lives in `ap_ext_news` module locals.
 - Templates are immutable. The per-tick slot table builds fresh and is discarded after one substitution.
 - `cons_id` is broker-assigned. News passes no monotonic counter through `opts`.
-- `record_event` does zero resolver work. All translate_string / character_name / smart:name calls happen at compose.
+- `record_event` resolves squad-side display strings eagerly via `xsquad.get_commander_name`, `xcreature.get_mutant_species`, and `game.translate_string` (~6-12 luabind + 4 translate_string per call). Smart and level resolve at compose.
+- Locale switches mid-session leave the FIFO holding strings in the previous locale until natural churn (~10-50 min at typical record rates). Pragmatic accept: switches are rare, no crash, self-resolving.
+- Cause-broadcast and pair pools require `sib_count >= 2`, structurally only reachable for the 5 reactive paired causes (massacre, squadkill, basekill, wounded, harvest). Radiant causes are 1:1 by invariant 7; ALPHA/ALPHAKILL each have a single consequence.
 
 ### Causes
 

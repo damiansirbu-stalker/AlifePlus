@@ -144,7 +144,6 @@ local function _handler(event_data)
         for i = 1, #moved do
             ap_ext_news.record_event(moved[i], CAUSE.AMBUSH, CONSEQUENCE.AMBUSH_SETUP, {
                 cause_id = event_data._cause_id,
-                subject_faction = moved[i]:get_squad_community(),
                 smart = smart, level_id = event_data.level_id,
             })
         end
@@ -413,7 +412,7 @@ ap_core_broker.script_squad(squad, smart, {
 
 ### Activity Record
 
-After a consequence scripts a squad, AP appends an entry to a bounded FIFO (capacity 256). The broker stores ids and event-time facts only. Display data (faction names, commander names, species, locations) resolves lazily at compose time from the live server-entity registry. External mods query the squad's currently-assigned record via `get_record({ squad_id, assigned = true })` and render the localized action phrase via `ap_core_const.CONSEQUENCE_INFO[record.consequence].action_key` + `game.translate_string()`.
+After a consequence scripts a squad, AP appends an entry to a bounded FIFO (capacity 256). The broker stores ids, event-time facts, and squad-derived display strings (faction key + localized display, commander name, species + localized plural — eagerly captured at record time so dead/unregistered squads stay renderable). Smart and level remain lazy. External mods query the squad's currently-assigned record via `get_record({ squad_id, assigned = true })` and render the localized action phrase via `ap_core_const.CONSEQUENCE_INFO[record.consequence].action_key` + `game.translate_string()`.
 
 Schema (per entry):
 
@@ -425,12 +424,18 @@ Schema (per entry):
 | `consequence` | string | CONSEQUENCE.X enum (e.g. `"consequence:massacre_investigate"`) |
 | `cons_id` | number | monotonic sequence id assigned by broker |
 | `cause_id` | number or nil | shared by siblings of one cause publish; groups siblings for news dispatch |
-| `smart_id` | number or nil | acting smart terrain |
-| `level_id` | number or nil | acting level |
+| `smart_id` | number or nil | acting smart terrain (resolve display lazily via `xlevel.get_smart_display_name(xobject.se(smart_id))`) |
+| `level_id` | number or nil | acting level (resolve display lazily via `xlevel.get_level_name(level_id)`) |
 | `game_hours` | number | event-time snapshot (hours) |
+| `subject_faction` | string or nil | engine faction key (e.g. `"stalker"`, `"monster_predatory_day"`) |
+| `subject_faction_display` | string or nil | localized faction (`"Loners"`, `"predators"`); use directly in UI text |
+| `subject_name` | string or nil | commander's character name; nil for empty / mutant / unbound squads |
+| `subject_species` | string or nil | xcreature species (`"bloodsucker"`); nil for stalker squads |
+| `subject_species_display` | string or nil | localized species plural (`"bloodsuckers"`); nil if species not in `SPECIES_DISPLAY_KEY` |
+| `other_faction`, `other_faction_display`, `other_name`, `other_species`, `other_species_display` | string or nil | same five fields for `other_squad`; all nil for single-actor consequences |
 | `assigned` | boolean | true while this is the squad's current entry; flips to false on supersede or clear |
 
-Record fields carry no display text. Resolve at render via public xlibs + engine APIs.
+Display strings are captured at the moment the entry is written. Locale switches mid-session leave older entries in the previous locale until natural FIFO churn (~10-50 minutes); switches are rare and self-correcting.
 
 When a new entry is recorded for the same squad, the previous entry's `assigned` flag is set to false. Map markers only display `assigned` entries. The FIFO is session-lifetime (resets on load, no save persistence).
 

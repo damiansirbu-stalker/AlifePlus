@@ -1,6 +1,7 @@
 --- ap_core_hud: PDA map markers, pipeline statistics, HUD overlay
 --- Counters collect when statistics overlay is on OR log level is DEBUG. HUD displays when overlay is on.
 local pairs, string_format, tostring = pairs, string.format, tostring
+local table_concat = table.concat
 local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -22,29 +23,43 @@ local VALIDATE_MARKERS_SEC = 20
 local _last_validate_at = 0
 
 -- Marker render-state, owned exclusively by HUD. Keyed by squad_id.
--- { consequence = "...", remove_at = number|nil }
--- consequence: tracked so we re-mark when the squad's activity changes (label update).
+-- { cons_id = number, remove_at = number|nil }
+-- cons_id: broker monotonic id of the entry last rendered. Cache miss when entry refreshed.
 -- remove_at: set when the squad enters linger; nil otherwise.
 local _marker_state = {}
 
-local function _mark_one(entry)
+-- Build "Name (Faction)" or just "Faction" if no name.
+-- For mutants, name slot receives species_display (mutants have no character names).
+local function _format_party(name_or_species, faction_display)
+    local primary = (name_or_species and name_or_species ~= "") and name_or_species or nil
+    if primary then return primary .. " (" .. (faction_display or "?") .. ")" end
+    return faction_display or "?"
+end
+
+local function _mark_squad(entry)
     local state = _marker_state[entry.squad_id]
-    if state and state.consequence == entry.consequence then return end
-    local se = xobject.se(entry.squad_id)
-    if not se then return end
+    if state and state.cons_id == entry.cons_id then return end
     local info = ap_core_const.CONSEQUENCE_INFO[entry.consequence]
     local key = info and info.action_key
     local action = key and game.translate_string(key)
     if not action or action == key or action == "" then action = entry.consequence end
-    local full_label = action .. ": " .. xsquad.get_community_name(se)
+
+    local subject = _format_party(entry.subject_name or entry.subject_species_display, entry.subject_faction_display)
+    local lines = { action, "Subject: " .. subject }
+    if entry.other_squad_id then
+        local other = _format_party(entry.other_name or entry.other_species_display, entry.other_faction_display)
+        lines[#lines + 1] = "Other: " .. other
+    end
+    local full_label = table_concat(lines, "\\n")
+
     xpda.mark_squad(entry.squad_id, { label = full_label, marker_type = ap_core_const.MARKER_ACTIVE })
-    _marker_state[entry.squad_id] = { consequence = entry.consequence }
+    _marker_state[entry.squad_id] = { cons_id = entry.cons_id }
     ap_core_debug.debug("[SQUAD] mark: squad=%d label=%s", entry.squad_id, full_label)
 end
 
 local function _apply_markers()
     local records = ap_core_broker.get_records({ assigned = true })
-    for i = 1, #records do _mark_one(records[i]) end
+    for i = 1, #records do _mark_squad(records[i]) end
 end
 
 local function _validate_markers()

@@ -28,11 +28,11 @@ local LOOT_PROTECT_SET = {
 
 local CONFIGS = {
     { consequence = CONSEQUENCE.STASH_LOOT, name = "stash_loot",
-        community = _alignment_stash_loot, exclude_at_base = true,
+        community = _alignment_stash_loot,
         arrive_fn = "loot",
         personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
     { consequence = CONSEQUENCE.STASH_AMBUSH, name = "stash_ambush",
-        community = _alignment_stash_ambush, exclude_at_base = true,
+        community = _alignment_stash_ambush,
         personality = { PERSONALITY.GREED, PERSONALITY.AGGRESSION },
         pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH },
     { consequence = CONSEQUENCE.STASH_FILL, name = "stash_fill",
@@ -119,7 +119,6 @@ local function _make_handler(entry)
 
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
-            if entry.exclude_at_base and xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
             local stashes = xstash.find_stashes(event_data.position, {
                 max_distance = ap_core_const.RANGE_EYE, level_id = event_data.level_id, max_count = 1,

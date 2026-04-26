@@ -246,39 +246,14 @@ Instincts
     Cowardly species are too weak to hold territory.
 
 News: Emergent Zone Gossip
-  Every AP consequence surfaces as PDA chatter from an online stalker on your frequency.
-  A composer picks recent squad activity on an MCM-randomized interval and sends one line to the PDA.
-  Each line names the faction, commander, location, level, and time as tactical information rather than flavor.
-  The reader stumbles into scenes already in progress rather than receiving state change announcements.
 
-  Three dispatch layers run in order.
+  An online stalker on your frequency catches what's moving in the Zone and passes it on. You hear who is hitting whom, where the bodies are, and how recent the report is. Three layers feed the radio.
+  - Chained events - When one cause fires two reactive consequences, you get both halves on a single line instead of two messages. Stalkers investigate their own dead while scavengers strip the bodies. Five causes use this pairing: massacre, squadkill, basekill, wounded, harvest.
+  - Patterns - Recent activity sometimes adds up to a shape. When that happens, the news surfaces it as a summary line. A faction is pushing its full roster through one map. A squad that survived a wipe is already working elsewhere. A smart terrain has every nearby crew fighting over it. A mutant outbreak is concentrating on one level.
+  - Per-event chatter - The radio reports individual events when no chain or pattern is available. Each event surfaces in a different voice, so two reports of the same activity never sound the same.
 
-  Intersected news scans recent activity for cross-entry patterns.
-  Six patterns are covered: a squad that survived a wipe and is already working elsewhere, two factions trading hits across a level, one smart terrain every crew wants, a faction running its whole roster through one map, a busy squad logging hits all night, and a mutant outbreak on one level.
-  The scan runs once per tick as an O(n) pass over the 256-slot FIFO.
-
-  Pair-composite news narrates both sides of one event in a single line.
-  When stalkers investigate their own dead while mutants scavenge the bodies, the composer renders the scene as one message instead of two.
-  Five reactive pair causes use this: massacre, squadkill, basekill, wounded, harvest.
-
-  Per-consequence news renders an individual activity line when no pattern or pair matches.
-  Each consequence has five variants: terse observer, radio report with a commander name, procedural with time ago, rumor voice naming the level, and a multi-row story tying everything together.
-
-  Mutant pack lines use species (bloodsuckers, chimeras, lurkers, aberrants) instead of generic "monsters".
-  The reader knows what is on the map.
-
-  Data resolves lazily.
-  The broker FIFO stores ids and event-time facts only.
-  Display names and translations happen at compose time rather than at event time, so consequence handlers stay cheap.
-
-  English and Russian ship together.
-  The register is stalker throughout.
-  Loners talk like loners.
-
-  The composer picks a sender from online stalkers.
-  It prefers same-faction first and falls back to any friendly stalker.
-
-  MCM exposes a master toggle and interval sliders covering 60 to 600 seconds between messages.
+  Mutant reports name the species. You hear bloodsuckers, chimeras, lurkers, or aberrants instead of generic monsters.
+  The mod includes English and Russian translations. The MCM exposes a master toggle and an interval slider (default 30-100 seconds between messages).
 
 Day/Night Cycle
   Stalkers and mutants follow a day/night activity cycle.
