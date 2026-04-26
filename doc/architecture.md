@@ -317,9 +317,9 @@ Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independe
 
 ### News Composer (ap_ext_news)
 
-Transforms AP event telemetry into stalker radio chatter via flat per-consequence and per-cause templates in `ui_st_ap_news.xml`. The composer substitutes slot values into chosen templates. There is no grammar engine. It is a presentation layer with one-way dataflow: pipeline emits, news consumes, and news never writes back to pipeline state.
+Transforms AP event telemetry into stalker radio chatter via flat per-consequence and per-pair templates in `ui_st_ap_news.xml`. The composer substitutes slot values into chosen templates. There is no grammar engine. It is a presentation layer with one-way dataflow: pipeline emits, news consumes, and news never writes back to pipeline state.
 
-**Pipeline.** Consequence SUCCESS calls `record_event(subject_squad, cause, consequence, opts)`. The function writes the subject and (optional) other squad ids, the smart and level ids, the event-time game hour, and eagerly captures squad-derived display facts for both sides: faction key + localized faction display, commander name, species + localized species plural. Smart and level remain lazy (their ids are session-stable; resolution at compose time is one extra `xobject.se` per tick). The composer tick fires on an MCM-randomized interval (slider 1-600s, defaults 30-100s), scans the FIFO for unreported entries, applies the consequence cooldown filter, picks one weighted by cause, picks a template, substitutes slots, picks a sender, and calls `xpda.send`.
+**Pipeline.** Consequence SUCCESS calls `record_event(subject_squad, cause, consequence, opts)`. The function writes the subject and (optional) other squad ids, the smart and level ids, the event-time game hour, and eagerly captures squad-derived display facts for both sides: faction key + localized faction display, commander name, species + localized species plural. Smart and level remain lazy (their ids are session-stable; resolution at compose time is one extra `xobject.se` per tick). The composer tick fires on an MCM-randomized interval (slider 1-600s, defaults 30-100s). Each tick collects all unreported entries on the player's current level whose age is within `news_max_age_game_hours`, picks one **at random** (gossip, not sequential log), picks a template, substitutes slots, picks a speaker, and routes through `dynamic_news_manager:PushToChannel` (or `xpda.send` during the cold-start window).
 
 **Record schema (broker FIFO).** `ap_core_broker.record` stores IDs + event-time facts only. Fields per entry:
 
@@ -334,10 +334,10 @@ Transforms AP event telemetry into stalker radio chatter via flat per-consequenc
 | `smart_id` | `opts.smart.id` | acting location; resolved to display name at compose |
 | `level_id` | `opts.level_id` | resolved to display name at compose |
 | `game_hours` | `xtime.game_sec() / 3600` | single event-time snapshot |
-| `subject_faction` | `subject_squad.player_id` at record time | engine faction key (e.g. `"stalker"`, `"monster_predatory_day"`); intersect bucketing reads this |
+| `subject_faction` | `subject_squad.player_id` at record time | engine faction key (e.g. `"stalker"`, `"monster_predatory_day"`) |
 | `subject_faction_display` | `_faction_display(subject_faction)` at record time | localized string (`"Loners"`, `"predators"`); feeds `#subject_faction#` slot |
 | `subject_name` | `xsquad.get_commander_name(subject_squad)` at record time | commander's character name; nil for empty / mutant / unbound squads |
-| `subject_species` | `xcreature.get_mutant_species(subject_squad)` at record time | xcreature species (`"bloodsucker"`); nil for stalker squads; intersect bucketing reads this |
+| `subject_species` | `xcreature.get_mutant_species(subject_squad)` at record time | xcreature species (`"bloodsucker"`); nil for stalker squads |
 | `subject_species_display` | `_species_display(subject_species)` at record time | localized plural (`"bloodsuckers"`); nil if species not in `SPECIES_DISPLAY_KEY` |
 | `other_*` (5 fields) | same five resolved from `opts.other_squad` if present | all nil for single-actor consequences |
 | `assigned` | broker-managed | true while this is the squad's current entry; flips to false on supersede or clear |
@@ -360,14 +360,14 @@ State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news`
 | harvest_haunt | aberrant mutant | taker |
 | alpha_promote / area_conquer / stash_* / needs_* / instincts_* | the acting squad | nil |
 
-**Template pools.** Two pools per locale, both loaded by `_load_pool` walking `prefix_001..prefix_NNN` until miss or empty:
+**Template pools.** Two pools per locale, all loaded by `_load_pool` walking `prefix_001..prefix_NNN` until miss or empty:
 
-| Pool | Prefix | Variant cap |
+| Pool | Prefix | When it fires |
 |---|---|---|
-| Per-consequence | `st_ap_news_tpl_<consequence>_NNN` | 20 |
-| Cause-broadcast | `st_ap_news_tpl_cause_<cause>_NNN` | 20 |
+| Per-consequence | `st_ap_news_tpl_<consequence>_NNN` | default — focal entry alone |
+| Pair-composite | `st_ap_news_tpl_cause_<cause>_pair_<a>_<b>_NNN` | both reactive sibling consequences of one cause publish are present |
 
-Per-consequence renders the focal entry alone. Cause-broadcast renders a broader scene when at least two unreported entries share the same `cause_id`, replacing N individual dispatches with one. The composer rolls `CAUSE_BROADCAST_CHANCE_PCT` (70%) when siblings are present, falling back to per-consequence on miss. Only the five reactive pair causes (MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST) can accumulate siblings sharing a `cause_id` — radiant causes are one-consequence-per-cause by invariant 7.
+The composer picks an entry and tries pair first (when `sib_count >= 2` and both pair members are present), falling back to per-consequence. Only the five reactive pair causes (MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST) can accumulate siblings sharing a `cause_id` — radiant causes are one-consequence-per-cause by invariant 7. The pair pool is the only multi-sibling path: when both halves of a pair fire, pair always wins; when only one fires, sib_count=1 and per-consequence fires.
 
 **Slots.** Every template uses some subset of these slots, populated per compose tick by `_slots_for(entry_a, entry_b, count_n)`. Squad-side values come pre-resolved from the entry (eager capture at record_event); smart and level resolve lazily at compose. Pair-composite templates use `_a` / `_b` suffixed variants of the subject slots:
 
@@ -383,23 +383,30 @@ Per-consequence renders the focal entry alone. Cause-broadcast renders a broader
 | `#level#` | `xlevel.get_level_name(level_id)` (lazy) |
 | `#ago#` | hours-since `game_hours`: empty (recent), `_ago_recent`, or `_ago_hours` |
 | `#count#` | sibling count word, resolved from `NEWS_COUNT_KEY` table (`two`, `three`, `four`, `five`, `many`) |
+| `#subject_faction_a#` / `#subject_faction_b#` | pair-composite: the two siblings' factions (a/b in alphabetical consequence order) |
+| `#subject_name_a#` / `#subject_name_b#` | pair-composite: the two siblings' commander names |
+| `#subject_species_a#` / `#subject_species_b#` | pair-composite: the two siblings' species displays |
 
 `_filter_variants` drops variants whose required slot is empty before the random pick. If the filter empties the pool, the full pool is used and unfilled slots substitute to empty string. `_clean_output` then trims, collapses double spaces, and removes orphan punctuation.
 
-**Content lives in XML.** Both locales ship together: `configs/text/eng/ui_st_ap_news.xml` and `configs/text/rus/ui_st_ap_news.xml`. Each carries around 253 ids — 180 per-consequence templates, 55 cause-broadcast templates, 6 mutant faction display plurals, 20 species display plurals, 2 ago strings, 5 count words, plus per-pair composite templates as they are authored. Locale is detected per tick from `system.ltx` `string_table.language`. Template pools rebuild on language change. Validator enforces id-set parity between the two locales.
+**Slot density principle.** Templates are written info-first: every variant carries the slots a player or NPC would use to make a decision (where, when, who, what threat). `#location#` and `#ago#` run near-100% across all pools. `#subject_faction#` or `#subject_species#` always names the actor by role mapping. Two-party events always carry `#other_faction#`. Names (`#subject_name#`, `#subject_name_a#`, `#subject_name_b#`) are reserved for the longer narrative variants in pair pools (the squad leading a response or pursuit). Per-consequence templates carry no names: a single event has no character to anchor.
 
-**Dedup runs in two rings.**
+**Content lives in XML.** Both locales ship together: `configs/text/eng/ui_st_ap_news.xml` and `configs/text/rus/ui_st_ap_news.xml`. Each carries 263 ids — 180 per-consequence templates, 50 pair-composite templates, 6 mutant faction display plurals, 20 species display plurals, 2 ago strings, 5 count words. Locale is detected per tick from `system.ltx` `string_table.language`. Template pools rebuild on language change. Validator enforces id-set parity between the two locales.
 
-| Ring | Storage | Capacity | Purpose |
-|---|---|---|---|
-| Record | `_reported_cons_ids` (xttltable fifo_cache) | 512 | Each journal entry dispatched at most once |
-| Cooldown | `_recent_cons` (xttltable fifo_cache) | 3 | Soft-prefer entries whose `consequence` is not in the recent ring; falls back to the full pool if the filter empties so dispatch never starves |
+**Dedup.** Single ring: `_reported_cons_ids` (xttltable fifo_cache, capacity 512). Each cons_id is dispatched at most once. The broker FIFO is capacity 256, so entries get evicted from the broker before they can fall out of dedup — no entry ever re-fires. Pair dispatch marks both siblings in one shot; per-consequence marks only the focal. Diversity comes from the random pick across the age window, not from a short-term cooldown ring.
 
-Cause-broadcast marks all siblings reported in one shot. Per-consequence marks only the focal entry.
+**Speaker selection.** `_pick_speaker` iterates `db.OnlineStalkers` once per tick and filters by:
 
-**Sender selection.** `_pick_sender` prefers a same-faction online stalker, falling back to any friendly online stalker. The function iterates `db.OnlineStalkers` once per tick and filters alive, human, non-story, non-enemy. The picked stalker's `character_name` and `character_icon` pass to `xpda.send`.
+1. alive, hydrated game_object, IsStalker, not story NPC, not in combat (`:best_enemy()`)
+2. **canon channel restriction** — `dynamic_news_manager.channel_status[community]` must be true. For player's faction, this gates Monolith/Army/Greh/ISG to members only (matches every other A/S-tier news mod).
+3. **scope filter** — `news_scope` MCM enum. `own`: speaker community equals actor's. `allies`: speaker community equals actor's OR `is_factions_friends(actor, speaker)`. `world`: any non-enemy.
+4. alignment_human (humans only; mutants never speak)
 
-**MCM surface.** `news_enabled` (bool master toggle), `news_interval_min_sec` and `news_interval_max_sec` (int sliders 60-600). The composer randomizes the next delay between bounds after every tick.
+A random NPC is sampled from the filtered pool. The speaker's community becomes the channel: `PushToChannel(speaker:character_community(), { Mg, Se, Ic, Snd="news", It="npc" })`. There is no `npc:see` call (heavy, irrelevant for old gossip), no proximity cascade (events are pre-filtered to the current level so the entire `db.OnlineStalkers` set is on-event-level by definition), no faction routing by subject — the speaker IS the channel.
+
+**Cold-start fallback.** When `dynamic_news_manager.get_dynamic_news()` returns nil (~27s window after game load), `_dispatch` falls back to `xpda.send` (direct `give_game_news`). This is the documented exception in `library/modding/anti-patterns.md` — the canonical pattern, not the bypass anti-pattern.
+
+**MCM surface.** `news_enabled` (bool master toggle), `news_interval_min_sec` and `news_interval_max_sec` (int sliders 1-600), `news_scope` (enum: `own` / `allies` / `world`, default `allies`), `news_max_age_game_hours` (int slider 1-72, default 12). The composer randomizes the next delay between min/max bounds after every tick.
 
 **Trace codes** in `ap_core_const.TRACE`: `NONE` (disabled or no entries), `NO_TEMPLATES`, `NO_MSG`, `NO_SENDER`, `SENT`.
 
@@ -407,21 +414,22 @@ Cause-broadcast marks all siblings reported in one shot. Per-consequence marks o
 
 - `MUTANT_FACTION_DISPLAY_KEY`: engine mutant faction string mapped to its localized XML display id ("predators", "night predators", etc.).
 - `SPECIES_DISPLAY_KEY`: xcreature species string mapped to its localized XML display id ("bloodsuckers", "chimeras", etc.).
-- `NEWS_WEIGHT_BY_CAUSE`: cause weight table for the weighted entry picker.
 - `NEWS_COUNT_KEY`: sibling count → XML id map for the `#count#` slot.
 
 **Invariants.**
 
 - Squad-derived display facts (faction key + display, commander name, species + display) are captured eagerly at record time. Smart/level/time stay lazy. Death-resilience: dead or unregistered squads remain renderable from stored strings.
 - Smart and level display resolve lazily at compose via `xobject.se` + xlibs resolvers (smarts and levels have stable ids and never go invalid mid-session).
-- State is session-lifetime. FIFO resets on load, dedup rings reset, template pools rebuild.
+- State is session-lifetime. FIFO resets on load, dedup ring resets, template pools rebuild.
 - Empty slots are nil-safe. Either the variant filter rejects the variant, or the slot substitutes to empty string and `_clean_output` collapses the gap.
-- Broker storage holds event facts AND eagerly-captured squad display strings. News-only state (dedup rings, recent-cons cooldown, template pools) lives in `ap_ext_news` module locals.
+- Broker storage holds event facts AND eagerly-captured squad display strings. News-only state (dedup ring, template pools) lives in `ap_ext_news` module locals.
+- Channel routing is speaker-driven: speaker's community = channel. No subject-faction channel mapping, no per-consequence routing rules. Canon Monolith/Army/Greh/ISG member-only restrictions are enforced naturally because `channel_status` filters speaker eligibility.
+- Events are pre-filtered to `level.current()` before random pick. Speaker pool is then `db.OnlineStalkers` (overwhelmingly the player's level by definition of "online"). No explicit speaker-level check is needed.
 - Templates are immutable. The per-tick slot table builds fresh and is discarded after one substitution.
 - `cons_id` is broker-assigned. News passes no monotonic counter through `opts`.
 - `record_event` resolves squad-side display strings eagerly via `xsquad.get_commander_name`, `xcreature.get_mutant_species`, and `game.translate_string` (~6-12 luabind + 4 translate_string per call). Smart and level resolve at compose.
 - Locale switches mid-session leave the FIFO holding strings in the previous locale until natural churn (~10-50 min at typical record rates). Pragmatic accept: switches are rare, no crash, self-resolving.
-- Cause-broadcast and pair pools require `sib_count >= 2`, structurally only reachable for the 5 reactive paired causes (massacre, squadkill, basekill, wounded, harvest). Radiant causes are 1:1 by invariant 7; ALPHA/ALPHAKILL each have a single consequence.
+- The pair pool requires `sib_count >= 2`, structurally only reachable for the 5 reactive paired causes (massacre, squadkill, basekill, wounded, harvest). Radiant causes are 1:1 by invariant 7; ALPHA/ALPHAKILL each have a single consequence.
 
 ### Causes
 

@@ -403,7 +403,7 @@ end
 --- so stats do not tick (use needs_demo for real-pipeline testing).
 --- Mutant-subject consequences seed from nearby mutant squads so #subject_species# populates.
 --- Reactive pair causes (massacre/squadkill/basekill/wounded/harvest) occasionally emit a
---- sibling record with the same cause_id to exercise cause-broadcast and pair-composite branches.
+--- sibling record with the same cause_id to exercise the pair-composite pool.
 --- Toggle on/off. Set MCM news_interval_min/max_sec low (e.g. 1-3) for rapid feedback.
 
 local NEWS_DEMO_SEED_INTERVAL_MS = 2000
@@ -449,7 +449,7 @@ local NEWS_DEMO_EVENTS = {
     { cause = CAUSE.INSTINCTS, cons = CONSEQUENCE.INSTINCTS_INFEST,     kind = "mutant", other = nil      },
 }
 
--- Reactive pair causes: same cause_id in both entries groups them for cause-broadcast and pair-composite
+-- Reactive pair causes: same cause_id in both entries groups them for pair-composite dispatch
 local NEWS_DEMO_PAIR_SIBLINGS = {
     [CONSEQUENCE.MASSACRE_INVESTIGATE] = { cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant" },
     [CONSEQUENCE.MASSACRE_SCAVENGE]    = { cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human"  },
@@ -482,11 +482,17 @@ local function _news_demo_pick_squad(kind)
 end
 
 -- Seed one record into the broker FIFO. Returns true on write, false if no squad available.
+-- For two-party events, ensures other_squad has a different faction than subject so
+-- templates don't render "Bandit vs Bandit"-style artifacts.
 local function _news_demo_seed_record(squad, cause, consequence, cause_id, other_kind)
     if not squad then return false end
     local smart = xsquad.get_squad_smart(squad)
     local level_id = xlevel.get_level_id(squad)
     local other_squad = _news_demo_pick_squad(other_kind)
+    if other_squad and other_squad.player_id == squad.player_id then
+        other_squad = _news_demo_pick_squad(other_kind)
+        if other_squad and other_squad.player_id == squad.player_id then other_squad = nil end
+    end
     ap_ext_news.record_event(squad, cause, consequence, {
         cause_id    = cause_id,
         other_squad = other_squad,

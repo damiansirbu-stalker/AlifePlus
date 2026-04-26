@@ -245,15 +245,39 @@ Instincts
     Feral species infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and shelters.
     Cowardly species are too weak to hold territory.
 
-News: Emergent Zone Gossip
+News: Information from the Zone
 
-  An online stalker on your frequency catches what's moving in the Zone and passes it on. You hear who is hitting whom, where the bodies are, and how recent the report is. Three layers feed the radio.
-  - Chained events - When one cause fires two reactive consequences, you get both halves on a single line instead of two messages. Stalkers investigate their own dead while scavengers strip the bodies. Five causes use this pairing: massacre, squadkill, basekill, wounded, harvest.
-  - Patterns - Recent activity sometimes adds up to a shape. When that happens, the news surfaces it as a summary line. A faction is pushing its full roster through one map. A squad that survived a wipe is already working elsewhere. A smart terrain has every nearby crew fighting over it. A mutant outbreak is concentrating on one level.
-  - Per-event chatter - The radio reports individual events when no chain or pattern is available. Each event surfaces in a different voice, so two reports of the same activity never sound the same.
+  An online stalker on your frequency catches what's moving in the Zone and passes it on. News is information the simulation runs on: where to go, where to avoid, what is fresh, who is active, what is the threat. NPCs already act on these events. The PDA broadcasts a window into the same stream so you can read the Zone the way the squads in it do. Two layers feed the radio.
+  - Chained events: when one cause fires two reactive consequences, you get both halves on a single line instead of two messages. Stalkers investigate their own dead while scavengers strip the bodies. Five causes use this pairing: massacre, squadkill, basekill, wounded, harvest.
+  - Per-event chatter: the radio reports individual events when no chain is available.
+
+  Every message names what happened. You always know whether you are hearing about a massacre, a chase, a base loss, an alpha rising, a scavenge run, an infestation, or a stash hit. The action is named, not implied.
+
+  Each pool contains multiple variants told from different positions so the radio never sounds rehearsed. The voices include hearsay (someone repeating what came in over the channel), eyewitness (someone who saw it from a distance), survivor (someone who was in it), tracker (someone reading the ground after), and named report (a brief factual line crediting the squad commander). Stalker voice throughout, no military journalism.
+
+  No event repeats. Once a record is dispatched, it is marked off so the radio moves on to fresh information instead of looping the same line. Only events on your current level surface, and only events fresh enough to still be gossip-relevant.
 
   Mutant reports name the species. You hear bloodsuckers, chimeras, lurkers, or aberrants instead of generic monsters.
-  The mod includes English and Russian translations. The MCM exposes a master toggle and an interval slider (default 30-100 seconds between messages).
+
+  Who you hear is configurable. Own keeps the radio to your own faction. Allies (default) opens it to factions friendly to you. World opens it to any non-enemy stalker. Pick the volume of chatter that matches how plugged in you want to be.
+
+  News routes through the official Anomaly news channels. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only -- non-members never hear that internal chatter. The system integrates with vanilla rules: emissions and psi-storms suppress the queue, the PDA apparatus must be charged, the shared 3-message cap and faction-restricted channel rules apply. AlifePlus news takes its place alongside vanilla chatter under the same engine controls.
+
+  Each compose tick picks one eligible event, then picks a speaker from the online stalkers on your level whose faction matches your news scope and whose channel is enabled.
+
+  Sample radio lines:
+    Heard a Free stalkers crew bedded down at Rookie Village a few hours ago after a long march.
+    Tracks at Tent Camp show a Tushkanos pack ran out in every direction, and whatever drove them off is still there.
+    Saw a Free stalkers crew walk into Rookie Village to ID their Bandit wipe with Wild Dogs already on the bodies.
+    Heard a Bandit lost Trailer Camp to Military a few hours ago and the backup crew got there too late.
+
+  MCM controls:
+  - News (master toggle, default on)
+  - News interval (1-600 seconds, default 30-100 random per tick)
+  - News scope: Own / Allies / World (default Allies). Own restricts speakers to your faction. Allies adds friendly factions. World adds any non-enemy stalker.
+  - News max age (1-72 game hours, default 12). Events older than the window are filtered out so messages feel like recent gossip.
+
+  The mod includes English and Russian translations.
 
 Day/Night Cycle
   Stalkers and mutants follow a day/night activity cycle.

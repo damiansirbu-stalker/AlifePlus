@@ -14,6 +14,8 @@ defaults = {
     news_enabled = true,
     news_interval_min_sec = 30,
     news_interval_max_sec = 100,
+    news_scope = "allies",
+    news_max_age_game_hours = 12,
 
     -- Cause: Alpha
     cause_alpha_enabled = true,
@@ -369,6 +371,8 @@ local _key_to_tab = {
     news_enabled = "news",
     news_interval_min_sec = "news",
     news_interval_max_sec = "news",
+    news_scope = "news",
+    news_max_age_game_hours = "news",
     cause_alpha_enabled = "causes/alpha",
     alpha_kills_per_level = "causes/alpha",
     cause_alphakill_enabled = "causes/alphakill",
@@ -688,6 +692,12 @@ function on_mcm_load()
                     _check("news_enabled"),
                     _track("news_interval_min_sec", 1, 600, 1),
                     _track("news_interval_max_sec", 1, 600, 1),
+                    _list("news_scope", {
+                        {"own",    "own"},
+                        {"allies", "allies"},
+                        {"world",  "world"},
+                    }),
+                    _track("news_max_age_game_hours", 1, 72, 1),
                 },
             },
             {

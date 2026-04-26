@@ -1,9 +1,12 @@
 next
   Summary: PDA news system (English and Russian), mutant infestation with alpha gate, species-pure mutant spawns, additive territory conquest, personality ceiling retune
   Gameplay:
-    Added: PDA news system. Recent squad activity surfaces as radio chatter from an online stalker on your frequency. Each line names the faction, commander, location, level, and elapsed time.
+    Added: PDA news system. Squad activity surfaces as radio chatter from an online stalker on your frequency. News carries information the simulation runs on (where to go, where to avoid, what is fresh, who is active, what is the threat). NPCs already act on these events; the PDA is the player's window into the same information stream. Templates render as a stalker on the radio relaying half-known news with hedge leads ("Heard...", "Word is...", "From what I'm picking up..."). Past tense throughout, periods between clauses, full sentences with verbs.
     Added: paired news. One event that fires two sibling consequences ships as a single line instead of two messages. Covers massacre, squadkill, basekill, wounded, harvest.
-    Added: pattern news. The composer scans recent activity for recurring patterns and ships one summary line per match. Six patterns: survivor, grudge, outbreak, hot_location, hot_faction, busy_squad.
+    Added: news routes through Anomaly's dynamic_news_manager. Integrates with vanilla rules: emission and psi-storm suppression (queues clear during the event), PDA-charged gate (no news when the apparatus is dead or out of power), shared 3-message queue cap. Cold-start fallback to direct PDA delivery during the manager's ~27 second initialization window.
+    Added: canon channel routing. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only — non-members never hear that internal chatter, matching vanilla and every A/S-tier news mod.
+    Added: news scope toggle (MCM, default Allies). Own: only your faction speaks. Allies: your faction plus factions friendly to you. World: any non-enemy stalker.
+    Added: news age window (MCM, default 12 game hours). Each compose tick picks a random event from the past N game hours, so messages feel like gossip pulled from recent memory instead of a sequential log.
     Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns are replaced by the infesting species. Only squads carrying an alpha can infest. Per-level cap (MCM 1-5, default 1).
     Changed: territory conquest is additive. Conquerors add spawns alongside originals instead of replacing them.
     Changed: species-pure spawns on mutant-claimed smart terrains. Each nest spawns one species instead of mixed packs. Stalker conquest unchanged.
@@ -21,6 +24,8 @@ next
     Fixed: Russian MCM News tab strings synced with English.
   MCM:
     Added: News tab with master toggle and compose interval sliders (1-600 seconds, default 30-100).
+    Added: News scope (own / allies / world, default allies).
+    Added: News max age slider (1-72 game hours, default 12).
     Added: instinct infest cause and consequence settings (enabled, threshold, rush, personality floor and ceiling).
     Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
     Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab.
@@ -28,11 +33,17 @@ next
     Activity record. Write via ap_core_broker.record(squad_id, cause, consequence, opts). Read via get_record(opts) (O(1) for { squad_id, assigned = true }) or get_records(opts) for bulk. clear_record(squad_id) on entity death.
     Localized rendering. ap_core_const.CONSEQUENCE_INFO[consequence] returns { name_key, action_key }: name_key resolves to a short caption ("Massacre Investigate"), action_key to the full action phrase ("Investigating a Massacre Site"). Both XML ids; resolve via game.translate_string. EN and RU ship.
     Trace paths. ap_core_const.CONSEQUENCE_PHASE supplies sub-phase identifiers for ap_core_debug.observe (FIND_TARGETS, MOVE_SQUAD, ARRIVE, ...) at DEBUG log level.
-    News dispatch. ap_ext_news.record_event(subject_squad, cause, consequence, opts). opts.cause_id groups siblings for paired dispatch; opts.other_squad enables two-party templates. Template pools follow per-consequence, cause-broadcast, paired, and pattern id conventions.
+    News dispatch. ap_ext_news.record_event(subject_squad, cause, consequence, opts). opts.cause_id groups siblings for paired dispatch; opts.other_squad enables two-party templates. Template pools follow per-consequence, paired, and pattern id conventions.
     Spawn injection. xsmart.set_shared_spawn(smart, key, identity, num) adds a respawn entry alongside originals (conquest pattern). xsmart.set_exclusive_spawn(smart, key, identity, num) replaces them (infest pattern). Identity accepts stalker factions and mutant species.
     xlibs helpers. xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
   Fixed:
     Fixed: squadkill_revenge chased the player after the player's actor_stalker relation drifted hostile from own-faction kills.
+    Fixed: news composer dropped every entry. Eligibility filter compared numeric entry.level_id against level.current() (level name string). Replaced with xlevel.get_actor_level_id() (numeric).
+    Fixed: news speaker pool always empty. actor:character_community() returned actor_<faction> (not present in game_relations tables), so scope filter rejected every NPC. Replaced with get_actor_true_community().
+    Removed: runtime per-sentence capitalize in _clean_output. Slot values are capitalized in XML; runtime fixup was overcorrecting and added work per dispatch.
+  Templates:
+    Rewrote the entire English news corpus (36 consequence pools + 5 pair pools, 5 variants each) on a documented discipline: each variant carries an explicit consequence tell, pair pools tag both halves and the cause, speaker rotation across hearsay/witness/survivor/tracker/named, length variation per pool, no parallel-rhythm halves, no stage-dressing lists, no war-correspondent vocabulary, doomer through fact selection. See doc/standards/writing-standards.md "Generative templates" section for the full rule set.
+    Russian corpus reset to clone of English pending translation.
 
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
