@@ -2,6 +2,7 @@ AlifePlus: Эмерджентный A-Life для STALKER Anomaly, автор Da
 - Манифест: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Руководство по интеграции: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md
 - Список изменений: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
+- Сообщить об ошибке: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
 ! Нажмите СБРОС в MCM при обновлении до новой версии !
 

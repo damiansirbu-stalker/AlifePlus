@@ -3,6 +3,7 @@ AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 - Integration guide: https://damiansirbu-stalker.github.io/siski-report/guide.html
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
+- Report a bug: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
 ! Please use the RESET button in MCM when updating to a new version !
 
