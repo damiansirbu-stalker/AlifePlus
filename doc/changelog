@@ -1,49 +1,66 @@
 next
-  Summary: PDA news system (English and Russian), mutant infestation with alpha gate, species-pure mutant spawns, additive territory conquest, personality ceiling retune
+
+1.5.0
+  Summary: PDA news system, mutant infestation, additive territory conquest, generative templates, localization (EN+RU), modder API, personality retune
   Gameplay:
-    Added: PDA news system. Squad activity surfaces as radio chatter from an online stalker on your frequency. News carries information the simulation runs on (where to go, where to avoid, what is fresh, who is active, what is the threat). NPCs already act on these events; the PDA is the player's window into the same information stream. Templates render as a stalker on the radio relaying half-known news with hedge leads ("Heard...", "Word is...", "From what I'm picking up..."). Past tense throughout, periods between clauses, full sentences with verbs.
-    Added: paired news. One event that fires two sibling consequences ships as a single line instead of two messages. Covers massacre, squadkill, basekill, wounded, harvest.
-    Added: news routes through Anomaly's dynamic_news_manager. Integrates with vanilla rules: emission and psi-storm suppression (queues clear during the event), PDA-charged gate (no news when the apparatus is dead or out of power), shared 3-message queue cap. Cold-start fallback to direct PDA delivery during the manager's ~27 second initialization window.
-    Added: canon channel routing. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only — non-members never hear that internal chatter, matching vanilla and every A/S-tier news mod.
-    Added: news scope toggle (MCM, default Allies). Own: only your faction speaks. Allies: your faction plus factions friendly to you. World: any non-enemy stalker.
-    Added: news age window (MCM, default 12 game hours). Each compose tick picks a random event from the past N game hours, so messages feel like gossip pulled from recent memory instead of a sequential log.
-    Added: mutant infestation. Feral, predator, and aberrant mutants claim smart terrains as nests. Original spawns are replaced by the infesting species. Only squads carrying an alpha can infest. Per-level cap (MCM 1-5, default 1).
-    Changed: territory conquest is additive. Conquerors add spawns alongside originals instead of replacing them.
-    Changed: species-pure spawns on mutant-claimed smart terrains. Each nest spawns one species instead of mixed packs. Stalker conquest unchanged.
-    Changed: personality ceiling retuned from 0.80 to 0.70 across every consequence. Floor stays at 0.20.
+    Added: PDA news system. An online stalker on your frequency relays squad activity as radio chatter.
+           The framework records every cause and consequence in the simulation as a journal entry.
+           News surfaces the journal as emergent gossip, based on how impactful the event is and how relevant the data is for the world.
+		   Speakers rotate across hearsay, witness, survivor, tracker, and named report.
+		   Speakers are chosen based on whether they were part of the event, saw the event or proximity to it.
+		   The news are about the causes, the consequences, or about chained events like a cause generating multiple consequences or consequences leading to other events.
+		   PDA system reworked around XRAY systems, integrated with existing news queue, considering, psi-storms, PDA charge, queue cap, and member-only faction channels.
+		   Visibility of the messages configurable in MCM: own faction, faction and allies, world.
+		   Rewrote all news text to adapt to the new chained events and to use the data saved in the core broker
+    Added: mutant infestation. Feral, predator, and aberrant ALPHAS claim smart terrains as nests. Original spawns are replaced by the infesting species, turning the smart into a single-species lair. (per-map cap cinfigurable in MCM)
+    Changed: territory conquest is additive (was exclusive). Conquerors add their faction's spawns alongside the originals instead of replacing them. A conquest produces a mixed zone (vnilla behavior) instead of a clean factional flip.
+    Changed: personality values and default ceiling retuned to be mroe in line with the lore
     Changed: stash fill skips squads at bases. Matches stash loot and stash ambush behavior.
   Core:
-    Added: spawn attribution tracing. When DEBUG log level is enabled, every squad spawned by area_conquer or instinct_infest is logged with smart, faction, and section. Filters on the AP-injected respawn_params section, so coexisting LTX-entry spawns on the same smart do not produce false positives.
-    Added: activity record now stores translated display strings for faction, name, and species (subject and other) at capture time. News, HUD markers, and external integrators read pre-resolved strings; squads that die or unregister between capture and render still display correctly.
-    Changed: stash cause checks at_base before publishing. The single check in the cause predicate replaces three identical checks at the consequence level (loot, ambush, fill) and runs before personality so probability rolls aren't wasted on at-base squads.
-    Changed: PDA map markers redesigned with multi-line label. Action phrase, "Subject: name (faction)", and "Other: name (faction)" for two-party consequences. Reads pre-translated fields directly from the activity record.
-  Localization:
-    Added: PDA news ships in English and Russian. Stalker register throughout, loners talk like loners.
-    Added: PDA map marker activity labels in English and Russian.
-    Added: mutant species names in news (bloodsuckers, chimeras, lurkers, psy dogs) instead of generic "monsters".
-    Fixed: Russian MCM News tab strings synced with English.
+    Added: spawn attribution tracing. Every squad spawned by area_conquer or instinct_infest logs with smart, faction, and section when DEBUG is on.
+    Added: activity records capture translated display strings for faction, name, and species (subject and other) at write time.
+    Changed: All stash causes avoid bases for balance
+    Changed: PDA map markers now use a multi-line label with action phrase, "Subject: name (faction)", and "Other: name (faction)" for two-party consequences.
+             Markers read pre-translated fields directly from the activity record, so no string resolution at render time.
   MCM:
-    Added: News tab with master toggle and compose interval sliders (1-600 seconds, default 30-100).
-    Added: News scope (own / allies / world, default allies).
-    Added: News max age slider (1-72 game hours, default 12).
-    Added: instinct infest cause and consequence settings (enabled, threshold, rush, personality floor and ceiling).
-    Added: infestation mutator settings (enabled, max per level, spawn count, decay hours).
-    Removed: per-consequence PDA chance sliders. News volume is tuned in the News tab.
+    Added: News tab. Master toggle, compose interval (1-600 seconds, default 30-100). Scope selector (own / allies / world, default allies). Max age (1-72 game hours, default 12).
+    Added: instinct infest settings. Enabled, threshold, rush, personality floor and ceiling.
+    Added: infestation mutator settings. Enabled, max per level, spawn count, decay hours.
+    Removed: per-consequence PDA chance sliders. News volume is tuned from the News tab.
   Integration:
-    Activity record. Write via ap_core_broker.record(squad_id, cause, consequence, opts). Read via get_record(opts) (O(1) for { squad_id, assigned = true }) or get_records(opts) for bulk. clear_record(squad_id) on entity death.
-    Localized rendering. ap_core_const.CONSEQUENCE_INFO[consequence] returns { name_key, action_key }: name_key resolves to a short caption ("Massacre Investigate"), action_key to the full action phrase ("Investigating a Massacre Site"). Both XML ids; resolve via game.translate_string. EN and RU ship.
-    Trace paths. ap_core_const.CONSEQUENCE_PHASE supplies sub-phase identifiers for ap_core_debug.observe (FIND_TARGETS, MOVE_SQUAD, ARRIVE, ...) at DEBUG log level.
-    News dispatch. ap_ext_news.record_event(subject_squad, cause, consequence, opts). opts.cause_id groups siblings for paired dispatch; opts.other_squad enables two-party templates. Template pools follow per-consequence, paired, and pattern id conventions.
-    Spawn injection. xsmart.set_shared_spawn(smart, key, identity, num) adds a respawn entry alongside originals (conquest pattern). xsmart.set_exclusive_spawn(smart, key, identity, num) replaces them (infest pattern). Identity accepts stalker factions and mutant species.
-    xlibs helpers. xsquad.get_commander_name, xcreature.get_mutant_species, xlevel.get_level_name, xstring.capitalize_first, xttltable fifo_cache :each + on_evict.
-  Fixed:
+    Added: activity record API (ap_core_broker).
+           record(squad_id, cause, consequence, opts) - write a record
+           get_record(opts) - O(1) read for { squad_id, assigned = true }
+           get_records(opts) - bulk read
+           clear_record(squad_id) - unregister from all systems on entity death
+    Added: localized rendering (ap_core_const.CONSEQUENCE_INFO).
+           CONSEQUENCE_INFO[consequence] returns { name_key, action_key }
+           name_key - short caption ("Massacre Investigate")
+           action_key - full action phrase ("Investigating a Massacre Site")
+           Both XML ids resolve via game.translate_string. EN and RU ship.
+    Added: trace paths.
+           ap_core_const.CONSEQUENCE_PHASE - sub-phase identifiers (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.)
+           ap_core_debug.observe consumes them at DEBUG log level.
+    Added: news dispatch (ap_ext_news).
+           record_event(subject_squad, cause, consequence, opts) - main entry
+           opts.cause_id - groups siblings for paired dispatch
+           opts.other_squad - enables two-party templates
+           Template pools follow per-consequence, paired, and pattern id conventions.
+    Added: spawn injection (xsmart).
+           set_shared_spawn(smart, key, identity, num) - alongside originals (conquest pattern)
+           set_exclusive_spawn(smart, key, identity, num) - replaces originals (infest pattern)
+           Identity accepts stalker factions and mutant species.
+    Added: xlibs helpers used by AP.
+           xsquad.get_commander_name - commander character_name
+           xcreature.get_mutant_species - cached species detection
+           xlevel.get_level_name - localized level name from level_id
+           xstring.capitalize_first - cp1251-aware first-char uppercase
+           xttltable fifo_cache :each + on_evict - bounded cache traversal and eviction hook
+
+  Fixes:
     Fixed: squadkill_revenge chased the player after the player's actor_stalker relation drifted hostile from own-faction kills.
-    Fixed: news composer dropped every entry. Eligibility filter compared numeric entry.level_id against level.current() (level name string). Replaced with xlevel.get_actor_level_id() (numeric).
-    Fixed: news speaker pool always empty. actor:character_community() returned actor_<faction> (not present in game_relations tables), so scope filter rejected every NPC. Replaced with get_actor_true_community().
-    Removed: runtime per-sentence capitalize in _clean_output. Slot values are capitalized in XML; runtime fixup was overcorrecting and added work per dispatch.
-  Templates:
-    Rewrote the entire English news corpus (36 consequence pools + 5 pair pools, 5 variants each) on a documented discipline: each variant carries an explicit consequence tell, pair pools tag both halves and the cause, speaker rotation across hearsay/witness/survivor/tracker/named, length variation per pool, no parallel-rhythm halves, no stage-dressing lists, no war-correspondent vocabulary, doomer through fact selection. See doc/standards/writing-standards.md "Generative templates" section for the full rule set.
-    Russian corpus reset to clone of English pending translation.
+    Fixed: better discovering of player and NPC true community when dispathcing news
+    Fixed: Russian MCM News tab strings synced with English.
 
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
@@ -54,7 +71,7 @@ next
     Added: day/night cycle. Stalkers work by day, rest at night. Nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night, retreat at dawn. All needs and instincts time-gated accordingly.
     Added: range-based perception. EyeRange (200m, vision), RadioRange (500m, stalker PDA), ScentRange (500m, mutant tracking). Each cause type maps to a range tier. Distances derived from empirical smart terrain geometry analysis across 14 levels (nearest-neighbor spacing, vertex density, level dimensions).
     Changed: when an alpha dies, same-species mutants on the level hunt the killer.
-    Added: artefact pickup triggers reactions. Outlaws chase the taker; aberrant mutants converge on the site.
+    Added: artefact pickup triggers reactions. Outlaws chase the taker. Aberrant mutants converge on the site.
     Changed: decay and cooldown timers use game time (respects time acceleration and realism mods).
   Core:
     Changed: pipeline redesign. Ineligible squads filtered before evaluation budget. Every trigger produces a result.
@@ -94,7 +111,7 @@ next
     Removed: elite kill bounty.
   Core:
     Added: mutators MCM section with toggles for alpha and stalker combat modifiers.
-	Added: tracing statistics every minute when debug is on, will help standardise log pasing from users
+    Added: tracing statistics every minute when debug is on, will help standardise log pasing from users
   i18n:
     Added: full Russian description (doc/readme_ru.txt).
     Fixed: Russian MCM synced with English.
@@ -181,7 +198,7 @@ next
     Added: consequence rate limit peek without consuming tokens
     Added: cleaner console output (xmath.chance diagnostic noise removed)
     Changed: find_squads distance bounds use inclusive upper
-	
+
 1.2.2
   Summary: xlibs dependency update
   xlibs 1.2.3 dependency.
@@ -244,7 +261,7 @@ next
     Added: 168 message variants across 40 categories, stalker/mutant distinction
   MCM:
     Added: Reset button, retuned default chances, cleaned up labels
-    Added: Russian translation (Stalker_Boss)
+    Added: Russian translation
   Performance:
     Changed: MCM snapshot pattern, debug/trace function-swap (zero cost at WARN)
   Docs:
@@ -270,7 +287,7 @@ next
   Summary: Dependency gate, Russian translation, fixes
   Dependency gate, bugfixes, Russian translation.
   Added: dependency gate - clear error message if xlibs is missing or outdated
-  Added: Russian translation (Stalker_Boss)
+  Added: Russian translation
   Fixed: companion squads excluded from squad searches (xlibs)
   Fixed: player-created stashes excluded from stash searches (xlibs)
 

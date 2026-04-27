@@ -2,7 +2,7 @@
 
 Three integration levels, from passive listener to full pipeline participant.
 
-Requires: xlibs 1.2.6+, AlifePlus loaded. See `architecture.md` for internals, `conventions.md` for naming.
+Requires: xlibs 1.4.0+, AlifePlus loaded. See `architecture.md` for internals, `conventions.md` for naming.
 
 ---
 

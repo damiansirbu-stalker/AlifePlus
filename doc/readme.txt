@@ -208,7 +208,7 @@ Opportunities
     - Conquer - Organized and aggressive factions claim empty territory.
       Both stalkers and mutants conquer. Ecologists, loners, and renegades never conquer. Cowardly mutants never conquer.
       Conquest adds the conqueror's spawns alongside originals (shared injection). Territory decays over time (MCM configurable).
-    - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
+    - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests. Only squads carrying an alpha can infest.
       Infestation replaces original spawns with the infesting species (exclusive injection). Per-level cap limits spread.
 
 Needs
@@ -242,7 +242,7 @@ Instincts
     Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.
   - Explore - Mutants wander to a different territory or lair during active hours.
   - Socialize - Pack animals move toward smart terrains where same-faction squads are present.
-  - Infest - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours.
+  - Infest - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours. Only squads carrying an alpha can infest.
     Feral species infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and shelters.
     Cowardly species are too weak to hold territory.
 
@@ -262,7 +262,7 @@ News: Information from the Zone
 
   Who you hear is configurable. Own keeps the radio to your own faction. Allies (default) opens it to factions friendly to you. World opens it to any non-enemy stalker. Pick the volume of chatter that matches how plugged in you want to be.
 
-  News routes through the official Anomaly news channels. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only -- non-members never hear that internal chatter. The system integrates with vanilla rules: emissions and psi-storms suppress the queue, the PDA apparatus must be charged, the shared 3-message cap and faction-restricted channel rules apply. AlifePlus news takes its place alongside vanilla chatter under the same engine controls.
+  News routes through the official Anomaly news channels. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only. Non-members never hear that internal chatter. The system integrates with vanilla rules: emissions and psi-storms suppress the queue, the PDA apparatus must be charged, the shared 3-message cap and faction-restricted channel rules apply. AlifePlus news takes its place alongside vanilla chatter under the same engine controls.
 
   Each compose tick picks one eligible event, then picks a speaker from the online stalkers on your level whose faction matches your news scope and whose channel is enabled.
 
@@ -285,8 +285,9 @@ Day/Night Cycle
   During active hours, creatures feed, explore, work, and trade.
   During dormant hours, they seek shelter and sleep.
   Stalkers are active during the day and sleep at night.
-  Nocturnal mutants -- bloodsuckers, lurkers, chimeras, zombies, fractures --
-  are active at night and sleep during the day. All other species are diurnal.
+  Nocturnal mutants are active at night and sleep during the day. The
+  nocturnal species are bloodsuckers, lurkers, chimeras, zombies, and
+  fractures. All other species are diurnal.
   The same mechanism gates both stalker needs and mutant instincts.
 
 Alignment
@@ -389,7 +390,6 @@ Multi-stage validation pipeline:
 Full report in doc/test-report.log.
 
 Credits:
-Stalker_Boss - Russian translation
 Altogolik - support, ideas, source materials
 
 ---

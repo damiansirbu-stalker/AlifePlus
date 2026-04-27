@@ -1,9 +1,10 @@
 --- ap_ext_news: Flat-template PDA news composer. Per-consequence + pair templates in ui_st_ap_news.xml.
 
 local IsStalker, get_object_story_id = IsStalker, get_object_story_id
-local pairs = pairs
+local pairs, tostring = pairs, tostring
 local math_random, math_floor = math.random, math.floor
 local string_format, string_gsub, string_find = string.format, string.gsub, string.find
+local table_concat = table.concat
 local game_translate_string = game.translate_string
 local xobject_se = xobject.se
 
@@ -315,7 +316,7 @@ local function _format_channels(channel_status)
     local parts = {}
     for k, v in pairs(channel_status) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(v) end
     if #parts == 0 then return "<empty>" end
-    return table.concat(parts, ",")
+    return table_concat(parts, ",")
 end
 
 -- Pick a speaker: any online stalker passing canon channel, scope, and combat filters.
