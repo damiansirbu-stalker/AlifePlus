@@ -1,4 +1,5 @@
 AlifePlus: реактивная A-Life для STALKER Anomaly, автор Damian
+- Версия: 1.5.0 (xlibs 1.4.1)
 - Манифест: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Руководство по интеграции: https://damiansirbu-stalker.github.io/siski-report/guide.html
 - Журнал изменений: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
