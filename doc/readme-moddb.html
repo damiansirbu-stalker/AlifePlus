@@ -1,177 +1,225 @@
 <h3>Version: 1.5.0 (xlibs 1.4.1)</h3>
-<h3><a href="https://github.com/damiansirbu-stalker/AlifePlus">GitHub</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md">Integration Guide</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">Design Manifesto</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog">Changelog</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt">На русском</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/issues">Report a bug</a></h3>
+<h3><a href="https://github.com/damiansirbu-stalker/AlifePlus">GitHub</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">Manifesto</a> | <a href="https://damiansirbu-stalker.github.io/siski-report/guide.html">Integration Guide</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog">Changelog</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt">На русском</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/issues">Report a bug</a></h3>
 <p><b>! Please use the RESET button in MCM when updating to a new version !</b></p>
 <p>https://www.youtube.com/watch?v=2AZdPyVeY5U</p>
 <p>https://www.youtube.com/watch?v=9xwuDKYlFek</p>
 <p>https://www.youtube.com/watch?v=g2GoMDV8QWE</p>
 <p><b>You are not special.</b></p>
-<p>AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulation layer that replaces passive A-Life with event-driven emergent behavior. It intercepts engine events, classifies them into causes through world-state predicates, and dispatches consequences that change the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create knock-on effects that persist whether the player is present or not. Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs - whether you are there or not. Everything that happens to the player happens to NPCs and mutants alike. Nothing is random - every action traces back to a cause in the simulation.</p>
-<p>Inspired by Roadside Picnic and the original STALKER vision: the Zone runs on its own rules, and the actor is just another entity inside it.<br /><br />Every action has a systemic cause. Nothing moves without a reason. The simulation runs whether you are there or not.</p>
-<p>The mod is built around two invariants:</p>
+<p>AlifePlus is a reactive A-Life framework for STALKER Anomaly. It extends A-Life with event-driven emergent behavior, built on GSC's original AI design. It intercepts engine events, classifies them into causes, and dispatches consequences that extend the simulation. NPCs and mutants act independently, pursue goals, react to threats, and create interconnected effects. Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs. Everything that happens to the player happens to NPCs and mutants alike. Every action traces back to a cause, a world state, and a mechanic.</p>
+<p>AlifePlus draws on Roadside Picnic, the original STALKER vision, and GSC's unshipped AI design documents. The Zone runs on its own rules, and the actor is just another entity inside it. Each faction acts on its identity: Duty holds ground, Bandits ambush and loot, Ecologists research, Monolith never retreats. Alignment determines what a faction can do at all, and personality determines how likely it is to act. The manifesto carries the source references.</p>
+<p>Every action has a systemic cause. The simulation runs whether you are there or not.</p>
+<p>Structural invariants make this possible:</p>
 <ul>
 <li>Event-driven contract: nothing runs unless the engine says something happened.</li>
-<li>Physical simulation guarantee: nothing is spawned, teleported, or fabricated. Consequences use entities that already exist in the simulation.</li>
+<li>Physical simulation guarantee: consequences use entities already in the simulation, never spawned, teleported, or fabricated.</li>
 </ul>
-<p>The economy uses real inventory items, and real needs drive real decisions.</p>
+<p>The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.</p>
+<h2>What you'll notice</h2>
+<p><b>Reactive responses</b></p>
+<ul>
+<li>Squads reroute after nearby combat deaths.</li>
+<li>Scavengers and investigators converge on massacre sites.</li>
+<li>Allies retaliate or retreat after a squad wipe.</li>
+<li>Predators close in on wounded targets.</li>
+<li>Same-faction allies rush to help the wounded.</li>
+<li>Outlaws hunt whoever picked up an artefact.</li>
+</ul>
+<p><b>Active opportunities</b></p>
+<ul>
+<li>NPCs walk to stashes to loot, ambush, or fill them with supplies.</li>
+</ul>
+<p><b>Territory and population</b></p>
+<ul>
+<li>Stalkers and mutants claim empty outposts.</li>
+<li>Conquests decay if nobody holds them.</li>
+<li>Mutants infest lairs and buildings as nests.</li>
+</ul>
+<p><b>Alpha mutants</b></p>
+<ul>
+<li>Alpha mutants emerge from combat and accumulate kills.</li>
+<li>Alphas gain hit power buffs and drop valuable loot.</li>
+</ul>
+<p><b>Trade and needs</b></p>
+<ul>
+<li>NPCs trade real items at traders.</li>
+<li>Stalkers swap artefacts for ammo, grenades, or medkits.</li>
+<li>Hunger, fatigue, and social needs drive campfire and base behavior.</li>
+</ul>
+<p><b>Day/night cycle</b></p>
+<ul>
+<li>Stalkers work and trade by day.</li>
+<li>Stalkers rest and sleep at campfires by night.</li>
+<li>Nocturnal predators hunt at night and retreat to lairs at dawn.</li>
+<li>Diurnal mutants follow the opposite cycle.</li>
+<li>Prey scatters when a predator moves through.</li>
+<li>Prey returns once the predator dies.</li>
+</ul>
+<p><b>Chained and emergent behavior</b></p>
+<ul>
+<li>One event triggers another consequence, which triggers another, with no hand-scripted sequence behind any of it.</li>
+<li>Each faction responds to the same event according to its personality, not random chance.</li>
+</ul>
+<p><b>Faction identity</b></p>
+<ul>
+<li>Bandits loot and ambush.</li>
+<li>Duty patrols and holds the line.</li>
+<li>Loners chase artefacts.</li>
+<li>Military stays close to base.</li>
+<li>Monolith pushes into territory.</li>
+<li>Renegades scatter at first contact.</li>
+</ul>
 <h2>Example scenario (systemic interaction)</h2>
 <ul>
-<li>A stalker reaches a location. AlifePlus intercepts that event.</li>
-<li>He spots a stash ("stash" cause) and his faction's greed trait is high enough to act on it, so he decides to loot it ("loot" consequence), not knowing if anything is inside.</li>
-<li>He walks the whole distance to the stash but gets ambushed by a bandit who saw it first. Bandits have the highest greed in the Zone, so they camp stashes ("ambush" consequence).</li>
-<li>The player was heading to that stash and sees the fight, so he snipes both of them.</li>
-<li>This mass killing ("massacre" cause) draws scavengers to the bodies ("scavenge" consequence, gated by greed) and the victims' faction sends squads to investigate ("investigate" consequence, gated by perception).</li>
-<li>On the way there, the scavengers get killed by loners who were out hunting ("job" consequence).</li>
+<li>A stalker reaches a location, and AlifePlus intercepts that event.</li>
+<li>He spots a stash ("stash" cause) and his faction's greed is high enough to loot it ("loot" consequence).</li>
+<li>He walks to the stash, but a bandit who saw it first ambushes him ("ambush" consequence).</li>
+<li>The player was heading to that stash, sees the fight, and snipes both of them.</li>
+<li>This mass killing ("massacre" cause) draws cowardly mutants to the bodies ("scavenge" consequence).</li>
+<li>The victims' faction sends squads to investigate ("investigate" consequence).</li>
+<li>On the way there, loners out hunting kill the scavengers ("job" consequence).</li>
 <li>Those loners are now tired ("needs" cause) and head back to base to smoke a cigarette and tell the story ("social" consequence).</li>
 <li>None of this was scripted. The player walked into something already in motion.</li>
 </ul>
 <h2>Example scenario (escalation chain)</h2>
 <ul>
 <li>An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).</li>
-<li>On the road he fights creatures and they fight back. A chimaera accumulates kills and becomes an alpha ("alpha promote" consequence) - the dominant predator in the area, hitting harder, taking less, and never fleeing.</li>
-<li>The player wounds it but it keeps fighting (panic immunity). When he finally kills it, he finds valuable mutant parts and an artefact in its inventory - the alpha's accumulated trophies.</li>
-<li>Another chimaera on the same tier senses the kill and pursues the player ("alphakill targeted" consequence).</li>
-<li>The cycle continues, the Zone does not care.</li>
-</ul>
-<h2>What you'll notice</h2>
-<ul>
-<li>Squads rerouting after nearby combat deaths</li>
-<li>Scavengers and investigators converging on massacre sites</li>
-<li>Stash traffic: NPCs walking to stashes, looting, ambushing, filling</li>
-<li>Outlaws hunting whoever picked up an artefact</li>
-<li>Retaliation and retreat loops after squad wipes</li>
-<li>Territory flipping as stalkers and mutants claim empty outposts. Conquests decay if not held. Mutants infest lairs and buildings as nests.</li>
-<li>Alpha mutants emerging from combat, accumulating kills, hit power buffs, and valuable loot</li>
-<li>Predators closing in on wounded targets, allies rushing to help</li>
-<li>NPCs trading real items at traders - artefacts for ammo, grenades, medkits</li>
-<li>Campfire and base behavior driven by hunger, fatigue, social needs</li>
-<li>Day/night cycle: stalkers work and trade by day, rest and sleep at campfires by night.</li>
-<li>Nocturnal predators hunt at night and retreat to lairs at dawn. Diurnal mutants do the opposite.</li>
-<li>Prey scattering when a predator moves through. Kill the predator, prey returns over time.</li>
-<li>Chained consequences: one event triggers another, and that triggers another - emergent behavior nobody scripted</li>
-<li>Bandits looting and ambushing while Duty patrols and holds the line</li>
-<li>Loners chasing artefacts while Military stays close to base</li>
-<li>Monolith pushing into territory while Renegades scatter at first contact</li>
-<li>Factions responding to the same event based on personality, not random chance</li>
+<li>He fights creatures on the road and they fight back. A chimera accumulates kills and becomes an alpha ("alpha promote" consequence).</li>
+<li>The alpha hits harder, takes less damage, and never flees. The player wounds it but it keeps fighting because of panic immunity. He kills it and finds valuable mutant parts and an artefact in its inventory.</li>
+<li>Another chimera on the same tier senses the kill and pursues the player ("alphakill targeted" consequence).</li>
+<li>An online stalker on a friendly channel reports the alpha down a few hours later as a news event on the player's PDA.</li>
+<li>A surviving chimera with its pack claims a nearby smart terrain as a nest ("infest" consequence). The infestation overwrites the original spawns.</li>
+<li>A bandit squad sees the ground is empty around the lair and conquers a neighboring smart ("area_conquer" consequence). Their spawns join the originals as a shared injection.</li>
+<li>The cycle continues. The Zone does not care.</li>
 </ul>
 <h2>Why this mod exists</h2>
-<p>A-Life modding is hard. The engine exposes limited APIs, documentation is scarce, and most of the knowledge comes from trial and error.</p>
-<p>Common patterns include scanning the entire world hundreds of times per frame at O(n) cost, permanently hijacking squads by overwriting engine variables like scripted_target, and heavy luabind loops that scale linearly with squad count. This causes ghosting, entity leaking, save corruption, and conflicts between mods. Engine interactions that crash are swallowed by pcall exception handlers - entities move a bit, the world feels a bit alive, but operations fail silently and degrade over time. State accumulates across saves with no cleanup. Behaviors often duplicate what the engine already handles, with no cohesive economy and no systemic purpose behind the movement.</p>
+<p>A-Life modding is hard. The engine exposes limited APIs, documentation is scarce, and most knowledge comes from trial and error.</p>
+<p>Common patterns scan the world every frame, permanently hijack squads by overwriting engine variables, swallow crashes silently, and accumulate stale state across saves with no cleanup. The result is poor performance, entity leaking, ghosting, save corruption, and mod conflicts that get worse the longer you play.</p>
 <h2>The AlifePlus Approach</h2>
-<p>Engine events are intercepted as they fire. The system reacts when something happens, not on a timer. If nothing is happening in the simulation, AlifePlus is idle.<br />Squads are extended, not hijacked. The engine's own job system produces the correct behavior without overwriting its variables.</p>
-<p>Events chain deterministically. Causes dispatch consequences, and consequences change the world state, which triggers new causes. Behavior is the result of independent actors colliding in a shared simulation.</p>
+<p>Engine events are intercepted as they fire. The system reacts when something happens, not on a timer. AlifePlus is idle when no events fire.</p>
+<p>Squads are extended, not hijacked. The engine's own job system produces the correct behavior without overwriting its variables.</p>
+<p>Events chain deterministically. Causes dispatch consequences. Consequences change the world state. Each change triggers new causes. Behavior is the result of independent actors colliding in a shared simulation.</p>
+<p><b>Cause families:</b></p>
 <ul>
-<li>Reactive causes: triggered by combat, wounds, deaths, item use</li>
-<li>Radiant causes: triggered by movement, location, and needs</li>
+<li>Reactive causes: triggered by combat, wounds, deaths, or item use.</li>
+<li>Radiant causes: each squad observes its surroundings, evaluating opportunities, threats, and unmet drives, and acting on what it finds.</li>
 </ul>
-<p>Every action is bounded by awareness. Three range tiers govern how far a squad searches:</p>
+<p>AlifePlus is first and foremost a framework. Core and ext are separated by a hard rule. Core is the pipeline: gates, protection, rate limiting, tracing, squad lifecycle, and PDA routing. Ext is the domain: causes, consequences, alignment, personality, news, mutant infestation, and territory conquest. Core never imports ext. All domain logic reaches the framework through registered function references.</p>
+<p><b>Three integration levels are open to other mods:</b></p>
 <ul>
-<li>EyeRange: what the squad can see. Opportunities like stashes and unclaimed territory.</li>
-<li>RadioRange: PDA radio. Stalkers hear about massacres, base attacks, trader locations.</li>
-<li>ScentRange: scent tracking. Mutants smell corpses, track wounded prey, follow trails.</li>
+<li><b>Listen</b>: subscribe to xbus events and read cause data. xlibs only, no AP code dependency.</li>
+<li><b>Register</b>: add a cause predicate and a consequence handler. Inherit protection, rate limiting, tracing, PDA routing, and squad lifecycle for free.</li>
+<li><b>Coordinate</b>: use the tracker, conquest, broker, or news API for territory control, ownership, or message dispatch.</li>
 </ul>
-<p>Range tiers are grounded in GSC's original AI design documents (PersonalEyeRange, EnemyDetectProbability). EyeRange validated empirically: nearest-neighbor distance measured in-engine across 14 levels (Escape, Garbage, Bar, Darkvalley, Military, Yantar, Deadcity, Red Forest, Radar, Pripyat, Marsh, Trucks Cemetery, Promzona, Pole). Median NN distance 44-148m, p90 66-188m.</p>
-<p>AlifePlus is first and foremost a framework. Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause predicate and a consequence handler. The pipeline handles protection, rate limiting, tracing, squad lifecycle, and PDA routing. New causes and consequences plug in without modifying core code.</p>
-<p>Other mods can integrate with AlifePlus at any level, from passively listening to events to registering new behaviors into the pipeline to coordinating squad control with their own alife logic. AP uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs) so any mod that respects the engine's own APIs will not conflict. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md">integration guide</a> for examples, API reference, and a concrete two-mod collaboration scenario.</p>
-<h2>Architecture</h2>
+<p>The pipeline is rate-bounded and waste-free. A pacer + protection + ratio + budget chain reduces the engine's raw squad-update volume to a small handful of triggers per minute. Every triggered evaluation produces a result.</p>
+<p>Protection runs at the producer, cause, consequence, and squad layers. Story NPCs, task givers, companions, externally scripted squads, and squads owned by other mods (warfare, BAO via the ownership registry) are excluded.</p>
+<p>New causes and consequences plug in without modifying core code. A consequence describes what should happen, not how to plumb it. The framework handles the rest.</p>
+<p>Other mods integrate at any level without conflict. AlifePlus uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs). Any mod that respects the engine's own APIs will not conflict. See the <a href="https://damiansirbu-stalker.github.io/siski-report/guide.html">integration guide</a> for examples, API reference, and a concrete two-mod collaboration scenario.</p>
+<h2>Decision system: nothing is purely random</h2>
+<p>Every consequence runs through range search, alignment, personality, and world state before it commits. Range search narrows the candidate pool. Alignment decides whether the action is allowed at all. Personality decides probability. World state confirms the action makes sense right now. A consequence fires only when all of them agree.</p>
+<h3>Range search</h3>
+<p>AlifePlus searches within the squad's awareness, not across the whole map.</p>
 <ul>
-<li>Rate-limited event pipeline with token budgets, cooldowns, and separate pacing for radiant and reactive streams. Designed to prevent the ghosting and save corruption caused by squad hijacking and engine API spam.</li>
-<li>Protection gates at every pipeline layer: permanent NPCs, task targets, companions, and externally scripted squads are never touched. Squads owned by other mods (warfare, BAO) are excluded via an ownership registry.</li>
-<li>All engine interaction through <a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs</a>, a shared library reverse-engineered from X-Ray Monolith C++ source covering squad and smart terrain APIs, event bus, synthetic callbacks, crash-safe object resolution, and microsecond profiling.</li>
-<li>No base script edits, no engine patches. Runtime callbacks and hooks only. Where the engine lacks a callback, a runtime hook emits a synthetic event without modifying base scripts.</li>
-<li>Operates above the action planner at the simulation layer, routing squads to the correct smart terrain through SIMBOARD. The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination. AlifePlus provides the intent, the engine provides the behavior.</li>
+<li><b>EyeRange</b>: what the squad can see, like stashes and unclaimed territory. Default 200m.</li>
+<li><b>RadioRange</b>: what stalkers hear over the PDA, like massacres, base attacks, and trader locations. Default 500m.</li>
+<li><b>ScentRange</b>: what mutants smell, like corpses, wounded prey, and blood trails. Default 500m.</li>
 </ul>
-<h2>Performance</h2>
-<ul>
-<li>Designed performance-first, load tested (1000x load), profiled with anomaly-devtools v1.3.0</li>
-<li>Near-zero performance impact as seen in the screenshots</li>
-<li>OTel-style tracing, structured logging with rotation, microsecond profiling</li>
-<li>Long saves stable by avoiding permanent squad control and limiting engine pressure under load</li>
-</ul>
-<h2>Configuration</h2>
-<p>Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (item consumption, stash looting, artefact trading, rank progression) each have their own toggle and tunable values - chances, cooldowns, thresholds, quantities, rate limits, and budgets.<br />Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.</p>
-<p><b>Presets:</b><br />Calm Zone: A-Life Interval 15-20, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2<br />Vanilla+: A-Life Interval 12, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)<br />Chaotic: A-Life Interval 2-4, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+</p>
+<p>Range tiers are grounded in GSC's PersonalEyeRange (EFC design docs) and validated against in-engine smart-terrain spacing measured across Escape, Garbage, Bar, Darkvalley, Military, Yantar, Deadcity, Red Forest, Radar, Pripyat, Marsh, Trucks Cemetery, Promzona, and Pole. Median nearest-neighbor distance is 44-148m. p90 is 66-188m.</p>
+<h3>Alignment (hard gate)</h3>
+<p>Faction identity decides whether an action is even possible.</p>
+<p>Stalker factions follow GSC's principled / self-serving / unprincipled / outlaw axis. The bars are structural and cannot be tuned: military squads cannot flee, ecologists cannot conquer, renegades cannot investigate, and outlaws cannot help the wounded.</p>
+<p>Mutant species sit on independent behavioral and activity axes.<br />Behavioral tiers: cowardly (flesh, zombie, rats), feral (dogs, boars, snork, gigant), predator (bloodsucker, chimera, lurker), and aberrant (controller, burer, poltergeist).<br />Activity axis is binary: nocturnal (bloodsucker, lurker, chimera, zombie, fracture) versus diurnal.<br />The behavioral tier determines what a species does. The activity axis determines when it acts. The tiers form a food chain in which lower tiers scatter from higher tiers, with aberrant species at the top.</p>
+<h3>Personality (probability layer)</h3>
+<p>Per-faction and per-species trait profiles, with values derived from GSC's AI design documents. Stalker profiles carry these traits: aggression, greed, survival, perception, territory, relation, and discipline. Mutant species profiles carry these traits: aggression, survival, territory, perception, and relation. Animals do not read greed or discipline.</p>
+<p>Some traits (aggression, territory, discipline) have inverted variants for consequences that fire on low scores. A flee consequence reads inverted aggression so a low-aggression faction is the one most likely to flee. Each consequence binds to its relevant traits and averages them. The averaged value is clamped to a configurable floor and ceiling (MCM personality_min / personality_max) and used as the probability of acting. Trait values are direct probabilities grounded in GSC lore.</p>
+<h3>World state (eval layer)</h3>
+<p>The eval phase queries live world state before the consequence acts. Smart terrain capacity, ownership, current scripted_target, recent activity, faction territory bookkeeping, time of day, online/offline status. Stale or contradictory state rejects the consequence. A squad already scripted by another mod is left alone. A full smart terrain rejects new arrivals. An emission or psi-storm suppresses the news queue.</p>
 <h2>Features</h2>
-<p>Causes and consequences that aggregate into hundreds of combinations.</p>
-<h3>Massacre (reactive)</h3>
+<p>Causes and consequences aggregate into hundreds of combinations.</p>
+<h3>Reactions</h3>
+<p>World events trigger responses. Consequences search within radio or scent range.</p>
+<p><b>Massacre</b></p>
 <ul>
 <li><b>Scavenge</b> - Nearby scavengers and predators converge on the massacre site.</li>
-<li><b>Investigate</b> - Victims' faction sends nearby squads to investigate.</li>
+<li><b>Investigate</b> - The victims' faction sends nearby squads to investigate.</li>
 </ul>
-<h3>SquadKill (reactive)</h3>
+<p><b>SquadKill</b></p>
 <ul>
 <li><b>Revenge</b> - Same-faction squads pursue the killer as it moves.</li>
 <li><b>Flee</b> - Nearby squads of the victim's faction fall back to the nearest base.</li>
 </ul>
-<h3>BaseKill (reactive)</h3>
+<p><b>BaseKill</b></p>
 <ul>
 <li><b>Support</b> - Nearby friendly squads rush to reinforce the base under attack.</li>
 <li><b>Flee</b> - Squads at the base evacuate to the nearest friendly position.</li>
 </ul>
-<h3>Alpha (reactive)</h3>
+<p><b>Alpha</b></p>
 <ul>
-<li><b>Promote</b> - Mutants accumulate kills to level up. 10 levels. Hit power bonus/reduction scales with level, panic immunity, bonus species-specific loot (extra hides and rare parts, scaling with alpha level).</li>
+<li><b>Promote</b> - Mutants accumulate kills and level up. Hit power bonus and reduction scale with level. Promoted alphas gain panic immunity. Valuable loot is injected into the alpha's inventory on promotion.</li>
 </ul>
-<h3>AlphaKill (reactive)</h3>
+<p><b>AlphaKill</b></p>
 <ul>
 <li><b>Targeted</b> - Same-species mutants on the same level hunt the killer.</li>
 </ul>
-<h3>Wounded (reactive)</h3>
+<p><b>Wounded</b></p>
 <ul>
 <li><b>Hunt</b> - Predator mutants sense weakness and close in.</li>
 <li><b>Help</b> - Nearby same-faction squads rush to help the wounded.</li>
 </ul>
-<h3>Harvest (reactive)</h3>
+<p><b>Harvest</b></p>
 <ul>
-<li><b>Rob</b> - Nearby outlaws pursue whoever picked up the artefact as it moves.</li>
+<li><b>Rob</b> - Nearby outlaws pursue whoever picked up the artefact.</li>
 <li><b>Haunt</b> - Aberrant mutants converge on the artefact pickup site.</li>
 </ul>
-<h3>Stash (radiant)</h3>
+<h3>Opportunities</h3>
+<p>A squad sees what is nearby and acts on it. Consequences search within eye range. A per-squad drive cooldown prevents repeated firing.</p>
+<p><b>Stash</b></p>
 <ul>
-<li><b>Loot</b> - Stalker squad spots the stash, walks there, and loots it.</li>
-<li><b>Ambush</b> - Outlaw squad spots the stash and camps it. The stash is bait.</li>
-<li><b>Fill</b> - Stalker squad spots the stash and hides supplies inside.</li>
+<li><b>Loot</b> - A stalker squad spots the stash, walks there, and loots it.</li>
+<li><b>Ambush</b> - An outlaw squad spots the stash and camps it as bait.</li>
+<li><b>Fill</b> - A stalker squad spots the stash and hides supplies inside.</li>
 </ul>
-<h3>Area (radiant)</h3>
+<p><b>Area</b></p>
 <ul>
-<li><b>Conquer</b> - Organized and aggressive factions claim empty territory. Both stalkers and mutants conquer. Ecologists, loners, and renegades never conquer. Cowardly mutants never conquer. Conquest adds the conqueror's spawns alongside originals (shared injection). Territory decays over time (MCM configurable).</li>
-<li><b>Infest</b> - Feral, predator, and aberrant mutants claim smart terrains as nests. Only squads carrying an alpha can infest. Infestation replaces original spawns with the infesting species (exclusive injection). Per-level cap limits spread.</li>
+<li><b>Conquer</b> - Organized and aggressive factions claim empty territory. Both stalkers and mutants conquer, except ecologists, loners, renegades, and cowardly mutants. Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active). Territory decays over time (MCM configurable).</li>
+<li><b>Infest</b> - Feral, predator, and aberrant mutants claim smart terrains as nests. Only squads carrying an alpha can infest. Infestation replaces original spawns with the infesting species as an exclusive injection (originals are suppressed). A per-level cap limits spread.</li>
 </ul>
-<h3>Needs (radiant)</h3>
-<p>Stalkers have human needs. Nine Maslow-Hull drives scored by deprivation. The strongest unmet need wins.</p>
+<h3>Needs</h3>
+<p>Stalkers have human needs. Drives inspired by Maslow-Hull are scored by how long since each was last fulfilled. The most deprived need wins. Consequences search within radio range.</p>
 <ul>
-<li><b>Hunger</b> - Finds a campfire. Eats what he is carrying - bread, sausage, canned goods etc.</li>
-<li><b>Sleep</b> - Finds a campfire during dormant hours. Sleeps.</li>
-<li><b>Rest</b> - Finds a campfire. Smokes a cigarette, has a drink.</li>
-<li><b>Heal</b> - Finds a safe location. Uses a medkit, bandage, or stimpack.</li>
-<li><b>Shelter</b> - Finds a safe location when exposed too long.</li>
-<li><b>Money</b> - Searches anomaly fields for artefacts, or hunts mutant lairs.</li>
-<li><b>Supply</b> - Visits a trader. Trades an artefact for AP ammo, grenades, or medical supplies.</li>
-<li><b>Job</b> - Guards outposts and checkpoints. Explores the Zone. Researches anomalies.</li>
-<li><b>Social</b> - Finds a campfire or a safe location. Shares cigarettes and drinks.</li>
+<li><b>Hunger</b> - The stalker finds a campfire and eats what he is carrying (bread, sausage, canned goods).</li>
+<li><b>Sleep</b> - The stalker finds a campfire during dormant hours and sleeps.</li>
+<li><b>Rest</b> - The stalker finds a campfire, smokes a cigarette, and has a drink.</li>
+<li><b>Heal</b> - The stalker finds a safe location and uses a medkit, bandage, or stimpack.</li>
+<li><b>Shelter</b> - The stalker finds a safe location when exposed too long.</li>
+<li><b>Money</b> - The stalker searches anomaly fields for artefacts or hunts mutant lairs.</li>
+<li><b>Supply</b> - The stalker visits a trader and trades an artefact for AP ammo, grenades, or medical supplies.</li>
+<li><b>Job</b> - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.</li>
+<li><b>Social</b> - The stalker finds a campfire or safe location and shares cigarettes and drinks.</li>
 </ul>
-<p>NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats food he was carrying.<br />A supply run costs some trophies, booze, an artefact and returns usables, medkits, ammunition - including AP rounds and grenades.</p>
-<h3>Instincts (radiant)</h3>
-<p>Mutants have instincts. Drives scored by deprivation, same as stalker needs. Scatter is binary (predator proximity). The strongest unmet instinct wins. Consequences search within eye or scent range and evaluate alignment and personality.</p>
+<p>NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. Stalkers go to traders to swap artefacts for ammo, grenades, or medical supplies.</p>
+<h3>Instincts</h3>
+<p>Mutants have instincts. Drives are scored by deprivation, the same way as stalker needs. Scatter is binary and triggered by predator proximity. The strongest unmet instinct wins. Consequences search within eye or scent range.</p>
 <ul>
-<li><b>Scatter</b> - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range. Food chain: cowardly fears feral/predator/aberrant, feral fears predator/aberrant, predator fears aberrant. Squads relocate to the nearest smart terrain with no higher-tier threats.</li>
-<li><b>Feed</b> - Mutants move to open territory during active hours. Predators and prey meet on shared hunting grounds.</li>
-<li><b>Sleep</b> - Mutants return to rest locations during dormant hours. Cowardly sleep in fields, feral den in lairs, predators use lairs or buildings, aberrant shelter underground.</li>
+<li><b>Scatter</b> - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range. The food chain runs cowardly -&gt; feral -&gt; predator -&gt; aberrant, with each tier fleeing all higher tiers. Squads relocate to the nearest smart terrain with no higher-tier threats.</li>
+<li><b>Feed</b> - Mutants move to open territory during active hours, where predators and prey meet on shared hunting grounds.</li>
+<li><b>Sleep</b> - Mutants return to rest locations during dormant hours: cowardly in fields, feral in lairs, predators in lairs or buildings, aberrant underground.</li>
 <li><b>Explore</b> - Mutants wander to a different territory or lair during active hours.</li>
 <li><b>Socialize</b> - Pack animals move toward smart terrains where same-faction squads are present.</li>
-<li><b>Infest</b> - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours. Only squads carrying an alpha can infest. Feral species infest lairs. Predators infest lairs or buildings. Aberrant species infest buildings and shelters. Cowardly species are too weak to hold territory.</li>
+<li><b>Infest</b> - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours: feral in lairs, predators in lairs or buildings, aberrant in buildings and shelters. Only squads carrying an alpha can infest. Cowardly species are too weak to hold territory.</li>
 </ul>
 <h3>News: Information from the Zone</h3>
-<p>An online stalker on your frequency catches what's moving in the Zone and passes it on. News is information the simulation runs on: where to go, where to avoid, what is fresh, who is active, what is the threat. NPCs already act on these events. The PDA broadcasts a window into the same stream so you can read the Zone the way the squads in it do. Two layers feed the radio.</p>
+<p>An online stalker on your frequency catches what is moving in the Zone and passes it on. News is information the simulation runs on: where to go, where to avoid, what is fresh, who is active, what is the threat. The PDA broadcasts a window into the same stream NPCs already act on, so you can read the Zone the way the squads in it do.</p>
+<p>News is composite, chained, and emergent.</p>
 <ul>
-<li><b>Chained events</b> - when one cause fires two reactive consequences, you get both halves on a single line instead of two messages. Stalkers investigate their own dead while scavengers strip the bodies. Five causes use this pairing: massacre, squadkill, basekill, wounded, harvest.</li>
-<li><b>Per-event chatter</b> - the radio reports individual events when no chain is available.</li>
+<li><b>Composite</b>: both reactive halves of one event fire together (investigation and scavenge on the same massacre) and surface as a single line.</li>
+<li><b>Chained</b>: one consequence feeds the next across time (a stash hit becomes a massacre becomes an investigation becomes a chase), and each step is its own report tied to what came before.</li>
+<li><b>Emergent</b>: none of it is scripted. The news is whatever the simulation produced.</li>
 </ul>
-<p>Every message names what happened. You always know whether you are hearing about a massacre, a chase, a base loss, an alpha rising, a scavenge run, an infestation, or a stash hit. The action is named, not implied.</p>
-<p>Each pool contains multiple variants told from different positions so the radio never sounds rehearsed. The voices include hearsay (someone repeating what came in over the channel), eyewitness (someone who saw it from a distance), survivor (someone who was in it), tracker (someone reading the ground after), and named report (a brief factual line crediting the squad commander). Stalker voice throughout, no military journalism.</p>
-<p>No event repeats. Once a record is dispatched, it is marked off so the radio moves on to fresh information instead of looping the same line. Only events on your current level surface, and only events fresh enough to still be gossip-relevant.</p>
-<p>Mutant reports name the species. You hear bloodsuckers, chimeras, lurkers, or aberrants instead of generic monsters.</p>
-<p>Who you hear is configurable. Own keeps the radio to your own faction. Allies (default) opens it to factions friendly to you. World opens it to any non-enemy stalker. Pick the volume of chatter that matches how plugged in you want to be.</p>
-<p>News routes through the official Anomaly news channels. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only. Non-members never hear that internal chatter. The system integrates with vanilla rules: emissions and psi-storms suppress the queue, the PDA apparatus must be charged, the shared 3-message cap and faction-restricted channel rules apply. AlifePlus news takes its place alongside vanilla chatter under the same engine controls.</p>
+<p>Every message names what happened. You always know whether you are hearing about a massacre, a chase, a base loss, an alpha rising, a scavenge run, an infestation, or a stash hit.</p>
+<p>Each pool contains multiple variants told from different positions so the radio never sounds rehearsed. The voices include hearsay (someone repeating what came in over the channel), eyewitness (someone who saw it from a distance), survivor (someone who was in it), tracker (someone reading the ground after), and named report (a brief factual line crediting the squad commander).</p>
+<p>Each record is marked off after dispatch, so the radio moves on to fresh information. Only events on your current level and within the gossip-relevance window pass the filter.</p>
+<p>Scope is configurable: own faction, allies (default), or world.</p>
+<p>News routes through the official Anomaly news channels. The speaker's faction is the radio channel. Monolith, Army, Greh, and ISG channels stay member-only, so non-members never hear that internal chatter. The system integrates with vanilla rules: emissions and psi-storms suppress the queue, the PDA apparatus must be charged, and the shared 3-message cap and faction-restricted channel rules apply.</p>
 <p><b>Sample radio lines:</b></p>
 <ul>
 <li>Heard a Free stalkers crew bedded down at Rookie Village a few hours ago after a long march.</li>
@@ -179,32 +227,42 @@
 <li>Saw a Free stalkers crew walk into Rookie Village to ID their Bandit wipe with Wild Dogs already on the bodies.</li>
 <li>Heard a Bandit lost Trailer Camp to Military a few hours ago and the backup crew got there too late.</li>
 </ul>
-<p><b>MCM controls:</b></p>
-<ul>
-<li>News (master toggle, default on)</li>
-<li>News interval (1-600 seconds, default 30-100 random per tick)</li>
-<li>News scope: Own / Allies / World (default Allies). Own restricts speakers to your faction. Allies adds friendly factions. World adds any non-enemy stalker.</li>
-<li>News max age (1-72 game hours, default 12). Events older than the window are filtered out so messages feel like recent gossip.</li>
-</ul>
-<p>The mod includes English and Russian translations.</p>
 <h3>Day/Night Cycle</h3>
-<p>Stalkers and mutants follow a day/night activity cycle. During active hours, creatures feed, explore, work, and trade. During dormant hours, they seek shelter and sleep. Stalkers are active during the day and sleep at night. Nocturnal mutants are active at night and sleep during the day. The nocturnal species are bloodsuckers, lurkers, chimeras, zombies, and fractures. All other species are diurnal. The same mechanism gates both stalker needs and mutant instincts.</p>
-<h3>Alignment</h3>
-<p>GSC classified characters as principled, self-serving, or unprincipled. AlifePlus maps this to factions as a hard gate. Military never flees. Ecologists never conquer. Renegades never investigate. Outlaws never help the wounded. These are structural, not tunable.<br />Mutant species operate on two independent axes.<br />Behavioral: cowardly (flesh, zombie, rats), feral (dogs, boars, snork, gigant), predator (bloodsucker, chimera, lurker), aberrant (controller, burer, poltergeist).<br />Activity: nocturnal (bloodsucker, lurker, chimera, zombie, fracture) vs diurnal.<br />Behavioral determines what a species does. Activity determines when.<br />These four tiers form a food chain. Each tier scatters from all higher tiers. Aberrant fear nothing.</p>
-<h3>Personality</h3>
-<p>Every stalker faction and mutant species has a personality profile derived from GSC's original AI design documents. Traits include aggression, greed, survival, perception, territory, relation, and discipline. Each consequence checks at most two relevant traits, averages them, and rolls against the result clamped to a global floor and ceiling (MCM personality_min / personality_max). Both stalkers and mutants share the same system. Trait values are direct probabilities grounded in GSC lore. See the <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">manifesto</a> for proof and source references.</p>
+<p>Stalkers and mutants follow a day/night activity cycle that gates the entire simulation rhythm. Stalkers are active during the day and sleep at night. Nocturnal mutants reverse the cycle: bloodsuckers, lurkers, chimeras, zombies, and fractures.</p>
+<p>During active hours, creatures feed, explore, work, and trade. During dormant hours, they seek shelter and sleep. Stalker needs and mutant instincts only fire during the species' active phase, except sleep and shelter which gate to dormant hours. Predators hunt during their active window, and prey returns to common ground while predators rest.</p>
+<p>Day belongs to trade and territory; night belongs to hunting, scavenging, and rest; a handful of species keep their own clock. Daytime in a level is human movement and trade. Nighttime is mutant movement and predation.</p>
+<h2>For developers and advanced users</h2>
+<h3>Architecture</h3>
+<ul>
+<li>The producer runs a multi-gate chain on every squad_on_update: pacer + protection + ratio + budget. Engine raw volume reduces to a small handful of triggers per minute, with no waste.</li>
+<li>The cause cascade randomly orders registered radiant causes per admission. The first cause whose predicate publishes stops the cascade. Reactive causes evaluate independently per event.</li>
+<li>xbus dispatch is synchronous. Consequences run inline before the producer returns. No inter-tick state issues.</li>
+<li>AlifePlus runs on xlibs, a reverse-engineered API that wraps the X-Ray engine source. xlibs was built, load-tested, and validated against the C++ implementation. Core patterns were studied from the most accomplished mods in the Anomaly ecosystem.</li>
+<li>AlifePlus uses runtime callbacks and hooks only. There are no base script edits and no engine patches.</li>
+<li>AlifePlus operates above the action planner at the simulation layer, routing squads through SIMBOARD. The engine's own gulag jobs, GOAP planner, and scheme bindings handle all behavior at the destination.</li>
+<li>Smart terrain mutations (territory conquest, mutant infestation) are rebuilt from LTX on every load. A periodic scanner re-applies them and decays expired conquests.</li>
+</ul>
+<h3>Performance</h3>
+<p>Performance was the first design constraint. The pipeline was profiled with anomaly-devtools v1.3.0 and stress-tested under heavy simulated pressure. Performance impact stays at near-zero in normal play, as the screenshots show.</p>
+<p>AlifePlus is reactive by architecture: it does no work when nothing happens. Nothing scans the engine world, polls engine state, or hunts for work each frame. The only loops are internal cleanup over the framework's own bookkeeping, run on coarse time events. The framework wakes when the engine fires a callback, runs through cost-ordered gates, dispatches via pub/sub to consequence handlers, and returns. Every operation is profiled and kept under half a frame; heavier maintenance is sliced across many frames so no single tick ever spikes.</p>
+<p>AlifePlus only calls the engine the way the engine expects to be called. Every entry point mimics or continues what X-Ray and Anomaly already do; every invariant, flag, and design rule of the engine is respected; nothing is bypassed or reimplemented to shortcut the engine's own model.</p>
+<p>Bridge crossings are the scarce resource. Every public xlibs function is annotated with its real cost: complexity, luabind count, and C++ weight per crossing. Pure Lua is the default, pcall is reserved for the few approved recovery categories, and the reject side of every hot-path gate allocates nothing. Helpers borrowed from Penlight, lume, and luafun were not vendored as-is: the relevant routines were rewritten directly into xlibs against the X-Ray engine source, with zero-allocation paths in place of the original luabind-heavy ones.</p>
+<p>Cost-ordered gates strip the bulk of callback volume with cheap rejects (pure Lua, no luabind) before any expensive check runs. Integer arithmetic balances online and offline streams so no traffic class can starve the pipeline.</p>
+<p>Frame spreading amortizes long sweeps across many frames via one shared driver. Deferred compaction lets survivors of one pass become the next pass's input, with no per-item table.remove and no O(n^2) shrinkage. Spatial queries run cheap predicates first (id, faction, level), use squared distance, and read engine-maintained tables as hash lookups rather than scans. Routine maintenance runs on engine time events at coarse intervals, not every frame.</p>
+<p>Profiling is built into the pipeline rather than bolted on. Every span is timed in microseconds via the engine's profile_timer and reported as p50/p90/p99 per minute. Below DEBUG, the profiler, tracer, and observers collapse to pre-allocated NOOP singletons: one enabled() check (~150ns), no allocation on the hot path.</p>
 <h2>Compatibility &amp; Safety</h2>
 <ul>
-<li>Tested with vanilla Anomaly 1.5.3, Demonized main, Demonized MT, and AOEngine (latest versions)</li>
-<li>Built and tested with GAMMA, also tested with Zona and EFP</li>
-<li>No base script edits, no engine patches</li>
-<li>Works mid-save</li>
-<li>Story NPCs, companions, task givers, and quest squads are never touched</li>
-<li>Squads owned by other mods (warfare, BAO) excluded automatically via ownership registry</li>
-<li>No permanent squad hijacking - all scripted squads have TTL and auto-release</li>
-<li>Other mods can integrate at any level: listen to events, register new behaviors, or coordinate squad control</li>
-<li>Uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs) - compatible with any mod that respects the engine's own APIs</li>
-<li>AlifePlus does not need third-party "bridge" or "synergy" patches. The framework's own integration layer handles mod coordination natively. Mods that adopt the AP framework through the official API (see <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md">integration-guide.md</a>) are supported. Unauthorized patches that claim compatibility are not endorsed and will cause instability, save corruption, and conflicts with both AP and the mods they claim to bridge.</li>
+<li>AlifePlus is tested with vanilla Anomaly 1.5.3, Demonized main, Demonized MT, and AOEngine (latest versions).</li>
+<li>AlifePlus is built and tested with GAMMA, and also tested with Zona and EFP.</li>
+<li>The mod has no base script edits and no engine patches.</li>
+<li>AlifePlus works mid-save.</li>
+<li>Story NPCs, companions, task givers, and quest squads are never touched.</li>
+<li>Squads owned by other mods (warfare, BAO) are excluded automatically via the ownership registry.</li>
+<li>Scripted squads carry a TTL and auto-release, so AlifePlus never holds a squad permanently.</li>
+<li>Other mods can integrate at any level: listen to events, register new behaviors, or coordinate squad control.</li>
+<li>AlifePlus uses only engine-native mechanisms (scripted_target, SIMBOARD, gulag jobs).</li>
+<li>AlifePlus does not need third-party "bridge" or "synergy" patches. Mods that adopt the AP framework through the official API are supported. Unauthorized patches that claim compatibility are not endorsed and will cause instability and save corruption.</li>
+<li>See the <a href="https://damiansirbu-stalker.github.io/siski-report/guide.html">integration guide</a> for API reference and examples.</li>
 </ul>
 <h2>Requirements</h2>
 <p>Anomaly 1.5.3<br /><a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs</a><br />MCM</p>
@@ -218,24 +276,30 @@
 <p>Note: press RESET in MCM when updating. Most upgrade issues come from stale MCM state or outdated xlibs.</p>
 <h2>Uninstall (MO2)</h2>
 <p>Disable or remove in MO2.</p>
+<h2>Configuration</h2>
+<p>Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (item consumption, stash looting, artefact trading, rank progression) each have their own toggles and tunable values: chances, cooldowns, thresholds, quantities, rate limits, and budgets. Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.</p>
+<p><b>Presets:</b><br />Calm Zone: A-Life Interval 15-20, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2<br />Vanilla+: A-Life Interval 12, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)<br />Chaotic: A-Life Interval 2-4, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+</p>
 <h2>FAQ</h2>
-<p><b>How do I make events occur faster or slower?</b><br />See the Presets section above, or fine-tune individual sliders in MCM.</p>
-<p><b>Does it conflict with the vanilla task system?</b><br />No. AlifePlus validates every entity through protection gates at every pipeline layer. Task givers, companions, active quest squads, and externally scripted squads are protected.</p>
-<p><b>Does it work with GAMMA?</b><br />Built and tested with GAMMA, also tested partially with Zona and EFP. Works directly with X-Ray engine callbacks without modifying base scripts.</p>
-<p><b>Does it work with other A-Life mods?</b><br />No known incompatibilities, including with warfare and AI addons, but will conflict behavior-wise with mods doing a lot of scripting on squads.</p>
+<p><b>How do I make events occur faster or slower?</b><br />Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1, raise Radiant Cooldown to 15-20.<br />Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4, lower Radiant Cooldown to 5.<br />Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, set Radiant Cooldown to 0. Good luck!</p>
+<p><b>Does it conflict with the vanilla task system?</b><br />AlifePlus validates every entity through protection gates at every pipeline layer. Task givers, companions, active quest squads, and externally scripted squads are protected.</p>
+<p><b>Does it work with GAMMA?</b><br />AlifePlus is built and tested with GAMMA, and also tested partially with Zona and EFP. It works directly with X-Ray engine callbacks without modifying base scripts.</p>
+<p><b>Does it work with other A-Life mods?</b><br />AlifePlus has no known incompatibilities with warfare or AI addons. It will conflict behavior-wise with mods that script squads heavily.</p>
 <p><b>Does it work mid-save?</b><br />Yes.</p>
-<p><b>Do I need offline combat enabled?</b><br />No. AlifePlus never requires or prefers online simulation. It works with all offline settings, including fully disabled. Offline combat produces fewer combat events but the system generates other events regardless, so A-Life activity continues.</p>
+<p><b>Do I need offline combat enabled?</b><br />AlifePlus does not require or prefer online simulation. It works with all offline settings, including fully disabled. Offline combat produces fewer combat events, but the system generates other events regardless, so A-Life activity continues.</p>
 <h2>Known Issues</h2>
-<p>Map markers are a debugging feature. They lack persistence and do not update on entity death, despawn, or level transition.</p>
+<p>Map markers are a debugging feature, may glitch in various versions; we suggest not to use them as game aids.</p>
 <h2>Validation</h2>
 <p>Multi-stage validation pipeline:</p>
 <ul>
-<li>luacheck, selene (static analysis)</li>
-<li>tree-sitter AST analysis, ast-grep structural patterns</li>
+<li>luacheck and selene (static analysis)</li>
+<li>tree-sitter AST analysis with ast-grep structural patterns</li>
 <li>Contract rules (API safety, cross-file dependencies, cyclomatic complexity, coding standards)</li>
 <li>lua54 integration testing with X-Ray engine stubs</li>
-<li>gitleaks, trufflehog (secret scanning)</li>
+<li>gitleaks and trufflehog (secret scanning)</li>
 </ul>
-<p>Credits:<br />Altogolik - support, ideas, source materials</p>
+<h2>Localization</h2>
+<p>The mod includes English and Russian translations.</p>
+<h2>Credits</h2>
+<p>Altogolik - support, ideas, source materials</p>
 <h2>Usage and License</h2>
 <p>Modpacks: allowed and encouraged. Keep the readme and license files.<br />Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.<br />Reproducing the implementation in other software: not allowed, even with credit.<br />Full license in LICENSE file and on GitHub.</p>
