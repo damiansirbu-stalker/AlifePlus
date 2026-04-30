@@ -8,6 +8,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
+local LOG = ap_core_debug.bracket(CONSEQUENCE.BASEKILL_FLEE)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
@@ -29,7 +30,7 @@ local function _handler(event_data)
         local destination = ap_core_utils.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
         if not destination then
             if ap_core_debug.enabled() then
-                ap_core_debug.debug("[CONSEQUENCE.BASEKILL_FLEE] no flee smart | %s", xsmart.dump_smarts(factions, level_id))
+                ap_core_debug.debug(LOG .. " no flee smart | %s", xsmart.dump_smarts(factions, level_id))
             end
             return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART }
         end
@@ -68,5 +69,5 @@ function on_game_start()
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_flee_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.BASEKILL_FLEE] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

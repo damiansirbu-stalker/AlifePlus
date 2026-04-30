@@ -103,8 +103,11 @@
     <string id="ui_mcm_menu_wounded_help">
         <text>Помощь\nраненому</text>
     </string>
-    <string id="ui_mcm_menu_area_conquer">
-        <text>Захват\nтерритории</text>
+    <string id="ui_mcm_menu_area_conquer_human">
+        <text>Захват\nтерритории\nЛюди</text>
+    </string>
+    <string id="ui_mcm_menu_area_conquer_mutant">
+        <text>Захват\nтерритории\nМутанты</text>
     </string>
     <string id="ui_mcm_menu_harvest_rob">
         <text>Сбор\nГрабёж</text>
@@ -180,11 +183,29 @@
     <string id="ui_mcm_ap_general_distributor_interval_sec_desc">
         <text>[секунды]\nВремя между оценками случайных событий. Меньше — больше активности, больше — спокойнее в Зоне. Прямые реактивные события используют отдельный ограничитель с фиксированным интервалом на тип события, чтобы справляться со всплесками, например смертями.</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_max_events">
-        <text>Бюджет причин</text>
+    <string id="ui_mcm_ap_general_cause_max_reactions">
+        <text>Бюджет реакций</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_max_events_desc">
-        <text>[количество]\nМаксимум публикаций на тип причины за 60 секунд. Не даёт одной причине доминировать.</text>
+    <string id="ui_mcm_ap_general_cause_max_reactions_desc">
+        <text>Макс. публикаций реакций за 60с (massacre, squadkill, basekill, wounded, harvest, alpha, alphakill).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_needs">
+        <text>Бюджет нужд</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_needs_desc">
+        <text>Макс. публикаций нужд сталкеров за 60с (голод, сон, отдых, лечение, укрытие, деньги, запасы, работа, общение).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_instincts">
+        <text>Бюджет инстинктов</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_instincts_desc">
+        <text>Макс. публикаций инстинктов мутантов за 60с (бегство, питание, сон, разведка, общение, заражение).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_opportunities">
+        <text>Бюджет возможностей</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_opportunities_desc">
+        <text>Макс. публикаций территориальных возможностей за 60с (тайники, захват территории).</text>
     </string>
     <string id="ui_mcm_ap_general_consequence_max_events">
         <text>Бюджет последствий</text>
@@ -318,11 +339,41 @@
     <string id="ui_mcm_ap_causes_stash_desc">
         <text>[radiant, opportunistic, drive]\nСлучайное. Отряд обнаруживает ближайшие тайники.</text>
     </string>
-    <string id="ui_mcm_ap_causes_stash_cause_stash_enabled">
-        <text>Включено</text>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_enabled">
+        <text>Лут включён</text>
     </string>
-    <string id="ui_mcm_ap_causes_stash_cause_stash_enabled_desc">
-        <text>NPC оценивает ближайшие тайники при переходе между умными укрытиями.</text>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_enabled_desc">
+        <text>Разрешить генератору тайников публиковать cause:stash_loot.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_enabled">
+        <text>Засада включена</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_enabled_desc">
+        <text>Разрешить генератору тайников публиковать cause:stash_ambush.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_enabled">
+        <text>Заполнение включено</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_enabled_desc">
+        <text>Разрешить генератору тайников публиковать cause:stash_fill.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold">
+        <text>Порог looting (игровые часы)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold_desc">
+        <text>Игровые часы на отряд до следующей попытки looting. Время восстановления MVT.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold">
+        <text>Порог засады (игровые часы)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold_desc">
+        <text>Игровые часы на отряд бандитов между засадами на тайник.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold">
+        <text>Порог наполнения (игровые часы)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold_desc">
+        <text>Игровые часы на отряд между попытками наполнить пустой тайник.</text>
     </string>
 
     <!-- ==================== CAUSES / SQUADKILL ==================== -->
@@ -386,17 +437,23 @@
     <string id="ui_mcm_ap_causes_area_desc">
         <text>[radiant, opportunistic, drive]\nСлучайное. Отряд обнаруживает ближайшую незащищённую территорию.</text>
     </string>
-    <string id="ui_mcm_ap_causes_area_cause_area_enabled">
-        <text>Включено</text>
-    </string>
-    <string id="ui_mcm_ap_causes_area_cause_area_enabled_desc">
-        <text>NPC оценивает ближайшую территорию при переходе между умными укрытиями.</text>
-    </string>
     <string id="ui_mcm_ap_causes_area_cause_area_smart_cooldown_sec">
         <text>Кулдаун точки (сек)</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_smart_cooldown_sec_desc">
         <text>Секунды до повторной активации причины территории на том же умном укрытии.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_enabled">
+        <text>Захват включён</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_enabled_desc">
+        <text>Разрешить генератору территории публиковать cause:area_conquer.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_threshold">
+        <text>Порог захвата (игровые часы)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_threshold_desc">
+        <text>Игровые часы на отряд до следующей попытки захвата. Время восстановления MVT.</text>
     </string>
 
     <!-- ==================== CAUSES / HARVEST ==================== -->
@@ -419,12 +476,6 @@
     </string>
     <string id="ui_mcm_ap_causes_needs_desc">
         <text>[radiant, deprivation]\nСлучайное. Отряды со временем развивают человеческие потребности (голод, сон, отдых, лечение, укрытие, деньги, снабжение, работа, общение). Система оценки Hull drive выбирает наиболее острую неудовлетворённую потребность. Пороги задаются в игровых часах между событиями потребности.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled">
-        <text>Включено</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled_desc">
-        <text>Оценивать потребности сталкеров при переходах между умными укрытиями. Наиболее острая неудовлетворённая потребность активируется как событие причины.</text>
     </string>
     <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled">
         <text>Голод</text>
@@ -887,54 +938,74 @@
         <text>Максимальное количество отрядов помощи на событие (случайно 1..N).</text>
     </string>
 
-    <!-- ==================== CONSEQUENCES / AREA CONQUER ==================== -->
-    <string id="ui_mcm_ap_consequences_area_conquer_title">
-        <text>Захват\nтерритории</text>
+    <!-- ==================== CONSEQUENCES / AREA CONQUER HUMAN ==================== -->
+    <string id="ui_mcm_ap_consequences_area_conquer_human_title">
+        <text>Захват\nтерритории\nЛюди</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_desc">
-        <text>[eye, alignment, personality, drive]\nПри срабатывании причины «Территория» обнаруживший её отряд выдвигается захватить пустое умное укрытие. Фракция завоевателя устанавливает владение, и движок спавнит там её отряды.</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_desc">
+        <text>[eye, alignment, personality, drive]\nЛюди (alignment_human минус ecolog) занимают пустые умные укрытия. Фракция завоевателя устанавливает владение, и движок спавнит там её отряды.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_enabled">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_enabled">
         <text>Включено</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_enabled_desc">
-        <text>Сталкеры занимают пустые территории.</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_enabled_desc">
+        <text>Люди занимают пустые территории.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_rush">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_rush">
         <text>Режим спешки</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_rush_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_rush_desc">
         <text>Скриптовые отряды движутся с максимальной скоростью. Отключите для более медленного и реалистичного движения.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_enabled">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_enabled">
         <text>Захват территорий включён</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_enabled_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_enabled_desc">
         <text>Включить постоянное владение территорией через мутацию спавна.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_max_smarts">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_max_smarts">
         <text>Макс. захваченных территорий</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_max_smarts_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_max_smarts_desc">
         <text>Максимальное количество умных укрытий, которые можно захватить. При достижении предела применяется вытеснение по принципу FIFO.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_spawn_num">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_spawn_num">
         <text>Отрядов спавна на территорию</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_spawn_num_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_spawn_num_desc">
         <text>Количество отрядов для спавна на захваченной территории.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_decay_hours">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_decay_hours">
         <text>Затухание захвата (часы)</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_decay_hours_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_decay_hours_desc">
         <text>Захваченные умные укрытия возвращаются к исходной фракции после указанного количества игровых часов без повторного захвата. 0 отключает затухание.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_mutate_smart">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_mutate_smart">
         <text>Управление спавном</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_mutate_smart_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_mutate_smart_desc">
         <text>Захваченные аванпосты переходят под фракцию завоевателя и спавнят её отряды. Отключите, чтобы сохранить движение отрядов без смены владельца.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / AREA CONQUER MUTANT ==================== -->
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_title">
+        <text>Захват\nтерритории\nМутанты</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_desc">
+        <text>[eye, species, personality, drive]\nХищники, аберранты и хищные мутанты занимают пустые умные укрытия. Вид завоевателя устанавливает владение.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_enabled">
+        <text>Включено</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_enabled_desc">
+        <text>Мутанты занимают пустые территории.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_rush">
+        <text>Режим спешки</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_rush_desc">
+        <text>Скриптовые отряды движутся с максимальной скоростью. Отключите для более медленного и реалистичного движения.</text>
     </string>
 
     <!-- ==================== CONSEQUENCES / HARVEST ROB ==================== -->
@@ -1524,23 +1595,17 @@
     <string id="ui_mcm_ap_causes_instincts_cause_instinct_socialize_threshold_desc">
         <text>[game-hours]\nTime between socialize events. Default 24.</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_enabled">
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_enabled">
         <text>Infest</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_enabled_desc">
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_enabled_desc">
         <text>Enable the infest instinct drive. Mutants will seek to claim smart terrains as nests.</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_threshold">
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_threshold">
         <text>Infest threshold</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_threshold_desc">
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_threshold_desc">
         <text>[game-hours]\nTime between infest events. Default 24.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instincts_enabled">
-        <text>Enabled</text>
-    </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instincts_enabled_desc">
-        <text>Evaluate mutant instincts on smart terrain transitions. Strongest unmet instinct fires as a cause event.</text>
     </string>
     <string id="ui_mcm_ap_causes_instincts_desc">
         <text>Mutant squads develop instincts over time (feed, sleep, explore, socialize). Hull drive scoring picks the strongest unmet instinct. Day/night cycle: nocturnal species (bloodsuckers, lurkers, chimeras, zombies, fractures) are active at night and sleep during the day. All other species are active during the day. Thresholds are game-hours between instinct events.</text>
@@ -1584,20 +1649,35 @@
     <string id="ui_mcm_ap_consequences_alphakill_targeted_tag">
         <text>Cause: alphakill\nRules: personality\nEval:  scent range</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_max">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_max">
         <text>Personality ceiling</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_max_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_min">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_min">
         <text>Personality floor</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_min_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_min_desc">
         <text>[0.0-1.0]\nMinimum chance for the personality roll. Even factions with low matching traits will pass at least this often. Default: 0.20.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_tag">
-        <text>Cause: area\nRules: alignment, personality\nEval:  eye range</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_tag">
+        <text>Cause: area_conquer\nRules: alignment, personality\nEval:  eye range</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_max">
+        <text>Personality ceiling</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_max_desc">
+        <text>[0.0-1.0]\nMaximum chance for the personality roll. Even species with high matching traits are capped at this. Default: 0.70.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_min">
+        <text>Personality floor</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_min_desc">
+        <text>[0.0-1.0]\nMinimum chance for the personality roll. Even species with low matching traits will pass at least this often. Default: 0.20.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_tag">
+        <text>Cause: area_conquer\nRules: species, personality\nEval:  eye range</text>
     </string>
     <string id="ui_mcm_ap_consequences_basekill_flee_consequence_basekill_flee_personality_max">
         <text>Personality ceiling</text>
@@ -2085,6 +2165,12 @@
     <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
+    <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_min_items">
+        <text>Мин. предметов для засады</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_min_items_desc">
+        <text>Минимум предметов в тайнике, чтобы бандиты устроили засаду. Меньше — грабят напрямую.</text>
+    </string>
     <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_personality_min">
         <text>Personality floor</text>
     </string>
@@ -2172,7 +2258,7 @@
     <string id="ui_mcm_menu_instinct_explore">
         <text>Instinct\nExplore</text>
     </string>
-    <string id="ui_mcm_menu_instinct_infest">
+    <string id="ui_mcm_menu_area_infest">
         <text>Instinct\nInfest</text>
     </string>
     <string id="ui_mcm_menu_instinct_feed">
@@ -2190,61 +2276,61 @@
     <string id="ui_mcm_menu_instincts">
         <text>Instincts</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_title">
+    <string id="ui_mcm_ap_consequences_area_infest_title">
         <text>Instinct Infest</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_tag">
+    <string id="ui_mcm_ap_consequences_area_infest_tag">
         <text>Eval: TERRITORY + SURVIVAL</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_desc">
         <text>Mutants claim smart terrains as nests. Exclusive spawn injection replaces original spawns with the infesting species.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_enabled">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_enabled">
         <text>Enabled</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_enabled_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_enabled_desc">
         <text>Enable the instinct infest consequence.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_rush">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_rush">
         <text>Rush movement</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_rush_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_rush_desc">
         <text>Squads move at rush speed to claim their nest.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_min">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_min">
         <text>Personality floor</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_min_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_min_desc">
         <text>[0.0-1.0]\nMinimum chance for the personality roll. Default: 0.20.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_max">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_max">
         <text>Personality ceiling</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_max_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Default: 0.70.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_enabled">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_enabled">
         <text>Infestation mutation</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_enabled_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_enabled_desc">
         <text>Apply exclusive spawn injection on infested smarts.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_max_per_level">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_max_per_level">
         <text>Max infested per level</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_max_per_level_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_max_per_level_desc">
         <text>[1-5]\nMaximum infested smart terrains per level. Default: 1.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_spawn_num">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_spawn_num">
         <text>Spawn count</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_spawn_num_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_spawn_num_desc">
         <text>[1-5]\nNumber of squads the infested spawn entry can produce. Default: 3.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_decay_hours">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_decay_hours">
         <text>Decay time (hours)</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_decay_hours_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_decay_hours_desc">
         <text>[0-168]\nGame hours before infestation expires. 0 = permanent. Default: 0.</text>
     </string>
 </string_table>

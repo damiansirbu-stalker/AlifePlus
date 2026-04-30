@@ -2,6 +2,8 @@
 
 Rules for writing AlifePlus code. Sits between `doc/standards/code-standards.md` (language-level) and `architecture.md` (system design).
 
+**Structural rules live in `architecture.md`.** The Cause/Consequence Structural Rules section there governs umbrella files, generator pattern, specific-causes-only, N:M cause-consequence mapping, `_set` naming, CONFIGS factory scope, and toggle requirements. This document covers naming details, signatures, log format, and similar micro-conventions only. If a rule appears in both, architecture.md wins.
+
 ---
 
 ## Naming
@@ -27,15 +29,14 @@ Do NOT confuse causes with consequences:
 
 ### Cause Names
 
-Single word preferred. UPPER_SNAKE in constants.
+UPPER_SNAKE in constants. **Specific only — no umbrella names** (architecture.md rule 1). `STASH`, `AREA`, `NEEDS`, `INSTINCTS` are file/family names, never causes.
 
 | Rule | Detail | Examples |
 |------|--------|----------|
-| Single word | Default, always preferred | MASSACRE, WOUNDED, HARVEST, STASH, AREA, ALPHA |
-| Plural for variant | Same subject, different scope | AREA (one) vs AREAS (multiple) |
+| Single word | Default, always preferred | MASSACRE, WOUNDED, HARVEST, ALPHA, HUNGER, SLEEP, JOB |
 | Compound + KILL | Death event | BASEKILL, ALPHAKILL, SQUADKILL |
 | Compound + SPOT | Perception event | ALPHASPOT |
-| Single word | Timer-based human need | HUNGER, SLEEP, JOB |
+| Family-prefixed compound | Specific child of an umbrella file | STASH_LOOT, STASH_AMBUSH, STASH_FILL, AREA_CONQUER, AREA_INFEST, INSTINCT_FEED |
 | Closed suffix set | KILL and SPOT | New suffixes require convention update |
 
 ### All Naming Patterns
@@ -57,8 +58,9 @@ Single word preferred. UPPER_SNAKE in constants.
 | MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
 | MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
-| Script file (cause) | `ap_cause_{name}.script` | `ap_cause_massacre.script` |
-| Script file (consequence) | `ap_consequence_{name}.script` | `ap_consequence_massacre_scavenge.script` |
+| Script file (cause) | `ap_ext_cause_{family}.script` | `ap_ext_cause_massacre.script`, `ap_ext_cause_area.script` (umbrella) |
+| Script file (consequence, single) | `ap_ext_consequence_{name}.script` | `ap_ext_consequence_massacre_scavenge.script` |
+| Script file (consequence, umbrella) | `ap_ext_consequence_{family}_set.script` | `ap_ext_consequence_area_set.script`, `ap_ext_consequence_stash_set.script` |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
@@ -85,15 +87,15 @@ Causes are predicates. Return `{ cause = CAUSE.X, ...payload }` or `nil`.
 
 | Element | Owner | Purpose |
 |---------|-------|---------|
-| Rate limiter | Producer | Sliding window, checked before predicate |
-| Enabled gate | Predicate | MCM toggle, early return |
-| Key-cache | Predicate | Deduplication for high-frequency callbacks |
-| World-state filter | Predicate | Business logic |
-| Level reset | Predicate | Clear state on level change |
+| Rate limiter | Producer | Per-CATEGORY sliding window, checked pre-handler in `_eval_*` |
+| Enabled gate | Predicate | MCM toggle (`cause_<name>_enabled`), early return |
+| World-state filter | Predicate | Business logic that decides whether to publish |
 
 ### Predicate Order
 
-enabled check -> key-cache -> world-state filter -> build payload
+enabled check -> world-state filter -> build payload -> self-observe (prof+trace:push+debug)
+
+Each predicate publishes exactly one specific cause. Umbrella cause files (`ap_ext_cause_<family>.script`) hold one predicate per cause; each predicate is independent.
 
 ### MCM Fields
 

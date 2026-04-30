@@ -3,10 +3,24 @@
 local math_random, math_floor = math.random, math.floor
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 
-local HOURS_TO_SECONDS = 3600
+local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
+local LOG_BY_CAUSE = {
+    [CAUSE.HUNGER]  = ap_core_debug.bracket(CAUSE.HUNGER),
+    [CAUSE.SLEEP]   = ap_core_debug.bracket(CAUSE.SLEEP),
+    [CAUSE.REST]    = ap_core_debug.bracket(CAUSE.REST),
+    [CAUSE.HEAL]    = ap_core_debug.bracket(CAUSE.HEAL),
+    [CAUSE.SHELTER] = ap_core_debug.bracket(CAUSE.SHELTER),
+    [CAUSE.SUPPLY]  = ap_core_debug.bracket(CAUSE.SUPPLY),
+    [CAUSE.MONEY]   = ap_core_debug.bracket(CAUSE.MONEY),
+    [CAUSE.JOB]     = ap_core_debug.bracket(CAUSE.JOB),
+    [CAUSE.SOCIAL]  = ap_core_debug.bracket(CAUSE.SOCIAL),
+}
+
 local cfg = ap_core_mcm.cfg
 local _alignment_human
 
@@ -71,7 +85,9 @@ end
 
 --- Evaluate needs for squad at smart terrain transition
 local function _on_smart(trace, squad)
-    if not cfg.cause_needs_enabled then return { code = RESULT.FAILED_RULES } end
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
@@ -89,7 +105,7 @@ local function _on_smart(trace, squad)
     local winner, best_drive = _find_strongest_drive(dto, now, squad.player_id)
     if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
-    return {
+    local result = {
         cause = "cause:" .. winner.need,
         dto_field = winner.field,
         drive = best_drive,
@@ -98,13 +114,23 @@ local function _on_smart(trace, squad)
         position = squad.position,
         level_id = level_id,
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d need=%s drive=%.2f [%.2fms]",
+            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, winner.need, best_drive, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _alignment_human = ap_ext_const.alignment_human
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_core_producer.register(CAUSE.NEEDS, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+        ap_core_producer.register({
+            callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
+            category = CAUSE_CATEGORY.NEEDS, debug_label = LOG_INIT,
+        }, _on_smart)
     end
-    ap_core_debug.info("[CAUSE.NEEDS] Initialized")
+    ap_core_debug.info(LOG_INIT .. " Initialized")
 end

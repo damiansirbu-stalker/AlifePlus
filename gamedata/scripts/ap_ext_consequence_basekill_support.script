@@ -9,6 +9,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
+local LOG = ap_core_debug.bracket(CONSEQUENCE.BASEKILL_SUPPORT)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_support = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
@@ -61,5 +62,5 @@ function on_game_start()
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_support_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.BASEKILL_SUPPORT] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

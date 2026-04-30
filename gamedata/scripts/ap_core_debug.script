@@ -17,6 +17,14 @@ function enabled()
     return log.get_level() >= 5
 end
 
+--- Compose log bracket from a CAUSE/CONSEQUENCE/TRACE constant. "cause:hunger" -> "[CAUSE.HUNGER]".
+--- Use instead of hardcoded `"[CAUSE.X]"` literals so log labels follow constant renames automatically.
+--- Pure transform — safe to call once at module load and cache the result in a local LOG constant.
+function bracket(c)
+    local label = c:upper():gsub(":", ".")
+    return "[" .. label .. "]"
+end
+
 --- Info log (startup + MCM only)
 function info(fmt, ...)
     log.info(fmt, ...)

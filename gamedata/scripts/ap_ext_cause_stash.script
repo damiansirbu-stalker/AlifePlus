@@ -1,43 +1,125 @@
---- ap_ext_cause_stash: Squad eligible for stash interaction (pure predicate, per-squad cooldown)
+--- ap_ext_cause_stash: State-classifier picker (decision 11). Peeks one stash in EYE range,
+--- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
-local time_global = time_global
+local RANGE_EYE = ap_core_const.RANGE_EYE
+local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local PERSONALITY = ap_ext_const.PERSONALITY
+
+local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
+local LOG_BY_CAUSE = {
+    [CAUSE.STASH_LOOT]   = ap_core_debug.bracket(CAUSE.STASH_LOOT),
+    [CAUSE.STASH_AMBUSH] = ap_core_debug.bracket(CAUSE.STASH_AMBUSH),
+    [CAUSE.STASH_FILL]   = ap_core_debug.bracket(CAUSE.STASH_FILL),
+}
 
 local cfg = ap_core_mcm.cfg
-local _cooldown
 local _alignment_human
+local _alignment_loot
+local _alignment_outlaw
+
+--- Per-branch metadata: opportunity DTO field, threshold cfg key, personality traits, MCM name.
+local BRANCH_META = {
+    [CAUSE.STASH_LOOT] = {
+        field = "last_stash_loot_at", threshold_key = "cause_stash_loot_threshold",
+        traits = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }, name = "stash_loot",
+    },
+    [CAUSE.STASH_AMBUSH] = {
+        field = "last_stash_ambush_at", threshold_key = "cause_stash_ambush_threshold",
+        traits = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }, name = "stash_ambush",
+    },
+    [CAUSE.STASH_FILL] = {
+        field = "last_stash_fill_at", threshold_key = "cause_stash_fill_threshold",
+        traits = { PERSONALITY.GREED, PERSONALITY.RELATION }, name = "stash_fill",
+    },
+}
+
+--- Branch picker. Empty stash + human -> FILL. Non-empty + outlaw + valuable cache -> AMBUSH.
+--- Non-empty + LOOT-eligible alignment -> LOOT. Each branch checks its own per-cause toggle;
+--- a disabled branch falls through to the next eligible branch.
+local function _pick_branch(community, is_empty, items_count)
+    if is_empty then
+        if _alignment_human[community] and cfg.cause_stash_fill_enabled then return CAUSE.STASH_FILL end
+        return nil
+    end
+    if _alignment_outlaw[community] and items_count >= cfg.consequence_stash_ambush_min_items
+        and cfg.cause_stash_ambush_enabled then
+        return CAUSE.STASH_AMBUSH
+    end
+    if _alignment_loot[community] and cfg.cause_stash_loot_enabled then return CAUSE.STASH_LOOT end
+    return nil
+end
 
 local function _on_smart(trace, squad)
-    if not cfg.cause_stash_enabled then return { code = RESULT.FAILED_RULES } end
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
     if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
-    local now = time_global()
-    if _cooldown.check(squad.id, now) then return { code = RESULT.FAILED_RULES } end
-
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
-    _cooldown.mark(squad.id, now)
-    return {
-        cause = CAUSE.STASH,
+    local stashes = xstash.find_stashes(squad.position, { max_distance = RANGE_EYE, level_id = level_id, max_count = 1 })
+    local stash = stashes[1]
+    if not stash then return { code = RESULT.FAILED_RULES, reason = REASON.NO_STASH_NEARBY } end
+
+    local items = xstash.get_stash_items(stash.id)
+    local is_empty = items == nil
+    local items_count = items and #items or 0
+
+    local cause_const = _pick_branch(squad.player_id, is_empty, items_count)
+    if not cause_const then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
+
+    local meta = BRANCH_META[cause_const]
+    local now = xtime.game_sec()
+    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
+    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
+    local elapsed = now - (opp_dto[meta.field] or 0)
+    if elapsed <= cfg[meta.threshold_key] * HOURS_TO_SECONDS then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
+    end
+
+    local p_ok = ap_ext_util.check_personality(meta.traits, squad.player_id,
+        { name = meta.name, p_min = cfg["consequence_" .. meta.name .. "_personality_min"],
+          p_max = cfg["consequence_" .. meta.name .. "_personality_max"] })
+    if not p_ok then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+
+    local result = {
+        cause = cause_const,
         squad_id = squad.id,
         community = squad.player_id,
         position = squad.position,
         level_id = level_id,
+        stash_id = stash.id,
+        stash_position = stash.position,
+        items_count = items_count,
+        dto_field = meta.field,
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d branch=%s items=%d [%.2fms]",
+            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, meta.name, items_count, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _alignment_human = ap_ext_const.alignment_human
-    _cooldown = ap_core_limiter.create_cooldown(ap_core_const.OPPORTUNITY_COOLDOWN_MS)
+    _alignment_loot = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
+    _alignment_outlaw = ap_ext_const.alignment_outlaw
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_core_producer.register(CAUSE.STASH, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+        ap_core_producer.register({
+            callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
+            category = CAUSE_CATEGORY.OPPORTUNITIES, debug_label = LOG_INIT,
+        }, _on_smart)
     end
-    ap_core_debug.info("[CAUSE.STASH] Initialized")
+    ap_core_debug.info(LOG_INIT .. " Initialized")
 end

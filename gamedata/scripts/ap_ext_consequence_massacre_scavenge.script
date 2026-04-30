@@ -9,6 +9,7 @@ local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local PERSONALITY = ap_ext_const.PERSONALITY
+local LOG = ap_core_debug.bracket(CONSEQUENCE.MASSACRE_SCAVENGE)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
@@ -64,5 +65,5 @@ function on_game_start()
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_scavenge_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.MASSACRE_SCAVENGE] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

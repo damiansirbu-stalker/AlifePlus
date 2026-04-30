@@ -1,9 +1,18 @@
 --- ap_core_limiter: Rate limiting for causes and consequences
 
 local cfg = ap_core_mcm.cfg
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 
-local function _get_cause_rate_key(name)
-    return "lock:" .. name
+--- Per-category cap cfg key (decision 3): each behavioral category has its own MCM slider.
+local CATEGORY_CAP_KEY = {
+    [CAUSE_CATEGORY.REACTIONS]     = "cause_max_reactions",
+    [CAUSE_CATEGORY.NEEDS]         = "cause_max_needs",
+    [CAUSE_CATEGORY.INSTINCTS]     = "cause_max_instincts",
+    [CAUSE_CATEGORY.OPPORTUNITIES] = "cause_max_opportunities",
+}
+
+local function _get_cause_rate_key(category)
+    return "lock:" .. category
 end
 
 local function _get_consequence_rate_key(name)
@@ -29,23 +38,24 @@ local function _ensure_consequence_limiter()
     return _consequence_limiter
 end
 
---- Check cause rate limit (true = allowed, false = blocked)
+--- Check per-category cause rate limit (true = allowed, false = blocked)
+--- @param category string CAUSE_CATEGORY value (e.g. "category:reactions")
 --- @return boolean allowed, number count, number max
-function check_cause_rate_limit(name)
+function check_cause_rate_limit(category)
     local counter = _ensure_cause_counter()
-    local key = _get_cause_rate_key(name)
+    local key = _get_cause_rate_key(category)
     local count = counter:count(key)
-    local max = cfg.cause_max_events
+    local max = cfg[CATEGORY_CAP_KEY[category]]
     if count >= max then
         return false, count, max
     end
     return true, count, max
 end
 
---- Increment cause counter after publish
-function increment_cause_counter(name)
+--- Increment per-category cause counter after publish
+function increment_cause_counter(category)
     local counter = _ensure_cause_counter()
-    counter:add(_get_cause_rate_key(name))
+    counter:add(_get_cause_rate_key(category))
 end
 
 --- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)

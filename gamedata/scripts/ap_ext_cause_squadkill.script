@@ -2,18 +2,22 @@
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local LOG = ap_core_debug.bracket(CAUSE.SQUADKILL)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human
 
 local function _on_squad_npc_death(trace, squad, npc, killer)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_squadkill_enabled then return { code = RESULT.FAILED_RULES } end
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_SQUAD } end
 
-    -- Check if squad is wiped (count includes dying NPC, so <= 1 means last one)
     if squad:npc_count() > 1 then return { code = RESULT.FAILED_RULES, reason = REASON.SQUAD_ALIVE } end
     if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
@@ -29,7 +33,7 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
         killer_faction = killer_squad and killer_squad.get_squad_community and killer_squad:get_squad_community()
     end
 
-    return {
+    local result = {
         cause = CAUSE.SQUADKILL,
         squad_id = squad.id,
         victim_squad = squad,
@@ -41,13 +45,21 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
         position = npc and npc.position,
         level_id = npc and xlevel.get_level_id(npc),
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d faction=%s [%.2fms]",
+            LOG, trace.id, trace.path, squad.id, victim_faction, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _alignment_human = ap_ext_const.alignment_human
-    ap_core_producer.register(CAUSE.SQUADKILL, {
+    ap_core_producer.register({
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_squad_npc_death)
 
-    ap_core_debug.info("[CAUSE.SQUADKILL] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

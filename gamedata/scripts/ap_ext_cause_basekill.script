@@ -2,15 +2,20 @@
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local LOG = ap_core_debug.bracket(CAUSE.BASEKILL)
 
 local cfg = ap_core_mcm.cfg
 local deaths = nil
 local _alignment_human
 
 local function _on_squad_npc_death(trace, squad, _npc, se_killer)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_basekill_enabled then return { code = RESULT.FAILED_RULES } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
 
@@ -33,7 +38,7 @@ local function _on_squad_npc_death(trace, squad, _npc, se_killer)
 
     local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
 
-    return {
+    local result = {
         cause = CAUSE.BASEKILL,
         smart = smart,
         position = smart.position,
@@ -43,15 +48,23 @@ local function _on_squad_npc_death(trace, squad, _npc, se_killer)
         killer_squad = killer_squad,
         death_count = count,
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] smart=%d faction=%s deaths=%d [%.2fms]",
+            LOG, trace.id, trace.path, smart.id, faction, count, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _alignment_human = ap_ext_const.alignment_human
     deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_basekill_decay_time, clock = xtime.game_sec })
 
-    ap_core_producer.register(CAUSE.BASEKILL, {
+    ap_core_producer.register({
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_squad_npc_death)
 
-    ap_core_debug.info("[CAUSE.BASEKILL] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

@@ -83,6 +83,20 @@ local function _v140_cleanup_squad_key(m_data)
     m_data.ap_core_squad = nil
 end
 
+--- v1.5.5: nuke broker scripted-squads table (n136 INFEST extracted to AREA family,
+--- consequence:instincts_infest -> consequence:area_infest rename leaves stale arrival keys).
+--- Release every scripted squad's engine-side scripted_target then drop the whole table;
+--- broker repopulates from scratch on next pipeline run.
+local function _v155_cleanup_broker(m_data)
+    local broker = m_data.ap_core_broker
+    if type(broker) ~= "table" then return end
+    local squads = broker.ap_scripted_squads
+    if type(squads) == "table" then
+        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    end
+    m_data.ap_core_broker = nil
+end
+
 --- Run all migrations on load_state.
 --- Alphabetical load order (ap_core_compat < ap_core_broker < ap_ext_tracker)
 --- ensures this runs before any module reads m_data.
@@ -94,6 +108,7 @@ local function _on_load_state(m_data)
     _v135_clear_elite_data(m_data)
     _v135_release_old_scripted_squads(m_data)
     _v140_cleanup_squad_key(m_data)
+    _v155_cleanup_broker(m_data)
 end
 
 function on_game_start()

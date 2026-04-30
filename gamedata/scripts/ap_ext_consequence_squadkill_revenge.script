@@ -10,6 +10,7 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
+local LOG = ap_core_debug.bracket(CONSEQUENCE.SQUADKILL_REVENGE)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
@@ -39,7 +40,7 @@ local function _on_arrive(squad, args)
     if not target_squad_id then return end
     local chase_count = (args.chase_count or 0) + 1
     if chase_count > cfg.consequence_squadkill_revenge_max_chases then
-        ap_core_debug.debug("[CONSEQUENCE.SQUADKILL_REVENGE] chase_limit: squad=%d chases=%d", squad.id, chase_count)
+        ap_core_debug.debug(LOG .. " chase_limit: squad=%d chases=%d", squad.id, chase_count)
         return
     end
     local target_squad = xobject.se(target_squad_id)
@@ -140,5 +141,5 @@ function on_game_start()
         condition = function() return cfg.consequence_squadkill_revenge_enabled end,
         on_arrive = _on_arrive,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.SQUADKILL_REVENGE] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

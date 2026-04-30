@@ -17,7 +17,14 @@ Built on xlibs. See `conventions.md` for naming rules, result codes, MCM setting
 | Cause | Engine callback + world-state predicate -> meaningful event or nil |
 | Consequence | Handler subscribed to a cause; executes response logic + side effects |
 | Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or nil |
-| Producer | Dispatches callbacks through gate chain, evaluates predicates, publishes to xbus |
+| Umbrella | Radiant cause file containing one predicate that picks among N specific causes (needs, instincts, stash, area). Never published itself; the picker emits a specific child cause (`cause:hunger`, `cause:stash_loot`, etc.) |
+| Picker | Predicate logic that selects which specific child cause to publish: drive-scoring (Hull), state-classifier (stash), or priority-gate (area) |
+| Drive | Hull's deprivation-driven motivation. Score = `weight * (elapsed / threshold)^2`; arrival action resets the timestamp |
+| MVT | Charnov's Marginal Value Theorem (1976). Patch-foraging recovery: threshold encodes patch handling + travel time; gate is `elapsed > threshold` |
+| Opportunity | Non-deprivation MVT-shaped cause (stash, area). Recovery-driven, not deprivation-driven |
+| Cross-DTO read | Pattern: any predicate may read any DTO; only the owning predicate writes. Decouples read-side cause logic from write-side state ownership |
+| CAUSE_CATEGORY | Behavioral axis parallel to CAUSE_TYPE. Four values: REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES. Drives rate-limit grouping, MCM organization |
+| Producer | Dispatches callbacks through gate chain, pre-checks per-category rate, calls predicates, publishes to xbus |
 | Consumer | Receives cause events from xbus, dispatches to consequences via round-robin |
 | xbus | Pub/sub event bus (xlibs). Causes publish, consequences subscribe |
 | Core | Framework modules (ap_core_*). Pipeline, lifecycle, protection, rate limiting |
@@ -124,7 +131,7 @@ Reactive causes skip the producer protection gate because the callback entity (e
 
 **Gate 4: PACER_2.** Budget limiter. `os.clock()` timestamp comparison with `cfg.distributor_interval_sec` (default 5s, ~12 triggers/min). Only fully eligible, ratio-balanced squads consume triggers. Every PACER_2 admit produces an EVAL -- zero waste. This is the key improvement over the old pipeline: the old single pacer ran before eligibility checks, so ineligible squads (scripted dogs, story NPCs) consumed triggers and starved the pipeline.
 
-**EVAL (cascade).** Shuffles the registered cause predicates (`xtable.shuffle`, new copy per admission) and cascades through them in random order. Each predicate is checked against a per-cause sliding window rate limit (`cfg.cause_max_events`, 60s window) and skipped if exhausted. The first predicate to publish stops the cascade. If all predicates reject, nothing publishes. Each predicate is wrapped in `observe()` for tracing. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
+**EVAL (cascade).** Shuffles the registered cause predicates in-place inside a reusable buffer (no per-tick allocation) and cascades through them in random order. Each entry's category is checked against a per-CAUSE_CATEGORY sliding window rate limit (`cfg.cause_max_<category>`, 60s window) before the predicate runs; rate-blocked entries are skipped and the cascade continues. The first predicate to publish a specific cause stops the cascade. If all predicates reject (or are rate-blocked), nothing publishes. Predicates self-observe under their picked specific cause; producer calls them directly. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
 
 #### Reactive variant
 
@@ -170,27 +177,36 @@ After a cause publishes to xbus, the consumer receives the event and iterates re
 
 ### Rate Limiting
 
-All rate limiting lives in `ap_core_limiter`. Five independent limiters operate at different scopes.
+Rate limiting lives in `ap_core_limiter`. Six independent layers operate at different scopes; each answers a different question.
 
-| Limiter | Mechanism | Scope | Default | Config |
-|---------|-----------|-------|---------|--------|
+| Layer | Mechanism | Scope | Default | Config |
+|-------|-----------|-------|---------|--------|
 | Radiant pacer | os.clock timestamp | global | 5s | MCM distributor_interval_sec |
 | Reactive pacer | token bucket | per-callback-type | 1/sec | constant |
-| Cause budget | TTL counter, sliding window | per-cause | 10/60s | MCM cause_max_events |
-| Consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
-| Global consequence | TTL counter | radiant only | 5/60s | MCM global_consequence_max_events |
+| Per-squad MVT/Hull threshold | DTO last_X_at + arrival reset | per-squad per-cause | per-cause MCM | `cause_<X>_threshold` (game hours) |
+| Per-category cause budget | TTL counter, sliding window | per-CAUSE_CATEGORY | 20/60s | MCM `cause_max_<category>` |
+| Per-consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
+| Global radiant consequence | TTL counter | radiant only | 5/60s | MCM global_consequence_max_events |
+
+**Per-squad MVT/Hull threshold.** Owned by each cause file's predicate. Caps how often the same squad can republish the same specific cause. Reads `last_<X>_at` from a DTO (`_ap_stalker_needs`, `_ap_mutant_instincts`, or `_ap_squad_opportunities`); arrival action resets the timestamp. Hull family (needs, instincts) compares elapsed against `weight * (elapsed / threshold)^2`; MVT family (stash, area) compares elapsed directly against `cfg.cause_<X>_threshold * HOURS_TO_SECONDS`.
+
+**Per-category cause budget.** Pre-handler check on `entry.category` inside `ap_core_producer._eval_*`. Skips the predicate entirely when the category is rate-blocked, freeing the cascade slot for the next entry. Four MCM sliders mirror `CAUSE_CATEGORY`: `cause_max_reactions`, `cause_max_needs`, `cause_max_instincts`, `cause_max_opportunities`. Each handler declares its category at register time; predicates carry no rate-limit awareness.
 
 ### Tracing
 
-Hierarchical tracing via `observe()` in `ap_core_debug`. Each trace carries a monotonic **tid** (trace ID) and a slash-separated **path** (span hierarchy). A single `tid` links a cause through its consequence chain into individual actions:
+Hierarchical tracing via `observe()` (consequences, internal phases) and the prof+trace:push+debug pattern (cause predicates) in `ap_core_debug`. Each trace carries a monotonic **tid** (trace ID) and a slash-separated **path** (span hierarchy). A single `tid` links a cause through its consequence chain into individual actions:
 
 ```
-[CAUSE.NEEDS] [tid=42 path=CAUSE.NEEDS] ok id=1337 drive=4.2 [0.15ms]
-[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
-[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=CAUSE.NEEDS/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
+[CAUSE.HUNGER] [tid=42 path=cause:hunger] sq=1337 need=hunger drive=4.2 [0.15ms]
+[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
+[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=cause:hunger/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
 ```
 
-Below DEBUG log level: `observe()` is a bare passthrough (calls the function, returns the result). `trace()` returns a null singleton. Cost: one `enabled()` check (~150ns) per call. The `_null_trace` and associated no-ops are pre-allocated singletons - no allocation at non-debug levels.
+The path root is the **specific cause** (`cause:hunger`), never an umbrella label. Predicates self-observe: they pick the winning specific cause, then build the result, then `trace:push(result.cause)` and emit a debug line under `bracket(result.cause)`. Producer no longer wraps predicates in `observe()` — predicates are pure and own their own timing.
+
+`bracket(constant)` in `ap_core_debug` composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger" -> "[CAUSE.HUNGER]"`. Each cause/consequence file caches its bracket strings at module load (e.g. `LOG_INIT = bracket(CAUSE_CATEGORY.OPPORTUNITIES)` for the umbrella init log, `LOG_BY_CAUSE[c] = bracket(c)` for per-publish logs). No hardcoded `[CAUSE.X]` literals.
+
+Below DEBUG log level: `observe()` is a bare passthrough (calls the function, returns the result). `trace()` returns a null singleton. `xprofiler.new_if(false)` returns a null singleton. Cost: one `enabled()` check (~150ns) per call. All null singletons are pre-allocated — no allocation at non-debug levels.
 
 ### Squad Lifecycle
 
@@ -263,7 +279,9 @@ Critical timing from the engine load sequence:
 
 ### Tracker (ap_ext_tracker)
 
-Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), and stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 drives). Only mutants become alphas. Stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
+Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 Hull drives), mutant instincts DTO (`_ap_mutant_instincts`, 5 Hull drives), and squad opportunities DTO (`_ap_squad_opportunities`, MVT timestamps for stash and area causes — single shared table since squad_id is unique across stalker/mutant). Only mutants become alphas. Stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
+
+DTOs hold primitive timestamps. Multiple predicates may derive different conclusions from the same DTO (Cross-DTO read pattern); only the owning predicate writes. Example: `_ap_stalker_needs` is written by the needs predicate on arrival reset; future area_abandon predicate reads it to count overdue fields without writing.
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
@@ -443,11 +461,11 @@ A random NPC is sampled from the filtered pool. The speaker's community becomes 
 | WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
 | HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
 | STASH | radiant | squad_on_update | not protected, alignment_human |
-| AREA | radiant | squad_on_update | not protected, alignment_area (human+mutant minus ecolog/stalker/renegade) |
+| AREA | radiant | squad_on_update | not protected, alignment_area (human+mutant minus ecolog/stalker/renegade). Priority-gate picker: mutant squads check infest first (territorial claim), fall through to conquer; humans check conquer only. Publishes cause:area_conquer or cause:area_infest. |
 | NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring. Publishes per-need event (cause:hunger, cause:heal, etc.) |
-| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, cause:instinct_infest, etc.) |
+| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, cause:instinct_sleep, cause:instinct_explore, cause:instinct_socialize) |
 
-Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer wraps each call in `observe()`, attaches `._trace`, publishes to xbus, increments cause counter. Predicates only evaluate and return - no observe(), publish(), trace creation, or counter manipulation.
+Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer pre-checks the per-category rate limit on `entry.category` and calls the predicate directly (no `observe()` wrapping). On success, producer attaches `._trace`, publishes `result.cause` to xbus, and increments the per-category counter. Predicates self-observe: prof+trace:push+debug under the picked specific cause, never an umbrella label. Predicates are pure — no rate-limit awareness, no counter manipulation, no side effects beyond the published payload.
 
 #### Cause Classification
 
@@ -466,6 +484,16 @@ Radiant causes split into three behavioral categories based on what the squad ev
 | Instincts | INSTINCTS | Mutant internal drives, scored by deprivation | scent |
 
 Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are radiant-mechanism causes.
+
+#### Theoretical Foundations
+
+Radiant causes split by what the threshold MEANS, not by how it is implemented. Both shapes use the same architectural pattern — DTO timestamp + threshold gate + arrival reset — but they encode different theories.
+
+**Hull's Drive Reduction Theory (1943).** Behavior is driven by deprivation of a biological need. The longer the deprivation, the stronger the drive. Score formula: `drive = weight * (elapsed / threshold)^2`. Squared exponent makes overdue drives compete strongly against marginal ones. Used by NEEDS (9 stalker drives) and INSTINCTS (5 mutant drives). Threshold encodes how long the squad can tolerate the deprivation before the drive becomes urgent. Arrival action satisfies the need and resets the timestamp.
+
+**Charnov's Marginal Value Theorem (1976), Optimal Foraging Theory.** A forager exploits a patch, moves on, and the patch recovers before the next visit becomes worthwhile. Gate is binary: `elapsed > threshold`. No drive scoring; the squad either revisits the patch or doesn't. Used by stash (loot, ambush, fill) and area (conquer, infest). Threshold encodes patch handling time + travel time + recovery time between visits. Arrival action resets the timestamp.
+
+DTO + timestamp + arrival-reset is the architectural shape both theories share. They differ in what the threshold MEANS, not how it is implemented.
 
 ### Consequences
 
@@ -486,14 +514,14 @@ Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are r
 | STASH | stash_loot | stalker | loot stash to NPC inventory (CONFIGS-driven) |
 | STASH | stash_ambush | stalker | camp at stash, passive (CONFIGS-driven) |
 | STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
-| AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h) |
-| NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS-driven) |
+| AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h, _set file) |
+| AREA | area_infest | mutant (feral+predator+aberrant) | claim smart terrain as nest with exclusive spawn injection. Cowardly excluded (too weak). Per-level cap. (_set file) |
+| NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS factory) |
 | INSTINCTS | instincts_scatter | mutant (cowardly+feral+predator) | scatter from higher-tier predators to safe smart terrain. Food chain: tier 0 fears 1+2+3, tier 1 fears 2+3, tier 2 fears 3. |
 | INSTINCTS | instincts_feed | mutant (all) | move to territory to hunt/scavenge |
 | INSTINCTS | instincts_sleep | mutant (all) | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
 | INSTINCTS | instincts_explore | mutant (cowardly+feral+predator) | wander to nearby territory or lair. Aberrant excluded (lair-bound). |
 | INSTINCTS | instincts_socialize | mutant (cowardly+feral) | move toward smart with same-faction squads. Predator and aberrant excluded (solitary). |
-| INSTINCTS | instincts_infest | mutant (feral+predator+aberrant) | claim smart terrain as nest with exclusive spawn injection. Cowardly excluded (too weak). Per-level cap. |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
 
@@ -652,17 +680,50 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 8. **Domain gates in ext only.** Alignment and personality checks live exclusively in ext consequence code (`ap_ext_util`). Species filtering is a direct hash lookup in consequence code. Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
 
-9. **Cascade publish contract.** A radiant cause predicate must not publish if no consequence can act on the event. The cascade stops on first publish -- if no consequence fires, the trigger is wasted and remaining causes in the cascade never evaluate. Causes that serve a subset of alignments must filter at the cause level (e.g. `alignment_human` for stash, `alignment_mutant` for instincts) rather than relying on consequences to reject. Reactive causes are not cascaded, but the same principle applies to avoid unnecessary consumer iterations.
+9. **Cascade publish contract.** A radiant cause predicate must not publish if no consequence can act on the event. The cascade stops on first publish -- if no consequence fires, the trigger is wasted and remaining causes in the cascade never evaluate. The contract is universal: no per-family exception. World-state checks (find stash, find smart, find squad) live in the predicate when needed for cause specificity, not in the consequence. Predicates filter at the cause level (e.g. `alignment_human` for stash, `alignment_mutant` for instincts, EYE-range stash peek before publishing `cause:stash_*`); consequences may still fail post-publish on personality re-roll or movement reject, but the publish itself is consequence-aligned. Reactive causes are not cascaded, but the same principle applies to avoid unnecessary consumer iterations.
 
-### Consequence File Patterns
+10. **Cause/consequence structural rules — see dedicated section.** The structural shape of cause and consequence code (specific causes only, predicate-per-cause, umbrella generator pattern, N:M mapping, file naming, factory-vs-handwritten) is governed by the Cause/Consequence Structural Rules section below.
 
-Three patterns for organizing consequences under a cause:
+### Cause/Consequence Structural Rules
 
-**CONFIGS (one file, alternatives).** Multiple behaviors for the same cause where only one fires per evaluation. A config table lists entries with alignment, species, personality, and smart filter gates. First match wins. Suited for radiant causes where the ticking squad picks one action. Examples: `stash` (loot/ambush/fill), `needs` (14 entries), `instincts` (4 entries).
+These rules govern how cause and consequence code is written. They apply to every family — present and future, radiant and reactive. Code, MCM keys, log labels, comments, and prose all comply.
 
-**Separate files (cascading).** Multiple consequences that fire independently on the same cause event. Each subscribes to the cause via xbus and runs its own gate chain. Multiple can trigger from the same event. Suited for reactive causes where different actor types respond simultaneously. Examples: `massacre_investigate` + `massacre_scavenge`, `wounded_hunt` + `wounded_help`.
+**Concepts.**
+- **Cause** — a labeled event the framework publishes. The label is always specific (`cause:hunger`, `cause:area_conquer_mutant`). Never an umbrella string.
+- **Consequence** — a handler that subscribes to a cause via xbus.
+- **Predicate** — the function that runs. The cause-side predicate publishes a cause. The consequence-side predicate is the handler invoked by the subscriber.
 
-**_set file (grouped similar).** Multiple similar consequences in one file, each registered separately. Used when consequences share helper functions and chase/arrive logic but differ in alignment, species, or personality gates. The file is named `*_set.script`. Examples: `harvest_set` (harvest_rob + harvest_haunt).
+**Cause side.**
+
+1. **Specific causes only.** Causes are always specific. Umbrella names (`cause:area`, `cause:needs`) are file/family names, not causes. No constant, MCM key, toggle, log prefix, comment, or doc sentence may reference an umbrella as if it were a cause.
+
+2. **Each cause-side function publishes one specific cause per call.** A function may emit different specific cause tags across different calls based on its valuation, but each individual call returns exactly one specific cause name (or nil).
+
+3. **Umbrella cause file holds ONE generator function.** Closely-related causes (shared callback, alignment, or world-state) live in `ap_ext_cause_<family>.script`. The file contains one generator function that does valuation across the sibling causes and publishes one specific cause tag per call. All four current umbrellas (needs, instincts, stash, area) follow this shape. The umbrella file is code organization — there is no umbrella runtime entity. Forbidden: ad-hoc branching that mixes fundamentally different evaluation logic in one function (e.g. one handler for both stalker conquer and mutant conquer with different identity-resolution paths — that's a consequence-side problem, see rule 5).
+
+4. **Per-cause enable toggle.** Each cause has its own `cause_<specific_name>_enabled` toggle. No umbrella master toggle, ever — the umbrella is not a cause and has nothing to enable.
+
+**Consequence side.**
+
+5. **One handler per consequence.** Each consequence has its own dedicated handler function. Two different consequences never share a function. `area_conquer_mutant` and `area_conquer_human` are different consequences and have different handlers, even when they live in the same file.
+
+6. **CONFIGS factory exception.** When all consequences in a family share an identical handler shape (find smart → script squad → record-event), one factory in the family file may generate one handler per consequence. Reserved for stereotypical drive families: `needs`, `instincts`, and any future family with the same uniform shape.
+
+7. **`_set` file for hand-written multi-consequence families.** Hand-written multi-consequence families live in `ap_ext_consequence_<family>_set.script` (stash, area, harvest). CONFIGS factory files (needs, instincts) keep their direct name without `_set` — same exception as rule 6. Single-consequence files keep their direct name (`ap_ext_consequence_alpha_promote.script`).
+
+8. **Per-consequence enable toggle.** Each consequence has its own `consequence_<specific_name>_enabled` toggle.
+
+**Cause-to-consequence mapping.**
+
+9. **N:M.** A cause may have one or many consequence subscribers (`cause:money` → `money_harvest` + `money_hunt`). A consequence subscribes to exactly one cause. Adding a consequence is a new xbus subscription; it must not require predicate changes.
+
+**Pipeline.**
+
+10. **Activity record carries the published cause.** `record_event(squad, event_data.cause, consequence, ...)`. Never an umbrella constant. `event_data.cause` is verbatim what the predicate published; pass it through.
+
+11. **Category at registration.** Each cause registration declares its `category` (`CAUSE_CATEGORY.REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES`) in `producer.register` config. Category drives rate-limit grouping. Category is not a cause and is never published.
+
+12. **Cascade publish contract (radiant).** A radiant predicate must not publish if no consequence can act. World-state checks needed for cause specificity live in the predicate. Consequences may still fail post-publish on personality re-roll or movement reject; the publish itself must be consequence-aligned.
 
 ---
 

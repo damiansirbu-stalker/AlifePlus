@@ -1,9 +1,12 @@
 --- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
+local tostring = tostring
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local LOG = ap_core_debug.bracket(CAUSE.WOUNDED)
 
 -- Declare custom callback (must be before on_game_start)
 AddScriptCallback(CALLBACK.X_NPC_MEDKIT_USE)
@@ -22,6 +25,9 @@ local HEALING_ITEMS = {
 }
 
 local function _on_npc_medkit_use(trace, npc, medkit, kind)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES } end
     if not npc or not npc:alive() then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
 
@@ -36,7 +42,7 @@ local function _on_npc_medkit_use(trace, npc, medkit, kind)
     if not se_npc then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 
-    return {
+    local result = {
         cause = CAUSE.WOUNDED,
         npc_id = npc:id(),
         squad_id = squad and squad.id,
@@ -47,9 +53,19 @@ local function _on_npc_medkit_use(trace, npc, medkit, kind)
         level_id = level_id,
         heal_kind = kind,
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] npc=%d kind=%s [%.2fms]",
+            LOG, trace.id, trace.path, result.npc_id, tostring(kind), prof:get_ms())
+    end
+    return result
 end
 
 local function _on_actor_item_use(trace, item, section)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES } end
     if not HEALING_ITEMS[section] then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING } end
 
@@ -59,7 +75,7 @@ local function _on_actor_item_use(trace, item, section)
     local smart = xsmart.get_actor_smart()
     if smart and xsmart.is_base(smart) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
-    return {
+    local result = {
         cause = CAUSE.WOUNDED,
         npc_id = nil,
         is_player = true,
@@ -68,6 +84,13 @@ local function _on_actor_item_use(trace, item, section)
         level_id = xlevel.get_actor_level_id(),
         item_used = section,
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] player item=%s [%.2fms]",
+            LOG, trace.id, trace.path, section, prof:get_ms())
+    end
+    return result
 end
 
 local function _setup_hooks()
@@ -76,20 +99,22 @@ local function _setup_hooks()
         return orig(npc, medkit, kind)
     end)
     if ok then
-        ap_core_debug.info("[CAUSE.WOUNDED] hooked xr_eat_medkit.consume_medkit")
+        ap_core_debug.info(LOG .. " hooked xr_eat_medkit.consume_medkit")
     end
 end
 
 function on_game_start()
     _setup_hooks()
 
-    ap_core_producer.register(CAUSE.WOUNDED, {
+    ap_core_producer.register({
         callback = CALLBACK.X_NPC_MEDKIT_USE, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_npc_medkit_use)
 
-    ap_core_producer.register(CAUSE.WOUNDED, {
+    ap_core_producer.register({
         callback = CALLBACK.ACTOR_ON_ITEM_USE, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_actor_item_use)
 
-    ap_core_debug.info("[CAUSE.WOUNDED] Initialized (npc=medkit, player=item_use)")
+    ap_core_debug.info(LOG .. " Initialized (npc=medkit, player=item_use)")
 end

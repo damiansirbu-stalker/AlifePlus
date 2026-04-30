@@ -1,44 +1,124 @@
---- ap_ext_cause_area: Squad eligible for territory conquest (pure predicate, per-squad cooldown)
+--- ap_ext_cause_area: AREA umbrella with two MVT-gated causes (conquer + infest).
+--- Mutant squads are evaluated for INFEST first (territorial-claim), falling through to CONQUER
+--- when not infest-eligible. Human/area-aligned squads only check CONQUER. INFEST is mutant-only;
+--- non-mutant squads never reach the INFEST predicate.
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
-local time_global = time_global
+local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+
+local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
+local LOG_BY_CAUSE = {
+    [CAUSE.AREA_CONQUER] = ap_core_debug.bracket(CAUSE.AREA_CONQUER),
+    [CAUSE.AREA_INFEST]  = ap_core_debug.bracket(CAUSE.AREA_INFEST),
+}
+
+local CONQUER_FIELD = "last_area_conquer_at"
+local INFEST_FIELD = "last_area_infest_at"
 
 local cfg = ap_core_mcm.cfg
-local _cooldown
 local _alignment_area
+local _alignment_mutant
 
-local function _on_smart(trace, squad)
-    if not cfg.cause_area_enabled then return { code = RESULT.FAILED_RULES } end
-    if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
-    if not _alignment_area[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
-
-    local now = time_global()
-    if _cooldown.check(squad.id, now) then return { code = RESULT.FAILED_RULES } end
-
-    local level_id = xlevel.get_level_id(squad)
-    if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
-
-    _cooldown.mark(squad.id, now)
+--- CONQUER eligibility (humans + most mutants minus ecolog/stalker/renegade).
+--- Returns result table on eligibility, or nil.
+local function _eligible_conquer(squad, now, level_id)
+    if not cfg.cause_area_conquer_enabled then return nil end
+    if not _alignment_area[squad.player_id] then return nil end
+    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
+    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
+    local elapsed = now - (opp_dto[CONQUER_FIELD] or 0)
+    if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then return nil end
     return {
-        cause = CAUSE.AREA,
+        cause = CAUSE.AREA_CONQUER,
         squad_id = squad.id,
         community = squad.player_id,
         position = squad.position,
         level_id = level_id,
+        dto_field = CONQUER_FIELD,
     }
+end
+
+--- INFEST eligibility (mutants only, MVT-gated). Active period of the species also enforced.
+--- Returns result table on eligibility, or nil.
+local function _eligible_infest(squad, species, now, level_id)
+    if not cfg.cause_area_infest_enabled then return nil end
+    if not ap_ext_util.is_active_period(species) then return nil end
+    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
+    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
+    local elapsed = now - (opp_dto[INFEST_FIELD] or 0)
+    if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then return nil end
+    return {
+        cause = CAUSE.AREA_INFEST,
+        squad_id = squad.id,
+        community = squad.player_id,
+        species = species,
+        position = squad.position,
+        level_id = level_id,
+        dto_field = INFEST_FIELD,
+    }
+end
+
+--- Mutant predicate: try INFEST first (territorial claim is dominant), fall through to CONQUER.
+local function _predicate_mutant(squad, now, level_id)
+    local species = ap_ext_util.get_species(squad.id)
+    if not species then return nil end
+    local result = _eligible_infest(squad, species, now, level_id)
+    if result then return result end
+    return _eligible_conquer(squad, now, level_id)
+end
+
+--- Human predicate: only CONQUER applies. INFEST is mutant-territorial; humans never claim nests.
+local function _predicate_human(squad, now, level_id)
+    return _eligible_conquer(squad, now, level_id)
+end
+
+--- AREA umbrella entry point. Master enabled-gate first, then alignment branch, dispatch to
+--- species-specific predicate, publish one specific cause (or NO_BRANCH if neither sub-predicate
+--- eligible).
+local function _on_smart(trace, squad)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
+    if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
+    local now = xtime.game_sec()
+
+    local result
+    if _alignment_mutant[squad.player_id] then
+        result = _predicate_mutant(squad, now, level_id)
+    elseif _alignment_area[squad.player_id] then
+        result = _predicate_human(squad, now, level_id)
+    else
+        return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
+    end
+
+    if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
+
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d community=%s [%.2fms]",
+            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, squad.player_id, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _alignment_area = xtable.subtract(
         xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_mutant),
         { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true })
-    _cooldown = ap_core_limiter.create_cooldown(ap_core_const.OPPORTUNITY_COOLDOWN_MS)
+    _alignment_mutant = ap_ext_const.alignment_mutant
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
-        ap_core_producer.register(CAUSE.AREA, { callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT }, _on_smart)
+        ap_core_producer.register({
+            callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
+            category = CAUSE_CATEGORY.OPPORTUNITIES, debug_label = LOG_INIT,
+        }, _on_smart)
     end
-    ap_core_debug.info("[CAUSE.AREA] Initialized")
+    ap_core_debug.info(LOG_INIT .. " Initialized")
 end

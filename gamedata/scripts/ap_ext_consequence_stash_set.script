@@ -1,0 +1,196 @@
+--- ap_ext_consequence_stash_set: STASH family consequences (loot + ambush + fill).
+--- Hand-written per-consequence handlers (decision 22: _set pattern, not CONFIGS factory).
+--- Predicate (ap_ext_cause_stash) does branch-picking, alignment, threshold, personality;
+--- handlers find a smart for movement, script the squad, record the event, and on arrival
+--- run the action specific to each consequence (loot the cache, fill an empty cache, or just
+--- camp in ambush).
+
+local random = math.random
+
+local CAUSE = ap_core_const.CAUSE
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
+local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
+local TRACE = ap_core_const.TRACE
+
+local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
+local LOG_LOOT = ap_core_debug.bracket(CONSEQUENCE.STASH_LOOT)
+local LOG_AMBUSH = ap_core_debug.bracket(CONSEQUENCE.STASH_AMBUSH)
+local LOG_FILL = ap_core_debug.bracket(CONSEQUENCE.STASH_FILL)
+
+local cfg = ap_core_mcm.cfg
+
+local LOOT_PROTECT_SET = {
+    ["toolkit_1"] = true, ["toolkit_2"] = true, ["toolkit_3"] = true,
+    ["toolkit_p"] = true, ["toolkit_s"] = true, ["toolkit_r5"] = true, ["toolkit_r7"] = true,
+    ["light_repair_kit"] = true, ["medium_repair_kit"] = true, ["heavy_repair_kit"] = true,
+    ["exo_repair_kit"] = true, ["helmet_repair_kit"] = true,
+    ["itm_gunsmith_toolkit"] = true, ["itm_outfit_toolkit"] = true,
+    ["itm_drugkit"] = true, ["itm_ammokit"] = true,
+    ["itm_basickit"] = true, ["itm_advancedkit"] = true, ["itm_expertkit"] = true,
+}
+
+----------------------------------------------------------------------
+-- Shared helpers
+----------------------------------------------------------------------
+
+local function _is_protected_stash(stash_id)
+    local items = xstash.get_stash_items(stash_id)
+    if not items then return false end
+    for i = 1, #items do
+        if LOOT_PROTECT_SET[items[i]] then return true end
+    end
+    return false
+end
+
+local function _pick_random_items(count)
+    local pool = ap_ext_const.stash_fill_items
+    local items = {}
+    for i = 1, count do
+        items[i] = pool[random(#pool)]
+    end
+    return items
+end
+
+--- Find a smart near the stash and script the squad to it. Returns (squad, smart) on success;
+--- returns (nil, err_table) on failure (handler returns err_table directly).
+local function _route_squad(trace, event_data, name, on_arrive_consequence, on_arrive_args, pre_release_gulag)
+    local squad = xobject.se(event_data.squad_id)
+    if not squad then return nil, { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+
+    local smart = ap_core_utils.find_smart_observed(trace, event_data.stash_position, { level_id = event_data.level_id })
+    if not smart then return nil, { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+
+    local res
+    ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
+        res = ap_core_broker.script_squad(squad, smart, {
+            rush = cfg["consequence_" .. name .. "_rush"],
+            on_arrive = on_arrive_consequence,
+            on_arrive_args = on_arrive_args,
+            pre_release_gulag = pre_release_gulag,
+        })
+        return res
+    end)
+    if res.code ~= RESULT.SUCCESS then
+        return nil, { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
+    end
+    return squad, smart
+end
+
+----------------------------------------------------------------------
+-- STASH_LOOT
+----------------------------------------------------------------------
+
+local function _arrive_loot(squad, args)
+    if not args then return end
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+    local stash_id = args.stash_id
+    if xstash.is_stash_looted(stash_id) then
+        ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d already looted", stash_id)
+        return
+    end
+    if cfg.consequence_stash_loot_protect_toolkits and _is_protected_stash(stash_id) then
+        ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d protected", stash_id)
+        return
+    end
+    ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_LOOT, function(trace)
+        local items = ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
+            return xstash.loot_stash(stash_id)
+        end)
+        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
+    end)
+end
+
+local function _handler_loot(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.STASH_LOOT, function()
+        local squad, smart_or_err = _route_squad(trace, event_data, "stash_loot", CONSEQUENCE.STASH_LOOT,
+            { stash_id = event_data.stash_id, dto_field = event_data.dto_field }, nil)
+        if not squad then return smart_or_err end
+        ap_ext_news.record_event(squad, event_data.cause, CONSEQUENCE.STASH_LOOT, {
+            cause_id = event_data._cause_id, smart = smart_or_err, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart_or_err.id, stash_id = event_data.stash_id, community = event_data.community }
+    end)
+end
+
+----------------------------------------------------------------------
+-- STASH_AMBUSH
+----------------------------------------------------------------------
+
+local function _arrive_ambush(squad, args)
+    if not args then return end
+    ap_core_debug.debug(LOG_AMBUSH .. " arrive: stash=%d squad=%d", args.stash_id, squad.id)
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+end
+
+local function _handler_ambush(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.STASH_AMBUSH, function()
+        local squad, smart_or_err = _route_squad(trace, event_data, "stash_ambush", CONSEQUENCE.STASH_AMBUSH,
+            { stash_id = event_data.stash_id, dto_field = event_data.dto_field }, PRE_RELEASE_GULAG.STASH_AMBUSH)
+        if not squad then return smart_or_err end
+        ap_ext_news.record_event(squad, event_data.cause, CONSEQUENCE.STASH_AMBUSH, {
+            cause_id = event_data._cause_id, smart = smart_or_err, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart_or_err.id, stash_id = event_data.stash_id, community = event_data.community }
+    end)
+end
+
+----------------------------------------------------------------------
+-- STASH_FILL
+----------------------------------------------------------------------
+
+local function _arrive_fill(squad, args)
+    if not args then return end
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+    local stash_id, items = args.stash_id, args.items
+    if not xstash.fill_stash(stash_id, items, false) then
+        ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d failed", stash_id, squad.id)
+        return
+    end
+    ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d items=%d", stash_id, squad.id, #items)
+end
+
+local function _handler_fill(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.STASH_FILL, function()
+        local items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
+        local squad, smart_or_err = _route_squad(trace, event_data, "stash_fill", CONSEQUENCE.STASH_FILL,
+            { stash_id = event_data.stash_id, dto_field = event_data.dto_field, items = items }, nil)
+        if not squad then return smart_or_err end
+        ap_ext_news.record_event(squad, event_data.cause, CONSEQUENCE.STASH_FILL, {
+            cause_id = event_data._cause_id, smart = smart_or_err, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart_or_err.id, stash_id = event_data.stash_id, community = event_data.community }
+    end)
+end
+
+----------------------------------------------------------------------
+-- Init
+----------------------------------------------------------------------
+
+function on_game_start()
+    ap_core_consumer.register(CONSEQUENCE.STASH_LOOT, {
+        event = CAUSE.STASH_LOOT,
+        condition = function() return cfg.consequence_stash_loot_enabled end,
+        on_arrive = _arrive_loot,
+    }, _handler_loot)
+
+    ap_core_consumer.register(CONSEQUENCE.STASH_AMBUSH, {
+        event = CAUSE.STASH_AMBUSH,
+        condition = function() return cfg.consequence_stash_ambush_enabled end,
+        on_arrive = _arrive_ambush,
+    }, _handler_ambush)
+
+    ap_core_consumer.register(CONSEQUENCE.STASH_FILL, {
+        event = CAUSE.STASH_FILL,
+        condition = function() return cfg.consequence_stash_fill_enabled end,
+        on_arrive = _arrive_fill,
+    }, _handler_fill)
+
+    ap_core_debug.info(LOG_INIT .. " Initialized: 3 consequences (loot, ambush, fill)")
+end

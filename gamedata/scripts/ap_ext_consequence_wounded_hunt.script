@@ -8,6 +8,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 
 local PERSONALITY = ap_ext_const.PERSONALITY
+local LOG = ap_core_debug.bracket(CONSEQUENCE.WOUNDED_HUNT)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_wounded_hunt = xtable.merge(ap_ext_const.alignment_mutant, ap_ext_const.alignment_outlaw)
@@ -66,5 +67,5 @@ function on_game_start()
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_hunt_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.WOUNDED_HUNT] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

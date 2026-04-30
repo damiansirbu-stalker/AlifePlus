@@ -11,6 +11,7 @@ local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local TRACE = ap_core_const.TRACE
+local LOG = ap_core_debug.bracket(CONSEQUENCE.ALPHAKILL_TARGETED)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_mutant = ap_ext_const.alignment_mutant
@@ -40,7 +41,7 @@ local function _on_arrive(squad, args)
     if not target_squad_id then return end
     local chase_count = (args.chase_count or 0) + 1
     if chase_count > cfg.consequence_alphakill_targeted_max_chases then
-        ap_core_debug.debug("[CONSEQUENCE.ALPHAKILL_TARGETED] chase_limit: squad=%d chases=%d", squad.id, chase_count)
+        ap_core_debug.debug(LOG .. " chase_limit: squad=%d chases=%d", squad.id, chase_count)
         return
     end
     local target_squad = xobject.se(target_squad_id)
@@ -143,5 +144,5 @@ function on_game_start()
         condition = function() return cfg.consequence_alphakill_targeted_enabled end,
         on_arrive = _on_arrive,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.ALPHAKILL_TARGETED] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

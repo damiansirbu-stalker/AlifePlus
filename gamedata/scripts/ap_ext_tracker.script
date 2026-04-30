@@ -1,7 +1,7 @@
 --- ap_ext_tracker: Kill registry, alpha system, stalker needs DTO, mutant instincts DTO
 local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
-local math_min, math_floor = math.min, math.floor
+local math_min, math_floor, math_random = math.min, math.floor, math.random
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_core_const.CALLBACK
 local TRACE = ap_core_const.TRACE
@@ -9,6 +9,9 @@ local ALPHA_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_ext_const.NEED_FIELDS
 local INSTINCT_FIELDS = ap_ext_const.INSTINCT_FIELDS
+local OPPORTUNITY_FIELDS = ap_ext_const.OPPORTUNITY_FIELDS
+local OPPORTUNITY_THRESHOLD_KEY = ap_ext_const.OPPORTUNITY_THRESHOLD_KEY
+local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 
 local _ap_killers = {}
 local _ap_alphas = {}
@@ -17,6 +20,7 @@ local _ap_alpha_dead
 local cfg = ap_core_mcm.cfg
 local _ap_stalker_needs
 local _ap_mutant_instincts
+local _ap_squad_opportunities
 
 local function _on_save_state(m_data)
     m_data.ap_ext_tracker = {
@@ -44,6 +48,7 @@ local function _on_load_state(m_data)
     _ap_alphas = _validate_alphas(saved.alphas or {})
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
+    _ap_squad_opportunities = xttltable.create_fifo_cache({ capacity = 100 })
     if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if not saved.alphas then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
@@ -229,6 +234,43 @@ function reset_mutant_instinct(squad_id, key, now)
     return true
 end
 
+function get_squad_opportunities(squad_id)
+    if not squad_id then return nil end
+    return _ap_squad_opportunities:get(squad_id)
+end
+
+--- Initialize squad opportunities DTO with random offset within threshold.
+--- 50% start "fresh" (just used), 50% start overdue (1x-2x threshold ago) -- mirrors needs/instincts init.
+--- Hard-fails on missing OPPORTUNITY_THRESHOLD_KEY entry or unloaded cfg key (logs error, leaves field nil).
+function init_squad_opportunities(squad_id, now)
+    if not squad_id or not now then return nil end
+    local dto = {}
+    for i = 1, #OPPORTUNITY_FIELDS do
+        local field = OPPORTUNITY_FIELDS[i]
+        local threshold_key = OPPORTUNITY_THRESHOLD_KEY[field]
+        local threshold_hours = threshold_key and cfg[threshold_key]
+        if not threshold_hours then
+            ap_core_debug.err("[TRACKER] init_squad_opportunities: missing threshold field=%s key=%s", field, tostring(threshold_key))
+        elseif math_random() < 0.5 then
+            dto[field] = now
+        else
+            local threshold = threshold_hours * HOURS_TO_SECONDS
+            dto[field] = now - threshold - math_random(0, math_floor(threshold))
+        end
+    end
+    _ap_squad_opportunities:set(squad_id, dto)
+    ap_core_debug.debug("[TRACKER] init_squad_opportunities: squad=%d", squad_id)
+    return dto
+end
+
+function reset_squad_opportunity(squad_id, key, now)
+    if not squad_id or not key or not now then return false end
+    local dto = _ap_squad_opportunities:get(squad_id)
+    if not dto then return false end
+    dto[key] = now
+    return true
+end
+
 local function _on_squad_npc_death(squad, npc, killer)
     return ap_core_debug.observe(nil, "tracker:death", function()
         local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
@@ -247,6 +289,7 @@ function on_game_start()
     _ap_alpha_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
+    _ap_squad_opportunities = xttltable.create_fifo_cache({ capacity = 100 })
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

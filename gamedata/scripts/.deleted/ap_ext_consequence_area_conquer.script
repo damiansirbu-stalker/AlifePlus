@@ -7,6 +7,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local RANGE_EYE = ap_core_const.RANGE_EYE
+local _LOG = ap_core_debug.bracket(CONSEQUENCE.AREA_CONQUER)
 
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -30,7 +31,8 @@ end
 
 local function _on_arrive(squad, args)
     if not args then return end
-    ap_core_debug.debug("[CONSEQUENCE.AREA_CONQUER] on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
+    ap_core_debug.debug(_LOG .. " on_arrive: squad=%d smart=%d", squad.id, args.target_smart_id)
+    ap_ext_tracker.reset_squad_opportunity(squad.id, "last_area_conquer_at", xtime.game_sec())
     ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity)
 end
 
@@ -71,7 +73,7 @@ local function _handler(event_data)
             return res
         end)
         if res.code ~= RESULT.SUCCESS then return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED } end
-        ap_ext_news.record_event(squad, CAUSE.AREA, CONSEQUENCE.AREA_CONQUER, {
+        ap_ext_news.record_event(squad, event_data.cause, CONSEQUENCE.AREA_CONQUER, {
             cause_id = event_data._cause_id,
             smart = smart, level_id = event_data.level_id,
         })
@@ -83,9 +85,9 @@ end
 function on_game_start()
     _smart_cooldown = xttltable.create_ttl_table({ default_ttl = cfg.cause_area_smart_cooldown_sec })
     ap_core_consumer.register(CONSEQUENCE.AREA_CONQUER, {
-        event = CAUSE.AREA,
+        event = CAUSE.AREA_CONQUER,
         condition = function() return cfg.consequence_area_conquer_enabled end,
         on_arrive = _on_arrive,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.AREA_CONQUER] Initialized")
+    ap_core_debug.info(_LOG .. " Initialized")
 end

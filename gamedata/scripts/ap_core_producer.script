@@ -90,9 +90,9 @@ local function _reactive_pacer_gate(callback_type)
 end
 
 
-local function _find_handler_index(entries, name)
+local function _find_handler_index_by_handler(entries, handler)
     for i = 1, #entries do
-        if entries[i].label == name then return i end
+        if entries[i].handler == handler then return i end
     end
     return nil
 end
@@ -108,52 +108,70 @@ local function _check_cross_type(cause_type, callback)
     return nil
 end
 
---- Register a cause handler
---- @param name string Handler name
---- @param config table { callback = "callback_name", cause_type = RADIANT|REACTIVE }
+--- Register a cause handler. Predicate publishes specific cause via result.cause; producer
+--- never knows the cause string at registration time. Dedup is by handler function ref.
+--- Category drives rate-limit grouping (decision 3+15): same-category handlers share one budget.
+--- @param config table { callback, cause_type, category, debug_label } debug_label is the
+---        bracketed cause/family name used in info/error logs (e.g. "[CAUSE.STASH_FAMILY]");
+---        required so registration failures are diagnosable.
 --- @param handler function(trace, ...) Handler function
-function register(name, config, handler)
-    if not name or not config or not handler then
-        ap_core_debug.err("[PRODUCER] register: missing name, config, or handler")
+function register(config, handler)
+    if not config or not handler then
+        ap_core_debug.err("[PRODUCER] register: missing config or handler")
+        return false
+    end
+    local label = config.debug_label
+    if not label then
+        ap_core_debug.err("[PRODUCER] register: missing debug_label callback=%s", tostring(config.callback))
         return false
     end
     local callback = config.callback
     if not callback then
-        ap_core_debug.err("[PRODUCER] register '%s': missing callback", name)
+        ap_core_debug.err("[PRODUCER] register %s: missing callback", label)
+        return false
+    end
+    local category = config.category
+    if not category then
+        ap_core_debug.err("[PRODUCER] register %s: missing category callback=%s", label, callback)
         return false
     end
     local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
     local conflict = _check_cross_type(cause_type, callback)
     if conflict then
-        ap_core_debug.err("[PRODUCER] register '%s': %s '%s'", name, conflict, callback)
+        ap_core_debug.err("[PRODUCER] register %s: %s callback=%s", label, conflict, callback)
         return false
     end
     if not _handlers[callback] then
         _handlers[callback] = {}
     end
     local entries = _handlers[callback]
-    entries[_find_handler_index(entries, name) or #entries + 1] = { handler = handler, label = name, cause_type = cause_type }
+    entries[_find_handler_index_by_handler(entries, handler) or #entries + 1] = { handler = handler, cause_type = cause_type, category = category, label = label }
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true
     end
-    ap_core_debug.info("[PRODUCER] registered: %s callback=%s type=%s", name, callback, cause_type)
+    ap_core_debug.info("[PRODUCER] registered %s: callback=%s type=%s category=%s", label, callback, cause_type, category)
     return true
 end
 
---- Try to publish a cause result
-local function _try_publish(on_map, name, result, trace, cause_type)
+--- Publish a cause result. Rate-limit is enforced upstream (pre-handler check on entry.category
+--- in _eval_*); by the time we reach here the publish is guaranteed to go through. Increment
+--- counter keyed on entry.category so the next pre-check sees the +1.
+local function _try_publish(on_map, result, trace, category, cause_type)
     result._trace = trace
     result.cause_type = cause_type
     _cause_seq = _cause_seq + 1
     result._cause_id = _cause_seq
     ap_core_utils.event_publish(result.cause, result)
-    ap_core_limiter.increment_cause_counter(name)
+    ap_core_limiter.increment_cause_counter(category)
     if stats_collecting() then stats.inc_causes(cause_type) end
-    ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s sq=%s on_map=%s level=%s",
-        result.cause, result.squad_id, on_map, result.level_id)
+    ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s category=%s sq=%s on_map=%s level=%s",
+        result.cause, category, result.squad_id, on_map, result.level_id)
 end
 
---- Evaluate all reactive cause handlers for a callback that passed all gates
+--- Evaluate all reactive cause handlers for a callback that passed all gates.
+--- Pre-checks per-handler category rate-limit before running predicate (skip wasted work on
+--- rate-blocked categories). Predicates self-observe their post-decision payload-build under
+--- the picked cause; producer calls handler directly.
 --- @param handlers table Indexed array of registered handlers for this callback
 --- @param on_map boolean|nil On-map status for ratio logging
 local function _eval_reactive_handlers(handlers, on_map, ...)
@@ -162,28 +180,48 @@ local function _eval_reactive_handlers(handlers, on_map, ...)
     -- across loop iterations. Allocation is ~50us/sec in dense combat; acceptable cost
     -- for reactive pipeline fan-out.
     local args = {...}
+    local sc = stats_collecting()
     for i = 1, #handlers do
         local entry = handlers[i]
-        if not ap_core_limiter.check_cause_rate_limit(entry.label) then goto continue end
-
+        if not ap_core_limiter.check_cause_rate_limit(entry.category) then
+            ap_core_debug.debug("[PRODUCER.REACTIVE] CATEGORY_RATE_BLOCKED category=%s", entry.category)
+            if sc then stats.inc_rate(false) end
+            goto continue
+        end
         local trace = ap_core_debug.trace()
-        local result = ap_core_debug.observe(trace, entry.label, entry.handler, unpack(args))
-        if result and result.cause then _try_publish(on_map, entry.label, result, trace, entry.cause_type) end
-
+        local result = entry.handler(trace, unpack(args))
+        if result and result.cause then _try_publish(on_map, result, trace, entry.category, entry.cause_type) end
         ::continue::
     end
 end
 
---- Cascade through radiant causes in random order, stop on first publish
+--- Reusable cascade buffer. Sized + populated by _rebuild_radiant_set, shuffled in-place per tick.
+--- Avoids per-tick allocation from xtable.shuffle (was a fresh array of 4 entries every PACER_2 tick).
+local _cascade_buf = {}
+local math_random = math.random
+
+--- Cascade through radiant causes in random order, stop on first successful publish.
+--- Pre-checks per-entry category rate-limit; skips entry if blocked, cascade tries next.
+--- Predicate self-observes after winner pick. Cascade breaks on first publish so the squad
+--- does at most one thing per tick. Buffer shuffled in-place; never allocates.
 local function _eval_radiant_cascade(on_map, squad)
-    local shuffled = xtable.shuffle(_radiant_handlers)
-    for i = 1, #shuffled do
-        local entry = shuffled[i]
-        if not ap_core_limiter.check_cause_rate_limit(entry.label) then goto continue end
+    local cascade_size = #_cascade_buf
+    for i = cascade_size, 2, -1 do
+        local j = math_random(i)
+        if j ~= i then _cascade_buf[i], _cascade_buf[j] = _cascade_buf[j], _cascade_buf[i] end
+    end
+    local sc = stats_collecting()
+    for i = 1, cascade_size do
+        local entry = _cascade_buf[i]
+        if not ap_core_limiter.check_cause_rate_limit(entry.category) then
+            ap_core_debug.debug("[PRODUCER.RADIANT] CATEGORY_RATE_BLOCKED category=%s sq=%s", entry.category, squad.id)
+            if sc then stats.inc_rate(true) end
+            goto continue
+        end
         local trace = ap_core_debug.trace()
-        local result = ap_core_debug.observe(trace, entry.label, entry.handler, squad)
+        local result = entry.handler(trace, squad)
         if result and result.cause then
-            _try_publish(on_map, entry.label, result, trace, entry.cause_type)
+            _try_publish(on_map, result, trace, entry.category, entry.cause_type)
             break
         end
         ::continue::
@@ -193,7 +231,7 @@ end
 --- Radiant callback handler
 --- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
 local function _on_radiant(squad)
-    if #_radiant_handlers == 0 then return end
+    if #_cascade_buf == 0 then return end
     local sc = stats_collecting()
     if sc then sr.events = sr.events + 1 end
     -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
@@ -298,7 +336,8 @@ local function _collect_radiant_handlers(entries)
     end
 end
 
---- Rebuild radiant callback sources and collapse all radiant handlers into one flat table
+--- Rebuild radiant callback sources and collapse all radiant handlers into one flat table.
+--- Also repopulates _cascade_buf (the in-place-shuffled buffer used by _eval_radiant_cascade).
 local function _rebuild_radiant_set()
     _radiant_callbacks = {}
     _radiant_handlers = {}
@@ -308,6 +347,8 @@ local function _rebuild_radiant_set()
         _collect_radiant_handlers(entries)
         ::continue::
     end
+    for k = #_cascade_buf, 1, -1 do _cascade_buf[k] = nil end
+    for i = 1, #_radiant_handlers do _cascade_buf[i] = _radiant_handlers[i] end
 end
 
 --- Deferred init: runs on actor_on_first_update after all causes registered

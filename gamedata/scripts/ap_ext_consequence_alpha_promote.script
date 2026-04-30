@@ -6,6 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
+local LOG = ap_core_debug.bracket(CONSEQUENCE.ALPHA_PROMOTE)
 
 local cfg = ap_core_mcm.cfg
 
@@ -56,5 +57,5 @@ function on_game_start()
         event = CAUSE.ALPHA,
         condition = function() return cfg.consequence_alpha_promote_enabled end,
     }, _handler)
-    ap_core_debug.info("[CONSEQUENCE.ALPHA_PROMOTE] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

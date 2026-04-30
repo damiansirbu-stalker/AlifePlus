@@ -307,7 +307,24 @@ NEED_FIELDS = {
 
 --- Mutant instinct DTO field names
 INSTINCT_FIELDS = {
-    "last_scatter_at", "last_feed_at", "last_sleep_at", "last_explore_at", "last_socialize_at", "last_infest_at",
+    "last_scatter_at", "last_feed_at", "last_sleep_at", "last_explore_at", "last_socialize_at",
+}
+
+--- Squad opportunity DTO field names (Charnov MVT timestamps for non-deprivation opportunities)
+--- Stash/area patches have handling time; threshold encodes recovery between visits.
+--- Single shared DTO across human/mutant squads — squad_id is unique, fields are nil-default for unused.
+OPPORTUNITY_FIELDS = {
+    "last_stash_loot_at", "last_stash_ambush_at", "last_stash_fill_at",
+    "last_area_conquer_at", "last_area_infest_at",
+}
+
+--- Map each opportunity field to the cfg key holding its threshold (game hours).
+OPPORTUNITY_THRESHOLD_KEY = {
+    last_stash_loot_at   = "cause_stash_loot_threshold",
+    last_stash_ambush_at = "cause_stash_ambush_threshold",
+    last_stash_fill_at   = "cause_stash_fill_threshold",
+    last_area_conquer_at = "cause_area_conquer_threshold",
+    last_area_infest_at  = "cause_area_infest_threshold",
 }
 
 function on_game_start()

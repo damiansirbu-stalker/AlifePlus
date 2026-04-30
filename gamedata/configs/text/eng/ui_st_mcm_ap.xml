@@ -71,8 +71,8 @@
     <string id="ui_mcm_menu_instinct_socialize">
         <text>Instinct\nSocialize</text>
     </string>
-    <string id="ui_mcm_menu_instinct_infest">
-        <text>Instinct\nInfest</text>
+    <string id="ui_mcm_menu_area_infest">
+        <text>Area\nInfest</text>
     </string>
 
     <!-- ==================== LEVEL 3 MENU NAMES (CONSEQUENCES) ==================== -->
@@ -124,8 +124,11 @@
     <string id="ui_mcm_menu_wounded_help">
         <text>Wounded\nHelp</text>
     </string>
-    <string id="ui_mcm_menu_area_conquer">
-        <text>Area\nConquer</text>
+    <string id="ui_mcm_menu_area_conquer_human">
+        <text>Area\nConquer\nHuman</text>
+    </string>
+    <string id="ui_mcm_menu_area_conquer_mutant">
+        <text>Area\nConquer\nMutant</text>
     </string>
     <string id="ui_mcm_menu_harvest_rob">
         <text>Harvest\nRob</text>
@@ -201,11 +204,29 @@
     <string id="ui_mcm_ap_general_distributor_interval_sec_desc">
         <text>[seconds]\nTime between radiant event evaluations. Lower means more activity, higher means a calmer Zone. Direct reactive events use a separate limiter with a fixed interval per event type, to accommodate bursty events like deaths.</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_max_events">
-        <text>Cause budget</text>
+    <string id="ui_mcm_ap_general_cause_max_reactions">
+        <text>Reactions budget</text>
     </string>
-    <string id="ui_mcm_ap_general_cause_max_events_desc">
-        <text>[count]\nMax publishes per cause type per 60 seconds. Prevents one cause from dominating.</text>
+    <string id="ui_mcm_ap_general_cause_max_reactions_desc">
+        <text>Max reaction publishes per 60s (massacre, squadkill, basekill, wounded, harvest, alpha, alphakill).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_needs">
+        <text>Needs budget</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_needs_desc">
+        <text>Max stalker-needs publishes per 60s (hunger, sleep, rest, heal, shelter, money, supply, job, social).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_instincts">
+        <text>Instincts budget</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_instincts_desc">
+        <text>Max mutant-instinct publishes per 60s (scatter, feed, sleep, explore, socialize, infest).</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_opportunities">
+        <text>Opportunities budget</text>
+    </string>
+    <string id="ui_mcm_ap_general_cause_max_opportunities_desc">
+        <text>Max territorial-opportunity publishes per 60s (stash interactions, area conquest).</text>
     </string>
     <string id="ui_mcm_ap_general_consequence_max_events">
         <text>Consequence budget</text>
@@ -350,11 +371,41 @@
     <string id="ui_mcm_ap_causes_stash_desc">
         <text>Squad discovers nearby stashes.</text>
     </string>
-    <string id="ui_mcm_ap_causes_stash_cause_stash_enabled">
-        <text>Enabled</text>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_enabled">
+        <text>Loot Enabled</text>
     </string>
-    <string id="ui_mcm_ap_causes_stash_cause_stash_enabled_desc">
-        <text>NPC evaluates nearby stashes on smart terrain transition.</text>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_enabled_desc">
+        <text>Allow the stash generator to publish cause:stash_loot.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_enabled">
+        <text>Ambush Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_enabled_desc">
+        <text>Allow the stash generator to publish cause:stash_ambush.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_enabled">
+        <text>Fill Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_enabled_desc">
+        <text>Allow the stash generator to publish cause:stash_fill.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold">
+        <text>Loot Threshold (game hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold_desc">
+        <text>Game hours per squad before another loot attempt. MVT recovery time.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold">
+        <text>Ambush Threshold (game hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold_desc">
+        <text>Game hours per outlaw squad between ambush stakeouts.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold">
+        <text>Fill Threshold (game hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold_desc">
+        <text>Game hours per squad between attempts to seed an empty stash.</text>
     </string>
 
     <!-- ==================== CAUSES / SQUADKILL ==================== -->
@@ -430,17 +481,23 @@
     <string id="ui_mcm_ap_causes_area_desc">
         <text>Squad discovers nearby unguarded area.</text>
     </string>
-    <string id="ui_mcm_ap_causes_area_cause_area_enabled">
-        <text>Enabled</text>
-    </string>
-    <string id="ui_mcm_ap_causes_area_cause_area_enabled_desc">
-        <text>NPC evaluates nearby area on smart terrain transition.</text>
-    </string>
     <string id="ui_mcm_ap_causes_area_cause_area_smart_cooldown_sec">
         <text>Smart Cooldown (sec)</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_smart_cooldown_sec_desc">
         <text>Seconds before the same smart terrain can trigger area cause again.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_enabled">
+        <text>Conquer Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_enabled_desc">
+        <text>Allow the area generator to publish cause:area_conquer.</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_threshold">
+        <text>Conquer Threshold (game hours)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_cause_area_conquer_threshold_desc">
+        <text>Game hours per squad before another conquer attempt. MVT recovery time.</text>
     </string>
 
     <!-- ==================== CAUSES / HARVEST ==================== -->
@@ -469,12 +526,6 @@
     </string>
     <string id="ui_mcm_ap_causes_needs_desc">
         <text>Squads develop human needs over time (hunger, sleep, rest, healing, shelter, money, supplies, duty, social). Hull drive scoring picks the strongest unmet need. Thresholds are game-hours between need events.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled">
-        <text>Enabled</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_needs_enabled_desc">
-        <text>Evaluate stalker needs on smart terrain transitions. Strongest unmet need fires as a cause event.</text>
     </string>
     <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled">
         <text>Hunger</text>
@@ -974,57 +1025,80 @@
         <text>Maximum helper squads sent per event (random 1..N).</text>
     </string>
 
-    <!-- ==================== CONSEQUENCES / AREA CONQUER ==================== -->
-    <string id="ui_mcm_ap_consequences_area_conquer_title">
-        <text>Area\nConquer</text>
+    <!-- ==================== CONSEQUENCES / AREA CONQUER HUMAN ==================== -->
+    <string id="ui_mcm_ap_consequences_area_conquer_human_title">
+        <text>Area\nConquer\nHuman</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_tag">
-        <text>Cause: area\nRules: alignment, personality\nEval:  eye range</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_tag">
+        <text>Cause: area_conquer\nRules: alignment, personality\nEval:  eye range</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_desc">
-        <text>When the Area cause fires, the discovering squad moves to claim the empty smart terrain. The conqueror's faction takes ownership and the engine spawns their squads there.</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_desc">
+        <text>Human factions (alignment_human minus ecolog) claim empty smart terrains. The conqueror's faction takes ownership and the engine spawns their squads there.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_enabled">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_enabled">
         <text>Enabled</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_enabled_desc">
-        <text>Stalkers and mutants claim empty areas.</text>
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_enabled_desc">
+        <text>Human factions claim empty areas.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_rush">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_rush">
         <text>Rush mode</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_rush_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_rush_desc">
         <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_enabled">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_enabled">
         <text>Area conquest enabled</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_enabled_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_enabled_desc">
         <text>Enable persistent area ownership via respawn mutation.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_max_smarts">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_max_smarts">
         <text>Max conquered areas</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_max_smarts_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_max_smarts_desc">
         <text>Maximum smart terrains that can be conquered. FIFO eviction when reached.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_spawn_num">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_spawn_num">
         <text>Spawn squads per area</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_spawn_num_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_spawn_num_desc">
         <text>Extra squads at conquered area. Added alongside original spawns.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_decay_hours">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_decay_hours">
         <text>Conquest decay (hours)</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_decay_hours_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_decay_hours_desc">
         <text>Conquered smart terrains lose the conqueror's spawns after this many game hours. Original spawns are unaffected. Set to 0 to disable decay.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_mutate_smart">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_mutate_smart">
         <text>Inject spawns</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_area_conquest_mutate_smart_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_area_conquest_mutate_smart_desc">
         <text>Conquered areas spawn the conqueror's squads alongside original spawns. Disable to keep squad movement without spawn changes.</text>
+    </string>
+
+    <!-- ==================== CONSEQUENCES / AREA CONQUER MUTANT ==================== -->
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_title">
+        <text>Area\nConquer\nMutant</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_tag">
+        <text>Cause: area_conquer\nRules: species, personality\nEval:  eye range</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_desc">
+        <text>Feral, predator, and aberrant mutants claim empty smart terrains. The conqueror's species takes ownership and the engine spawns their squads there.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_enabled">
+        <text>Enabled</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_enabled_desc">
+        <text>Mutants claim empty areas.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_rush">
+        <text>Rush mode</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_rush_desc">
+        <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
     </string>
 
     <!-- ==================== CONSEQUENCES / HARVEST ROB ==================== -->
@@ -1595,12 +1669,6 @@
     <string id="ui_mcm_ap_causes_instincts_desc">
         <text>Mutant squads develop instincts over time (feed, sleep, explore, socialize). Hull drive scoring picks the strongest unmet instinct. Day/night cycle: nocturnal species (bloodsuckers, lurkers, chimeras, zombies, fractures) are active at night and sleep during the day. All other species are active during the day. Thresholds are game-hours between instinct events.</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instincts_enabled">
-        <text>Enabled</text>
-    </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instincts_enabled_desc">
-        <text>Evaluate mutant instincts on smart terrain transitions. Strongest unmet instinct fires as a cause event.</text>
-    </string>
     <string id="ui_mcm_ap_causes_instincts_cause_instinct_scatter_enabled">
         <text>Scatter</text>
     </string>
@@ -1813,6 +1881,12 @@
     <string id="ui_mcm_ap_consequences_massacre_investigate_consequence_massacre_investigate_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
+    <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_min_items">
+        <text>Min items to ambush</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_min_items_desc">
+        <text>Minimum item count for outlaws to stake out a stash. Below this, they loot directly instead.</text>
+    </string>
     <string id="ui_mcm_ap_consequences_stash_ambush_consequence_stash_ambush_personality_min">
         <text>Personality floor</text>
     </string>
@@ -1921,17 +1995,29 @@
     <string id="ui_mcm_ap_consequences_wounded_help_consequence_wounded_help_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_min">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_min">
         <text>Personality floor</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_min_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_min_desc">
         <text>[0.0-1.0]\nMinimum chance for the personality roll. Even factions with low matching traits will pass at least this often. Default: 0.20.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_max">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_max">
         <text>Personality ceiling</text>
     </string>
-    <string id="ui_mcm_ap_consequences_area_conquer_consequence_area_conquer_personality_max_desc">
+    <string id="ui_mcm_ap_consequences_area_conquer_human_consequence_area_conquer_human_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_min">
+        <text>Personality floor</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_min_desc">
+        <text>[0.0-1.0]\nMinimum chance for the personality roll. Even species with low matching traits will pass at least this often. Default: 0.20.</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_max">
+        <text>Personality ceiling</text>
+    </string>
+    <string id="ui_mcm_ap_consequences_area_conquer_mutant_consequence_area_conquer_mutant_personality_max_desc">
+        <text>[0.0-1.0]\nMaximum chance for the personality roll. Even species with high matching traits are capped at this. Default: 0.70.</text>
     </string>
     <string id="ui_mcm_ap_consequences_harvest_rob_consequence_harvest_rob_personality_min">
         <text>Personality floor</text>
@@ -2186,76 +2272,76 @@
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
 
-    <!-- ==================== CONSEQUENCE: INSTINCT INFEST ==================== -->
-    <string id="ui_mcm_ap_consequences_instinct_infest_title">
-        <text>Instinct Infest</text>
+    <!-- ==================== CONSEQUENCE: AREA INFEST ==================== -->
+    <string id="ui_mcm_ap_consequences_area_infest_title">
+        <text>Area Infest</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_tag">
+    <string id="ui_mcm_ap_consequences_area_infest_tag">
         <text>Eval: TERRITORY + SURVIVAL</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_desc">
         <text>Mutants claim smart terrains as nests. Exclusive spawn injection replaces original spawns with the infesting species. Feral, predator, and aberrant species only (cowardly excluded). Per-level cap limits how many smarts can be infested on each level.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_enabled">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_enabled">
         <text>Enabled</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_enabled_desc">
-        <text>Enable the instinct infest consequence. Mutants will claim smart terrains as nests.</text>
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_enabled_desc">
+        <text>Enable the area infest consequence. Mutants will claim smart terrains as nests.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_rush">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_rush">
         <text>Rush movement</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_rush_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_rush_desc">
         <text>When enabled, squads move at rush speed to claim their nest.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_min">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_min">
         <text>Personality floor</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_min_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_min_desc">
         <text>[0.0-1.0]\nMinimum chance for the personality roll. Even factions with low matching traits have at least this chance. Default: 0.20.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_max">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_max">
         <text>Personality ceiling</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_consequence_instinct_infest_personality_max_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_consequence_area_infest_personality_max_desc">
         <text>[0.0-1.0]\nMaximum chance for the personality roll. Even factions with high matching traits are capped at this. Default: 0.70.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_enabled">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_enabled">
         <text>Infestation mutation</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_enabled_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_enabled_desc">
         <text>Apply exclusive spawn injection on infested smarts. Replaces original spawns with the infesting species.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_max_per_level">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_max_per_level">
         <text>Max infested per level</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_max_per_level_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_max_per_level_desc">
         <text>[1-5]\nMaximum number of infested smart terrains per level. Default: 1.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_spawn_num">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_spawn_num">
         <text>Spawn count</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_spawn_num_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_spawn_num_desc">
         <text>[1-5]\nNumber of squads the infested spawn entry can produce. Default: 3.</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_decay_hours">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_decay_hours">
         <text>Decay time (hours)</text>
     </string>
-    <string id="ui_mcm_ap_consequences_instinct_infest_infest_decay_hours_desc">
+    <string id="ui_mcm_ap_consequences_area_infest_infest_decay_hours_desc">
         <text>[0-168]\nGame hours before infestation expires. 0 = permanent (no decay). Default: 0.</text>
     </string>
 
-    <!-- ==================== CAUSE: INSTINCTS (INFEST ADDITIONS) ==================== -->
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_enabled">
-        <text>Infest</text>
+    <!-- ==================== CAUSE: AREA INFEST (joins AREA family) ==================== -->
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_enabled">
+        <text>Infest enabled</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_enabled_desc">
-        <text>Enable the infest instinct drive. Mutants will seek to claim smart terrains as nests.</text>
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_enabled_desc">
+        <text>Enable the area infest cause. Mutants will seek to claim smart terrains as nests.</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_threshold">
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_threshold">
         <text>Infest threshold (hours)</text>
     </string>
-    <string id="ui_mcm_ap_causes_instincts_cause_instinct_infest_threshold_desc">
-        <text>[0.1-48]\nGame hours before infest drive activates. Higher = less frequent. Default: 24.</text>
+    <string id="ui_mcm_ap_causes_area_cause_area_infest_threshold_desc">
+        <text>[0.1-168]\nGame hours per squad before another infest attempt. MVT recovery time. Default: 24.</text>
     </string>
 </string_table>

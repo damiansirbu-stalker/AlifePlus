@@ -2,12 +2,17 @@
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local LOG = ap_core_debug.bracket(CAUSE.ALPHA)
 local cfg = ap_core_mcm.cfg
 
 local function _on_death(trace, squad, se_victim, se_killer)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_alpha_enabled then return { code = RESULT.FAILED_RULES } end
 
     local killer_id = ap_core_utils.get_entity_id(se_killer)
@@ -32,7 +37,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
             killer_id = killer_id, kills = kills, level = level }
     end
 
-    return {
+    local result = {
         cause = CAUSE.ALPHA,
         killer_id = killer_id,
         species = species,
@@ -40,11 +45,19 @@ local function _on_death(trace, squad, se_victim, se_killer)
         level = level,
         level_id = xlevel.get_level_id(se_killer),
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] kills=%d level=%d [%.2fms]",
+            LOG, trace.id, trace.path, kills, level, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
-    ap_core_producer.register(CAUSE.ALPHA, {
+    ap_core_producer.register({
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_death)
-    ap_core_debug.info("[CAUSE.ALPHA] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

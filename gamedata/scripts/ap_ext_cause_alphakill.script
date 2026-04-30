@@ -2,9 +2,11 @@
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
+local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local LOG = ap_core_debug.bracket(CAUSE.ALPHAKILL)
 local time_global = time_global
 
 local cfg = ap_core_mcm.cfg
@@ -13,6 +15,9 @@ local _cooldown
 local ALPHAKILL_COOLDOWN_MS = 60000
 
 local function _on_death(trace, squad, npc, killer)
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+
     if not cfg.cause_alphakill_enabled then return { code = RESULT.FAILED_RULES } end
 
     local victim_id = ap_core_utils.get_entity_id(npc)
@@ -28,7 +33,7 @@ local function _on_death(trace, squad, npc, killer)
     local killer_id = ap_core_utils.get_entity_id(killer)
     local species = squad and ap_ext_util.get_species(squad.id)
 
-    return {
+    local result = {
         cause = CAUSE.ALPHAKILL,
         id = victim_id,
         community = squad and squad.player_id,
@@ -41,12 +46,20 @@ local function _on_death(trace, squad, npc, killer)
         position = npc and npc.position,
         level_id = xlevel.get_level_id(npc),
     }
+    prof:stop()
+    if ap_core_debug.enabled() then
+        trace:push(result.cause)
+        ap_core_debug.debug("%s [tid=%d path=%s] victim=%d killer=%d [%.2fms]",
+            LOG, trace.id, trace.path, victim_id, killer_id or -1, prof:get_ms())
+    end
+    return result
 end
 
 function on_game_start()
     _cooldown = ap_core_limiter.create_cooldown(ALPHAKILL_COOLDOWN_MS)
-    ap_core_producer.register(CAUSE.ALPHAKILL, {
+    ap_core_producer.register({
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,
+        category = CAUSE_CATEGORY.REACTIONS, debug_label = LOG,
     }, _on_death)
-    ap_core_debug.info("[CAUSE.ALPHAKILL] Initialized")
+    ap_core_debug.info(LOG .. " Initialized")
 end

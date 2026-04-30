@@ -486,6 +486,8 @@ The mod includes English and Russian translations.
 
 Credits:
 Altogolik - support, ideas, source materials
+Stalker_Boss - Russian translation
+gwalls - English copyediting
 
 ---
 
