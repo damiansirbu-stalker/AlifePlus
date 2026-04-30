@@ -8,7 +8,6 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_EYE = ap_core_const.RANGE_EYE
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
-local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_BY_CAUSE = {
@@ -22,19 +21,17 @@ local _alignment_human
 local _alignment_loot
 local _alignment_outlaw
 
---- Per-branch metadata: opportunity DTO field, threshold cfg key, personality traits, MCM name.
+--- Per-branch metadata: opportunity DTO field, threshold cfg key.
+--- Personality lives in the consequence handler (architecture.md Domain Gates), not here.
 local BRANCH_META = {
     [CAUSE.STASH_LOOT] = {
         field = "last_stash_loot_at", threshold_key = "cause_stash_loot_threshold",
-        traits = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }, name = "stash_loot",
     },
     [CAUSE.STASH_AMBUSH] = {
         field = "last_stash_ambush_at", threshold_key = "cause_stash_ambush_threshold",
-        traits = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }, name = "stash_ambush",
     },
     [CAUSE.STASH_FILL] = {
         field = "last_stash_fill_at", threshold_key = "cause_stash_fill_threshold",
-        traits = { PERSONALITY.GREED, PERSONALITY.RELATION }, name = "stash_fill",
     },
 }
 
@@ -85,11 +82,6 @@ local function _on_smart(trace, squad)
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
 
-    local p_ok = ap_ext_util.check_personality(meta.traits, squad.player_id,
-        { name = meta.name, p_min = cfg["consequence_" .. meta.name .. "_personality_min"],
-          p_max = cfg["consequence_" .. meta.name .. "_personality_max"] })
-    if not p_ok then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
-
     local result = {
         cause = cause_const,
         squad_id = squad.id,
@@ -104,8 +96,8 @@ local function _on_smart(trace, squad)
     prof:stop()
     if ap_core_debug.enabled() then
         trace:push(result.cause)
-        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d branch=%s items=%d [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, meta.name, items_count, prof:get_ms())
+        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d items=%d [%.2fms]",
+            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, items_count, prof:get_ms())
     end
     return result
 end
@@ -118,7 +110,7 @@ function on_game_start()
     for i = 1, #radiant do
         ap_core_producer.register({
             callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
-            category = CAUSE_CATEGORY.OPPORTUNITIES, debug_label = LOG_INIT,
+            category = CAUSE_CATEGORY.OPPORTUNITIES,
         }, _on_smart)
     end
     ap_core_debug.info(LOG_INIT .. " Initialized")

@@ -349,22 +349,29 @@ local function _find_demo_squads(max_count, alignment, is_type)
     return squads
 end
 
+local DEMO_COMPETING_KEYS = {
+    "cause_stash_loot_enabled", "cause_stash_ambush_enabled", "cause_stash_fill_enabled",
+    "cause_area_conquer_enabled", "cause_area_infest_enabled",
+}
+
 local function _demo_disable_competing_causes()
     local mcm = ap_core_mcm.cfg
-    _demo_saved_causes = {
-        cause_area_enabled = mcm.cause_area_enabled,
-        cause_stash_enabled = mcm.cause_stash_enabled,
-    }
-    mcm.cause_area_enabled = false
-    mcm.cause_stash_enabled = false
+    _demo_saved_causes = {}
+    for i = 1, #DEMO_COMPETING_KEYS do
+        local k = DEMO_COMPETING_KEYS[i]
+        _demo_saved_causes[k] = mcm[k]
+        mcm[k] = false
+    end
     ap_core_debug.debug("[TEST] needs_demo disabled competing causes")
 end
 
 local function _demo_restore_causes()
     if not _demo_saved_causes then return end
     local mcm = ap_core_mcm.cfg
-    mcm.cause_area_enabled = _demo_saved_causes.cause_area_enabled
-    mcm.cause_stash_enabled = _demo_saved_causes.cause_stash_enabled
+    for i = 1, #DEMO_COMPETING_KEYS do
+        local k = DEMO_COMPETING_KEYS[i]
+        mcm[k] = _demo_saved_causes[k]
+    end
     ap_core_debug.debug("[TEST] needs_demo restored causes")
     _demo_saved_causes = nil
 end

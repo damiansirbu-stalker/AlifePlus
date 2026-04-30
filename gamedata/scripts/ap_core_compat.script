@@ -83,18 +83,26 @@ local function _v140_cleanup_squad_key(m_data)
     m_data.ap_core_squad = nil
 end
 
---- v1.5.5: nuke broker scripted-squads table (n136 INFEST extracted to AREA family,
---- consequence:instincts_infest -> consequence:area_infest rename leaves stale arrival keys).
---- Release every scripted squad's engine-side scripted_target then drop the whole table;
---- broker repopulates from scratch on next pipeline run.
-local function _v155_cleanup_broker(m_data)
+--- v1.5.5: release scripted squads whose on_arrive references a consequence no longer
+--- registered (n136 INFEST extracted to AREA family renamed consequence:instincts_infest
+--- to consequence:area_infest; future renames self-heal too). Detects orphans against the
+--- live ap_core_const.CONSEQUENCE set; valid in-flight squads survive untouched. Self-healing:
+--- zero orphans after run -> no-op next load.
+local function _v155_release_orphan_arrivals(m_data)
     local broker = m_data.ap_core_broker
     if type(broker) ~= "table" then return end
     local squads = broker.ap_scripted_squads
-    if type(squads) == "table" then
-        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    if type(squads) ~= "table" then return end
+    local known = {}
+    for _, v in pairs(ap_core_const.CONSEQUENCE) do known[v] = true end
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for squad_id, data in pairs(squads) do
+        if data and data.on_arrive and not known[data.on_arrive] then
+            _release_squad(squad_id)
+            _to_remove[#_to_remove + 1] = squad_id
+        end
     end
-    m_data.ap_core_broker = nil
+    for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
 --- Run all migrations on load_state.
@@ -108,7 +116,7 @@ local function _on_load_state(m_data)
     _v135_clear_elite_data(m_data)
     _v135_release_old_scripted_squads(m_data)
     _v140_cleanup_squad_key(m_data)
-    _v155_cleanup_broker(m_data)
+    _v155_release_orphan_arrivals(m_data)
 end
 
 function on_game_start()

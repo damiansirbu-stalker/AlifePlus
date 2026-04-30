@@ -59,20 +59,24 @@ end
 function on_game_start()
     local cbs = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #cbs do
-        ap_core_producer.register(CAUSE.AMBUSH,
-            { callback = cbs[i], cause_type = CAUSE_TYPE.RADIANT },
-            _predicate)
+        ap_core_producer.register({
+            callback = cbs[i],
+            cause_type = CAUSE_TYPE.RADIANT,
+            category = CAUSE_CATEGORY.OPPORTUNITIES,
+        }, _predicate)
     end
 end
 ```
 
 Rules:
 - Return `{ cause = CAUSE.X, ...payload }` on match, `{ code = RESULT.FAILED_RULES, ... }` on reject
-- Never call observe(), publish(), or manipulate counters
+- Each call publishes one specific cause; no umbrella names
+- Predicates self-observe (prof + trace:push + debug log) — never call `observe()` or manipulate counters
 - Include `level_id` from the source entity, never the actor
 - Include `community = squad.player_id` for downstream alignment/personality checks
 - Add `CAUSE.AMBUSH = "cause:ambush"` to ap_core_const
 - Add MCM `cause_ambush_enabled` to ap_core_mcm.defaults
+- `config.category` is required. Pick from `CAUSE_CATEGORY.REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES` based on what your cause represents.
 
 ---
 
@@ -317,12 +321,15 @@ end
 | cause:alphakill | reactive | id, killer_id, community, name, alpha_level, kills |
 | cause:wounded | reactive | position, level_id, npc_id, squad_id, is_player, health |
 | cause:harvest | reactive | position, level_id, taker_id, taker_squad_id, artefact_section |
-| cause:stash | radiant | position, level_id, squad_id, community |
-| cause:area | radiant | position, level_id, squad_id, community |
-| cause:needs | radiant | position, level_id, squad_id, community, need, drive |
-| cause:instincts | radiant | position, level_id, squad_id, community, species, instinct, drive |
+| cause:stash_loot | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
+| cause:stash_ambush | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
+| cause:stash_fill | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
+| cause:area_conquer | radiant | position, level_id, squad_id, community, dto_field |
+| cause:area_infest | radiant | position, level_id, squad_id, community, species, dto_field |
+| cause:hunger / cause:sleep / cause:rest / cause:heal / cause:shelter / cause:supply / cause:money / cause:job / cause:social | radiant | position, level_id, squad_id, community, dto_field, drive |
+| cause:instinct_scatter / cause:instinct_feed / cause:instinct_sleep / cause:instinct_explore / cause:instinct_socialize | radiant | position, level_id, squad_id, community, species, dto_field, drive |
 
-All events include `_trace` (trace context) and `cause_type` ("radiant" or "reactive").
+All events include `_trace`, `_cause_id` (broker-assigned monotonic seq), and `cause_type` ("radiant" or "reactive"). The umbrella names (`cause:stash`, `cause:area`, `cause:needs`, `cause:instincts`) are **never published** — only the specific child causes above flow through xbus.
 
 ---
 

@@ -715,7 +715,7 @@ These rules govern how cause and consequence code is written. They apply to ever
 
 **Cause-to-consequence mapping.**
 
-9. **N:M.** A cause may have one or many consequence subscribers (`cause:money` → `money_harvest` + `money_hunt`). A consequence subscribes to exactly one cause. Adding a consequence is a new xbus subscription; it must not require predicate changes.
+9. **N:M subscription, runtime depends on cause type.** A cause may have one or many consequence subscribers (`cause:money` → `money_harvest` + `money_hunt`). A consequence subscribes to exactly one cause. Adding a consequence is a new xbus subscription; it must not require predicate changes. **Firing rules differ by cause type (see invariant 7):** radiant publishes fire exactly ONE consequence per publish (cascade stops on first SUCCESS, alternatives compete via shuffle); reactive publishes fire ALL subscribed consequences independently.
 
 **Pipeline.**
 
@@ -745,15 +745,16 @@ end, "my_mod")
 
 ### Level 2: Register (pipeline participant)
 
-Register a cause predicate with `ap_core_producer.register(name, config, predicate)` and a consequence handler with `ap_core_consumer.register(name, config, handler)`. The framework handles gates, protection, rate limiting, tracing, arrival, and cleanup.
+Register a cause predicate with `ap_core_producer.register(config, predicate)` and a consequence handler with `ap_core_consumer.register(name, config, handler)`. The framework handles gates, protection, rate limiting, tracing, arrival, and cleanup.
 
 | Parameter | Producer | Consumer |
 |-----------|----------|----------|
-| name | Cause identifier | Consequence identifier (also used as trace key, rate limit key, arrival key) |
-| config.callback | Engine callback name | - |
-| config.cause_type | RADIANT or REACTIVE | - |
-| config.event | - | Cause event to subscribe to |
-| config.on_arrive | - | Optional arrival handler function |
+| name | — (handler ref dedupes) | Consequence identifier (also used as trace key, rate limit key, arrival key) |
+| config.callback | Engine callback name | — |
+| config.cause_type | RADIANT or REACTIVE | — |
+| config.category | CAUSE_CATEGORY enum (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES). Required. Drives per-category rate-limit grouping. | — |
+| config.event | — | Cause event to subscribe to |
+| config.on_arrive | — | Optional arrival handler function |
 | handler | Predicate function | Consequence handler function |
 
 ### Level 3: Coordinate (external mod integration)

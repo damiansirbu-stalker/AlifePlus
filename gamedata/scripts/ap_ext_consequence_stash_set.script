@@ -15,6 +15,11 @@ local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
+local PERSONALITY = ap_ext_const.PERSONALITY
+
+local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
+local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
+local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_LOOT = ap_core_debug.bracket(CONSEQUENCE.STASH_LOOT)
@@ -107,6 +112,10 @@ end
 local function _handler_loot(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.STASH_LOOT, function()
+        if not ap_ext_util.check_personality(_personality_loot, event_data.community,
+            { name = CONSEQUENCE.STASH_LOOT, p_min = cfg.consequence_stash_loot_personality_min, p_max = cfg.consequence_stash_loot_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
         local squad, smart_or_err = _route_squad(trace, event_data, "stash_loot", CONSEQUENCE.STASH_LOOT,
             { stash_id = event_data.stash_id, dto_field = event_data.dto_field }, nil)
         if not squad then return smart_or_err end
@@ -130,6 +139,10 @@ end
 local function _handler_ambush(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.STASH_AMBUSH, function()
+        if not ap_ext_util.check_personality(_personality_ambush, event_data.community,
+            { name = CONSEQUENCE.STASH_AMBUSH, p_min = cfg.consequence_stash_ambush_personality_min, p_max = cfg.consequence_stash_ambush_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
         local squad, smart_or_err = _route_squad(trace, event_data, "stash_ambush", CONSEQUENCE.STASH_AMBUSH,
             { stash_id = event_data.stash_id, dto_field = event_data.dto_field }, PRE_RELEASE_GULAG.STASH_AMBUSH)
         if not squad then return smart_or_err end
@@ -158,6 +171,10 @@ end
 local function _handler_fill(event_data)
     local trace = event_data._trace
     return ap_core_debug.observe(trace, CONSEQUENCE.STASH_FILL, function()
+        if not ap_ext_util.check_personality(_personality_fill, event_data.community,
+            { name = CONSEQUENCE.STASH_FILL, p_min = cfg.consequence_stash_fill_personality_min, p_max = cfg.consequence_stash_fill_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
         local items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
         local squad, smart_or_err = _route_squad(trace, event_data, "stash_fill", CONSEQUENCE.STASH_FILL,
             { stash_id = event_data.stash_id, dto_field = event_data.dto_field, items = items }, nil)
