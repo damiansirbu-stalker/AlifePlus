@@ -6,20 +6,65 @@ local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
 local LOG_BY_CAUSE = {
     [CAUSE.INSTINCT_SCATTER]   = ap_core_debug.bracket(CAUSE.INSTINCT_SCATTER),
-    [CAUSE.INSTINCT_FEED]      = ap_core_debug.bracket(CAUSE.INSTINCT_FEED),
-    [CAUSE.INSTINCT_SLEEP]     = ap_core_debug.bracket(CAUSE.INSTINCT_SLEEP),
+    [CAUSE.FEED]               = ap_core_debug.bracket(CAUSE.FEED),
+    [CAUSE.HIBERNATE]          = ap_core_debug.bracket(CAUSE.HIBERNATE),
     [CAUSE.INSTINCT_EXPLORE]   = ap_core_debug.bracket(CAUSE.INSTINCT_EXPLORE),
     [CAUSE.INSTINCT_SOCIALIZE] = ap_core_debug.bracket(CAUSE.INSTINCT_SOCIALIZE),
 }
 
 local cfg = ap_core_mcm.cfg
 local _alignment_mutant
+local _alignment_mutant_cowardly
+local _alignment_mutant_feral
+local _alignment_mutant_predator
+local _alignment_mutant_aberrant
 local _food_chain_tier
+
+local _personality_feed = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
+local _personality_hibernate = { PERSONALITY.SURVIVAL }
+
+local function _not_base(smart)
+    return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
+end
+
+local function _make_territory_filter(player_id)
+    return function(smart)
+        return xsmart.is_territory(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_lair_filter(player_id)
+    return function(smart)
+        return xsmart.is_lair(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_surge_filter(player_id)
+    return function(smart)
+        return xsmart.has_surge_shelter(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_lair_or_surge_filter(player_id)
+    return function(smart)
+        return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _resolve_hibernate_filter(species, player_id)
+    if _alignment_mutant_cowardly[species] then return _make_territory_filter(player_id) end
+    if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
+    if _alignment_mutant_predator[species] then return _make_lair_or_surge_filter(player_id) end
+    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
+    return _make_territory_filter(player_id)
+end
 
 --- Hull drive-reduction scored instincts. INFEST is now a separate AREA-family cause (MVT-gated,
 --- handled by ap_ext_cause_area + ap_ext_consequence_area_set).
@@ -27,11 +72,11 @@ local INSTINCTS = {
     { instinct = "scatter", field = "last_scatter_at",
         threshold_key = "cause_instinct_scatter_threshold", enabled_key = "cause_instinct_scatter_enabled",
         weight = 4.0 },
-    { instinct = "feed", field = "last_feed_at",
-        threshold_key = "cause_instinct_feed_threshold", enabled_key = "cause_instinct_feed_enabled",
+    { instinct = "feed", field = "last_feed_at", cause_const = CAUSE.FEED,
+        threshold_key = "cause_feed_threshold", enabled_key = "cause_feed_enabled",
         weight = 3.0, active_period = true },
-    { instinct = "sleep", field = "last_sleep_at",
-        threshold_key = "cause_instinct_sleep_threshold", enabled_key = "cause_instinct_sleep_enabled",
+    { instinct = "hibernate", field = "last_hibernate_at", cause_const = CAUSE.HIBERNATE,
+        threshold_key = "cause_hibernate_threshold", enabled_key = "cause_hibernate_enabled",
         weight = 2.5, dormant_period = true },
     { instinct = "explore", field = "last_explore_at",
         threshold_key = "cause_instinct_explore_threshold", enabled_key = "cause_instinct_explore_enabled",
@@ -113,8 +158,31 @@ local function _on_smart(trace, squad)
     local winner, best_drive = _find_strongest_drive(dto, now, species)
     if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
+    local cause_const = winner.cause_const or ("cause:instinct_" .. winner.instinct)
+
+    local dst_smart_id
+    if cause_const == CAUSE.FEED then
+        if not ap_ext_util.check_personality(_personality_feed, species,
+            { name = "feed", p_min = cfg.cause_feed_personality_min, p_max = cfg.cause_feed_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+            { level_id = level_id, filter = _make_territory_filter(squad.player_id), max_distance = RANGE_SCENT })
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        dst_smart_id = smart.id
+    elseif cause_const == CAUSE.HIBERNATE then
+        if not ap_ext_util.check_personality(_personality_hibernate, species,
+            { name = "hibernate", p_min = cfg.cause_hibernate_personality_min, p_max = cfg.cause_hibernate_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+            { level_id = level_id, filter = _resolve_hibernate_filter(species, squad.player_id), max_distance = RANGE_SCENT })
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        dst_smart_id = smart.id
+    end
+
     local result = {
-        cause = "cause:instinct_" .. winner.instinct,
+        cause = cause_const,
         dto_field = winner.field,
         drive = best_drive,
         squad_id = squad.id,
@@ -122,6 +190,7 @@ local function _on_smart(trace, squad)
         species = species,
         position = squad.position,
         level_id = level_id,
+        dst_smart_id = dst_smart_id,
     }
     prof:stop()
     if ap_core_debug.enabled() then
@@ -134,6 +203,10 @@ end
 
 function on_game_start()
     _alignment_mutant = ap_ext_const.alignment_mutant
+    _alignment_mutant_cowardly = ap_ext_const.alignment_mutant_cowardly
+    _alignment_mutant_feral = ap_ext_const.alignment_mutant_feral
+    _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
+    _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
     _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
     INSTINCTS[1].max_tier = 2
     local radiant = ap_core_const.RADIANT_CALLBACKS

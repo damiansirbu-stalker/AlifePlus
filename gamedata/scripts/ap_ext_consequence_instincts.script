@@ -1,4 +1,4 @@
---- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed, sleep, explore, socialize)
+--- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore, socialize)
 --- INFEST is handled by ap_ext_consequence_area_set (decision 1: territorial-claim opportunity, not deprivation drive)
 
 local pairs = pairs
@@ -31,45 +31,10 @@ local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
 end
 
-local function _make_territory_filter(player_id)
-    return function(smart)
-        return xsmart.is_territory(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
-    end
-end
-
-local function _make_lair_filter(player_id)
-    return function(smart)
-        return xsmart.is_lair(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
-    end
-end
-
-local function _make_surge_filter(player_id)
-    return function(smart)
-        return xsmart.has_surge_shelter(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
-    end
-end
-
 local function _make_territory_or_lair_filter(player_id)
     return function(smart)
         return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
     end
-end
-
--- cowardly -> territory, feral -> lair, predator -> nil (fallback), aberrant -> surge
-local function _resolve_sleep_filter(species, player_id)
-    if _alignment_mutant_cowardly[species] then return _make_territory_filter(player_id) end
-    if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
-    if _alignment_mutant_predator[species] then return nil end
-    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
-    return _make_territory_filter(player_id)
-end
-
-local function _find_predator_sleep_smart(trace, position, level_id, player_id)
-    local lair_filter = _make_lair_filter(player_id)
-    local smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = lair_filter, max_distance = RANGE_SCENT })
-    if smart then return smart end
-    local surge_filter = _make_surge_filter(player_id)
-    return ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = surge_filter, max_distance = RANGE_SCENT })
 end
 
 local function _build_socialize_filter(community, exclude_smart_id)
@@ -105,14 +70,12 @@ local CONFIGS = {
     { instinct = "scatter", event = CAUSE.INSTINCT_SCATTER, consequence = CONSEQUENCE.INSTINCTS_SCATTER, name = "instinct_scatter",
         personality = { PERSONALITY.INV_AGGRESSION, PERSONALITY.SURVIVAL },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SCATTER },
-    { instinct = "feed", event = CAUSE.INSTINCT_FEED, consequence = CONSEQUENCE.INSTINCTS_FEED, name = "instinct_feed",
+    { instinct = "feed", event = CAUSE.FEED, consequence = CONSEQUENCE.FEED_HUNT, name = "feed_hunt",
         dto_field = "last_feed_at",
-        personality = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION },
-        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_FEED },
-    { instinct = "sleep", event = CAUSE.INSTINCT_SLEEP, consequence = CONSEQUENCE.INSTINCTS_SLEEP, name = "instinct_sleep",
-        dto_field = "last_sleep_at",
-        personality = { PERSONALITY.SURVIVAL },
-        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SLEEP },
+        pre_release_gulag = PRE_RELEASE_GULAG.FEED_HUNT },
+    { instinct = "hibernate", event = CAUSE.HIBERNATE, consequence = CONSEQUENCE.HIBERNATE_LAIR, name = "hibernate_lair",
+        dto_field = "last_hibernate_at",
+        pre_release_gulag = PRE_RELEASE_GULAG.HIBERNATE_LAIR },
     { instinct = "explore", event = CAUSE.INSTINCT_EXPLORE, consequence = CONSEQUENCE.INSTINCTS_EXPLORE, name = "instinct_explore",
         dto_field = "last_explore_at",
         personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY },
@@ -122,15 +85,6 @@ local CONFIGS = {
         personality = { PERSONALITY.RELATION },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SOCIALIZE },
 }
-
-local function _find_sleep_smart(trace, species, position, level_id, player_id)
-    if _alignment_mutant_predator[species] then
-        return _find_predator_sleep_smart(trace, position, level_id, player_id)
-    end
-    local filter = _resolve_sleep_filter(species, player_id)
-    if not filter then return nil end
-    return ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, filter = filter, max_distance = RANGE_SCENT })
-end
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
     local nearby = ap_core_utils.find_squads_observed(trace, pos, {
@@ -173,9 +127,6 @@ local _find_by_instinct = {
             max_distance = RANGE_EYE, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
-    sleep = function(trace, event_data, _squad)
-        return _find_sleep_smart(trace, event_data.species, event_data.position, event_data.level_id, event_data.community)
-    end,
     socialize = function(trace, event_data, squad)
         local filter = _build_socialize_filter(event_data.community, squad.smart_id)
         local opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT }
@@ -187,38 +138,44 @@ local _find_by_instinct = {
             max_distance = RANGE_SCENT, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
-    feed = function(trace, event_data, _squad)
-        local filter = _make_territory_filter(event_data.community)
-        return ap_core_utils.find_smart_observed(trace, event_data.position, { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT })
-    end,
 }
 
 local function _make_condition(enabled_key)
     return function() return cfg[enabled_key] end
 end
 
+local function _legacy_resolve(entry, event_data, squad, trace)
+    if entry.species_alignment and not entry.species_alignment[event_data.species] then
+        return nil, RESULT.FAILED_RULES, REASON.WRONG_ALIGNMENT
+    end
+    if not ap_ext_util.check_personality(entry.personality, event_data.species,
+        { name = entry.name, p_min = cfg["consequence_" .. entry.name .. "_personality_min"], p_max = cfg["consequence_" .. entry.name .. "_personality_max"] }) then
+        return nil, RESULT.FAILED_RULES, REASON.LOW_PERSONALITY
+    end
+    local finder = _find_by_instinct[entry.instinct]
+    local smart = finder and finder(trace, event_data, squad)
+    if not smart then
+        _fulfill_instinct(event_data.squad_id, entry.dto_field)
+        return nil, RESULT.FAILED_SCAN, REASON.NO_SMART
+    end
+    return smart
+end
+
 local function _make_handler(entry)
     return function(event_data)
         local trace = event_data._trace
         return ap_core_debug.observe(trace, entry.consequence, function()
-            if entry.species_alignment and not entry.species_alignment[event_data.species] then
-                return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.community }
-            end
-            if not ap_ext_util.check_personality(entry.personality, event_data.species,
-                { name = entry.name, p_min = cfg["consequence_" .. entry.name .. "_personality_min"], p_max = cfg["consequence_" .. entry.name .. "_personality_max"] }) then
-                return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
-            end
-
             local squad = xobject.se(event_data.squad_id)
             if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
-            local finder = _find_by_instinct[entry.instinct]
-            local smart = finder and finder(trace, event_data, squad)
-
-            if not smart then
-                _fulfill_instinct(event_data.squad_id, entry.dto_field)
-                return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART }
+            local smart, err_code, err_reason
+            if event_data.dst_smart_id then
+                smart = xobject.se(event_data.dst_smart_id)
+                if not smart then err_code, err_reason = RESULT.FAILED_SCAN, REASON.NO_SMART end
+            else
+                smart, err_code, err_reason = _legacy_resolve(entry, event_data, squad, trace)
             end
+            if err_code then return { code = err_code, reason = err_reason, community = event_data.community } end
 
             local res
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
