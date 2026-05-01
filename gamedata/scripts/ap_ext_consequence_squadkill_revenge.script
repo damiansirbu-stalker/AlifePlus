@@ -93,12 +93,12 @@ local function _handler(event_data)
             level_id = level_id, max_count = cfg.consequence_squadkill_revenge_max_squads,
             exclude_squad_id = event_data.squad_id,
         })
-        if #avengers == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #avengers == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         local target_squad
         if not is_player_kill then
             target_squad = xobject.se(killer_squad_id)
-            if not target_squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_KILLER_SQUAD } end
+            if not target_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_KILLER_SQUAD } end
         end
 
         local moved = {}

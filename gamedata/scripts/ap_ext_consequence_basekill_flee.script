@@ -32,7 +32,7 @@ local function _handler(event_data)
             if ap_core_debug.enabled() then
                 ap_core_debug.debug(LOG .. " no flee smart | %s", xsmart.dump_smarts(factions, level_id))
             end
-            return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART }
+            return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART }
         end
 
         local fleeing = ap_core_utils.find_squads_observed(trace, smart.position, {
@@ -41,7 +41,7 @@ local function _handler(event_data)
             level_id = level_id, max_count = cfg.consequence_basekill_flee_max_squads,
             exclude_at_smart_id = destination.id,
         })
-        if #fleeing == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #fleeing == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason

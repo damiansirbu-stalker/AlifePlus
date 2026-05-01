@@ -37,7 +37,7 @@ local function _handler(event_data)
         end
 
         local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
-        if not target_smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        if not target_smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
         local squads = ap_core_utils.find_squads_observed(trace, position, {
             factions = { [faction] = true },
@@ -46,7 +46,7 @@ local function _handler(event_data)
             exclude_at_smart_id = target_smart.id,
             exclude_squad_id = event_data.squad_id,
         })
-        if #squads == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         local moved = {}
         local last_reason

@@ -165,13 +165,13 @@ After a cause publishes to xbus, the consumer receives the event and iterates re
 
 6. **Reactive: all run independently.** For reactive events, all consequences for the cause run regardless of results. Multiple consequences can fire from a single event (e.g. massacre_investigate and massacre_scavenge both respond to the same massacre). Different actor types respond simultaneously.
 
-7. **Loop stop conditions.** The consequence loop stops early on: (a) radiant success (rule 5), (b) global radiant budget exhaustion (`global_consequence_max_events`). All other results (FAILED_RULES, FAILED_EVAL, FAILED_ACTION, DISABLED, rate-limited) skip to the next consequence.
+7. **Loop stop conditions.** The consequence loop stops early on: (a) radiant success (rule 5), (b) global radiant budget exhaustion (`global_consequence_max_events`). All other results (FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED, rate-limited) skip to the next consequence.
 
 #### Pre-gates and Result Codes
 
 **Before each handler runs, the consumer checks two pre-gates.** The `condition` function (registered at init, typically checks MCM enabled flag) determines if the consequence is active. If it returns false, the consumer skips the consequence. Then the rate limiters are checked: if the per-type budget for this consequence is exhausted, the consumer skips it. If the global radiant budget is exhausted, the consumer stops the entire loop. The handler never runs when a pre-gate rejects.
 
-**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, validation) and rejected the event. `FAILED_EVAL` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and eval passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
+**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, validation) and rejected the event. `FAILED_SCAN` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and eval passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
 
 **On `SUCCESS`, the consumer increments the per-type counter, increments the global radiant counter (for radiant events only), and sets `event_data._fired = true`.** For radiant events, success also stops the loop (rule 5).
 
@@ -451,6 +451,8 @@ A random NPC is sampled from the filtered pool. The speaker's community becomes 
 
 ### Causes
 
+> **STALE — DO NOT USE.** This table uses pre-rename names and is now superseded by `doc/features.html`. Per todo n143 (NAMING_LOCK + FIND_IN_CAUSE), the cause names below have changed (e.g. SQUADKILL → squad_kill, fear → overpowered, etc.) and the find-in-cause architecture supersedes the "no find" annotation on Needs/Instincts. Deletion deferred to the n141/n142 implementation pass; reader: trust features.html, not this table.
+
 | Cause | Type | Callback(s) | Conditions |
 |-------|------|-------------|------------|
 | MASSACRE | reactive | squad_on_npc_death | alignment_human, at smart, not is_base, kill_count >= threshold |
@@ -469,21 +471,66 @@ Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...
 
 #### Cause Classification
 
-All causes are reactive. The framework reacts to something. The pipeline splits into two mechanisms:
+Four categories, each with its own mechanic for when and how the cause fires:
 
-- **Simple (reactive pipeline):** a discrete world action triggers the cause. A death, a healing, a pickup. The squad did not ask for it. Engine callback fires, producer evaluates all registered predicates for that callback type.
-- **Radiant (radiant pipeline):** the squad evaluates its own state on its update tick. Nothing specific happened. The framework checks what the squad sees, feels, or senses.
+| Category | Mechanic | Cause | Consequence |
+|---|---|---|---|
+| Reactions | engine event (death, pickup, healing) | builds payload from callback | perception scan from event position |
+| Opportunities | squad tick + look-around | `find_*` + state-classify + pick | act using payload |
+| Needs | squad tick + Hull score on stalker DTO | pick strongest drive | find satisfaction location + act |
+| Instincts | squad tick + Hull score on mutant DTO | pick strongest drive | find satisfaction location + act |
 
-Radiant causes split into three behavioral categories based on what the squad evaluates:
+Reactions are simple-mechanism (the engine callback IS the event). Opportunities, Needs, and Instincts are radiant-mechanism (the squad tick is a heartbeat — only what the squad finds, scores, or picks IS the event).
 
-| Category | Causes | What drives behavior | Range |
-|----------|--------|---------------------|-------|
-| Reactions | MASSACRE, SQUADKILL, BASEKILL, ALPHA, ALPHAKILL, WOUNDED, HARVEST | World event triggers response | radio (stalkers), scent (mutants) |
-| Opportunities | STASH, AREA | Squad sees what's nearby | eye |
-| Needs | NEEDS | Stalker internal drives, scored by deprivation | radio |
-| Instincts | INSTINCTS | Mutant internal drives, scored by deprivation | scent |
+##### Where finds live: 1 → N expansion
 
-Reactions are simple-mechanism causes. Opportunities, Needs, and Instincts are radiant-mechanism causes.
+The find lives where 1 expands to N candidates.
+
+- Reactions: 1 event → N witnesses → **consequence** `find_squads`
+- Opportunities: 1 squad → N world things → **cause** `find_*`
+- Needs / Instincts: 1 squad → N drives → cause picks (no find — internal score); **consequence** `find_smart` per its filter
+
+When 1 → N is over world entities, use `find_*`. When 1 → N is over internal state, no find.
+
+##### Cause vs consequence
+
+| Cause owns | Consequence owns |
+|---|---|
+| trigger (DTO score, look-around, callback event) | probabilistic gates (personality, chance) |
+| sub-cause pick (world classify, Hull score, or squad invariants) | the action |
+| invariant filtering (alignment, species) | |
+
+Cause filters by **squad invariants** — alignment, species. Properties baked in at squad creation that don't change at runtime. Valid for family pre-filter and sub-cause picking. Consequence handles **probabilistic gates** (personality roll, chance) and the action.
+
+##### Cause-consequence cardinality (HARD RULE)
+
+**Radiant causes are 1:1 with consequences. Always. No exceptions.**
+**Reactive causes can be 1:N with consequences.**
+
+Reason: reactive cascades pull N actors (witnesses) from one event. Each witness can react differently — different alignment, different personality — so multiple consequences make sense. Radiant pushes one actor (the ticking squad) per tick; that squad can only do one thing at a time.
+
+Consequence: when a radiant umbrella has multiple "consequences" today (e.g. need_shelter → shelter_indoor + shelter_outdoor), it must be restructured. Either:
+- The umbrella picks ONE specific cause per tick (variant pick by personality/alignment inside the umbrella predicate, publishes one of N specific causes), with each specific cause 1:1 with its consequence.
+- Or the variants collapse into a single consequence with cascade-find inside the cause (try filter A, fall back to filter B, publish once).
+
+Never publish a radiant cause that fan-outs to multiple consequence handlers.
+
+##### Bundling rule
+
+One predicate per shared computation with mutually-exclusive sub-cause output.
+
+**Required for bundling (both must hold):**
+
+1. **Shared computation.** Sub-causes derive from the same input scan or score.
+2. **One emit per call.** Picker emits exactly one sub-cause; precedence resolves overlap when needed.
+
+If either fails → separate predicates, cascade orchestrates.
+
+| Pattern | Bundle? |
+|---|---|
+| Loop scoring N drives, picks strongest | yes — single loop, single winner |
+| Independent scans with different filters | no — different finds, separate predicates |
+| Independent engine callbacks | no — different trigger sources, separate predicates |
 
 #### Theoretical Foundations
 
@@ -496,6 +543,8 @@ Radiant causes split by what the threshold MEANS, not by how it is implemented. 
 DTO + timestamp + arrival-reset is the architectural shape both theories share. They differ in what the threshold MEANS, not how it is implemented.
 
 ### Consequences
+
+> **STALE — DO NOT USE.** This table uses pre-rename consequence names (squadkill_revenge, area_conquer_human, instincts_scatter, etc.) and is superseded by `doc/features.html`. Per todo n143 (NAMING_LOCK + FIND_IN_CAUSE), every consequence below has been renamed under the locked pattern. Deletion deferred to the n141/n142 implementation pass; reader: trust features.html, not this table.
 
 | Cause | Consequence | Actor | Effect |
 |-------|-------------|-------|--------|
@@ -536,7 +585,7 @@ rules -> eval -> action
 | Phase | What runs | Returns on fail |
 |-------|-----------|-----------------|
 | rules | alignment, species (direct hash), personality, match (need/instinct), validation (nil args, at_base) | `FAILED_RULES` |
-| eval | find_squads, find_smart, xobject.se (entity lookup) | `FAILED_EVAL` |
+| eval | find_squads, find_smart, xobject.se (entity lookup) | `FAILED_SCAN` |
 | action | script_squad, script_actor_target, update_alpha, conquer_smart | `FAILED_ACTION` |
 | action (ok) | | `SUCCESS` |
 
@@ -666,7 +715,7 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 1. **Serialization boundary.** `m_data` accepts only primitives and tables of primitives. Functions, userdata, metatables are silently dropped on save. Arrival handler keys are strings; handler functions are transient, re-registered every load.
 
-2. **Result code contract.** Every consequence returns `{ code = RESULT.X }` where X is one of `SUCCESS`, `FAILED_RULES`, `FAILED_EVAL`, `FAILED_ACTION`. Consumer reads `.code` for chain control and counter updates. Missing or malformed return = error.
+2. **Result code contract.** Every consequence returns `{ code = RESULT.X }` where X is one of `SUCCESS`, `FAILED_RULES`, `FAILED_SCAN`, `FAILED_ACTION`. Consumer reads `.code` for chain control and counter updates. Missing or malformed return = error.
 
 3. **Scripted bypass.** `scripted_target` overrides `SIMBOARD:get_squad_target()`. Engine `target_precondition` (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in consequence filters. Capacity is handled by arrival overflow.
 
@@ -678,9 +727,9 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation (enforced by dispatch rule 5: stop on first radiant success). Alternatives compete via shuffle -- each has equal probability of being tried first. Reactive causes have no such constraint -- multiple consequences fire independently.
 
-8. **Domain gates in ext only.** Alignment and personality checks live exclusively in ext consequence code (`ap_ext_util`). Species filtering is a direct hash lookup in consequence code. Core pipeline has zero domain knowledge. Core handles rate limiting, protection, tracing, and squad lifecycle. Ext handles who acts and how likely.
+8. **Domain gates in ext only.** Core pipeline has zero domain knowledge — only rate limiting, protection, tracing, squad lifecycle. All domain logic lives in ext. Cause-side handles squad invariants (alignment, species) for family pre-filter and sub-cause pick. Consequence-side handles probabilistic gates (personality, chance) and the action. See Cause Classification.
 
-9. **Cascade publish contract.** A radiant cause predicate must not publish if no consequence can act on the event. The cascade stops on first publish -- if no consequence fires, the trigger is wasted and remaining causes in the cascade never evaluate. The contract is universal: no per-family exception. World-state checks (find stash, find smart, find squad) live in the predicate when needed for cause specificity, not in the consequence. Predicates filter at the cause level (e.g. `alignment_human` for stash, `alignment_mutant` for instincts, EYE-range stash peek before publishing `cause:stash_*`); consequences may still fail post-publish on personality re-roll or movement reject, but the publish itself is consequence-aligned. Reactive causes are not cascaded, but the same principle applies to avoid unnecessary consumer iterations.
+9. **Radiant cascade.** When a radiant cause's predicate publishes, the cascade stops — other registered radiant predicates do not evaluate this tick. Predicates pre-filter by squad invariants (alignment, species) so the cascade does not spend slots on squads outside the family. Consequences may still fail post-publish on probabilistic gates (personality, chance) or destination rejection. Reactive causes do not cascade; consequences fan out independently.
 
 10. **Cause/consequence structural rules — see dedicated section.** The structural shape of cause and consequence code (specific causes only, predicate-per-cause, umbrella generator pattern, N:M mapping, file naming, factory-vs-handwritten) is governed by the Cause/Consequence Structural Rules section below.
 
@@ -695,17 +744,17 @@ These rules govern how cause and consequence code is written. They apply to ever
 
 **Cause side.**
 
-1. **Specific causes only.** Causes are always specific. Umbrella names (`cause:area`, `cause:needs`) are file/family names, not causes. No constant, MCM key, toggle, log prefix, comment, or doc sentence may reference an umbrella as if it were a cause.
+1. **Specific causes only.** Causes are specific perceptions or events, never umbrella categories. Umbrella names (REACTIONS, OPPORTUNITIES, NEEDS, INSTINCTS) are categories, not published causes. Family prefixes (`need_`, `instinct_`) are admitted in cause names only to disambiguate when cause nouns would collide between families (e.g., shared drives like hunger across stalker and mutant). See Naming in `conventions.md`.
 
 2. **Each cause-side function publishes one specific cause per call.** A function may emit different specific cause tags across different calls based on its valuation, but each individual call returns exactly one specific cause name (or nil).
 
-3. **Umbrella cause file holds ONE generator function.** Closely-related causes (shared callback, alignment, or world-state) live in `ap_ext_cause_<family>.script`. The file contains one generator function that does valuation across the sibling causes and publishes one specific cause tag per call. All four current umbrellas (needs, instincts, stash, area) follow this shape. The umbrella file is code organization — there is no umbrella runtime entity. Forbidden: ad-hoc branching that mixes fundamentally different evaluation logic in one function (e.g. one handler for both stalker conquer and mutant conquer with different identity-resolution paths — that's a consequence-side problem, see rule 5).
+3. **Bundling: one predicate per shared computation with mutually-exclusive sub-cause output.** When sub-causes derive from the same input scan or score (a single loop over N drives), one predicate file holds the bundle. When sub-causes have independent scans, filters, or trigger sources, they live in separate predicate files. See Cause Classification → Bundling rule.
 
 4. **Per-cause enable toggle.** Each cause has its own `cause_<specific_name>_enabled` toggle. No umbrella master toggle, ever — the umbrella is not a cause and has nothing to enable.
 
 **Consequence side.**
 
-5. **One handler per consequence.** Each consequence has its own dedicated handler function. Two different consequences never share a function. `area_conquer_mutant` and `area_conquer_human` are different consequences and have different handlers, even when they live in the same file.
+5. **One handler per consequence.** Each consequence has its own dedicated handler function. Two different consequences never share a function, even when they live in the same file.
 
 6. **CONFIGS factory exception.** When all consequences in a family share an identical handler shape (find smart → script squad → record-event), one factory in the family file may generate one handler per consequence. Reserved for stereotypical drive families: `needs`, `instincts`, and any future family with the same uniform shape.
 
@@ -723,7 +772,7 @@ These rules govern how cause and consequence code is written. They apply to ever
 
 11. **Category at registration.** Each cause registration declares its `category` (`CAUSE_CATEGORY.REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES`) in `producer.register` config. Category drives rate-limit grouping. Category is not a cause and is never published.
 
-12. **Cascade publish contract (radiant).** A radiant predicate must not publish if no consequence can act. World-state checks needed for cause specificity live in the predicate. Consequences may still fail post-publish on personality re-roll or movement reject; the publish itself must be consequence-aligned.
+12. **Cause/consequence work split.** Cause owns the trigger (DTO score, look-around, callback event), the sub-cause pick (world classify, Hull score, or squad invariants), and invariant filtering (alignment, species). Consequence owns probabilistic gates (personality, chance) and the action. The find lives where 1 expands to N: cause for opportunities (1 squad → N world things), consequence for reactions (1 event → N witnesses) and for needs/instincts destinations (1 drive → N candidate smarts). See Cause Classification for the full mechanic-by-category mapping.
 
 ---
 

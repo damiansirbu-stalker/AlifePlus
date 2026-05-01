@@ -103,18 +103,19 @@ local function _setup_hooks()
     end
 end
 
+local _adapters = {
+    [CALLBACK.X_NPC_MEDKIT_USE]  = _on_npc_medkit_use,
+    [CALLBACK.ACTOR_ON_ITEM_USE] = _on_actor_item_use,
+}
+
 function on_game_start()
     _setup_hooks()
-
-    ap_core_producer.register({
-        callback = CALLBACK.X_NPC_MEDKIT_USE, cause_type = CAUSE_TYPE.REACTIVE,
-        category = CAUSE_CATEGORY.REACTIONS,
-    }, _on_npc_medkit_use)
-
-    ap_core_producer.register({
-        callback = CALLBACK.ACTOR_ON_ITEM_USE, cause_type = CAUSE_TYPE.REACTIVE,
-        category = CAUSE_CATEGORY.REACTIONS,
-    }, _on_actor_item_use)
-
+    local cbs = ap_core_const.WOUNDED_CALLBACKS
+    for i = 1, #cbs do
+        ap_core_producer.register({
+            callback = cbs[i], cause_type = CAUSE_TYPE.REACTIVE,
+            category = CAUSE_CATEGORY.REACTIONS,
+        }, _adapters[cbs[i]])
+    end
     ap_core_debug.info(LOG .. " Initialized (npc=medkit, player=item_use)")
 end

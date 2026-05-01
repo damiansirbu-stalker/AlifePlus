@@ -1,5 +1,7 @@
---- ap_ext_cause_stash: State-classifier picker (decision 11). Peeks one stash in EYE range,
+--- ap_ext_cause_stash: State-classifier picker. Peeks one stash in EYE range,
 --- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
+
+local random = math.random
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -8,12 +10,13 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_EYE = ap_core_const.RANGE_EYE
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_BY_CAUSE = {
-    [CAUSE.STASH_LOOT]   = ap_core_debug.bracket(CAUSE.STASH_LOOT),
-    [CAUSE.STASH_AMBUSH] = ap_core_debug.bracket(CAUSE.STASH_AMBUSH),
-    [CAUSE.STASH_FILL]   = ap_core_debug.bracket(CAUSE.STASH_FILL),
+    [CAUSE.STASH_FULL]  = ap_core_debug.bracket(CAUSE.STASH_FULL),
+    [CAUSE.STASH_TRAP]  = ap_core_debug.bracket(CAUSE.STASH_TRAP),
+    [CAUSE.STASH_EMPTY] = ap_core_debug.bracket(CAUSE.STASH_EMPTY),
 }
 
 local cfg = ap_core_mcm.cfg
@@ -21,33 +24,65 @@ local _alignment_human
 local _alignment_loot
 local _alignment_outlaw
 
---- Per-branch metadata: opportunity DTO field, threshold cfg key.
---- Personality lives in the consequence handler (architecture.md Domain Gates), not here.
-local BRANCH_META = {
-    [CAUSE.STASH_LOOT] = {
-        field = "last_stash_loot_at", threshold_key = "cause_stash_loot_threshold",
+local _personality_empty = { PERSONALITY.GREED, PERSONALITY.RELATION }
+local _personality_full  = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
+local _personality_trap  = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
+
+--- Per-cause storage: opportunity DTO field, threshold cfg key.
+local KEYS_BY_CAUSE = {
+    [CAUSE.STASH_FULL] = {
+        field = "last_stash_full_at", threshold_key = "cause_stash_full_threshold",
     },
-    [CAUSE.STASH_AMBUSH] = {
-        field = "last_stash_ambush_at", threshold_key = "cause_stash_ambush_threshold",
+    [CAUSE.STASH_TRAP] = {
+        field = "last_stash_trap_at", threshold_key = "cause_stash_trap_threshold",
     },
-    [CAUSE.STASH_FILL] = {
-        field = "last_stash_fill_at", threshold_key = "cause_stash_fill_threshold",
+    [CAUSE.STASH_EMPTY] = {
+        field = "last_stash_empty_at", threshold_key = "cause_stash_empty_threshold",
     },
 }
 
---- Branch picker. Empty stash + human -> FILL. Non-empty + outlaw + valuable cache -> AMBUSH.
---- Non-empty + LOOT-eligible alignment -> LOOT. Each branch checks its own per-cause toggle;
+--- Per-cause RULES + SCAN config (personality traits + cfg key names for min/max).
+local _personality_by_cause = {
+    [CAUSE.STASH_EMPTY] = {
+        traits = _personality_empty,
+        p_min_key = "cause_stash_empty_personality_min",
+        p_max_key = "cause_stash_empty_personality_max",
+    },
+    [CAUSE.STASH_FULL] = {
+        traits = _personality_full,
+        p_min_key = "cause_stash_full_personality_min",
+        p_max_key = "cause_stash_full_personality_max",
+    },
+    [CAUSE.STASH_TRAP] = {
+        traits = _personality_trap,
+        p_min_key = "cause_stash_trap_personality_min",
+        p_max_key = "cause_stash_trap_personality_max",
+    },
+}
+
+--- Pick N random sections from the fill pool at publish time. Cause owns the items list.
+local function _pick_random_items(count)
+    local pool = ap_ext_const.stash_fill_items
+    local items = {}
+    for i = 1, count do
+        items[i] = pool[random(#pool)]
+    end
+    return items
+end
+
+--- Branch picker. Empty stash + human -> EMPTY. Non-empty + outlaw + valuable cache -> TRAP.
+--- Non-empty + LOOT-eligible alignment -> FULL. Each branch checks its own per-cause toggle;
 --- a disabled branch falls through to the next eligible branch.
 local function _pick_branch(community, is_empty, items_count)
     if is_empty then
-        if _alignment_human[community] and cfg.cause_stash_fill_enabled then return CAUSE.STASH_FILL end
+        if _alignment_human[community] and cfg.cause_stash_empty_enabled then return CAUSE.STASH_EMPTY end
         return nil
     end
-    if _alignment_outlaw[community] and items_count >= cfg.consequence_stash_ambush_min_items
-        and cfg.cause_stash_ambush_enabled then
-        return CAUSE.STASH_AMBUSH
+    if _alignment_outlaw[community] and items_count >= cfg.cause_stash_trap_min_items
+        and cfg.cause_stash_trap_enabled then
+        return CAUSE.STASH_TRAP
     end
-    if _alignment_loot[community] and cfg.cause_stash_loot_enabled then return CAUSE.STASH_LOOT end
+    if _alignment_loot[community] and cfg.cause_stash_full_enabled then return CAUSE.STASH_FULL end
     return nil
 end
 
@@ -73,13 +108,30 @@ local function _on_smart(trace, squad)
     local cause_const = _pick_branch(squad.player_id, is_empty, items_count)
     if not cause_const then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    local meta = BRANCH_META[cause_const]
+    local keys = KEYS_BY_CAUSE[cause_const]
     local now = xtime.game_sec()
     local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
     if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
-    local elapsed = now - (opp_dto[meta.field] or 0)
-    if elapsed <= cfg[meta.threshold_key] * HOURS_TO_SECONDS then
+    local elapsed = now - (opp_dto[keys.field] or 0)
+    if elapsed <= cfg[keys.threshold_key] * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
+    end
+
+    local dst_smart_id
+    local pcfg = _personality_by_cause[cause_const]
+    if pcfg then
+        if not ap_ext_util.check_personality(pcfg.traits, squad.player_id,
+            { name = cause_const, p_min = cfg[pcfg.p_min_key], p_max = cfg[pcfg.p_max_key] }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        local dst = ap_core_utils.find_smart_observed(trace, stash.position, { level_id = level_id })
+        if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        dst_smart_id = dst.id
+    end
+
+    local fill_items
+    if cause_const == CAUSE.STASH_EMPTY then
+        fill_items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
     end
 
     local result = {
@@ -91,7 +143,9 @@ local function _on_smart(trace, squad)
         stash_id = stash.id,
         stash_position = stash.position,
         items_count = items_count,
-        dto_field = meta.field,
+        dto_field = keys.field,
+        dst_smart_id = dst_smart_id,
+        fill_items = fill_items,
     }
     prof:stop()
     if ap_core_debug.enabled() then

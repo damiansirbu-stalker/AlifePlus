@@ -106,13 +106,30 @@ RADIANT_CALLBACKS = {
     CALLBACK.SQUAD_ON_UPDATE,
 }
 
+--- Reactive callback families (one logical event has multiple engine paths).
+--- Cause registers the same predicate against every callback in its family.
+HARVEST_CALLBACKS = {
+    CALLBACK.ACTOR_ON_ITEM_TAKE,
+    CALLBACK.NPC_ON_ITEM_TAKE,
+}
+WOUNDED_CALLBACKS = {
+    CALLBACK.X_NPC_MEDKIT_USE,
+    CALLBACK.ACTOR_ON_ITEM_USE,
+}
+
+--- Pipeline caps (internal tuning, not MCM).
+--- RADIANT_MAX_CHECKS_PER_TICK: producer cascade ceiling per tick across all generators.
+--- REACTIVE_MAX_CONSEQUENCES_PER_CAUSE: consumer ceiling on consequences fired per cause publish.
+RADIANT_MAX_CHECKS_PER_TICK = 5
+REACTIVE_MAX_CONSEQUENCES_PER_CAUSE = 5
+
 --- Result codes: consequence handler return values (template method phases)
---- Handlers return SUCCESS, FAILED_RULES, FAILED_EVAL, FAILED_ACTION.
+--- Handlers return SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION.
 --- DISABLED is consumer-only (condition pre-gate, never returned by handlers).
 RESULT = {
     SUCCESS = "success",
     FAILED_RULES = "failed_rules",
-    FAILED_EVAL = "failed_eval",
+    FAILED_SCAN = "failed_scan",
     FAILED_ACTION = "failed_action",
     DISABLED = "disabled",
 }
@@ -188,9 +205,9 @@ CAUSE = {
     INSTINCT_EXPLORE   = "cause:instinct_explore",
     INSTINCT_SOCIALIZE = "cause:instinct_socialize",
     -- STASH family (radiant MVT timestamps + state-classifier picker)
-    STASH_LOOT   = "cause:stash_loot",
-    STASH_AMBUSH = "cause:stash_ambush",
-    STASH_FILL   = "cause:stash_fill",
+    STASH_FULL   = "cause:stash_full",
+    STASH_TRAP   = "cause:stash_trap",
+    STASH_EMPTY  = "cause:stash_empty",
     -- AREA family (radiant MVT timestamps + priority-gate picker per alignment;
     -- n103/n105 will add ABANDON/DEFECT siblings)
     AREA_CONQUER = "cause:area_conquer",

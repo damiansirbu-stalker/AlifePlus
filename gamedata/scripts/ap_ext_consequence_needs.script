@@ -219,14 +219,14 @@ local function _make_handler(entry)
                 return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
             end
             local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+            if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
             local filter = _build_filter(entry, event_data.community)
             local find_opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_RADIO }
 
             local smart = ap_core_utils.find_smart_observed(trace, event_data.position, find_opts)
             if not smart then
                 _fulfill_need(event_data.squad_id, entry.dto_field)
-                return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART }
+                return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART }
             end
 
             local res

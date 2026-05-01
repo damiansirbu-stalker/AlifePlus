@@ -119,7 +119,7 @@ local function _handler(event_data)
 
         -- EVAL: world queries
         local smart = xobject.se(event_data.smart_id)
-        if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
         local squads = ap_core_utils.find_squads_observed(trace, event_data.position, {
             factions = _alignment,
@@ -128,7 +128,7 @@ local function _handler(event_data)
             max_count = cfg.consequence_ambush_setup_max_squads,
             exclude_at_smart_id = smart.id,
         })
-        if #squads == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         -- ACTION: script squads, record activity
         local moved = {}
@@ -166,7 +166,7 @@ end
 ```
 
 Rules:
-- Always return `{ code = RESULT.X }` where X is SUCCESS, FAILED_RULES, FAILED_EVAL, or FAILED_ACTION
+- Always return `{ code = RESULT.X }` where X is SUCCESS, FAILED_RULES, FAILED_SCAN, or FAILED_ACTION
 - Follow the consequence template: rules -> eval -> action (see conventions.md)
 - Enabled gate goes in `condition` function (consumer pre-gate), not inside the handler
 - Personality checked inside handler via `ap_ext_util.check_personality`
@@ -398,7 +398,7 @@ Read-only static tables and enums that integrators reference directly. No regist
 | `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Match to `record.consequence`. |
 | `CONSEQUENCE_INFO` | per-consequence `{ name_key, action_key }`. `name_key` is the short caption ("Massacre Investigate"); `action_key` is the full action phrase ("Investigating a Massacre Site"). Both XML ids resolved via `game.translate_string`. |
 | `CONSEQUENCE_PHASE` | trace-only enum used by `observe()` for sub-phase paths (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.). Integrators rarely need this; it shows up in DEBUG-level traces. |
-| `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_EVAL, FAILED_ACTION, DISABLED). |
+| `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED). |
 | `REASON` | reason codes for skip/failure traces (NIL_ARGS, IS_OWNED, NO_SQUAD, ...). |
 | `RANGE_EYE` / `RANGE_RADIO` / `RANGE_SCENT` | range tier constants in meters. Use when calling `ap_core_utils.find_squads`/`find_smart`. |
 

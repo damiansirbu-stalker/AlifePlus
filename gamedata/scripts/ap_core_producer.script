@@ -193,10 +193,8 @@ end
 local _cascade_buf = {}
 local math_random = math.random
 
---- Cascade through radiant causes in random order, stop on first successful publish.
---- Pre-checks per-entry category rate-limit; skips entry if blocked, cascade tries next.
---- Predicate self-observes after winner pick. Cascade breaks on first publish so the squad
---- does at most one thing per tick. Buffer shuffled in-place; never allocates.
+--- Cascade through radiant causes in random order. Stop on first publish or at RADIANT_MAX_CHECKS_PER_TICK.
+--- Rate-blocked entries are skipped without counting (they never ran RULES).
 local function _eval_radiant_cascade(on_map, squad)
     local cascade_size = #_cascade_buf
     for i = cascade_size, 2, -1 do
@@ -204,6 +202,8 @@ local function _eval_radiant_cascade(on_map, squad)
         if j ~= i then _cascade_buf[i], _cascade_buf[j] = _cascade_buf[j], _cascade_buf[i] end
     end
     local sc = stats_collecting()
+    local checks_done = 0
+    local cap = ap_core_const.RADIANT_MAX_CHECKS_PER_TICK
     for i = 1, cascade_size do
         local entry = _cascade_buf[i]
         if not ap_core_limiter.check_cause_rate_limit(entry.category) then
@@ -217,6 +217,8 @@ local function _eval_radiant_cascade(on_map, squad)
             _try_publish(on_map, result, trace, entry.category, entry.cause_type)
             break
         end
+        checks_done = checks_done + 1
+        if checks_done >= cap then break end
         ::continue::
     end
 end

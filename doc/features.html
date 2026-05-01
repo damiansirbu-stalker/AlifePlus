@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AlifePlus Features</title>
+<style>
+  :root {
+    --c-bg:           #f6f4ee;
+    --c-paper:        #ffffff;
+    --c-text:         #1f2933;
+    --c-text-soft:    #52606d;
+    --c-text-mute:    #7b8794;
+    --c-text-bright:  #1a2129;
+    --c-accent:       #8c6d2a;
+    --c-border:       #ddd8cc;
+    --c-border-soft:  #ebe7dc;
+    --c-section-bg:   #efeadd;
+    --mono: "JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: var(--sans);
+    max-width: 1500px;
+    margin: 2em auto;
+    padding: 0 2em 4em;
+    line-height: 1.55;
+    color: var(--c-text);
+    background: var(--c-bg);
+    font-size: 14px;
+  }
+  h1 {
+    font-size: 1.7em;
+    margin: 0 0 0.2em;
+    color: var(--c-text-bright);
+    letter-spacing: -0.005em;
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 1.1em;
+    margin: 2.5em 0 0.8em;
+    padding-bottom: 0.4em;
+    color: var(--c-text-bright);
+    border-bottom: 1px solid var(--c-border);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .subtitle { color: var(--c-text-soft); margin: 0 0 2em; font-size: 0.95em; line-height: 1.6; }
+  .section-intro { color: var(--c-text-soft); margin: 0 0 1em; font-size: 0.92em; line-height: 1.6; max-width: 1100px; }
+  .section-intro ul { margin: 0.4em 0; padding-left: 1.2em; }
+  .section-intro li { margin: 0.2em 0; }
+  p { margin: 0.6em 0; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(140,109,42,0.09);
+    color: var(--c-accent);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+  a { color: var(--c-accent); }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin: 1em 0 2em;
+    background: var(--c-paper);
+    border: 1px solid var(--c-border);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  th, td { padding: 9px 13px; vertical-align: top; text-align: left; }
+  th {
+    background: var(--c-section-bg);
+    color: var(--c-text-bright);
+    font-weight: 600;
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--c-border);
+  }
+  td {
+    border-top: 1px solid var(--c-border-soft);
+    font-size: 0.92em;
+    color: var(--c-text);
+  }
+  tbody tr:first-child td { border-top: none; }
+
+  tbody + tbody tr:first-child td { border-top: 2px solid var(--c-border); }
+  tr.section-end td { border-bottom: 3px solid var(--c-text-soft) !important; }
+
+  td.cat {
+    text-align: center;
+    vertical-align: middle;
+    color: var(--c-text-bright);
+    font-weight: 600;
+    background: var(--c-paper);
+    border-right: 1px solid var(--c-border);
+    width: 130px;
+    padding: 12px 10px;
+  }
+  td.cat .cat-name {
+    font-size: 1em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  td.cause-group {
+    font-weight: 600;
+    vertical-align: middle;
+    color: var(--c-text-bright);
+    background: var(--c-paper);
+    border-right: 1px solid var(--c-border);
+    font-family: var(--mono);
+    font-size: 0.88em;
+    width: 130px;
+  }
+
+  td.name {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    color: var(--c-text-bright);
+    white-space: nowrap;
+    width: 200px;
+  }
+  td.xray {
+    font-family: var(--mono);
+    font-size: 0.84em;
+    color: var(--c-accent);
+    white-space: nowrap;
+    width: 175px;
+  }
+  td.desc { color: var(--c-text); }
+
+  td.tech { padding-top: 6px; padding-bottom: 6px; }
+  .phase-row {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 2px 10px;
+    margin-bottom: 6px;
+  }
+  .phase-row:last-child { margin-bottom: 0; }
+  .phase-label {
+    color: var(--c-text-mute);
+    text-transform: uppercase;
+    font-size: 0.78em;
+    letter-spacing: 0.07em;
+    font-weight: 600;
+    padding-top: 2px;
+  }
+  .phase-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--c-text-soft);
+    font-family: var(--mono);
+    font-size: 0.83em;
+    line-height: 1.45;
+  }
+  .clause { padding: 1px 0; }
+  .clause.none { color: var(--c-text-mute); font-style: italic; font-family: var(--sans); }
+
+  table.legend td:first-child { font-weight: 600; width: 130px; color: var(--c-text-bright); }
+  table.files td:first-child { font-family: var(--mono); font-size: 0.86em; white-space: nowrap; width: 320px; color: var(--c-accent); }
+
+  ol { margin: 0.8em 0; padding-left: 1.4em; }
+  ol li { margin: 0.3em 0; }
+
+  .uniformity-note {
+    background: rgba(140,109,42,0.07);
+    border-left: 3px solid var(--c-accent);
+    padding: 0.8em 1.1em;
+    margin: 0 0 2em;
+    font-size: 0.92em;
+    line-height: 1.55;
+    color: var(--c-text);
+  }
+  .uniformity-note strong { color: var(--c-text-bright); }
+</style>
+</head>
+<body>
+
+<h1>AlifePlus Features</h1>
+<p class="subtitle">Inventory of causes and consequences. Framework rules, phase semantics, naming conventions, and uniformity scope live in <code>architecture.md</code>.</p>
+
+<h2>Causes</h2>
+
+<table>
+<thead><tr><th>Category</th><th>Cause</th><th>Description</th><th>Xray Event</th><th>Technical</th></tr></thead>
+
+<tbody>
+<tr><td class="cat" rowspan="7"><div class="cat-name">Reactions</div></td>
+<td class="name">massacre</td>
+<td class="desc">Deaths pile up at a smart terrain that isn't a base.</td>
+<td class="xray">squad_on_npc_death</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human(victim)</div><div class="clause">at_smart</div><div class="clause">not is_base</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">kill_count &gt;= threshold</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:massacre</div></div></div>
+</td></tr>
+
+<tr><td class="name">squad_kill</td>
+<td class="desc">A squad's last member dies away from base.</td>
+<td class="xray">squad_on_npc_death</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human(victim)</div><div class="clause">not is_base</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">last_member_dead</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:squad_kill</div></div></div>
+</td></tr>
+
+<tr><td class="name">base_kill</td>
+<td class="desc">Deaths pile up at a faction base.</td>
+<td class="xray">squad_on_npc_death</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human(victim)</div><div class="clause">at is_base</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">kill_count &gt;= threshold</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:base_kill</div></div></div>
+</td></tr>
+
+<tr><td class="name">wounded</td>
+<td class="desc">An NPC or player uses a healing item.</td>
+<td class="xray">x_npc_medkit_use, actor_on_item_use</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">not protected</div><div class="clause">not is_base</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:wounded</div></div></div>
+</td></tr>
+
+<tr><td class="name">harvest</td>
+<td class="desc">An NPC or player picks up an artefact.</td>
+<td class="xray">actor_on_item_take, npc_on_item_take</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">IsArtefact(item)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:harvest</div></div></div>
+</td></tr>
+
+<tr><td class="name">alpha</td>
+<td class="desc">A mutant accumulates enough kills to level up as an alpha.</td>
+<td class="xray">squad_on_npc_death</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">killer is mutant</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">projected_kills crosses level</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:alpha</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">alpha_kill</td>
+<td class="desc">An alpha mutant dies.</td>
+<td class="xray">squad_on_npc_death</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">victim is alpha</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">cooldown_clear</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:alpha_kill</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cat" rowspan="8"><div class="cat-name">Opportunities</div></td>
+<td class="name">stash_empty</td>
+<td class="desc">Squad discovers an empty stash; refill cooldown elapsed.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_stashes(state=empty)</div><div class="clause">mvt(fill)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:stash_empty</div></div></div>
+</td></tr>
+
+<tr><td class="name">stash_full</td>
+<td class="desc">Squad discovers a non-empty stash; loot cooldown elapsed.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_stashes(state=full, items_count &lt; trap_threshold)</div><div class="clause">mvt(loot)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:stash_full</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">stash_trap</td>
+<td class="desc">Squad discovers a heavily-stocked stash at night; ambush cooldown elapsed.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">is_night</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_stashes(state=full, items_count &gt;= trap_threshold)</div><div class="clause">mvt(ambush)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:stash_trap</div></div></div>
+</td></tr>
+
+<tr><td class="name">area_empty</td>
+<td class="desc">Squad discovers an unclaimed smart terrain.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(empty=true, faction=none)</div><div class="clause">mvt(conquer)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:area_empty</div></div></div>
+</td></tr>
+
+<tr><td class="name">area_lair</td>
+<td class="desc">Squad discovers a mutant lair.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(is_lair=true)</div><div class="clause">mvt(infest)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:area_lair</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">area_base</td>
+<td class="desc">Squad discovers a friendly base of its own faction.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause none">none</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(is_base=true, faction=ticking_squad.player_id)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:area_base</div></div></div>
+</td></tr>
+
+<tr><td class="name">overpowered_human</td>
+<td class="desc">Stalker squad detects an overwhelming enemy force in line of sight.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human - principled</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=enemies, range=RANGE_EYE)</div><div class="clause">power_ratio &gt;= threshold</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:overpowered_human</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">overpowered_mutant</td>
+<td class="desc">Mutant pack detects a higher-tier predator in line of sight.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=enemies, range=RANGE_EYE)</div><div class="clause">tier_higher</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:overpowered_mutant</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cat" rowspan="9"><div class="cat-name">Needs</div></td>
+<td class="name">need_hunger</td>
+<td class="desc">Hunger is the strongest unmet need.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_hunger_at, hunger_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_hunger</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_sleep</td>
+<td class="desc">Sleep is the strongest unmet need; only at night.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">dormant period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_sleep_at, sleep_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_sleep</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_rest</td>
+<td class="desc">Rest is the strongest unmet need; only at night.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">dormant period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_rest_at, rest_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_rest</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_heal</td>
+<td class="desc">Healing is the strongest unmet need.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_heal_at, heal_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_heal</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_shelter</td>
+<td class="desc">Shelter is the strongest unmet need; only at night.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">dormant period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_shelter_at, shelter_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_shelter</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_money</td>
+<td class="desc">Money is the strongest unmet need; only by day.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_money_at, money_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_money</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_supply</td>
+<td class="desc">Supplies are the strongest unmet need; only by day.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_supply_at, supply_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_supply</div></div></div>
+</td></tr>
+
+<tr><td class="name">need_job</td>
+<td class="desc">Work duty is the strongest unmet need; only by day.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_job_at, job_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_job</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">need_social</td>
+<td class="desc">Social contact is the strongest unmet need.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_social_at, social_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:need_social</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cat" rowspan="4"><div class="cat-name">Instincts</div></td>
+<td class="name">instinct_hunger</td>
+<td class="desc">Hunger is the strongest drive; only during active period.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_hunger_at, hunger_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:instinct_hunger</div></div></div>
+</td></tr>
+
+<tr><td class="name">instinct_sleep</td>
+<td class="desc">Sleep is the strongest drive; only during dormant period.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">dormant period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_sleep_at, sleep_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:instinct_sleep</div></div></div>
+</td></tr>
+
+<tr><td class="name">instinct_explore</td>
+<td class="desc">Exploration is the strongest drive; only during active period.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_explore_at, explore_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:instinct_explore</div></div></div>
+</td></tr>
+
+<tr><td class="name">instinct_socialize</td>
+<td class="desc">Pack contact is the strongest drive; only during active period.</td>
+<td class="xray">RADIANT_CALLBACKS</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">active period</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">Hull(last_socialize_at, socialize_threshold) winner</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">publish cause:instinct_socialize</div></div></div>
+</td></tr>
+</tbody>
+</table>
+
+<h2>Consequences</h2>
+
+<table>
+<thead><tr><th>Cause</th><th>Consequence</th><th>Description</th><th>Technical</th></tr></thead>
+
+<tbody>
+<tr><td class="cause-group" rowspan="3">massacre</td>
+<td class="name">massacre_investigate</td>
+<td class="desc">Victim's faction sends squads to investigate the kill site.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (= victim faction)</div><div class="clause">personality(PERCEPTION, RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=victim, range=RANGE_RADIO, pos=event.smart)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div></div></div>
+</td></tr>
+
+<tr><td class="name">massacre_scavenge</td>
+<td class="desc">Cowardly mutants converge to feed on corpses.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant_cowardly</div><div class="clause">personality(SURVIVAL, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=mutant_cowardly, range=RANGE_SCENT, pos=event.smart)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div></div></div>
+</td></tr>
+
+<tr><td class="name">massacre_flee</td>
+<td class="desc">Non-military human witnesses near the kill site flee to a far campfire.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human - {dolg, army, monolith}</div><div class="clause">personality(TBD — n132 future)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=witness_set, range=RANGE_EYE, pos=event.smart)</div><div class="clause">per-squad find_smart(filter=has_campfire, min_dist=1.5*RANGE_EYE from event.smart)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr class="section-end"><td class="cause-group">squad_kill</td>
+<td class="name">squad_revenge</td>
+<td class="desc">Same-faction squads pursue the killer through the simulation.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (= victim faction)</div><div class="clause">personality(AGGRESSION, RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=victim, range=RANGE_RADIO, pos=kill.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_actor_target(target=killer.pos, mode=chase)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">base_kill</td>
+<td class="name">base_support</td>
+<td class="desc">Friendly squads rush to reinforce the base under attack.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (= victim faction)</div><div class="clause">personality(DISCIPLINE, RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=victim, range=RANGE_RADIO, pos=base.smart)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=base.smart, mode=reinforce)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">base_flee</td>
+<td class="desc">Squads at the attacked base evacuate to the nearest faction base.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (= victim faction)</div><div class="clause">at base</div><div class="clause">personality(INV_DISCIPLINE, INV_TERRITORY)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(at_smart=base.smart)</div><div class="clause">find_smart(filter=is_base, faction=victim, min_dist=1.5*RANGE_EYE from kill.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">wounded</td>
+<td class="name">wounded_hunt</td>
+<td class="desc">Predator and aberrant mutants converge on the wounded.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant_predator</div><div class="clause">alignment_mutant_aberrant</div><div class="clause">personality(AGGRESSION, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=mutant_predator+aberrant, range=RANGE_SCENT, pos=subject.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=subject.pos, mode=converge)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">wounded_help</td>
+<td class="desc">Same-faction squads rush to help the wounded.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (= subject faction)</div><div class="clause">personality(RELATION, DISCIPLINE)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=subject, range=RANGE_RADIO, pos=subject.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=subject.pos, mode=rush)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">harvest</td>
+<td class="name">harvest_rob</td>
+<td class="desc">Outlaws pursue the artefact carrier.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_outlaw</div><div class="clause">personality(GREED, AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=outlaw, range=RANGE_RADIO, pos=taker.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_actor_target(target=taker, mode=chase)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">harvest_haunt</td>
+<td class="desc">Aberrant mutants converge on the artefact pickup site.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant_aberrant</div><div class="clause">personality(PERCEPTION, TERRITORY)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=mutant_aberrant, range=RANGE_SCENT, pos=taker.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=taker.pos, mode=converge)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">alpha</td>
+<td class="name">alpha_promote</td>
+<td class="desc">Mutant gains hit-power and panic-immunity buffs and carries valuable loot.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">killer is mutant</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — payload carries killer_id</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">update_alpha_level</div><div class="clause">apply_buffs(hit_power, panic)</div><div class="clause">grant_loot</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr class="section-end"><td class="cause-group">alpha_kill</td>
+<td class="name">alpha_revenge</td>
+<td class="desc">Same-species mutants on the same level pursue the alpha killer.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant (= alpha species)</div><div class="clause">same level</div><div class="clause">personality(AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_squads(faction=alpha_species, level_id=event.level_id)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_actor_target(target=killer, mode=chase)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">stash_empty</td>
+<td class="name">stash_fill</td>
+<td class="desc">Stalker squad walks to the empty stash and hides supplies in it.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(GREED, RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the stash</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=stash.smart)</div><div class="clause">on_arrive(fill_items)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">stash_full</td>
+<td class="name">stash_loot</td>
+<td class="desc">Stalker squad walks to the stash and loots its contents.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_loot</div><div class="clause">personality(GREED, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the stash</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=stash.smart)</div><div class="clause">on_arrive(loot_to_npc_inv)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr class="section-end"><td class="cause-group">stash_trap</td>
+<td class="name">stash_ambush</td>
+<td class="desc">Outlaw squad camps at the stash to ambush looters.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_outlaw</div><div class="clause">personality(GREED, AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the stash</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=stash.smart)</div><div class="clause">on_arrive(camp_ambush)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">area_empty</td>
+<td class="name">area_conquer</td>
+<td class="desc">Human faction claims an empty smart terrain via additive spawn injection; decays after 48h.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(TERRITORY, AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the smart</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div><div class="clause">on_arrive(conquer_smart, additive_spawn_injection, decay=48h)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">area_overrun</td>
+<td class="desc">Mutant species claims an empty smart terrain via exclusive spawn injection.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">personality(TERRITORY, AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the smart</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div><div class="clause">on_arrive(overrun_smart, mutant_claim)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">area_lair</td>
+<td class="name">area_infest</td>
+<td class="desc">Mutants claim a lair as exclusive nest with their species' spawn pool.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">not deprived (cross-DTO read on instincts DTO)</div><div class="clause">personality(TERRITORY, SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the smart</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div><div class="clause">on_arrive(infest_smart, exclusive_spawn)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">area_drift</td>
+<td class="desc">Deprived mutant pack walks to a lair to rest and recover.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">deprived (cross-DTO read on instincts DTO)</div><div class="clause">personality(TBD — n103 future)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the smart</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div><div class="clause">on_arrive(reset all 4 INSTINCT_FIELDS)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr class="section-end"><td class="cause-group">area_base</td>
+<td class="name">area_desert</td>
+<td class="desc">Deprived stalker squad walks home to recover and reset its needs.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">deprived (cross-DTO read on stalker needs DTO)</div><div class="clause">personality(TBD — n103 future)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause none">none — cause located the smart</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad(target=event.smart)</div><div class="clause">on_arrive(reset all 9 NEED_FIELDS)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">overpowered_human</td>
+<td class="name">overpowered_flee</td>
+<td class="desc">Stalker squad falls back to a friendly base far from the threat.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human - principled</div><div class="clause">personality(INV_DISCIPLINE, INV_AGGRESSION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=is_base, faction=squad.player_id, min_dist=1.5*RANGE_EYE from threat.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr class="section-end"><td class="cause-group">overpowered_mutant</td>
+<td class="name">overpowered_scatter</td>
+<td class="desc">Mutant pack scatters to a distant safe smart terrain.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">personality(INV_AGGRESSION, SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(accepts_mutant=true, min_dist=1.5*RANGE_EYE from threat.pos)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">need_hunger</td>
+<td class="name">hunger_campfire</td>
+<td class="desc">Squad walks to a campfire to eat.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_campfire, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(eat_food, reset last_hunger_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">need_sleep</td>
+<td class="name">sleep_campfire</td>
+<td class="desc">Squad walks to a campfire to sleep.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_campfire, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_sleep_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">need_rest</td>
+<td class="name">rest_campfire</td>
+<td class="desc">Squad walks to a campfire to relax, smoke, or drink.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_campfire, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(smoke_or_drink, reset last_rest_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">need_heal</td>
+<td class="name">heal_shelter</td>
+<td class="desc">Squad walks to shelter or anomaly for medical attention.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(TERRITORY, SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_surge_shelter OR has_anomaly, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(use_medkit, reset last_heal_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">need_shelter</td>
+<td class="name">shelter_indoor</td>
+<td class="desc">Squad walks to a surge-sheltered indoor location.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(TERRITORY, DISCIPLINE)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_surge_shelter, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_shelter_at)</div></div></div>
+</td></tr>
+
+<tr><td class="name">shelter_outdoor</td>
+<td class="desc">Squad falls back to a campfire when no indoor shelter is nearby.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">no indoor available</div><div class="clause">personality(PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_campfire, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_shelter_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">need_money</td>
+<td class="name">money_harvest</td>
+<td class="desc">Naturalist squad walks to an anomaly zone to harvest artefacts.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_naturalist</div><div class="clause">personality(GREED, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_anomaly, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_money_at)</div></div></div>
+</td></tr>
+
+<tr><td class="name">money_hunt</td>
+<td class="desc">Squad walks to a mutant lair to hunt for trophies and pelts.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human (subset TBD)</div><div class="clause">personality(GREED, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=is_lair, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_money_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">need_supply</td>
+<td class="name">supply_trader</td>
+<td class="desc">Squad walks to a trader smart to exchange goods.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(GREED, RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_trader_job, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(trade_artefact_for_supplies, reset last_supply_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="3">need_job</td>
+<td class="name">job_outpost</td>
+<td class="desc">Squad walks to a friendly outpost or checkpoint for guard duty.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(TERRITORY, DISCIPLINE)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=not is_base AND not is_lair, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(smoke, reset last_job_at)</div></div></div>
+</td></tr>
+
+<tr><td class="name">job_explore</td>
+<td class="desc">Squad walks to a distant or unvisited smart terrain to explore.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(PERCEPTION, TERRITORY)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=faction=none, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_job_at)</div></div></div>
+</td></tr>
+
+<tr><td class="name">job_research</td>
+<td class="desc">Squad walks to an anomaly zone to study anomalous phenomena.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(PERCEPTION, DISCIPLINE)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_anomaly, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_job_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group" rowspan="2">need_social</td>
+<td class="name">social_campfire</td>
+<td class="desc">Squad joins another at a campfire to socialize.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=has_campfire AND other_squads_present, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(share_drink_or_smoke, reset last_social_at)</div></div></div>
+</td></tr>
+
+<tr class="section-end"><td class="name">social_base</td>
+<td class="desc">Squad walks home to its faction base for companionship.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_human</div><div class="clause">personality(RELATION, TERRITORY)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=is_base, faction=squad.player_id, range=RANGE_RADIO)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(share_drink_or_smoke, reset last_social_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">instinct_hunger</td>
+<td class="name">hunger_hunt</td>
+<td class="desc">Mutant pack moves to open territory to hunt or scavenge.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">personality(SURVIVAL, PERCEPTION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=is_territory, accepts_mutant=true, range=RANGE_SCENT)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_hunger_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">instinct_sleep</td>
+<td class="name">sleep_lair</td>
+<td class="desc">Mutant pack returns to a species-appropriate rest location.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant</div><div class="clause">cowardly→territory, feral→lair, predator→lair OR surge, aberrant→surge</div><div class="clause">personality(SURVIVAL)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(species filter, accepts_mutant=true, range=RANGE_SCENT)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_sleep_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">instinct_explore</td>
+<td class="name">explore_roam</td>
+<td class="desc">Mutant pack roams to nearby territory or lair.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant_cowardly + feral + predator</div><div class="clause">aberrant excluded (lair-bound)</div><div class="clause">personality(PERCEPTION, TERRITORY)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=is_territory OR is_lair, accepts_mutant=true, range=RANGE_SCENT)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_explore_at)</div></div></div>
+</td></tr>
+</tbody>
+
+<tbody>
+<tr><td class="cause-group">instinct_socialize</td>
+<td class="name">socialize_pack</td>
+<td class="desc">Pack animals join same-faction packs.</td>
+<td class="tech">
+<div class="phase-row"><div class="phase-label">Rules</div><div class="phase-content"><div class="clause">alignment_mutant_cowardly + feral</div><div class="clause">predator + aberrant excluded (solitary)</div><div class="clause">personality(RELATION)</div></div></div>
+<div class="phase-row"><div class="phase-label">Eval</div><div class="phase-content"><div class="clause">find_smart(filter=other_same_faction_squads_present, accepts_mutant=true, range=RANGE_SCENT)</div></div></div>
+<div class="phase-row"><div class="phase-label">Action</div><div class="phase-content"><div class="clause">script_squad</div><div class="clause">on_arrive(reset last_socialize_at)</div></div></div>
+</td></tr>
+</tbody>
+</table>
+
+<h2>Files</h2>
+
+<table class="files">
+<thead><tr><th>File</th><th>Holds</th></tr></thead>
+<tbody>
+<tr><td>ap_ext_cause_&lt;name&gt;.script</td><td>One cause per file: massacre, squad_kill, base_kill, wounded, harvest, alpha, alpha_kill, stash_empty, stash_full, stash_trap, area_empty, area_lair, area_base, overpowered_human, overpowered_mutant.</td></tr>
+<tr><td>ap_ext_cause_needs.script</td><td>Bundled (Hull) — all 9 <code>need_*</code> causes.</td></tr>
+<tr><td>ap_ext_cause_instincts.script</td><td>Bundled (Hull) — all 4 <code>instinct_*</code> causes.</td></tr>
+<tr><td>ap_ext_consequence_&lt;name&gt;.script</td><td>Single-consequence: squad_revenge, alpha_promote, alpha_revenge.</td></tr>
+<tr><td>ap_ext_consequence_&lt;family&gt;_set.script</td><td>Hand-written multi: massacre_set (3), base_kill_set (2), wounded_set (2), harvest_set (2), stash_set (3), area_set (5), fear_set (2).</td></tr>
+<tr><td>ap_ext_consequence_needs.script</td><td>CONFIGS factory — 14 consequences.</td></tr>
+<tr><td>ap_ext_consequence_instincts.script</td><td>CONFIGS factory — 4 consequences.</td></tr>
+</tbody>
+</table>
+
+</body>
+</html>

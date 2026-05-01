@@ -27,7 +27,7 @@ local function _handler(event_data)
             level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
             exclude_at_smart_id = smart.id,
         })
-        if #candidates == 0 then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)

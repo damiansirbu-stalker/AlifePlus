@@ -14,30 +14,45 @@ Rules for writing AlifePlus code. Sits between `doc/standards/code-standards.md`
 CONSEQUENCE = CAUSE + VERB
 ```
 
+- **Cause** = perception or trigger event. A noun, optionally with a state qualifier. Never a verb.
+- **Consequence** = the action taken in response. Full cause name + action verb.
+
+The underscore is the structural separator between cause and verb in the consequence. Verbs only appear in consequences.
+
 | Element | Type | Description |
 |---------|------|-------------|
-| CAUSE | noun | What happened or was observed (state/event) |
+| CAUSE | noun (+ optional state qualifier) | What was perceived or what triggered |
 | VERB | verb | The response action |
 | CONSEQUENCE | cause_verb | The full reaction |
-| ACTION | verb | Atomic operation (tracing only) |
-
-Do NOT confuse causes with consequences:
-- Cause = noun. What happened. WOUNDED, MASSACRE, ALPHASPOT.
-- Consequence = cause + verb. What to do about it. WOUNDED_HUNT, MASSACRE_SCAVENGE, ALPHASPOT_FLEE.
-- Verbs (REINFORCE, FLEE, CONQUER) are consequence suffixes, never causes.
-- States (WOUNDED, ALPHA) are causes, never consequences.
+| ACTION | verb | Atomic operation inside a handler (tracing only) |
 
 ### Cause Names
 
-UPPER_SNAKE in constants. **Specific only — no umbrella names** (architecture.md rule 1). `STASH`, `AREA`, `NEEDS`, `INSTINCTS` are file/family names, never causes.
+| Rule | Detail | Examples |
+|------|--------|----------|
+| Single noun | Default for unique cause nouns. | MASSACRE, WOUNDED, HARVEST, ALPHA |
+| Compound noun (closed suffixes) | KILL and SPOT remain conventional compound suffixes for compound noun causes. New suffixes require convention update. | BASEKILL, ALPHAKILL, SQUADKILL, ALPHASPOT |
+| State qualifier | Admitted when the cause perceives a specific world state. One underscore between noun and qualifier. | STASH_EMPTY, STASH_FULL, AREA_LAIR |
+| Umbrella prefix | Required only when cause nouns would collide between families. Use the family's umbrella name as prefix. | NEED_HUNGER (stalker NEEDS) vs INSTINCT_HUNGER (mutant INSTINCTS) |
+| No umbrella prefix | When cause names are unique across families, no prefix needed. | Reactions and opportunities never carry umbrella prefix. |
+| No verbs in cause | Verbs are actions; actions belong to consequences. | NOT STASH_LOOT, NOT AREA_CONQUER, NOT INSTINCT_FEED — these are consequences |
+
+### When prefix, when not
+
+| Family | Prefix | Reason |
+|--------|--------|--------|
+| Reactions | none | unique nouns per world event |
+| Opportunities | none | unique nouns per perception, optionally with state qualifier |
+| Needs (stalker) | `need_` | drive nouns collide with mutant equivalents |
+| Instincts (mutant) | `instinct_` | drive nouns collide with stalker equivalents |
+
+### Consequence Names
 
 | Rule | Detail | Examples |
 |------|--------|----------|
-| Single word | Default, always preferred | MASSACRE, WOUNDED, HARVEST, ALPHA, HUNGER, SLEEP, JOB |
-| Compound + KILL | Death event | BASEKILL, ALPHAKILL, SQUADKILL |
-| Compound + SPOT | Perception event | ALPHASPOT |
-| Family-prefixed compound | Specific child of an umbrella file | STASH_LOOT, STASH_AMBUSH, STASH_FILL, AREA_CONQUER, AREA_INFEST, INSTINCT_FEED |
-| Closed suffix set | KILL and SPOT | New suffixes require convention update |
+| Cause + action verb | Consequence appends an action verb to the full cause name. One additional underscore. | MASSACRE_INVESTIGATE, STASH_FULL_LOOT, NEED_HUNGER_CAMPFIRE |
+| Forks | When multiple consequences subscribe to the same cause, each has a distinct action verb. | NEED_SHELTER_INDOOR, NEED_SHELTER_OUTDOOR |
+| Always carries verb | Even at 1:1 cause-consequence mapping, the consequence has an explicit action verb. | MASSACRE_INVESTIGATE, never bare MASSACRE as consequence |
 
 ### All Naming Patterns
 
@@ -60,7 +75,7 @@ UPPER_SNAKE in constants. **Specific only — no umbrella names** (architecture.
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
 | Script file (cause) | `ap_ext_cause_{family}.script` | `ap_ext_cause_massacre.script`, `ap_ext_cause_area.script` (umbrella) |
 | Script file (consequence, single) | `ap_ext_consequence_{name}.script` | `ap_ext_consequence_massacre_scavenge.script` |
-| Script file (consequence, umbrella) | `ap_ext_consequence_{family}_set.script` | `ap_ext_consequence_area_set.script`, `ap_ext_consequence_stash_set.script` |
+| Script file (consequence, umbrella) | `ap_ext_consequence_{family}_set.script` | `ap_ext_consequence_area_set.script` |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
@@ -129,7 +144,7 @@ Consequence handlers receive trace from consumer. Rate limiting handled by consu
 Every consequence follows a three-phase structure. Each phase returns immediately on failure.
 
 1. **Rules** - alignment check, species check (direct hash), personality roll, match validation, at_base guard -> `FAILED_RULES`
-2. **Eval** - find_squads, find_smart, xobject.se lookups -> `FAILED_EVAL`
+2. **Eval** - find_squads, find_smart, xobject.se lookups -> `FAILED_SCAN`
 3. **Action** - script_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
 
 Gate order within rules: alignment -> species -> personality -> match -> validation.
@@ -142,12 +157,12 @@ Template phase outcomes. Each code names the phase that answered.
 |------|-------|---------|
 | `SUCCESS` | action | Consequence executed, squad scripted, record written |
 | `FAILED_RULES` | rules | Business rules rejected (alignment, personality, validation) |
-| `FAILED_EVAL` | eval | World query found nothing (no squads, no smart, entity gone) |
+| `FAILED_SCAN` | eval | World query found nothing (no squads, no smart, entity gone) |
 | `FAILED_ACTION` | action | Rules and eval passed but action failed (script_squad rejected) |
 | `DISABLED` | consumer | Condition pre-gate returned false (MCM toggle off). Never returned by handlers. |
 
 Rules:
-- Handlers return SUCCESS, FAILED_RULES, FAILED_EVAL, or FAILED_ACTION
+- Handlers return SUCCESS, FAILED_RULES, FAILED_SCAN, or FAILED_ACTION
 - DISABLED is consumer-only (condition pre-gate, line consumer:68)
 - Consumer continues to next consequence on any non-SUCCESS result
 - Consumer stops loop only when global radiant budget is exhausted

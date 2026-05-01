@@ -97,12 +97,12 @@ local function _handler_conquer_human(event_data)
         end
 
         local squad = xobject.se(event_data.squad_id)
-        if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
             level_id = event_data.level_id, max_distance = RANGE_EYE, filter = _build_conquer_filter(),
         })
-        if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         _smart_cooldown:set(smart.id, true)
 
         local res
@@ -153,12 +153,12 @@ local function _handler_conquer_mutant(event_data)
         end
 
         local squad = xobject.se(event_data.squad_id)
-        if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
         local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
             level_id = event_data.level_id, max_distance = RANGE_EYE, filter = _build_conquer_filter(),
         })
-        if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         _smart_cooldown:set(smart.id, true)
 
         local res
@@ -213,7 +213,7 @@ local function _handler_infest(event_data)
         end
 
         local squad = xobject.se(event_data.squad_id)
-        if not squad then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SQUAD } end
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
         if not ap_ext_smart_mutator.can_infest_on_level(event_data.level_id) then
             return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
@@ -226,7 +226,7 @@ local function _handler_infest(event_data)
         local smart = ap_core_utils.find_smart_observed(trace, event_data.position, {
             level_id = event_data.level_id, max_distance = RANGE_SCENT, filter = filter,
         })
-        if not smart then return { code = RESULT.FAILED_EVAL, reason = REASON.NO_SMART } end
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
         local res
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()

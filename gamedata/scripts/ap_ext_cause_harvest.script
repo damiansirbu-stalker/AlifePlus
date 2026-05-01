@@ -70,22 +70,18 @@ local function _evaluate(trace, item, npc)
     return result
 end
 
-local function _on_actor_take(trace, item)
-    return _evaluate(trace, item, nil)
-end
-
-local function _on_npc_take(trace, npc, item)
-    return _evaluate(trace, item, npc)
-end
+local _adapters = {
+    [CALLBACK.ACTOR_ON_ITEM_TAKE] = function(trace, item) return _evaluate(trace, item, nil) end,
+    [CALLBACK.NPC_ON_ITEM_TAKE]   = function(trace, npc, item) return _evaluate(trace, item, npc) end,
+}
 
 function on_game_start()
-    ap_core_producer.register({
-        callback = CALLBACK.ACTOR_ON_ITEM_TAKE, cause_type = CAUSE_TYPE.REACTIVE,
-        category = CAUSE_CATEGORY.REACTIONS,
-    }, _on_actor_take)
-    ap_core_producer.register({
-        callback = CALLBACK.NPC_ON_ITEM_TAKE, cause_type = CAUSE_TYPE.REACTIVE,
-        category = CAUSE_CATEGORY.REACTIONS,
-    }, _on_npc_take)
+    local cbs = ap_core_const.HARVEST_CALLBACKS
+    for i = 1, #cbs do
+        ap_core_producer.register({
+            callback = cbs[i], cause_type = CAUSE_TYPE.REACTIVE,
+            category = CAUSE_CATEGORY.REACTIONS,
+        }, _adapters[cbs[i]])
+    end
     ap_core_debug.info(LOG .. " Initialized (actor=item_take, npc=item_take)")
 end
