@@ -30,6 +30,7 @@ Pre-1.5.0 `cause:needs` confusion came from calling the file a cause. **Forbidde
 7. Generator **MUST** cascade internally (cause-to-cause) and externally (generator-to-generator at producer).
 8. Total checks per radiant tick **MUST** be capped.
 9. **No fallbacks inside a cause.** A cause has exactly one SCAN with one filter. If the SCAN fails, the cause returns and the cascade picks up the next candidate. **MUST NOT** implement try-filter-A-then-filter-B inside a single cause. Variant outcomes are separate causes.
+10. **Cause and consequence share the same noun.** A radiant 1:1 pair carries one identifier under two scopes: `cause:<noun>` (the trigger state) and `consequence:<noun>` (the action). The 1:1 bond is visible in the name. **No** invented synonyms to make a "cause noun" sound different from a "consequence verb" — they're the same concept.
 
 ---
 

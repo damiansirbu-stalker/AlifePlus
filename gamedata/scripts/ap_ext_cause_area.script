@@ -1,84 +1,173 @@
---- ap_ext_cause_area: AREA umbrella with two MVT-gated causes (conquer + infest).
---- Mutant squads are evaluated for INFEST first (territorial-claim), falling through to CONQUER
---- when not infest-eligible. Human/area-aligned squads only check CONQUER. INFEST is mutant-only;
---- non-mutant squads never reach the INFEST predicate.
+--- ap_ext_cause_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
+--- area_swarm (mutant empty smart), area_infest (mutant lair/surge). RULES and SCAN live here
+--- per radiant invariants 4 + 5 + 10. Mutants try INFEST first (territorial-claim dominance),
+--- fall through to SWARM. Humans only check CONQUER.
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local RANGE_EYE = ap_core_const.RANGE_EYE
+local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_BY_CAUSE = {
     [CAUSE.AREA_CONQUER] = ap_core_debug.bracket(CAUSE.AREA_CONQUER),
+    [CAUSE.AREA_SWARM]   = ap_core_debug.bracket(CAUSE.AREA_SWARM),
     [CAUSE.AREA_INFEST]  = ap_core_debug.bracket(CAUSE.AREA_INFEST),
 }
 
 local CONQUER_FIELD = "last_area_conquer_at"
-local INFEST_FIELD = "last_area_infest_at"
+local SWARM_FIELD   = "last_area_swarm_at"
+local INFEST_FIELD  = "last_area_infest_at"
 
 local cfg = ap_core_mcm.cfg
-local _alignment_area
-local _alignment_mutant
 
---- CONQUER eligibility (humans + most mutants minus ecolog/stalker/renegade).
---- Returns result table on eligibility, or nil.
-local function _eligible_conquer(squad, now, level_id)
+local _alignment_mutant
+local _alignment_conquer_human
+local _alignment_conquer_mutant
+local _alignment_mutant_feral
+local _alignment_mutant_predator
+local _alignment_mutant_aberrant
+
+local _personality_conquer = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
+local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
+
+local function _not_base(smart)
+    return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
+end
+
+local function _build_conquer_filter()
+    return function(smart)
+        if not xsmart.is_smart_empty(smart) then return false end
+        if not _not_base(smart) then return false end
+        return true
+    end
+end
+
+local function _make_lair_filter(player_id)
+    return function(smart)
+        return xsmart.is_lair(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_surge_filter(player_id)
+    return function(smart)
+        return xsmart.has_surge_shelter(smart) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _make_lair_or_surge_filter(player_id)
+    return function(smart)
+        return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
+local function _resolve_infest_filter(species, player_id)
+    if _alignment_mutant_feral[species]    then return _make_lair_filter(player_id) end
+    if _alignment_mutant_predator[species] then return _make_lair_or_surge_filter(player_id) end
+    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
+    return nil
+end
+
+local function _squad_has_alpha(squad)
+    for member_id in xsquad.iter_member_ids(squad) do
+        if ap_ext_tracker.is_alpha(member_id) then return true end
+    end
+    return false
+end
+
+local function _read_dto_field(squad_id, field, now)
+    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad_id)
+    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad_id, now) end
+    return opp_dto[field] or 0
+end
+
+local function _eligible_conquer(squad, now, level_id, trace)
     if not cfg.cause_area_conquer_enabled then return nil end
-    if not _alignment_area[squad.player_id] then return nil end
-    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
-    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
-    local elapsed = now - (opp_dto[CONQUER_FIELD] or 0)
+    if not _alignment_conquer_human[squad.player_id] then return nil end
+    local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
     if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then return nil end
+    if not ap_ext_util.check_personality(_personality_conquer, squad.player_id,
+        { name = "area_conquer", p_min = cfg.cause_area_conquer_personality_min, p_max = cfg.cause_area_conquer_personality_max }) then
+        return nil
+    end
+    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+        { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
+    if not smart then return nil end
     return {
         cause = CAUSE.AREA_CONQUER,
         squad_id = squad.id,
         community = squad.player_id,
+        identity = squad.player_id,
         position = squad.position,
         level_id = level_id,
+        dst_smart_id = smart.id,
         dto_field = CONQUER_FIELD,
     }
 end
 
---- INFEST eligibility (mutants only, MVT-gated). Active period of the species also enforced.
---- Returns result table on eligibility, or nil.
-local function _eligible_infest(squad, species, now, level_id)
+local function _eligible_swarm(squad, species, now, level_id, trace)
+    if not cfg.cause_area_swarm_enabled then return nil end
+    if not _alignment_conquer_mutant[squad.player_id] then return nil end
+    local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
+    if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then return nil end
+    if not ap_ext_util.check_personality(_personality_conquer, species,
+        { name = "area_swarm", p_min = cfg.cause_area_swarm_personality_min, p_max = cfg.cause_area_swarm_personality_max }) then
+        return nil
+    end
+    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+        { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
+    if not smart then return nil end
+    return {
+        cause = CAUSE.AREA_SWARM,
+        squad_id = squad.id,
+        community = squad.player_id,
+        identity = species,
+        species = species,
+        position = squad.position,
+        level_id = level_id,
+        dst_smart_id = smart.id,
+        dto_field = SWARM_FIELD,
+    }
+end
+
+local function _eligible_infest(squad, species, now, level_id, trace)
     if not cfg.cause_area_infest_enabled then return nil end
     if not ap_ext_util.is_active_period(species) then return nil end
-    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
-    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
-    local elapsed = now - (opp_dto[INFEST_FIELD] or 0)
+    local elapsed = now - _read_dto_field(squad.id, INFEST_FIELD, now)
     if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then return nil end
+    if not ap_ext_util.check_personality(_personality_infest, species,
+        { name = "area_infest", p_min = cfg.cause_area_infest_personality_min, p_max = cfg.cause_area_infest_personality_max }) then
+        return nil
+    end
+    if not _squad_has_alpha(squad) then return nil end
+    if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return nil end
+    local base_filter = _resolve_infest_filter(species, squad.player_id)
+    if not base_filter then return nil end
+    local filter = function(smart)
+        if ap_ext_smart_mutator.is_infested(smart.id) then return false end
+        return base_filter(smart)
+    end
+    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+        { level_id = level_id, filter = filter, max_distance = RANGE_SCENT })
+    if not smart then return nil end
     return {
         cause = CAUSE.AREA_INFEST,
         squad_id = squad.id,
         community = squad.player_id,
+        identity = species,
         species = species,
         position = squad.position,
         level_id = level_id,
+        dst_smart_id = smart.id,
         dto_field = INFEST_FIELD,
     }
 end
 
---- Mutant predicate: try INFEST first (territorial claim is dominant), fall through to CONQUER.
-local function _predicate_mutant(squad, now, level_id)
-    local species = ap_ext_util.get_species(squad.id)
-    if not species then return nil end
-    local result = _eligible_infest(squad, species, now, level_id)
-    if result then return result end
-    return _eligible_conquer(squad, now, level_id)
-end
-
---- Human predicate: only CONQUER applies. INFEST is mutant-territorial; humans never claim nests.
-local function _predicate_human(squad, now, level_id)
-    return _eligible_conquer(squad, now, level_id)
-end
-
---- AREA umbrella entry point. Master enabled-gate first, then alignment branch, dispatch to
---- species-specific predicate, publish one specific cause (or NO_BRANCH if neither sub-predicate
---- eligible).
 local function _on_smart(trace, squad)
     local prof = xprofiler.new_if(ap_core_debug.enabled())
     prof:start()
@@ -90,9 +179,12 @@ local function _on_smart(trace, squad)
 
     local result
     if _alignment_mutant[squad.player_id] then
-        result = _predicate_mutant(squad, now, level_id)
-    elseif _alignment_area[squad.player_id] then
-        result = _predicate_human(squad, now, level_id)
+        local species = ap_ext_util.get_species(squad.id)
+        if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+        result = _eligible_infest(squad, species, now, level_id, trace)
+        if not result then result = _eligible_swarm(squad, species, now, level_id, trace) end
+    elseif _alignment_conquer_human[squad.player_id] then
+        result = _eligible_conquer(squad, now, level_id, trace)
     else
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
     end
@@ -109,10 +201,16 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    _alignment_area = xtable.subtract(
-        xtable.merge(ap_ext_const.alignment_human, ap_ext_const.alignment_mutant),
-        { ["ecolog"] = true, ["stalker"] = true, ["renegade"] = true })
     _alignment_mutant = ap_ext_const.alignment_mutant
+    _alignment_conquer_human = xtable.subtract(ap_ext_const.alignment_human, { ["ecolog"] = true })
+    _alignment_conquer_mutant = xtable.merge(
+        ap_ext_const.alignment_mutant_feral,
+        ap_ext_const.alignment_mutant_predator,
+        ap_ext_const.alignment_mutant_aberrant)
+    _alignment_mutant_feral    = ap_ext_const.alignment_mutant_feral
+    _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
+    _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
+
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register({
