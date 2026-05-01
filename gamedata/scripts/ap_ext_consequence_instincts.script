@@ -1,4 +1,4 @@
---- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore, socialize)
+--- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore_roam, socialize)
 --- INFEST is handled by ap_ext_consequence_area_set (decision 1: territorial-claim opportunity, not deprivation drive)
 
 local pairs = pairs
@@ -29,12 +29,6 @@ local _scatter_from
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
-end
-
-local function _make_territory_or_lair_filter(player_id)
-    return function(smart)
-        return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
-    end
 end
 
 local function _build_socialize_filter(community, exclude_smart_id)
@@ -76,10 +70,9 @@ local CONFIGS = {
     { instinct = "hibernate", event = CAUSE.HIBERNATE, consequence = CONSEQUENCE.HIBERNATE_LAIR, name = "hibernate_lair",
         dto_field = "last_hibernate_at",
         pre_release_gulag = PRE_RELEASE_GULAG.HIBERNATE_LAIR },
-    { instinct = "explore", event = CAUSE.INSTINCT_EXPLORE, consequence = CONSEQUENCE.INSTINCTS_EXPLORE, name = "instinct_explore",
+    { instinct = "explore", event = CAUSE.EXPLORE, consequence = CONSEQUENCE.EXPLORE_ROAM, name = "explore_roam",
         dto_field = "last_explore_at",
-        personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY },
-        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_EXPLORE },
+        pre_release_gulag = PRE_RELEASE_GULAG.EXPLORE_ROAM },
     { instinct = "socialize", event = CAUSE.INSTINCT_SOCIALIZE, consequence = CONSEQUENCE.INSTINCTS_SOCIALIZE, name = "instinct_socialize",
         dto_field = "last_socialize_at",
         personality = { PERSONALITY.RELATION },
@@ -130,12 +123,6 @@ local _find_by_instinct = {
     socialize = function(trace, event_data, squad)
         local filter = _build_socialize_filter(event_data.community, squad.smart_id)
         local opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT }
-        return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
-    end,
-    explore = function(trace, event_data, squad)
-        local filter = _make_territory_or_lair_filter(event_data.community)
-        local opts = { level_id = event_data.level_id, filter = filter,
-            max_distance = RANGE_SCENT, exclude_id = squad.smart_id }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
 }
@@ -213,8 +200,6 @@ function on_game_start()
     -- alignment_mutant_* tables loaded from ap_ext_const.on_game_start.
     -- scatter: cowardly + feral + predator (tier 0-2, aberrant never scatter)
     CONFIGS[1].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
-    -- explore: cowardly + feral + predator (aberrant are lair-bound, never wander)
-    CONFIGS[4].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
     -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
     CONFIGS[5].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
 

@@ -7,6 +7,7 @@ local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
+local RANGE_EYE = ap_core_const.RANGE_EYE
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -15,7 +16,7 @@ local LOG_BY_CAUSE = {
     [CAUSE.INSTINCT_SCATTER]   = ap_core_debug.bracket(CAUSE.INSTINCT_SCATTER),
     [CAUSE.FEED]               = ap_core_debug.bracket(CAUSE.FEED),
     [CAUSE.HIBERNATE]          = ap_core_debug.bracket(CAUSE.HIBERNATE),
-    [CAUSE.INSTINCT_EXPLORE]   = ap_core_debug.bracket(CAUSE.INSTINCT_EXPLORE),
+    [CAUSE.EXPLORE]            = ap_core_debug.bracket(CAUSE.EXPLORE),
     [CAUSE.INSTINCT_SOCIALIZE] = ap_core_debug.bracket(CAUSE.INSTINCT_SOCIALIZE),
 }
 
@@ -29,6 +30,7 @@ local _food_chain_tier
 
 local _personality_feed = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
 local _personality_hibernate = { PERSONALITY.SURVIVAL }
+local _personality_explore = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
@@ -58,6 +60,12 @@ local function _make_lair_or_surge_filter(player_id)
     end
 end
 
+local function _make_territory_or_lair_filter(player_id)
+    return function(smart)
+        return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _not_base(smart) and xsmart.accepts_mutant(smart, player_id)
+    end
+end
+
 local function _resolve_hibernate_filter(species, player_id)
     if _alignment_mutant_cowardly[species] then return _make_territory_filter(player_id) end
     if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
@@ -78,8 +86,8 @@ local INSTINCTS = {
     { instinct = "hibernate", field = "last_hibernate_at", cause_const = CAUSE.HIBERNATE,
         threshold_key = "cause_hibernate_threshold", enabled_key = "cause_hibernate_enabled",
         weight = 2.5, dormant_period = true },
-    { instinct = "explore", field = "last_explore_at",
-        threshold_key = "cause_instinct_explore_threshold", enabled_key = "cause_instinct_explore_enabled",
+    { instinct = "explore", field = "last_explore_at", cause_const = CAUSE.EXPLORE,
+        threshold_key = "cause_explore_threshold", enabled_key = "cause_explore_enabled",
         weight = 1.0, active_period = true },
     { instinct = "socialize", field = "last_socialize_at",
         threshold_key = "cause_instinct_socialize_threshold", enabled_key = "cause_instinct_socialize_enabled",
@@ -177,6 +185,18 @@ local function _on_smart(trace, squad)
         end
         local smart = ap_core_utils.find_smart_observed(trace, squad.position,
             { level_id = level_id, filter = _resolve_hibernate_filter(species, squad.player_id), max_distance = RANGE_SCENT })
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        dst_smart_id = smart.id
+    elseif cause_const == CAUSE.EXPLORE then
+        if _alignment_mutant_aberrant[species] then
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
+        end
+        if not ap_ext_util.check_personality(_personality_explore, species,
+            { name = "explore", p_min = cfg.cause_explore_personality_min, p_max = cfg.cause_explore_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+            { level_id = level_id, filter = _make_territory_or_lair_filter(squad.player_id), min_distance = RANGE_EYE, max_distance = RANGE_SCENT, exclude_id = squad.smart_id })
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         dst_smart_id = smart.id
     end
