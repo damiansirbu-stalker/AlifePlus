@@ -14,9 +14,9 @@ local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_BY_CAUSE = {
-    [CAUSE.STASH_FULL]  = ap_core_debug.bracket(CAUSE.STASH_FULL),
-    [CAUSE.STASH_TRAP]  = ap_core_debug.bracket(CAUSE.STASH_TRAP),
-    [CAUSE.STASH_EMPTY] = ap_core_debug.bracket(CAUSE.STASH_EMPTY),
+    [CAUSE.STASH_LOOT]   = ap_core_debug.bracket(CAUSE.STASH_LOOT),
+    [CAUSE.STASH_AMBUSH] = ap_core_debug.bracket(CAUSE.STASH_AMBUSH),
+    [CAUSE.STASH_FILL]   = ap_core_debug.bracket(CAUSE.STASH_FILL),
 }
 
 local cfg = ap_core_mcm.cfg
@@ -24,39 +24,39 @@ local _alignment_human
 local _alignment_loot
 local _alignment_outlaw
 
-local _personality_empty = { PERSONALITY.GREED, PERSONALITY.RELATION }
-local _personality_full  = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
-local _personality_trap  = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
+local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
+local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
+local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
 
 --- Per-cause storage: opportunity DTO field, threshold cfg key.
 local KEYS_BY_CAUSE = {
-    [CAUSE.STASH_FULL] = {
-        field = "last_stash_full_at", threshold_key = "cause_stash_full_threshold",
+    [CAUSE.STASH_LOOT] = {
+        field = "last_stash_loot_at", threshold_key = "cause_stash_loot_threshold",
     },
-    [CAUSE.STASH_TRAP] = {
-        field = "last_stash_trap_at", threshold_key = "cause_stash_trap_threshold",
+    [CAUSE.STASH_AMBUSH] = {
+        field = "last_stash_ambush_at", threshold_key = "cause_stash_ambush_threshold",
     },
-    [CAUSE.STASH_EMPTY] = {
-        field = "last_stash_empty_at", threshold_key = "cause_stash_empty_threshold",
+    [CAUSE.STASH_FILL] = {
+        field = "last_stash_fill_at", threshold_key = "cause_stash_fill_threshold",
     },
 }
 
 --- Per-cause RULES + SCAN config (personality traits + cfg key names for min/max).
 local _personality_by_cause = {
-    [CAUSE.STASH_EMPTY] = {
-        traits = _personality_empty,
-        p_min_key = "cause_stash_empty_personality_min",
-        p_max_key = "cause_stash_empty_personality_max",
+    [CAUSE.STASH_FILL] = {
+        traits = _personality_fill,
+        p_min_key = "cause_stash_fill_personality_min",
+        p_max_key = "cause_stash_fill_personality_max",
     },
-    [CAUSE.STASH_FULL] = {
-        traits = _personality_full,
-        p_min_key = "cause_stash_full_personality_min",
-        p_max_key = "cause_stash_full_personality_max",
+    [CAUSE.STASH_LOOT] = {
+        traits = _personality_loot,
+        p_min_key = "cause_stash_loot_personality_min",
+        p_max_key = "cause_stash_loot_personality_max",
     },
-    [CAUSE.STASH_TRAP] = {
-        traits = _personality_trap,
-        p_min_key = "cause_stash_trap_personality_min",
-        p_max_key = "cause_stash_trap_personality_max",
+    [CAUSE.STASH_AMBUSH] = {
+        traits = _personality_ambush,
+        p_min_key = "cause_stash_ambush_personality_min",
+        p_max_key = "cause_stash_ambush_personality_max",
     },
 }
 
@@ -75,14 +75,14 @@ end
 --- a disabled branch falls through to the next eligible branch.
 local function _pick_branch(community, is_empty, items_count)
     if is_empty then
-        if _alignment_human[community] and cfg.cause_stash_empty_enabled then return CAUSE.STASH_EMPTY end
+        if _alignment_human[community] and cfg.cause_stash_fill_enabled then return CAUSE.STASH_FILL end
         return nil
     end
-    if _alignment_outlaw[community] and items_count >= cfg.cause_stash_trap_min_items
-        and cfg.cause_stash_trap_enabled then
-        return CAUSE.STASH_TRAP
+    if _alignment_outlaw[community] and items_count >= cfg.cause_stash_ambush_min_items
+        and cfg.cause_stash_ambush_enabled then
+        return CAUSE.STASH_AMBUSH
     end
-    if _alignment_loot[community] and cfg.cause_stash_full_enabled then return CAUSE.STASH_FULL end
+    if _alignment_loot[community] and cfg.cause_stash_loot_enabled then return CAUSE.STASH_LOOT end
     return nil
 end
 
@@ -130,7 +130,7 @@ local function _on_smart(trace, squad)
     end
 
     local fill_items
-    if cause_const == CAUSE.STASH_EMPTY then
+    if cause_const == CAUSE.STASH_FILL then
         fill_items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
     end
 
