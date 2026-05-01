@@ -1,6 +1,7 @@
 --- ap_ext_cause_instincts: Mutant instinct evaluation (Hull drive scoring, active/dormant period gating)
 
 local math_random, math_floor = math.random, math.floor
+local pairs = pairs
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
@@ -17,7 +18,7 @@ local LOG_BY_CAUSE = {
     [CAUSE.FEED]               = ap_core_debug.bracket(CAUSE.FEED),
     [CAUSE.HIBERNATE]          = ap_core_debug.bracket(CAUSE.HIBERNATE),
     [CAUSE.EXPLORE]            = ap_core_debug.bracket(CAUSE.EXPLORE),
-    [CAUSE.INSTINCT_SOCIALIZE] = ap_core_debug.bracket(CAUSE.INSTINCT_SOCIALIZE),
+    [CAUSE.HERD]               = ap_core_debug.bracket(CAUSE.HERD),
 }
 
 local cfg = ap_core_mcm.cfg
@@ -31,6 +32,7 @@ local _food_chain_tier
 local _personality_feed = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
 local _personality_hibernate = { PERSONALITY.SURVIVAL }
 local _personality_explore = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
+local _personality_herd = { PERSONALITY.RELATION }
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
@@ -66,6 +68,21 @@ local function _make_territory_or_lair_filter(player_id)
     end
 end
 
+local function _build_herd_filter(community, exclude_smart_id)
+    return function(smart)
+        if not _not_base(smart) then return false end
+        if not xsmart.accepts_mutant(smart, community) then return false end
+        if smart.id == exclude_smart_id then return false end
+        local squads = xsmart.get_smart_squads(smart.id)
+        if not squads then return false end
+        for squad_id in pairs(squads) do
+            local sq = xobject.se(squad_id)
+            if sq and sq.player_id == community then return true end
+        end
+        return false
+    end
+end
+
 local function _resolve_hibernate_filter(species, player_id)
     if _alignment_mutant_cowardly[species] then return _make_territory_filter(player_id) end
     if _alignment_mutant_feral[species] then return _make_lair_filter(player_id) end
@@ -89,8 +106,8 @@ local INSTINCTS = {
     { instinct = "explore", field = "last_explore_at", cause_const = CAUSE.EXPLORE,
         threshold_key = "cause_explore_threshold", enabled_key = "cause_explore_enabled",
         weight = 1.0, active_period = true },
-    { instinct = "socialize", field = "last_socialize_at",
-        threshold_key = "cause_instinct_socialize_threshold", enabled_key = "cause_instinct_socialize_enabled",
+    { instinct = "herd", field = "last_herd_at", cause_const = CAUSE.HERD,
+        threshold_key = "cause_herd_threshold", enabled_key = "cause_herd_enabled",
         weight = 0.8, active_period = true },
 }
 
@@ -197,6 +214,18 @@ local function _on_smart(trace, squad)
         end
         local smart = ap_core_utils.find_smart_observed(trace, squad.position,
             { level_id = level_id, filter = _make_territory_or_lair_filter(squad.player_id), min_distance = RANGE_EYE, max_distance = RANGE_SCENT, exclude_id = squad.smart_id })
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        dst_smart_id = smart.id
+    elseif cause_const == CAUSE.HERD then
+        if _alignment_mutant_predator[species] or _alignment_mutant_aberrant[species] then
+            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
+        end
+        if not ap_ext_util.check_personality(_personality_herd, species,
+            { name = "herd", p_min = cfg.cause_herd_personality_min, p_max = cfg.cause_herd_personality_max }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+            { level_id = level_id, filter = _build_herd_filter(squad.player_id, squad.smart_id), max_distance = RANGE_SCENT })
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         dst_smart_id = smart.id
     end

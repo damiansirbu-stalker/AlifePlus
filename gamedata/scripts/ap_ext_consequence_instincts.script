@@ -1,4 +1,4 @@
---- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore_roam, socialize)
+--- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore_roam, herd_join)
 --- INFEST is handled by ap_ext_consequence_area_set (decision 1: territorial-claim opportunity, not deprivation drive)
 
 local pairs = pairs
@@ -10,7 +10,6 @@ local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
-local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local RANGE_EYE = ap_core_const.RANGE_EYE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
@@ -29,21 +28,6 @@ local _scatter_from
 
 local function _not_base(smart)
     return not xsmart.is_base(smart) and not xsmart.has_trader_job(smart)
-end
-
-local function _build_socialize_filter(community, exclude_smart_id)
-    return function(smart)
-        if not _not_base(smart) then return false end
-        if not xsmart.accepts_mutant(smart, community) then return false end
-        if smart.id == exclude_smart_id then return false end
-        local squads = xsmart.get_smart_squads(smart.id)
-        if not squads then return false end
-        for squad_id in pairs(squads) do
-            local sq = xobject.se(squad_id)
-            if sq and sq.player_id == community then return true end
-        end
-        return false
-    end
 end
 
 local function _fulfill_instinct(squad_id, dto_field)
@@ -73,10 +57,9 @@ local CONFIGS = {
     { instinct = "explore", event = CAUSE.EXPLORE, consequence = CONSEQUENCE.EXPLORE_ROAM, name = "explore_roam",
         dto_field = "last_explore_at",
         pre_release_gulag = PRE_RELEASE_GULAG.EXPLORE_ROAM },
-    { instinct = "socialize", event = CAUSE.INSTINCT_SOCIALIZE, consequence = CONSEQUENCE.INSTINCTS_SOCIALIZE, name = "instinct_socialize",
-        dto_field = "last_socialize_at",
-        personality = { PERSONALITY.RELATION },
-        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SOCIALIZE },
+    { instinct = "herd", event = CAUSE.HERD, consequence = CONSEQUENCE.HERD_JOIN, name = "herd_join",
+        dto_field = "last_herd_at",
+        pre_release_gulag = PRE_RELEASE_GULAG.HERD_JOIN },
 }
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
@@ -118,11 +101,6 @@ local _find_by_instinct = {
         local filter = _build_safe_filter(threats, event_data.community)
         local opts = { level_id = event_data.level_id, filter = filter,
             max_distance = RANGE_EYE, exclude_id = squad.smart_id }
-        return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
-    end,
-    socialize = function(trace, event_data, squad)
-        local filter = _build_socialize_filter(event_data.community, squad.smart_id)
-        local opts = { level_id = event_data.level_id, filter = filter, max_distance = RANGE_SCENT }
         return ap_core_utils.find_smart_observed(trace, event_data.position, opts)
     end,
 }
@@ -200,8 +178,6 @@ function on_game_start()
     -- alignment_mutant_* tables loaded from ap_ext_const.on_game_start.
     -- scatter: cowardly + feral + predator (tier 0-2, aberrant never scatter)
     CONFIGS[1].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator)
-    -- socialize: cowardly + feral (pack/herd animals; predator and aberrant are solitary)
-    CONFIGS[5].species_alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral)
 
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
