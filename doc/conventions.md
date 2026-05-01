@@ -8,60 +8,50 @@ Rules for writing AlifePlus code. Sits between `doc/standards/code-standards.md`
 
 ## Naming
 
-### Cause-Consequence Rule
+The naming rule splits by pipeline. Radiant pairs are 1:1 and share the noun. Reactive causes are 1:N and keep the cause-noun + consequence-verb pattern.
+
+### Radiant: cause and consequence share the noun (invariant 10)
+
+```
+cause:<noun>  ↔  consequence:<noun>
+```
+
+Per `concept.md` radiant invariant 10. The 1:1 bond is visible in the name. No invented synonyms to make a "cause noun" sound different from a "consequence verb" — they are the same concept under two scopes (the trigger state and the action).
+
+| Family | Pattern | Examples |
+|--------|---------|----------|
+| Opportunities (area) | `area_<noun>` shared on both sides | `cause:area_conquer` ↔ `consequence:area_conquer`; `cause:area_swarm` ↔ `consequence:area_swarm`; `cause:area_infest` ↔ `consequence:area_infest` |
+| Opportunities (stash) | `stash_<noun>` shared on both sides | `cause:stash_fill` ↔ `consequence:stash_fill` (planned sweep) |
+| Needs (stalker) | bare drive noun shared on both sides | `cause:hunger` ↔ `consequence:hunger`, `cause:sleep` ↔ `consequence:sleep` (after the needs sweep) |
+| Instincts (mutant) | `instinct_<drive>` shared on both sides | `cause:instinct_hunger` ↔ `consequence:instinct_hunger` (planned sweep). Family prefix kept; drive noun matches the human equivalent (`sleep`, `hunger`, `social`, `explore`) — no synonyms (no `feed`/`hibernate`/`herd`). |
+
+Family prefix presence depends on collision: needs use no prefix because the drive nouns are unique to humans; instincts use `instinct_` because the same drive nouns also exist as human needs. Stash and area use family prefixes for grouping.
+
+### Reactive: cause-noun + consequence-verb (1:N)
+
+Reactive causes can fan out to multiple consequences (1:N is allowed for reactive per concept). Each consequence carries its own action verb appended to the cause name.
 
 ```
 CONSEQUENCE = CAUSE + VERB
 ```
 
-- **Cause** = perception or trigger event. A noun, optionally with a state qualifier. Never a verb.
-- **Consequence** = the action taken in response. Full cause name + action verb.
-
-The underscore is the structural separator between cause and verb in the consequence. Verbs only appear in consequences.
-
-| Element | Type | Description |
-|---------|------|-------------|
-| CAUSE | noun (+ optional state qualifier) | What was perceived or what triggered |
-| VERB | verb | The response action |
-| CONSEQUENCE | cause_verb | The full reaction |
-| ACTION | verb | Atomic operation inside a handler (tracing only) |
-
-### Cause Names
-
 | Rule | Detail | Examples |
 |------|--------|----------|
-| Single noun | Default for unique cause nouns. | MASSACRE, WOUNDED, HARVEST, ALPHA |
-| Compound noun (closed suffixes) | KILL and SPOT remain conventional compound suffixes for compound noun causes. New suffixes require convention update. | BASEKILL, ALPHAKILL, SQUADKILL, ALPHASPOT |
-| State qualifier | Admitted when the cause perceives a specific world state. One underscore between noun and qualifier. | STASH_EMPTY, STASH_FULL, AREA_LAIR |
-| Umbrella prefix | Required only when cause nouns would collide between families. Use the family's umbrella name as prefix. | NEED_HUNGER (stalker NEEDS) vs INSTINCT_HUNGER (mutant INSTINCTS) |
-| No umbrella prefix | When cause names are unique across families, no prefix needed. | Reactions and opportunities never carry umbrella prefix. |
-| No verbs in cause | Verbs are actions; actions belong to consequences. | NOT STASH_LOOT, NOT AREA_CONQUER, NOT INSTINCT_FEED — these are consequences |
-
-### When prefix, when not
-
-| Family | Prefix | Reason |
-|--------|--------|--------|
-| Reactions | none | unique nouns per world event |
-| Opportunities | none | unique nouns per perception, optionally with state qualifier |
-| Needs (stalker) | `need_` | drive nouns collide with mutant equivalents |
-| Instincts (mutant) | `instinct_` | drive nouns collide with stalker equivalents |
-
-### Consequence Names
-
-| Rule | Detail | Examples |
-|------|--------|----------|
-| Cause + action verb | Consequence appends an action verb to the full cause name. One additional underscore. | MASSACRE_INVESTIGATE, STASH_FULL_LOOT, NEED_HUNGER_CAMPFIRE |
-| Forks | When multiple consequences subscribe to the same cause, each has a distinct action verb. | NEED_SHELTER_INDOOR, NEED_SHELTER_OUTDOOR |
-| Always carries verb | Even at 1:1 cause-consequence mapping, the consequence has an explicit action verb. | MASSACRE_INVESTIGATE, never bare MASSACRE as consequence |
+| Cause noun | Single noun describing the world event | MASSACRE, WOUNDED, HARVEST, ALPHA |
+| Compound noun (closed suffixes) | KILL and SPOT remain conventional compound suffixes for compound noun causes | BASEKILL, ALPHAKILL, SQUADKILL, ALPHASPOT |
+| Consequence pattern | Full cause name + action verb, single underscore separator | MASSACRE_INVESTIGATE, MASSACRE_SCAVENGE, BASEKILL_FLEE |
+| Forks | Multiple consequences on the same reactive cause each carry a distinct verb | WOUNDED_HUNT, WOUNDED_HELP |
 
 ### All Naming Patterns
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
-| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.ALPHAKILL` |
-| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:alphakill"` |
-| Consequence const | `CONSEQUENCE.{CAUSE}_{VERB}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
-| Consequence value | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
+| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.AREA_CONQUER`, `CAUSE.INSTINCT_HUNGER` |
+| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:area_conquer"`, `"cause:instinct_hunger"` |
+| Consequence const (radiant) | `CONSEQUENCE.{NAME}` — same noun as the cause | `CONSEQUENCE.AREA_CONQUER`, `CONSEQUENCE.INSTINCT_HUNGER` |
+| Consequence const (reactive) | `CONSEQUENCE.{CAUSE}_{VERB}` | `CONSEQUENCE.MASSACRE_SCAVENGE`, `CONSEQUENCE.WOUNDED_HUNT` |
+| Consequence value (radiant) | `"consequence:{name}"` — same noun as the cause | `"consequence:area_conquer"`, `"consequence:instinct_hunger"` |
+| Consequence value (reactive) | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
 | Action ID | `action:{verb}` | `action:find_targets`, `action:move_squad` |
 | Lock (cause) | `lock:cause:{name}` | `lock:cause:massacre` |
 | Lock (consequence) | `lock:consequence:{name}` | `lock:consequence:massacre_scavenge` |
@@ -75,7 +65,8 @@ The underscore is the structural separator between cause and verb in the consequ
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
 | Script file (cause) | `ap_ext_cause_{family}.script` | `ap_ext_cause_massacre.script`, `ap_ext_cause_area.script` (umbrella) |
 | Script file (consequence, single) | `ap_ext_consequence_{name}.script` | `ap_ext_consequence_massacre_scavenge.script` |
-| Script file (consequence, umbrella) | `ap_ext_consequence_{family}_set.script` | `ap_ext_consequence_area_set.script` |
+| Script file (consequence, CONFIGS factory) | `ap_ext_consequence_{family}.script` (radiant default per concept) | `ap_ext_consequence_area.script`, `ap_ext_consequence_stash.script`, `ap_ext_consequence_instincts.script` |
+| Script file (consequence, hand-written `_set`) | `ap_ext_consequence_{family}_set.script` (use only when handler bodies have meaningful per-handler quirks) | reactive examples only after the radiant sweep completes |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
