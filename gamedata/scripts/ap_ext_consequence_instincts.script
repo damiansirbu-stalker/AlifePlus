@@ -1,5 +1,5 @@
---- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (scatter, feed_hunt, hibernate_lair, explore_roam, herd_join)
---- INFEST is handled by ap_ext_consequence_area_set (decision 1: territorial-claim opportunity, not deprivation drive)
+--- ap_ext_consequence_instincts: CONFIGS-driven mutant instinct consequences (instinct_scatter, instinct_hunger, instinct_sleep, instinct_explore, instinct_social)
+--- INFEST is handled by ap_ext_consequence_area (decision 1: territorial-claim opportunity, not deprivation drive)
 
 local pairs = pairs
 
@@ -45,21 +45,21 @@ local function _on_arrive(squad, args)
 end
 
 local CONFIGS = {
-    { instinct = "scatter", event = CAUSE.INSTINCT_SCATTER, consequence = CONSEQUENCE.INSTINCTS_SCATTER, name = "instinct_scatter",
+    { instinct = "scatter", event = CAUSE.INSTINCT_SCATTER, consequence = CONSEQUENCE.INSTINCT_SCATTER, name = "instinct_scatter",
         personality = { PERSONALITY.INV_AGGRESSION, PERSONALITY.SURVIVAL },
         pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SCATTER },
-    { instinct = "feed", event = CAUSE.FEED, consequence = CONSEQUENCE.FEED_HUNT, name = "feed_hunt",
-        dto_field = "last_feed_at",
-        pre_release_gulag = PRE_RELEASE_GULAG.FEED_HUNT },
-    { instinct = "hibernate", event = CAUSE.HIBERNATE, consequence = CONSEQUENCE.HIBERNATE_LAIR, name = "hibernate_lair",
-        dto_field = "last_hibernate_at",
-        pre_release_gulag = PRE_RELEASE_GULAG.HIBERNATE_LAIR },
-    { instinct = "explore", event = CAUSE.EXPLORE, consequence = CONSEQUENCE.EXPLORE_ROAM, name = "explore_roam",
+    { instinct = "hunger", event = CAUSE.INSTINCT_HUNGER, consequence = CONSEQUENCE.INSTINCT_HUNGER, name = "instinct_hunger",
+        dto_field = "last_hunger_at",
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_HUNGER },
+    { instinct = "sleep", event = CAUSE.INSTINCT_SLEEP, consequence = CONSEQUENCE.INSTINCT_SLEEP, name = "instinct_sleep",
+        dto_field = "last_sleep_at",
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SLEEP },
+    { instinct = "explore", event = CAUSE.INSTINCT_EXPLORE, consequence = CONSEQUENCE.INSTINCT_EXPLORE, name = "instinct_explore",
         dto_field = "last_explore_at",
-        pre_release_gulag = PRE_RELEASE_GULAG.EXPLORE_ROAM },
-    { instinct = "herd", event = CAUSE.HERD, consequence = CONSEQUENCE.HERD_JOIN, name = "herd_join",
-        dto_field = "last_herd_at",
-        pre_release_gulag = PRE_RELEASE_GULAG.HERD_JOIN },
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_EXPLORE },
+    { instinct = "social", event = CAUSE.INSTINCT_SOCIAL, consequence = CONSEQUENCE.INSTINCT_SOCIAL, name = "instinct_social",
+        dto_field = "last_social_at",
+        pre_release_gulag = PRE_RELEASE_GULAG.INSTINCT_SOCIAL },
 }
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
