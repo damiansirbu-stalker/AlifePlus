@@ -110,8 +110,7 @@ local function _handler_rob(event_data)
 
         local robbers = {}
         for _, squad in ipairs(chasers) do
-            if ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB,
-                p_min = cfg.consequence_harvest_rob_personality_min, p_max = cfg.consequence_harvest_rob_personality_max }) then
+            if ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB }) then
                 robbers[#robbers + 1] = squad
             end
         end
@@ -179,8 +178,7 @@ local function _handler_haunt(event_data)
             local species = ap_ext_util.get_species(squad.id)
             local identity = species or squad.player_id
             local dominated = (not species or _species_haunt[species])
-                and ap_ext_util.check_personality(_personality_haunt, identity, { name = CONSEQUENCE.HARVEST_HAUNT,
-                    p_min = cfg.consequence_harvest_haunt_personality_min, p_max = cfg.consequence_harvest_haunt_personality_max })
+                and ap_ext_util.check_personality(_personality_haunt, identity, { name = CONSEQUENCE.HARVEST_HAUNT })
             if dominated then squads[#squads + 1] = squad end
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end

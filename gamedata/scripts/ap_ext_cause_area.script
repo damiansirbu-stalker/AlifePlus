@@ -93,7 +93,7 @@ local function _eligible_conquer(squad, now, level_id, trace)
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
     if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then return nil end
     if not ap_ext_util.check_personality(_personality_conquer, squad.player_id,
-        { name = "area_conquer", p_min = cfg.cause_area_conquer_personality_min, p_max = cfg.cause_area_conquer_personality_max }) then
+        { name = "area_conquer" }) then
         return nil
     end
     local smart = ap_core_utils.find_smart_observed(trace, squad.position,
@@ -118,7 +118,7 @@ local function _eligible_swarm(squad, species, now, level_id, trace)
     local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
     if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then return nil end
     if not ap_ext_util.check_personality(_personality_conquer, species,
-        { name = "area_swarm", p_min = cfg.cause_area_swarm_personality_min, p_max = cfg.cause_area_swarm_personality_max }) then
+        { name = "area_swarm" }) then
         return nil
     end
     local smart = ap_core_utils.find_smart_observed(trace, squad.position,
@@ -144,7 +144,7 @@ local function _eligible_infest(squad, species, now, level_id, trace)
     local elapsed = now - _read_dto_field(squad.id, INFEST_FIELD, now)
     if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then return nil end
     if not ap_ext_util.check_personality(_personality_infest, species,
-        { name = "area_infest", p_min = cfg.cause_area_infest_personality_min, p_max = cfg.cause_area_infest_personality_max }) then
+        { name = "area_infest" }) then
         return nil
     end
     if not _squad_has_alpha(squad) then return nil end

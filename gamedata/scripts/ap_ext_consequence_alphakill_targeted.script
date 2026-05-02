@@ -97,9 +97,7 @@ local function _handler(event_data)
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
             if species ~= victim_species then goto continue end
-            if not ap_ext_util.check_personality(_personality, species, { name = CONSEQUENCE.ALPHAKILL_TARGETED,
-                p_min = cfg.consequence_alphakill_targeted_personality_min,
-                p_max = cfg.consequence_alphakill_targeted_personality_max }) then goto continue end
+            if not ap_ext_util.check_personality(_personality, species, { name = CONSEQUENCE.ALPHAKILL_TARGETED }) then goto continue end
             hunters[#hunters + 1] = squad
             ::continue::
         end

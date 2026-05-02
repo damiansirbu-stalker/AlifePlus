@@ -32,7 +32,7 @@ local function _handler(event_data)
         if not faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
         if not ap_ext_util.check_alignment(_alignment_help, faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = faction } end
         if not ap_ext_util.check_personality(_personality, faction,
-            { name = CONSEQUENCE.WOUNDED_HELP, p_min = cfg.consequence_wounded_help_personality_min, p_max = cfg.consequence_wounded_help_personality_max }) then
+            { name = CONSEQUENCE.WOUNDED_HELP }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

@@ -112,8 +112,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
         end
         if not ap_ext_util.check_personality(_personality, event_data.community,
-            CONSEQUENCE.AMBUSH_SETUP, cfg.consequence_ambush_setup_personality_min,
-            cfg.consequence_ambush_setup_personality_max) then
+            { name = CONSEQUENCE.AMBUSH_SETUP }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 

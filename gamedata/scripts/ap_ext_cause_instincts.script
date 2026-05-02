@@ -9,7 +9,6 @@ local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
-local RANGE_EYE = ap_core_const.RANGE_EYE
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -108,7 +107,7 @@ local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
     local nearby = ap_core_utils.find_squads_observed(trace, pos, {
         factions = _alignment_mutant,
         level_id = level_id,
-        max_distance = RANGE_EYE,
+        max_distance = RANGE_SCENT,
         max_count = 999,
         exclude_squad_id = squad_id,
     })
@@ -142,20 +141,17 @@ local function _scatter_smart(trace, squad, level_id, species)
         local filter = _build_scatter_filter(threats, squad.player_id)
         smart = ap_core_utils.find_smart_observed(trace, squad.position, {
             level_id = level_id, filter = filter,
-            max_distance = RANGE_EYE, exclude_id = squad.smart_id,
+            max_distance = RANGE_SCENT, exclude_id = squad.smart_id,
         })
     end
     return smart
 end
 
 local function _try_cause(trace, squad, level_id, species, entry)
-    if not ap_core_producer.take_check_slot() then return nil end
     local smart
     local alignment_ok = (not entry.alignment) or entry.alignment[species]
     local personality_ok = ap_ext_util.check_personality(entry.personality, species, {
         name = entry.name,
-        p_min = cfg["cause_" .. entry.name .. "_personality_min"],
-        p_max = cfg["cause_" .. entry.name .. "_personality_max"],
     })
     if cfg["cause_" .. entry.name .. "_enabled"] and alignment_ok and personality_ok then
         if entry.scan == "scatter" then
@@ -190,8 +186,11 @@ local function _try_drive(trace, squad, level_id, species, overdue_entry)
     local result
     for j = 1, #CAUSES do
         local entry = CAUSES[j]
-        local smart = (not result) and entry.drive == drive_name and _try_cause(trace, squad, level_id, species, entry)
-        if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart, species) end
+        if not result and entry.drive == drive_name then
+            if not ap_core_producer.take_check_slot() then break end
+            local smart = _try_cause(trace, squad, level_id, species, entry)
+            if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart, species) end
+        end
     end
     return result
 end
@@ -309,7 +308,7 @@ function on_game_start()
         { cause = CAUSE.ROAM, name = "roam", drive = "roam",
           alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator),
           make_filter = function(sq) return _make_territory_or_lair_filter(sq.player_id) end,
-          find_opts = function(sq) return { min_distance = RANGE_EYE, max_distance = RANGE_SCENT, exclude_id = sq.smart_id } end,
+          find_opts = function(sq) return { max_distance = RANGE_SCENT, exclude_id = sq.smart_id } end,
           personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY } },
         { cause = CAUSE.PACK, name = "pack", drive = "pack",
           alignment = _alignment_pack,

@@ -83,7 +83,7 @@ CONSEQUENCE = CAUSE + VERB
 
 ## Multi-answer drive (radiant generator pattern)
 
-Some radiant generators score an underlying drive (timer, deprivation) but resolve it through one of several alternative answers. Each answer is its own first-class cause, paired 1:1 with its own consequence, sharing the noun per invariant 10. The DTO field belongs to the drive — multiple causes share it. Any answer firing satisfies the drive.
+Each answer is a separate first-class cause paired 1:1 with its own consequence (sharing the noun per the radiant naming rule). "Multi-answer drive" is a code-structure quirk: a Hull-scored drive can be satisfied by any of several answers depending on squad identity (faction, species). The drive itself owns only the Hull threshold and the DTO timestamp field; everything else (enable, alignment, personality traits, filter) belongs to the individual answers. Any answer firing resets the drive's timestamp.
 
 Two tables in the generator file:
 
@@ -93,12 +93,12 @@ Two tables in the generator file:
 Picker flow: score every drive via Hull, sort overdue list by drive descending, walk overdue drives top-down. For each drive, walk CAUSES with matching parent drive, run RULES + SCAN per cause; first that publishes wins. Cap is enforced by the producer (RADIANT_MAX_CHECKS_PER_TICK).
 
 cfg key layout:
-- `cause_<drive>_enabled` — drive-level Hull toggle (5-9 keys)
-- `cause_<drive>_threshold` — drive-level Hull threshold (5-9 keys)
-- `cause_<answer>_enabled` — per-answer toggle (only for multi-answer drives; single-answer drives reuse the drive toggle since drive name == answer name)
-- `cause_<answer>_personality_min/max` — per-answer personality bounds
+- `cause_<drive>_threshold` — Hull threshold, one cfg key per drive (shared by every answer under that drive)
+- `cause_<answer>_enabled` — per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (`feed`, `roam`, `pack`, `scatter`), so the cfg key reads as `cause_<drive>_enabled` but it is conceptually per-answer.
 - `consequence_<answer>_enabled` — consequence enable
 - `consequence_<answer>_rush` — rush option
+
+Personality clamp is global, not per-cause. `PERSONALITY_FLOOR` / `PERSONALITY_CEILING` in `ap_ext_const` apply uniformly to every cause and consequence personality roll. No per-cause min/max cfg keys.
 
 When to use: a drive that has multiple alternative satisfactions (mutant slumber → field/lair/surge by species; future fear drive → flee/hide/freeze). Don't use for single-answer drives where the answer name would equal the drive name (`scatter` is one answer to scatter drive — no split needed; cfg keys collapse).
 

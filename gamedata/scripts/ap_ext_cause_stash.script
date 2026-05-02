@@ -41,23 +41,11 @@ local KEYS_BY_CAUSE = {
     },
 }
 
---- Per-cause RULES + SCAN config (personality traits + cfg key names for min/max).
+--- Per-cause personality traits.
 local _personality_by_cause = {
-    [CAUSE.STASH_FILL] = {
-        traits = _personality_fill,
-        p_min_key = "cause_stash_fill_personality_min",
-        p_max_key = "cause_stash_fill_personality_max",
-    },
-    [CAUSE.STASH_LOOT] = {
-        traits = _personality_loot,
-        p_min_key = "cause_stash_loot_personality_min",
-        p_max_key = "cause_stash_loot_personality_max",
-    },
-    [CAUSE.STASH_AMBUSH] = {
-        traits = _personality_ambush,
-        p_min_key = "cause_stash_ambush_personality_min",
-        p_max_key = "cause_stash_ambush_personality_max",
-    },
+    [CAUSE.STASH_FILL]   = { traits = _personality_fill },
+    [CAUSE.STASH_LOOT]   = { traits = _personality_loot },
+    [CAUSE.STASH_AMBUSH] = { traits = _personality_ambush },
 }
 
 --- Pick N random sections from the fill pool at publish time. Cause owns the items list.
@@ -122,7 +110,7 @@ local function _on_smart(trace, squad)
     local pcfg = _personality_by_cause[cause_const]
     if pcfg then
         if not ap_ext_util.check_personality(pcfg.traits, squad.player_id,
-            { name = cause_const, p_min = cfg[pcfg.p_min_key], p_max = cfg[pcfg.p_max_key] }) then
+            { name = cause_const }) then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
         local dst = ap_core_utils.find_smart_observed(trace, stash.position, { level_id = level_id })

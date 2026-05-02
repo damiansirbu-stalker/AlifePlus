@@ -104,14 +104,11 @@ local function _find_overdue_needs(dto, now, identity)
 end
 
 local function _try_cause(trace, squad, level_id, entry)
-    if not ap_core_producer.take_check_slot() then return nil end
     local smart
     if cfg["cause_" .. entry.name .. "_enabled"]
         and ap_ext_util.check_alignment(entry.alignment, squad.player_id)
         and ap_ext_util.check_personality(entry.personality, squad.player_id, {
             name = entry.name,
-            p_min = cfg["cause_" .. entry.name .. "_personality_min"],
-            p_max = cfg["cause_" .. entry.name .. "_personality_max"],
         }) then
         local filter = _build_filter(entry, squad.player_id)
         smart = ap_core_utils.find_smart_observed(trace, squad.position, {
@@ -153,8 +150,11 @@ local function _try_need(trace, squad, level_id, overdue_entry)
     local result
     for j = 1, #CAUSES do
         local entry = CAUSES[j]
-        local smart = (not result) and entry.need == need_name and _try_cause(trace, squad, level_id, entry)
-        if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart) end
+        if not result and entry.need == need_name then
+            if not ap_core_producer.take_check_slot() then break end
+            local smart = _try_cause(trace, squad, level_id, entry)
+            if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart) end
+        end
     end
     return result
 end

@@ -1,14 +1,16 @@
 next
-  Summary: cause/consequence architecture rationalization. Specific causes everywhere. AREA_CONQUER split into Human and Mutant. INFEST joined AREA family. Per-cause toggles on every cause.
+  Summary: cause/consequence architecture rationalization. Specific causes everywhere. AREA_CONQUER split into Human and Mutant. INFEST joined AREA family. Per-cause toggles on every cause. MCM tag-widget format. Personality clamp global. Framework tab.
   Gameplay:
     Changed: AREA_CONQUER is now two consequences. Human and Mutant run independently from the same cause and have their own MCM toggles.
     Changed: INFEST moved from mutant instincts to AREA family. Trigger conditions are unchanged. Cause name and rate-limit budget differ.
     Changed: stash AMBUSH now fires on-arrive. The arrival resets the opportunity DTO timestamp. There is no item action.
+    Changed: instincts use scent range exclusively. Scatter detects higher-tier threats by scent (was eye range). Roam destination is any-distance scent (no minimum).
   Core:
     Changed: cause-side rate limit is per-CATEGORY (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES). Single global cap removed.
     Changed: opportunity DTO threshold gates replace wall-clock cooldowns for stash and area causes.
     Changed: stash predicate finds and classifies the stash before publishing. Cascade slots are not wasted when no stash is in range.
     Changed: activity record stores the actual published cause name, not the umbrella label. Specific causes (cause:hunger, cause:area_conquer) flow through to journal entries.
+    Changed: every cause carries its own enable toggle. Drive-level enable cfg keys removed for needs and instincts. Multi-answer drives share only Hull threshold + DTO timestamp.
   MCM:
     Added: cause_max_reactions, cause_max_needs, cause_max_instincts, cause_max_opportunities (4 sliders, default 20/60s each).
     Added: cause_stash_loot_enabled, cause_stash_ambush_enabled, cause_stash_fill_enabled (per-cause toggles).
@@ -16,11 +18,18 @@ next
     Added: cause_area_conquer_enabled, cause_area_conquer_threshold, cause_area_infest_threshold (game hours).
     Added: consequence_area_conquer_human_*, consequence_area_conquer_mutant_* (replaces consequence_area_conquer_*).
     Added: consequence_stash_ambush_min_items (outlaw ambush vs loot discriminator).
+    Added: sub-cause tag widgets for stash (3), area (3), needs (14), instincts (7), reactive families (7). Each radiant cause section displays its own folded Cause/Desc/Rules tag.
+    Renamed: General tab -> Framework. The tab holds pipeline knobs only (alife ratio, distributor interval, category budgets, ownership flag).
     Removed: cause_max_events (replaced by 4 per-category sliders).
     Removed: cause_needs_enabled, cause_instincts_enabled, cause_stash_enabled, cause_area_enabled (master umbrella toggles). Use per-cause toggles instead.
+    Removed: drive-level enable cfg keys (cause_<drive>_enabled for hunger, sleep, rest, heal, shelter, money, supply, job, social, slumber). Each answer carries its own enable.
+    Removed: per-cause and per-consequence personality_min / personality_max sliders (~50 cfg keys). Global clamp lives in ap_ext_const.PERSONALITY_FLOOR / PERSONALITY_CEILING (0.10 / 0.70).
     Renamed: cause_instinct_infest_* -> cause_area_infest_*. Renamed: consequence_instinct_infest_* -> consequence_area_infest_*. Reset to defaults on first load.
+    Changed: alignment text uses plain English in MCM tags. alignment_human renders as "any stalker", alignment_outlaw as "outlaw stalkers", alignment_conquer_mutant as "feral, predator, or aberrant mutants", etc. Internal alignment_* codes stay in technical docs.
+    Changed: trait names are lowercase in MCM tags. personality(survival), personality(greed, perception). PERSONALITY.* enum constants in code stay uppercase.
   Integration:
     Changed: producer.register signature is now register(config, handler). config must include callback, cause_type, category.
+    Changed: ap_ext_util.check_personality opts no longer carries p_min / p_max. Floor and ceiling are read from ap_ext_const.PERSONALITY_FLOOR / PERSONALITY_CEILING.
     Added: CAUSE_CATEGORY enum (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES) for rate-limit grouping and MCM organization.
     Added: structural rules section in architecture.md governing cause/consequence code shape (specific causes only, umbrella generators, _set files, CONFIGS factory scope, N:M mapping, toggle requirements).
   Compatibility:
