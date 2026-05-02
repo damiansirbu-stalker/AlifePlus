@@ -451,21 +451,19 @@ A random NPC is sampled from the filtered pool. The speaker's community becomes 
 
 ### Causes
 
-> **STALE — DO NOT USE.** This table uses pre-rename names and is now superseded by `doc/features.html`. Per todo n143 (NAMING_LOCK + FIND_IN_CAUSE), the cause names below have changed (e.g. SQUADKILL → squad_kill, fear → overpowered, etc.) and the find-in-cause architecture supersedes the "no find" annotation on Needs/Instincts. Deletion deferred to the n141/n142 implementation pass; reader: trust features.html, not this table.
-
-| Cause | Type | Callback(s) | Conditions |
-|-------|------|-------------|------------|
-| MASSACRE | reactive | squad_on_npc_death | alignment_human, at smart, not is_base, kill_count >= threshold |
-| SQUADKILL | reactive | squad_on_npc_death | alignment_human (victim), last member dead, not is_base |
-| BASEKILL | reactive | squad_on_npc_death | alignment_human, at is_base, kill_count >= threshold |
-| ALPHA | reactive | squad_on_npc_death | killer is mutant, not protected, projected kills cross new level |
-| ALPHAKILL | reactive | squad_on_npc_death | victim is alpha, killer not protected, cooldown clear |
-| WOUNDED | reactive | x_npc_medkit_use, actor_on_item_use | subject not protected, not is_base |
-| HARVEST | reactive | actor_on_item_take, npc_on_item_take | IsArtefact(item), NPC taker not protected |
-| STASH | radiant | squad_on_update | not protected, alignment_human |
-| AREA | radiant | squad_on_update | not protected, alignment_area (human+mutant minus ecolog/stalker/renegade). Priority-gate picker: mutant squads check infest first (territorial claim), fall through to conquer; humans check conquer only. Publishes cause:area_conquer or cause:area_infest. |
-| NEEDS | radiant | squad_on_update | not protected, alignment_human, level.present(), Hull drive scoring. Publishes per-need event (cause:hunger, cause:heal, etc.) |
-| INSTINCTS | radiant | squad_on_update | not protected, alignment_mutant, species resolved, Hull drive scoring. Publishes per-instinct event (cause:instinct_scatter, cause:instinct_feed, cause:instinct_sleep, cause:instinct_explore, cause:instinct_socialize) |
+| Cause family | Type | Callback(s) | Conditions | Specific causes published |
+|---|---|---|---|---|
+| MASSACRE | reactive | `squad_on_npc_death` | alignment_human victim, at smart, not is_base, kill_count >= threshold | `cause:massacre` |
+| SQUADKILL | reactive | `squad_on_npc_death` | alignment_human victim, last member dead, not is_base | `cause:squadkill` |
+| BASEKILL | reactive | `squad_on_npc_death` | alignment_human victim, at is_base, kill_count >= threshold | `cause:basekill` |
+| ALPHA | reactive | `squad_on_npc_death` | killer is mutant, not protected, projected kills cross new level | `cause:alpha` |
+| ALPHAKILL | reactive | `squad_on_npc_death` | victim is alpha, killer not protected, cooldown clear | `cause:alphakill` |
+| WOUNDED | reactive | family `WOUNDED_CALLBACKS` (`x_npc_medkit_use`, `actor_on_item_use`) | subject not protected, not is_base | `cause:wounded` |
+| HARVEST | reactive | family `HARVEST_CALLBACKS` (`actor_on_item_take`, `npc_on_item_take`) | IsArtefact(item), NPC taker not protected | `cause:harvest` |
+| STASH | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_human, not at base. State-classifier picker over one stash in EYE range; per-cause RULES + SCAN. | `cause:stash_fill`, `cause:stash_loot`, `cause:stash_ambush` |
+| AREA | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_area. Three eligibility helpers; alignment routes mutants to infest first then swarm, humans to conquer only. | `cause:area_conquer`, `cause:area_swarm`, `cause:area_infest` |
+| NEEDS | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_human, level.present(). Hull-cascade two-table generator: 9 drives → 14 specific causes; first cause that passes RULES + SCAN publishes. | `cause:hunger_campfire`, `cause:sleep_campfire`, `cause:rest_campfire`, `cause:heal_shelter`, `cause:shelter_indoor`, `cause:shelter_outdoor`, `cause:supply_trader`, `cause:money_harvest`, `cause:money_hunt`, `cause:job_outpost`, `cause:job_explore`, `cause:job_research`, `cause:social_campfire`, `cause:social_base` |
+| INSTINCTS | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_mutant, species resolved. Hull-cascade two-table generator: 5 drives → 7 specific causes; multi-answer slumber splits 3 ways by shelter preference. | `cause:scatter`, `cause:feed`, `cause:slumber_field`, `cause:slumber_lair`, `cause:slumber_surge`, `cause:roam`, `cause:pack` |
 
 Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer pre-checks the per-category rate limit on `entry.category` and calls the predicate directly (no `observe()` wrapping). On success, producer attaches `._trace`, publishes `result.cause` to xbus, and increments the per-category counter. Predicates self-observe: prof+trace:push+debug under the picked specific cause, never an umbrella label. Predicates are pure — no rate-limit awareness, no counter manipulation, no side effects beyond the published payload.
 
@@ -486,34 +484,29 @@ Reactions are simple-mechanism (the engine callback IS the event). Opportunities
 
 The find lives where 1 expands to N candidates.
 
-- Reactions: 1 event → N witnesses → **consequence** `find_squads`
-- Opportunities: 1 squad → N world things → **cause** `find_*`
-- Needs / Instincts: 1 squad → N drives → cause picks (no find — internal score); **consequence** `find_smart` per its filter
+- Reactive: 1 event → N witnesses → **consequence** `find_squads` (responder SCAN). Some reactive consequences also `find_smart` (destination SCAN) before the responder scan.
+- Radiant: 1 squad → 1 destination → **cause** `find_smart` (destination SCAN). Per concept invariant 4, SCAN lives in the cause-side generator. Consequence is action-only.
 
-When 1 → N is over world entities, use `find_*`. When 1 → N is over internal state, no find.
+Reactive expands over witnesses (consequence-side). Radiant expands over the world but resolves the destination in the cause; the consequence consumes the resolved destination from the published payload.
 
-##### Cause vs consequence
+##### Cause vs consequence (radiant, post invariant 5)
 
 | Cause owns | Consequence owns |
 |---|---|
-| trigger (DTO score, look-around, callback event) | probabilistic gates (personality, chance) |
-| sub-cause pick (world classify, Hull score, or squad invariants) | the action |
-| invariant filtering (alignment, species) | |
+| trigger (Hull score, world peek, callback event) | the action (`script_squad`, `record_event`, `on_arrive`) |
+| RULES (per-cause toggle, alignment subset, personality, world-state predicate) | nothing else |
+| SCAN (destination filter + `find_smart_observed`) | |
 
-Cause filters by **squad invariants** — alignment, species. Properties baked in at squad creation that don't change at runtime. Valid for family pre-filter and sub-cause picking. Consequence handles **probabilistic gates** (personality roll, chance) and the action.
+Per concept invariants 4 + 5: RULES + SCAN live in the cause; the consequence is action-only. The published payload carries the resolved destination (`dst_smart_id`) and the DTO field name (`dto_field`). Consequence on_arrive resets the DTO field and runs the action verb (consume item, trade, conquer smart, etc.).
 
 ##### Cause-consequence cardinality (HARD RULE)
 
-**Radiant causes are 1:1 with consequences. Always. No exceptions.**
+**Radiant causes are 1:1 with consequences. Always (invariant 10 — cause and consequence share the noun).**
 **Reactive causes can be 1:N with consequences.**
 
 Reason: reactive cascades pull N actors (witnesses) from one event. Each witness can react differently — different alignment, different personality — so multiple consequences make sense. Radiant pushes one actor (the ticking squad) per tick; that squad can only do one thing at a time.
 
-Consequence: when a radiant umbrella has multiple "consequences" today (e.g. need_shelter → shelter_indoor + shelter_outdoor), it must be restructured. Either:
-- The umbrella picks ONE specific cause per tick (variant pick by personality/alignment inside the umbrella predicate, publishes one of N specific causes), with each specific cause 1:1 with its consequence.
-- Or the variants collapse into a single consequence with cascade-find inside the cause (try filter A, fall back to filter B, publish once).
-
-Never publish a radiant cause that fan-outs to multiple consequence handlers.
+When a radiant family appears to have one cause with multiple consequences (e.g. shelter has indoor + outdoor answers), the family splits into multiple causes — each cause is its own 1:1 pair. The drive that scores the urgency stays unique (one DTO timer), but the picker walks per-drive answers and publishes ONE specific cause per tick. See "Multi-answer drive" below.
 
 ##### Bundling rule
 
@@ -536,41 +529,89 @@ If either fails → separate predicates, cascade orchestrates.
 
 Radiant causes split by what the threshold MEANS, not by how it is implemented. Both shapes use the same architectural pattern — DTO timestamp + threshold gate + arrival reset — but they encode different theories.
 
-**Hull's Drive Reduction Theory (1943).** Behavior is driven by deprivation of a biological need. The longer the deprivation, the stronger the drive. Score formula: `drive = weight * (elapsed / threshold)^2`. Squared exponent makes overdue drives compete strongly against marginal ones. Used by NEEDS (9 stalker drives) and INSTINCTS (5 mutant drives). Threshold encodes how long the squad can tolerate the deprivation before the drive becomes urgent. Arrival action satisfies the need and resets the timestamp.
+**Hull's Drive Reduction Theory (1943).** Behavior is driven by deprivation of a biological need. The longer the deprivation, the stronger the drive. Score formula: `drive = weight * (elapsed / threshold)^2`. Squared exponent makes overdue drives compete strongly against marginal ones. Used by NEEDS (9 stalker drives) and INSTINCTS (5 mutant drives). Threshold encodes how long the squad can tolerate the deprivation before the drive becomes urgent. Arrival action satisfies the drive and resets the timestamp.
 
-**Charnov's Marginal Value Theorem (1976), Optimal Foraging Theory.** A forager exploits a patch, moves on, and the patch recovers before the next visit becomes worthwhile. Gate is binary: `elapsed > threshold`. No drive scoring; the squad either revisits the patch or doesn't. Used by stash (loot, ambush, fill) and area (conquer, infest). Threshold encodes patch handling time + travel time + recovery time between visits. Arrival action resets the timestamp.
+**Charnov's Marginal Value Theorem (1976), Optimal Foraging Theory.** A forager exploits a patch, moves on, and the patch recovers before the next visit becomes worthwhile. Gate is binary: `elapsed > threshold`. No drive scoring; the squad either revisits the patch or doesn't. Used by stash (fill, loot, ambush) and area (conquer, swarm, infest). Threshold encodes patch handling time + travel time + recovery time between visits. Arrival action resets the timestamp.
 
 DTO + timestamp + arrival-reset is the architectural shape both theories share. They differ in what the threshold MEANS, not how it is implemented.
 
+#### Multi-answer drive (radiant generator pattern)
+
+Some Hull-scored drives have multiple answers — distinct destinations that satisfy the same drive depending on squad identity (faction, species). The needs and instincts generators encode this as two tables:
+
+| Table | Holds | Example |
+|---|---|---|
+| **NEEDS** / **INSTINCTS** | one entry per drive: Hull weight, threshold cfg key, period gating, DTO field name | `{ instinct = "slumber", field = "last_slumber_at", weight = 2.5, dormant_period = true, threshold_key = "cause_slumber_threshold", enabled_key = "cause_slumber_enabled" }` |
+| **CAUSES** | one entry per specific cause (answer): cause const, short name, parent drive name, alignment subset, personality, filter | three slumber answers — `slumber_field` (cowardly, territory filter), `slumber_lair` (feral + predator, lair filter), `slumber_surge` (aberrant + predator, surge filter) |
+
+Picker flow inside `_on_smart`:
+
+1. Score every drive via Hull (`_find_overdue_drives` for instincts, `_find_overdue_needs` for needs).
+2. Sort overdue drives descending by drive score.
+3. Walk overdue drives top-down. For each drive, walk CAUSES with matching parent drive. Per cause: RULES (toggle, alignment subset, personality roll), then SCAN (filter + `find_smart_observed`). First cause that publishes wins. Stop.
+4. Producer enforces `RADIANT_MAX_CHECKS_PER_TICK` across all generators.
+
+The DTO field is per-drive — when any of a drive's answers fires, the drive's timestamp resets (Hull drive reduction). Multiple answers compete to satisfy one drive.
+
+cfg key layout:
+- `cause_<drive>_enabled` / `cause_<drive>_threshold` — Hull-level toggle and threshold, one set per drive.
+- `cause_<answer>_personality_min` / `cause_<answer>_personality_max` — per-cause personality bounds.
+- For multi-answer drives, each answer additionally carries `cause_<answer>_enabled`. For single-answer drives where the answer's name equals the drive's name (e.g. `feed`, `roam`, `pack`, `scatter`), the drive toggle and answer toggle share the same cfg key — no collision, since both refer to the same on/off concept.
+
+Used by `ap_ext_cause_needs.script` (9 drives, 14 answers) and `ap_ext_cause_instincts.script` (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) don't follow this pattern — they pick one cause by inspecting world state at peek time, not by Hull score.
+
 ### Consequences
 
-> **STALE — DO NOT USE.** This table uses pre-rename consequence names (squadkill_revenge, area_conquer_human, instincts_scatter, etc.) and is superseded by `doc/features.html`. Per todo n143 (NAMING_LOCK + FIND_IN_CAUSE), every consequence below has been renamed under the locked pattern. Deletion deferred to the n141/n142 implementation pass; reader: trust features.html, not this table.
+Reactive families fan out to multiple consequences (1:N — each subscriber acts independently). Radiant families are 1:1 — every cause has exactly one consequence sharing the noun (invariant 10).
+
+**Reactive (1:N):**
 
 | Cause | Consequence | Actor | Effect |
-|-------|-------------|-------|--------|
-| MASSACRE | massacre_investigate | stalker | victim faction investigates |
-| MASSACRE | massacre_scavenge | mutant | cowardly mutants converge on massacre site |
-| SQUADKILL | squadkill_revenge | stalker | victim faction pursues killer (chase) |
-| SQUADKILL | squadkill_flee | stalker | victim faction retreats to base |
-| BASEKILL | basekill_support | stalker | friendly squads reinforce attacked base |
-| BASEKILL | basekill_flee | stalker | squads at base evacuate |
-| ALPHA | alpha_promote | mutant | update alpha level, apply hit power/panic buffs, grant loot |
-| ALPHAKILL | alphakill_targeted | mutant | same-species mutants on same level pursue killer (chase) |
-| WOUNDED | wounded_hunt | mutant | predator+aberrant mutants close in |
-| WOUNDED | wounded_help | stalker | same-faction squads rush to help |
-| HARVEST | harvest_rob | stalker | outlaws pursue artefact taker (chase) |
-| HARVEST | harvest_haunt | mutant | aberrant mutants converge on pickup site |
-| STASH | stash_loot | stalker | loot stash to NPC inventory (CONFIGS-driven) |
-| STASH | stash_ambush | stalker | camp at stash, passive (CONFIGS-driven) |
-| STASH | stash_fill | stalker | fill stash with items (CONFIGS-driven) |
-| AREA | area_conquer | both | claim empty smart terrain (stalkers and mutants, decays after 48h, _set file) |
-| AREA | area_infest | mutant (feral+predator+aberrant) | claim smart terrain as nest with exclusive spawn injection. Cowardly excluded (too weak). Per-level cap. (_set file) |
-| NEEDS | (14 entries) | stalker | hunger, sleep, rest, heal, shelter, money, supply, job, social (CONFIGS factory) |
-| INSTINCTS | instincts_scatter | mutant (cowardly+feral+predator) | scatter from higher-tier predators to safe smart terrain. Food chain: tier 0 fears 1+2+3, tier 1 fears 2+3, tier 2 fears 3. |
-| INSTINCTS | instincts_feed | mutant (all) | move to territory to hunt/scavenge |
-| INSTINCTS | instincts_sleep | mutant (all) | return to species-appropriate rest location (cowardly->territory, feral->lair, predator->lair/surge, aberrant->surge) |
-| INSTINCTS | instincts_explore | mutant (cowardly+feral+predator) | wander to nearby territory or lair. Aberrant excluded (lair-bound). |
-| INSTINCTS | instincts_socialize | mutant (cowardly+feral) | move toward smart with same-faction squads. Predator and aberrant excluded (solitary). |
+|---|---|---|---|
+| `cause:massacre` | `consequence:massacre_investigate` | stalker | victim faction investigates |
+| `cause:massacre` | `consequence:massacre_scavenge` | mutant | cowardly mutants converge on massacre site |
+| `cause:squadkill` | `consequence:squadkill_revenge` | stalker | victim faction pursues killer (chase) |
+| `cause:squadkill` | `consequence:squadkill_flee` | stalker | victim faction retreats to base |
+| `cause:basekill` | `consequence:basekill_support` | stalker | friendly squads reinforce attacked base |
+| `cause:basekill` | `consequence:basekill_flee` | stalker | squads at base evacuate |
+| `cause:alpha` | `consequence:alpha_promote` | mutant | update alpha level, apply hit power buffs, grant loot |
+| `cause:alphakill` | `consequence:alphakill_targeted` | mutant | same-species mutants on same level pursue killer (chase) |
+| `cause:wounded` | `consequence:wounded_hunt` | mutant | predator + aberrant mutants close in |
+| `cause:wounded` | `consequence:wounded_help` | stalker | same-faction squads rush to help |
+| `cause:harvest` | `consequence:harvest_rob` | stalker | outlaws pursue artefact taker (chase) |
+| `cause:harvest` | `consequence:harvest_haunt` | mutant | aberrant mutants converge on pickup site |
+
+**Radiant (1:1, shared noun):**
+
+| Cause = Consequence | Actor | Effect |
+|---|---|---|
+| `stash_fill` | stalker | walks to empty stash, hides supplies (CONFIGS factory) |
+| `stash_loot` | stalker | walks to non-empty stash, loots to NPC inventory |
+| `stash_ambush` | stalker | walks to non-empty stash with valuable cache, stakes out |
+| `area_conquer` | stalker | claims empty smart with additive shared spawn |
+| `area_swarm` | mutant | mutants claim empty smart with additive shared spawn |
+| `area_infest` | mutant (feral+predator+aberrant) | claims lair or surge shelter with exclusive spawn replacement (per-level cap) |
+| `hunger_campfire` | stalker | walks to campfire, consumes food item |
+| `sleep_campfire` | stalker | walks to campfire for the night |
+| `rest_campfire` | stalker | walks to campfire, consumes rest item |
+| `heal_shelter` | stalker | walks to surge shelter, consumes medkit |
+| `shelter_indoor` | stalker | walks to surge shelter |
+| `shelter_outdoor` | stalker | walks to campfire smart (outdoor shelter) |
+| `supply_trader` | stalker | walks to trader, exchanges artefact for ammo / medkit |
+| `money_harvest` | selfserving stalker | walks to anomaly field for artefact harvest |
+| `money_hunt` | naturalist stalker | walks to mutant lair for hide hunt |
+| `job_outpost` | principled stalker | walks to non-base / non-lair smart to guard |
+| `job_explore` | selfserving stalker | walks to unclaimed smart to explore |
+| `job_research` | ecolog stalker | walks to anomaly field to research |
+| `social_campfire` | stalker | walks to campfire to share stories |
+| `social_base` | principled stalker | walks to faction base for downtime |
+| `feed` | mutant | walks to open territory to hunt or scavenge |
+| `slumber_field` | cowardly mutant | beds down in open territory |
+| `slumber_lair` | feral + predator | returns to lair |
+| `slumber_surge` | aberrant + predator | takes to surge shelter |
+| `roam` | cowardly + feral + predator | wanders to nearby territory or lair (aberrant excluded — lair-bound) |
+| `pack` | feral + predator | moves toward smart with same-faction squads (cowardly + aberrant excluded) |
+| `scatter` | cowardly + feral + predator (tier 0-2) | flees from higher-tier predator within eye range to safe smart |
 
 Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
 
@@ -706,10 +747,11 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 |-------|------|--------|
 | scatter | (none) | any time |
 | feed | active_period | active period only |
-| sleep | dormant_period | dormant period only |
-| explore | active_period | active period only |
-| socialize | active_period | active period only |
-| infest | active_period | active period only |
+| slumber | dormant_period | dormant period only |
+| roam | active_period | active period only |
+| pack | active_period | active period only |
+
+(Infest is an opportunity in the AREA family — `cause:area_infest` — not a mutant instinct drive.)
 
 ### Invariants
 
@@ -738,41 +780,42 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 These rules govern how cause and consequence code is written. They apply to every family — present and future, radiant and reactive. Code, MCM keys, log labels, comments, and prose all comply.
 
 **Concepts.**
-- **Cause** — a labeled event the framework publishes. The label is always specific (`cause:hunger`, `cause:area_conquer_mutant`). Never an umbrella string.
+- **Generator** — the file. Holds N specific causes for one family. Picker. Emits one cause per call or none.
+- **Cause** — a labeled event the framework publishes. The label is always specific (`cause:hunger_campfire`, `cause:area_conquer`, `cause:slumber_lair`). Never an umbrella string.
 - **Consequence** — a handler that subscribes to a cause via xbus.
-- **Predicate** — the function that runs. The cause-side predicate publishes a cause. The consequence-side predicate is the handler invoked by the subscriber.
+- **Picker / predicate** — the function inside the generator that runs and publishes one specific cause per call.
 
 **Cause side.**
 
-1. **Specific causes only.** Causes are specific perceptions or events, never umbrella categories. Umbrella names (REACTIONS, OPPORTUNITIES, NEEDS, INSTINCTS) are categories, not published causes. Family prefixes (`need_`, `instinct_`) are admitted in cause names only to disambiguate when cause nouns would collide between families (e.g., shared drives like hunger across stalker and mutant). See Naming in `conventions.md`.
+1. **Specific causes only.** Causes are specific perceptions or events, never umbrella categories. Umbrella names (REACTIONS, OPPORTUNITIES, NEEDS, INSTINCTS) are categories, not published causes. Family prefixes are dropped from cause names — every cause has its own bare or compound noun (`feed`, `slumber_lair`, `hunger_campfire`). The DTO container disambiguates collision between human and mutant variants of shared drive nouns (e.g. stalker `cause:hunger_campfire` and mutant `cause:feed` both score against their container's DTO).
 
-2. **Each cause-side function publishes one specific cause per call.** A function may emit different specific cause tags across different calls based on its valuation, but each individual call returns exactly one specific cause name (or nil).
+2. **Each cause-side function publishes one specific cause per call.** A generator may emit different specific cause tags across different calls based on its picker, but each individual call returns exactly one specific cause name (or nil).
 
-3. **Bundling: one predicate per shared computation with mutually-exclusive sub-cause output.** When sub-causes derive from the same input scan or score (a single loop over N drives), one predicate file holds the bundle. When sub-causes have independent scans, filters, or trigger sources, they live in separate predicate files. See Cause Classification → Bundling rule.
+3. **Bundling: one generator per family with mutually-exclusive cause output.** When N causes derive from the same input scan or score (Hull cascade over drives, state-classifier over a peeked stash, alignment router over a smart's eligibility), one generator file holds the bundle. When causes have independent scans, filters, or trigger sources, they live in separate generator files (every reactive cause has its own file).
 
-4. **Per-cause enable toggle.** Each cause has its own `cause_<specific_name>_enabled` toggle. No umbrella master toggle, ever — the umbrella is not a cause and has nothing to enable.
+4. **Per-cause enable toggle.** Each cause has its own `cause_<specific_name>_enabled` toggle. No umbrella master toggle. For multi-answer drives (e.g. slumber), the drive also has a Hull-level toggle (`cause_<drive>_enabled`) that disables the entire drive; per-answer toggles disable individual answers.
 
 **Consequence side.**
 
 5. **One handler per consequence.** Each consequence has its own dedicated handler function. Two different consequences never share a function, even when they live in the same file.
 
-6. **CONFIGS factory exception.** When all consequences in a family share an identical handler shape (find smart → script squad → record-event), one factory in the family file may generate one handler per consequence. Reserved for stereotypical drive families: `needs`, `instincts`, and any future family with the same uniform shape.
+6. **CONFIGS factory is the radiant default.** Per concept, every radiant consequence body collapses to the same shape: resolve squad → resolve smart from `event_data.dst_smart_id` → `script_squad` → `record_event` → SUCCESS. One factory in the family file generates one handler per consequence. Differences are pure data (cause id, on_arrive function, pre_release_gulag, section_key). All radiant families use this shape today: needs, instincts, area, stash. `_set` is vestigial for radiant.
 
-7. **`_set` file for hand-written multi-consequence families.** Hand-written multi-consequence families live in `ap_ext_consequence_<family>_set.script` (stash, area, harvest). CONFIGS factory files (needs, instincts) keep their direct name without `_set` — same exception as rule 6. Single-consequence files keep their direct name (`ap_ext_consequence_alpha_promote.script`).
+7. **`_set` file for reactive families with hand-written quirks.** Reactive consequences may legitimately differ in body shape (different SCAN filters, different action types, different per-responder logic). `_set` is the natural choice for those. Single-consequence files keep their direct name (`ap_ext_consequence_alpha_promote.script`).
 
 8. **Per-consequence enable toggle.** Each consequence has its own `consequence_<specific_name>_enabled` toggle.
 
 **Cause-to-consequence mapping.**
 
-9. **N:M subscription, runtime depends on cause type.** A cause may have one or many consequence subscribers (`cause:money` → `money_harvest` + `money_hunt`). A consequence subscribes to exactly one cause. Adding a consequence is a new xbus subscription; it must not require predicate changes. **Firing rules differ by cause type (see invariant 7):** radiant publishes fire exactly ONE consequence per publish (cascade stops on first SUCCESS, alternatives compete via shuffle); reactive publishes fire ALL subscribed consequences independently.
+9. **Cardinality by cause type.** Radiant: every cause is **strictly 1:1** with its consequence; both sides share the noun (invariant 10). When one drive has multiple alternative satisfactions, the family adds multiple causes (each its own 1:1 pair) — see Multi-answer drive section. Reactive: 1:N is allowed; multiple consequences fan out independently per publish.
 
 **Pipeline.**
 
-10. **Activity record carries the published cause.** `record_event(squad, event_data.cause, consequence, ...)`. Never an umbrella constant. `event_data.cause` is verbatim what the predicate published; pass it through.
+10. **Activity record carries the published cause.** `record_event(squad, event_data.cause, consequence, ...)`. Never an umbrella constant. `event_data.cause` is verbatim what the picker published; pass it through.
 
 11. **Category at registration.** Each cause registration declares its `category` (`CAUSE_CATEGORY.REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES`) in `producer.register` config. Category drives rate-limit grouping. Category is not a cause and is never published.
 
-12. **Cause/consequence work split.** Cause owns the trigger (DTO score, look-around, callback event), the sub-cause pick (world classify, Hull score, or squad invariants), and invariant filtering (alignment, species). Consequence owns probabilistic gates (personality, chance) and the action. The find lives where 1 expands to N: cause for opportunities (1 squad → N world things), consequence for reactions (1 event → N witnesses) and for needs/instincts destinations (1 drive → N candidate smarts). See Cause Classification for the full mechanic-by-category mapping.
+12. **Cause/consequence work split (concept invariants 4 + 5).** For radiant: cause owns RULES (per-cause toggle, alignment subset, personality, world-state predicate) and SCAN (filter + `find_smart_observed`). Consequence owns the ACTION only. The published payload carries `dst_smart_id` and `dto_field`; consequence resolves the smart from id and dispatches `script_squad`. For reactive: same RULES (per-cause event RULES), but the consequence-side may carry a SCAN (`find_squads` for responders, optional `find_smart` for destination) since 1 event expands to N witnesses on the consequence side. The find lives where 1 expands to N over world entities.
 
 ---
 
