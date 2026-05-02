@@ -6,7 +6,7 @@ AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulat
 
 Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause and a consequence. See the [integration guide](doc/integration-guide.md) for examples, API reference, and a two-mod collaboration scenario.
 
-[ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus) | [Releases](https://github.com/damiansirbu-stalker/AlifePlus/releases) | [Report a bug](https://github.com/damiansirbu-stalker/AlifePlus/issues)
+[ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus) | [Releases](https://github.com/damiansirbu-stalker/AlifePlus/releases) | [Bugs, suggestions](https://github.com/damiansirbu-stalker/AlifePlus/issues)
 
 Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.2.0](https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001), MCM
 

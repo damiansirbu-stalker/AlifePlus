@@ -4,7 +4,7 @@ AlifePlus: эмерджентная A-Life для STALKER Anomaly, автор Da
 - Руководство по интеграции: https://damiansirbu-stalker.github.io/siski-report/guide.html
 - Журнал изменений: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - English: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme.txt
-- Сообщить об ошибке: https://github.com/damiansirbu-stalker/AlifePlus/issues
+- Баги, предложения: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
 ! При обновлении версии нажимайте RESET в MCM !
 
