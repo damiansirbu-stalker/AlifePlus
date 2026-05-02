@@ -81,6 +81,33 @@ CONSEQUENCE = CAUSE + VERB
 
 ---
 
+## Multi-answer drive (radiant generator pattern)
+
+Some radiant generators score an underlying drive (timer, deprivation) but resolve it through one of several alternative answers. Each answer is its own first-class cause, paired 1:1 with its own consequence, sharing the noun per invariant 10. The DTO field belongs to the drive — multiple causes share it. Any answer firing satisfies the drive.
+
+Two tables in the generator file:
+
+- **NEEDS / INSTINCTS** (one entry per drive) — Hull weight, threshold cfg key, period gating, DTO field name.
+- **CAUSES** (one entry per answer) — cause const, short name (cfg key suffix), parent drive name, alignment subset, personality, filter, optional `find_opts` builder.
+
+Picker flow: score every drive via Hull, sort overdue list by drive descending, walk overdue drives top-down. For each drive, walk CAUSES with matching parent drive, run RULES + SCAN per cause; first that publishes wins. Cap is enforced by the producer (RADIANT_MAX_CHECKS_PER_TICK).
+
+cfg key layout:
+- `cause_<drive>_enabled` — drive-level Hull toggle (5-9 keys)
+- `cause_<drive>_threshold` — drive-level Hull threshold (5-9 keys)
+- `cause_<answer>_enabled` — per-answer toggle (only for multi-answer drives; single-answer drives reuse the drive toggle since drive name == answer name)
+- `cause_<answer>_personality_min/max` — per-answer personality bounds
+- `consequence_<answer>_enabled` — consequence enable
+- `consequence_<answer>_rush` — rush option
+
+When to use: a drive that has multiple alternative satisfactions (mutant slumber → field/lair/surge by species; future fear drive → flee/hide/freeze). Don't use for single-answer drives where the answer name would equal the drive name (`scatter` is one answer to scatter drive — no split needed; cfg keys collapse).
+
+When NOT to use: state classifiers where the picker selects exactly one branch by inspecting world state (stash empty/full/trap pattern). Those use a state-by-state KEYS_BY_CAUSE picker, not Hull cascade.
+
+Used by: `ap_ext_cause_needs.script` (9 drives, 14 answers), `ap_ext_cause_instincts.script` (5 drives, 7 answers, multi-answer slumber).
+
+---
+
 ## Cause Standard Pattern
 
 Causes are predicates. Return `{ cause = CAUSE.X, ...payload }` or `nil`.

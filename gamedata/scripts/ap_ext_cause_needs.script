@@ -1,53 +1,91 @@
---- ap_ext_cause_needs: Timer-based human needs evaluation on smart terrain transitions
+--- ap_ext_cause_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
+--- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
 local math_random, math_floor = math.random, math.floor
+local table_sort = table.sort
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
+local RANGE_RADIO = ap_core_const.RANGE_RADIO
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
 local LOG_BY_CAUSE = {
-    [CAUSE.HUNGER]  = ap_core_debug.bracket(CAUSE.HUNGER),
-    [CAUSE.SLEEP]   = ap_core_debug.bracket(CAUSE.SLEEP),
-    [CAUSE.REST]    = ap_core_debug.bracket(CAUSE.REST),
-    [CAUSE.HEAL]    = ap_core_debug.bracket(CAUSE.HEAL),
-    [CAUSE.SHELTER] = ap_core_debug.bracket(CAUSE.SHELTER),
-    [CAUSE.SUPPLY]  = ap_core_debug.bracket(CAUSE.SUPPLY),
-    [CAUSE.MONEY]   = ap_core_debug.bracket(CAUSE.MONEY),
-    [CAUSE.JOB]     = ap_core_debug.bracket(CAUSE.JOB),
-    [CAUSE.SOCIAL]  = ap_core_debug.bracket(CAUSE.SOCIAL),
+    [CAUSE.HUNGER_CAMPFIRE] = ap_core_debug.bracket(CAUSE.HUNGER_CAMPFIRE),
+    [CAUSE.SLEEP_CAMPFIRE]  = ap_core_debug.bracket(CAUSE.SLEEP_CAMPFIRE),
+    [CAUSE.REST_CAMPFIRE]   = ap_core_debug.bracket(CAUSE.REST_CAMPFIRE),
+    [CAUSE.HEAL_SHELTER]    = ap_core_debug.bracket(CAUSE.HEAL_SHELTER),
+    [CAUSE.SHELTER_INDOOR]  = ap_core_debug.bracket(CAUSE.SHELTER_INDOOR),
+    [CAUSE.SHELTER_OUTDOOR] = ap_core_debug.bracket(CAUSE.SHELTER_OUTDOOR),
+    [CAUSE.SUPPLY_TRADER]   = ap_core_debug.bracket(CAUSE.SUPPLY_TRADER),
+    [CAUSE.MONEY_HARVEST]   = ap_core_debug.bracket(CAUSE.MONEY_HARVEST),
+    [CAUSE.MONEY_HUNT]      = ap_core_debug.bracket(CAUSE.MONEY_HUNT),
+    [CAUSE.JOB_OUTPOST]     = ap_core_debug.bracket(CAUSE.JOB_OUTPOST),
+    [CAUSE.JOB_EXPLORE]     = ap_core_debug.bracket(CAUSE.JOB_EXPLORE),
+    [CAUSE.JOB_RESEARCH]    = ap_core_debug.bracket(CAUSE.JOB_RESEARCH),
+    [CAUSE.SOCIAL_CAMPFIRE] = ap_core_debug.bracket(CAUSE.SOCIAL_CAMPFIRE),
+    [CAUSE.SOCIAL_BASE]     = ap_core_debug.bracket(CAUSE.SOCIAL_BASE),
 }
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human
+local _alignment_selfserving
+local _alignment_naturalist
+local _alignment_principled
+local _alignment_ecolog = { ecolog = true }
 
---- Drive weights (Maslow hierarchy: survival > security > esteem > belonging)
---- Scoring: drive = weight * (elapsed / threshold)^2 (Hull 1943)
+--- 9 drives. Per-need Hull weight, threshold cfg key, period gating.
 local NEEDS = {
-    { need = "shelter", field = "last_shelter_at", threshold_key = "cause_shelter_threshold", enabled_key = "cause_shelter_enabled", weight = 5.0, dormant_period = true },
-    { need = "heal",    field = "last_heal_at",    threshold_key = "cause_heal_threshold",    enabled_key = "cause_heal_enabled",    weight = 4.0 },
-    { need = "hunger",  field = "last_hunger_at",  threshold_key = "cause_hunger_threshold",  enabled_key = "cause_hunger_enabled",  weight = 3.0 },
-    { need = "sleep",   field = "last_sleep_at",   threshold_key = "cause_sleep_threshold",   enabled_key = "cause_sleep_enabled",   weight = 2.5, dormant_period = true },
-    { need = "rest",    field = "last_rest_at",    threshold_key = "cause_rest_threshold",    enabled_key = "cause_rest_enabled",    weight = 2.0, dormant_period = true },
-    { need = "supply",  field = "last_supply_at",  threshold_key = "cause_supply_threshold",  enabled_key = "cause_supply_enabled",  weight = 1.5, active_period = true },
-    { need = "money",   field = "last_money_at",   threshold_key = "cause_money_threshold",   enabled_key = "cause_money_enabled",   weight = 1.2, active_period = true },
-    { need = "job",     field = "last_job_at",     threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled",     weight = 1.0, active_period = true },
-    { need = "social",  field = "last_social_at",  threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled",  weight = 0.8 },
+    { need = "shelter", field = "last_shelter_at", weight = 5.0, dormant_period = true,
+      threshold_key = "cause_shelter_threshold", enabled_key = "cause_shelter_enabled" },
+    { need = "heal",    field = "last_heal_at",    weight = 4.0,
+      threshold_key = "cause_heal_threshold",    enabled_key = "cause_heal_enabled" },
+    { need = "hunger",  field = "last_hunger_at",  weight = 3.0,
+      threshold_key = "cause_hunger_threshold",  enabled_key = "cause_hunger_enabled" },
+    { need = "sleep",   field = "last_sleep_at",   weight = 2.5, dormant_period = true,
+      threshold_key = "cause_sleep_threshold",   enabled_key = "cause_sleep_enabled" },
+    { need = "rest",    field = "last_rest_at",    weight = 2.0, dormant_period = true,
+      threshold_key = "cause_rest_threshold",    enabled_key = "cause_rest_enabled" },
+    { need = "supply",  field = "last_supply_at",  weight = 1.5, active_period = true,
+      threshold_key = "cause_supply_threshold",  enabled_key = "cause_supply_enabled" },
+    { need = "money",   field = "last_money_at",   weight = 1.2, active_period = true,
+      threshold_key = "cause_money_threshold",   enabled_key = "cause_money_enabled" },
+    { need = "job",     field = "last_job_at",     weight = 1.0, active_period = true,
+      threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled" },
+    { need = "social",  field = "last_social_at",  weight = 0.8,
+      threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled" },
 }
 
---- Find strongest overdue drive across all needs (Hull drive reduction scoring)
-local function _find_strongest_drive(dto, now, identity)
-    if not level.present() then return nil, 0 end
-    local is_active = ap_ext_util.is_active_period(identity)
-    local best_entry = nil
-    local best_drive = 0
+--- 14 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
+--- per-cause RULES (alignment subset, personality traits), per-cause SCAN (filter, exclude_enemy).
+--- Populated in on_game_start because alignment tables hydrate from ap_ext_const at that phase.
+local CAUSES
 
+local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
+local function _is_unclaimed(smart)
+    local fac = xsmart.get_smart_faction(smart)
+    return fac == "none"
+end
+
+local function _build_filter(entry, community)
+    return function(smart)
+        if entry.filter and not entry.filter(smart) then return false end
+        if entry.exclude_enemy and community then
+            local fac = xsmart.get_smart_faction(smart)
+            if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
+        end
+        return true
+    end
+end
+
+local function _find_overdue_needs(dto, now, identity)
+    local is_active = ap_ext_util.is_active_period(identity)
+    local out = {}
     for i = 1, #NEEDS do
         local need = NEEDS[i]
-
         if not cfg[need.enabled_key] then goto continue end
         if need.active_period and not is_active then goto continue end
         if need.dormant_period and is_active then goto continue end
@@ -57,16 +95,29 @@ local function _find_strongest_drive(dto, now, identity)
         if elapsed <= threshold then goto continue end
         local ratio = elapsed / threshold
         local drive = need.weight * ratio * ratio
-
-        if drive > best_drive then
-            best_drive = drive
-            best_entry = need
-        end
+        out[#out + 1] = { need = need, drive = drive }
 
         ::continue::
     end
+    table_sort(out, function(a, b) return a.drive > b.drive end)
+    return out
+end
 
-    return best_entry, best_drive
+local function _try_cause(trace, squad, level_id, entry)
+    local smart
+    if cfg["cause_" .. entry.name .. "_enabled"]
+        and ap_ext_util.check_alignment(entry.alignment, squad.player_id)
+        and ap_ext_util.check_personality(entry.personality, squad.player_id, {
+            name = entry.name,
+            p_min = cfg["cause_" .. entry.name .. "_personality_min"],
+            p_max = cfg["cause_" .. entry.name .. "_personality_max"],
+        }) then
+        local filter = _build_filter(entry, squad.player_id)
+        smart = ap_core_utils.find_smart_observed(trace, squad.position, {
+            level_id = level_id, filter = filter, max_distance = RANGE_RADIO,
+        })
+    end
+    return smart
 end
 
 local function _init_dto(dto, now)
@@ -83,48 +134,119 @@ local function _init_dto(dto, now)
     end
 end
 
---- Evaluate needs for squad at smart terrain transition
+--- Build the published payload from a winning cause+smart pair.
+local function _make_result(squad, level_id, overdue_entry, entry, smart)
+    return {
+        cause = entry.cause,
+        dto_field = overdue_entry.need.field,
+        drive = overdue_entry.drive,
+        squad_id = squad.id,
+        community = squad.player_id,
+        position = squad.position,
+        level_id = level_id,
+        dst_smart_id = smart.id,
+    }
+end
+
+--- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
+local function _try_need(trace, squad, level_id, overdue_entry)
+    local need_name = overdue_entry.need.need
+    local result
+    for j = 1, #CAUSES do
+        local entry = CAUSES[j]
+        local smart = (not result) and entry.need == need_name and _try_cause(trace, squad, level_id, entry)
+        if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart) end
+    end
+    return result
+end
+
 local function _on_smart(trace, squad)
     local prof = xprofiler.new_if(ap_core_debug.enabled())
     prof:start()
 
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
+    if not level.present() then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
     local now = xtime.game_sec()
-
     local dto = ap_ext_tracker.get_stalker_needs(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_stalker_needs(squad.id, now)
         _init_dto(dto, now)
     end
 
-    local winner, best_drive = _find_strongest_drive(dto, now, squad.player_id)
-    if not winner then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
+    local overdue = _find_overdue_needs(dto, now, squad.player_id)
+    if #overdue == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
-    local result = {
-        cause = "cause:" .. winner.need,
-        dto_field = winner.field,
-        drive = best_drive,
-        squad_id = squad.id,
-        community = squad.player_id,
-        position = squad.position,
-        level_id = level_id,
-    }
+    local result, won_idx
+    for i = 1, #overdue do
+        if not result then result = _try_need(trace, squad, level_id, overdue[i]); won_idx = i end
+    end
+    if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
+
     prof:stop()
     if ap_core_debug.enabled() then
         trace:push(result.cause)
         ap_core_debug.debug("%s [tid=%d path=%s] sq=%d need=%s drive=%.2f [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, winner.need, best_drive, prof:get_ms())
+            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, overdue[won_idx].need.need, overdue[won_idx].drive, prof:get_ms())
     end
     return result
 end
 
 function on_game_start()
     _alignment_human = ap_ext_const.alignment_human
+    _alignment_selfserving = ap_ext_const.alignment_selfserving
+    _alignment_naturalist = ap_ext_const.alignment_naturalist
+    _alignment_principled = ap_ext_const.alignment_principled
+
+    CAUSES = {
+        { cause = CAUSE.HUNGER_CAMPFIRE,  name = "hunger_campfire",  need = "hunger",
+          filter = xsmart.has_campfire,       exclude_enemy = true,
+          personality = { PERSONALITY.SURVIVAL } },
+        { cause = CAUSE.SLEEP_CAMPFIRE,   name = "sleep_campfire",   need = "sleep",
+          filter = xsmart.has_campfire,       exclude_enemy = true,
+          personality = { PERSONALITY.SURVIVAL } },
+        { cause = CAUSE.REST_CAMPFIRE,    name = "rest_campfire",    need = "rest",
+          filter = xsmart.has_campfire,       exclude_enemy = true,
+          personality = { PERSONALITY.SURVIVAL } },
+        { cause = CAUSE.HEAL_SHELTER,     name = "heal_shelter",     need = "heal",
+          filter = xsmart.has_surge_shelter,  exclude_enemy = true,
+          personality = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL } },
+        { cause = CAUSE.SHELTER_INDOOR,   name = "shelter_indoor",   need = "shelter",
+          filter = xsmart.has_surge_shelter,  exclude_enemy = true,
+          personality = { PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE } },
+        { cause = CAUSE.SHELTER_OUTDOOR,  name = "shelter_outdoor",  need = "shelter",
+          filter = xsmart.has_campfire,       exclude_enemy = true,
+          personality = { PERSONALITY.PERCEPTION } },
+        { cause = CAUSE.SUPPLY_TRADER,    name = "supply_trader",    need = "supply",
+          filter = xsmart.has_trader_job,
+          personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
+        { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
+          filter = xsmart.has_anomaly,        alignment = _alignment_selfserving,
+          personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
+        { cause = CAUSE.MONEY_HUNT,       name = "money_hunt",       need = "money",
+          filter = xsmart.is_lair,            alignment = _alignment_naturalist,
+          personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
+        { cause = CAUSE.JOB_OUTPOST,      name = "job_outpost",      need = "job",
+          filter = _is_not_base_or_lair,      alignment = _alignment_principled, exclude_enemy = true,
+          personality = { PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE } },
+        { cause = CAUSE.JOB_EXPLORE,      name = "job_explore",      need = "job",
+          filter = _is_unclaimed,             alignment = _alignment_selfserving,
+          personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY } },
+        { cause = CAUSE.JOB_RESEARCH,     name = "job_research",     need = "job",
+          filter = xsmart.has_anomaly,        alignment = _alignment_ecolog,
+          personality = { PERSONALITY.PERCEPTION, PERSONALITY.DISCIPLINE } },
+        { cause = CAUSE.SOCIAL_CAMPFIRE,  name = "social_campfire",  need = "social",
+          filter = xsmart.has_campfire,       exclude_enemy = true,
+          personality = { PERSONALITY.RELATION } },
+        { cause = CAUSE.SOCIAL_BASE,      name = "social_base",      need = "social",
+          filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
+          personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
+    }
+
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register({
