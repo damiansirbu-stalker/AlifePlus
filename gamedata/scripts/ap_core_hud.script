@@ -113,11 +113,11 @@ local DUMP_INTERVAL_SEC = 10
 
 --- Radiant pipeline counters (stable reference, zeroed on reset)
 r = { events = 0, pacer1 = 0, protected = 0, ratio = 0, pacer2 = 0,
-    causes = 0, alignment = 0, personality = 0, other_rules = 0, eval = 0, action = 0, rate = 0, consequences = 0 }
+    causes = 0, alignment = 0, personality = 0, other_rules = 0, scan = 0, action = 0, rate = 0, consequences = 0 }
 
 --- Reactive pipeline counters (stable reference, zeroed on reset)
 x = { events = 0, pacer = 0, ratio = 0,
-    causes = 0, alignment = 0, personality = 0, other_rules = 0, eval = 0, action = 0, rate = 0, consequences = 0 }
+    causes = 0, alignment = 0, personality = 0, other_rules = 0, scan = 0, action = 0, rate = 0, consequences = 0 }
 
 local _start_time = 0
 local _was_enabled = false
@@ -150,7 +150,7 @@ function classify(result, is_radiant)
     if code == RESULT.SUCCESS then
         counters.consequences = counters.consequences + 1
     elseif code == RESULT.FAILED_SCAN then
-        counters.eval = counters.eval + 1
+        counters.scan = counters.scan + 1
     elseif code == RESULT.FAILED_ACTION then
         counters.action = counters.action + 1
     elseif result.reason == REASON.WRONG_ALIGNMENT then
@@ -182,38 +182,38 @@ end
 -- csq tried = consequences evaluated (success + all blockers, excluding rate-limited)
 local function _csq_tried(counters)
     return counters.consequences + counters.alignment + counters.personality
-        + counters.other_rules + counters.eval + counters.action
+        + counters.other_rules + counters.scan + counters.action
 end
 
 -- Log format (full detail, one line per pipeline)
 local _LOG_R = "[STATS] TOTAL R: events=%d pacer1=%d prot=%d ratio=%d pacer2=%d"
-    .. " | causes=%d csq=%d exec=%d | align=%d pers=%d rules=%d eval=%d noroute=%d ratelim=%d"
+    .. " | causes=%d csq=%d exec=%d | align=%d pers=%d rules=%d scan=%d noroute=%d ratelim=%d"
 local _LOG_X = "[STATS] TOTAL X: events=%d pacer=%d ratio=%d"
-    .. " | causes=%d csq=%d exec=%d | align=%d pers=%d rules=%d eval=%d noroute=%d ratelim=%d"
+    .. " | causes=%d csq=%d exec=%d | align=%d pers=%d rules=%d scan=%d noroute=%d ratelim=%d"
 local _LOG_R_AVG = "[STATS] /MIN R: events=%.1f pacer1=%.1f prot=%.1f ratio=%.1f pacer2=%.1f"
-    .. " | causes=%.1f csq=%.1f exec=%.1f | align=%.1f pers=%.1f rules=%.1f eval=%.1f noroute=%.1f ratelim=%.1f"
+    .. " | causes=%.1f csq=%.1f exec=%.1f | align=%.1f pers=%.1f rules=%.1f scan=%.1f noroute=%.1f ratelim=%.1f"
 local _LOG_X_AVG = "[STATS] /MIN X: events=%.1f pacer=%.1f ratio=%.1f"
-    .. " | causes=%.1f csq=%.1f exec=%.1f | align=%.1f pers=%.1f rules=%.1f eval=%.1f noroute=%.1f ratelim=%.1f"
+    .. " | causes=%.1f csq=%.1f exec=%.1f | align=%.1f pers=%.1f rules=%.1f scan=%.1f noroute=%.1f ratelim=%.1f"
 
 local function _log_dump(minutes)
     local r_tried = _csq_tried(r)
     local x_tried = _csq_tried(x)
     ap_core_debug.info(_LOG_R,
         r.events, r.pacer1, r.protected, r.ratio, r.pacer2,
-        r.causes, r_tried, r.consequences, r.alignment, r.personality, r.other_rules, r.eval, r.action, r.rate)
+        r.causes, r_tried, r.consequences, r.alignment, r.personality, r.other_rules, r.scan, r.action, r.rate)
     ap_core_debug.info(_LOG_X,
         x.events, x.pacer, x.ratio,
-        x.causes, x_tried, x.consequences, x.alignment, x.personality, x.other_rules, x.eval, x.action, x.rate)
+        x.causes, x_tried, x.consequences, x.alignment, x.personality, x.other_rules, x.scan, x.action, x.rate)
     ap_core_debug.info(_LOG_R_AVG,
         r.events / minutes, r.pacer1 / minutes, r.protected / minutes, r.ratio / minutes, r.pacer2 / minutes,
         r.causes / minutes, r_tried / minutes, r.consequences / minutes,
         r.alignment / minutes, r.personality / minutes, r.other_rules / minutes,
-        r.eval / minutes, r.action / minutes, r.rate / minutes)
+        r.scan / minutes, r.action / minutes, r.rate / minutes)
     ap_core_debug.info(_LOG_X_AVG,
         x.events / minutes, x.pacer / minutes, x.ratio / minutes,
         x.causes / minutes, x_tried / minutes, x.consequences / minutes,
         x.alignment / minutes, x.personality / minutes, x.other_rules / minutes,
-        x.eval / minutes, x.action / minutes, x.rate / minutes)
+        x.scan / minutes, x.action / minutes, x.rate / minutes)
 end
 
 local function _dump()
@@ -261,7 +261,7 @@ local _ROWS = {
     { "align",   "alignment",    "blocker" },
     { "pers",    "personality",   "blocker" },
     { "rules",   "other_rules",  "blocker" },
-    { "eval",    "eval",         "blocker" },
+    { "scan",    "scan",         "blocker" },
     { "noroute", "action",       "blocker" },
     { "ratelim", "rate",         "blocker" },
 }

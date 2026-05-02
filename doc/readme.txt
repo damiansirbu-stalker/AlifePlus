@@ -205,9 +205,9 @@ Personality (probability layer):
   The averaged value is clamped to a configurable floor and ceiling (MCM personality_min / personality_max) and used as the probability of acting.
   Trait values are direct probabilities grounded in GSC lore.
 
-World state (eval layer):
+World state (scan layer):
 
-  The eval phase queries live world state before the consequence acts.
+  The scan phase queries live world state before the consequence acts.
   Smart terrain capacity, ownership, current scripted_target, recent activity, faction territory bookkeeping, time of day, online/offline status.
   Stale or contradictory state rejects the consequence. A squad already scripted by another mod is left alone. A full smart terrain rejects new arrivals. An emission or psi-storm suppresses the news queue.
 

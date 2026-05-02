@@ -16,16 +16,16 @@ The naming rule splits by pipeline. Radiant pairs are 1:1 and share the noun. Re
 cause:<noun>  ↔  consequence:<noun>
 ```
 
-Per `concept.md` radiant invariant 10. The 1:1 bond is visible in the name. No invented synonyms to make a "cause noun" sound different from a "consequence verb" — they are the same concept under two scopes (the trigger state and the action).
+Per the radiant rule that cause and consequence share the noun (see `architecture.md` Rules). The 1:1 bond is visible in the name. No invented synonyms to make a "cause noun" sound different from a "consequence verb" — they are the same concept under two scopes (the trigger state and the action).
 
 | Family | Pattern | Examples |
 |--------|---------|----------|
 | Opportunities (area) | `area_<noun>` shared on both sides | `cause:area_conquer` ↔ `consequence:area_conquer`; `cause:area_swarm` ↔ `consequence:area_swarm`; `cause:area_infest` ↔ `consequence:area_infest` |
-| Opportunities (stash) | `stash_<noun>` shared on both sides | `cause:stash_fill` ↔ `consequence:stash_fill` (planned sweep) |
-| Needs (stalker) | bare drive noun shared on both sides | `cause:hunger` ↔ `consequence:hunger`, `cause:sleep` ↔ `consequence:sleep` (after the needs sweep) |
-| Instincts (mutant) | `instinct_<drive>` shared on both sides | `cause:instinct_hunger` ↔ `consequence:instinct_hunger` (planned sweep). Family prefix kept; drive noun matches the human equivalent (`sleep`, `hunger`, `social`, `explore`) — no synonyms (no `feed`/`hibernate`/`herd`). |
+| Opportunities (stash) | `stash_<noun>` shared on both sides | `cause:stash_loot` ↔ `consequence:stash_loot`; `cause:stash_ambush` ↔ `consequence:stash_ambush`; `cause:stash_fill` ↔ `consequence:stash_fill` |
+| Needs (stalker) | `<drive>_<answer>` shared on both sides | `cause:hunger_campfire` ↔ `consequence:hunger_campfire`; `cause:shelter_indoor` ↔ `consequence:shelter_indoor`; `cause:job_outpost` ↔ `consequence:job_outpost` |
+| Instincts (mutant) | bare drive noun for single-answer drives; `<drive>_<answer>` for multi-answer drives | single-answer: `cause:feed` ↔ `consequence:feed`; `cause:scatter` ↔ `consequence:scatter`. Multi-answer (slumber): `cause:slumber_field` ↔ `consequence:slumber_field`; `cause:slumber_lair` ↔ `consequence:slumber_lair`; `cause:slumber_surge` ↔ `consequence:slumber_surge`. |
 
-Family prefix presence depends on collision: needs use no prefix because the drive nouns are unique to humans; instincts use `instinct_` because the same drive nouns also exist as human needs. Stash and area use family prefixes for grouping.
+Family prefix presence depends on collision: needs and instincts use no family prefix because their drive nouns do not overlap (stalker drives are hunger, sleep, rest, heal, shelter, supply, money, job, social; mutant drives are scatter, feed, slumber, roam, pack). Stash and area use family prefixes for grouping.
 
 ### Reactive: cause-noun + consequence-verb (1:N)
 
@@ -46,11 +46,11 @@ CONSEQUENCE = CAUSE + VERB
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
-| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.AREA_CONQUER`, `CAUSE.INSTINCT_HUNGER` |
-| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:area_conquer"`, `"cause:instinct_hunger"` |
-| Consequence const (radiant) | `CONSEQUENCE.{NAME}` — same noun as the cause | `CONSEQUENCE.AREA_CONQUER`, `CONSEQUENCE.INSTINCT_HUNGER` |
+| Cause const | `CAUSE.{NAME}` | `CAUSE.MASSACRE`, `CAUSE.AREA_CONQUER`, `CAUSE.HUNGER_CAMPFIRE`, `CAUSE.SLUMBER_LAIR` |
+| Cause value | `"cause:{name}"` | `"cause:massacre"`, `"cause:area_conquer"`, `"cause:hunger_campfire"`, `"cause:slumber_lair"` |
+| Consequence const (radiant) | `CONSEQUENCE.{NAME}` — same noun as the cause | `CONSEQUENCE.AREA_CONQUER`, `CONSEQUENCE.HUNGER_CAMPFIRE`, `CONSEQUENCE.SLUMBER_LAIR` |
 | Consequence const (reactive) | `CONSEQUENCE.{CAUSE}_{VERB}` | `CONSEQUENCE.MASSACRE_SCAVENGE`, `CONSEQUENCE.WOUNDED_HUNT` |
-| Consequence value (radiant) | `"consequence:{name}"` — same noun as the cause | `"consequence:area_conquer"`, `"consequence:instinct_hunger"` |
+| Consequence value (radiant) | `"consequence:{name}"` — same noun as the cause | `"consequence:area_conquer"`, `"consequence:hunger_campfire"`, `"consequence:slumber_lair"` |
 | Consequence value (reactive) | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
 | Action ID | `action:{verb}` | `action:find_targets`, `action:move_squad` |
 | Lock (cause) | `lock:cause:{name}` | `lock:cause:massacre` |
@@ -153,16 +153,16 @@ Consequence handlers receive trace from consumer. Rate limiting handled by consu
 | Rate limiter | Consumer | Token bucket (per-consequence) + global counter (radiant), checked before handler |
 | Enabled gate | Consumer | MCM condition function, checked before handler |
 | Rules phase | Handler | Alignment, species, personality, validation |
-| Eval phase | Handler | find_squads, find_smart, entity lookups |
+| Scan phase | Handler | find_squads, find_smart, entity lookups |
 | Action phase | Handler | script_squad, record, PDA message |
 | Result code | Handler | Template phase outcome |
 
-### Handler Template (rules -> eval -> action)
+### Handler Template (rules -> scan -> action)
 
 Every consequence follows a three-phase structure. Each phase returns immediately on failure.
 
 1. **Rules** - alignment check, species check (direct hash), personality roll, match validation, at_base guard -> `FAILED_RULES`
-2. **Eval** - find_squads, find_smart, xobject.se lookups -> `FAILED_SCAN`
+2. **Scan** - find_squads, find_smart, xobject.se lookups -> `FAILED_SCAN`
 3. **Action** - script_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
 
 Gate order within rules: alignment -> species -> personality -> match -> validation.
@@ -175,8 +175,8 @@ Template phase outcomes. Each code names the phase that answered.
 |------|-------|---------|
 | `SUCCESS` | action | Consequence executed, squad scripted, record written |
 | `FAILED_RULES` | rules | Business rules rejected (alignment, personality, validation) |
-| `FAILED_SCAN` | eval | World query found nothing (no squads, no smart, entity gone) |
-| `FAILED_ACTION` | action | Rules and eval passed but action failed (script_squad rejected) |
+| `FAILED_SCAN` | scan | World query found nothing (no squads, no smart, entity gone) |
+| `FAILED_ACTION` | action | Rules and scan passed but action failed (script_squad rejected) |
 | `DISABLED` | consumer | Condition pre-gate returned false (MCM toggle off). Never returned by handlers. |
 
 Rules:
@@ -283,3 +283,66 @@ All events MUST include `level_id` from where the event occurred.
 - Pass `level_id` to `ap_ext_news.record_event(squad, cause, consequence, { level_id = ... })` so the journal captures it
 
 Never use `get_actor_level_id()` as fallback. The player may be on a different level.
+
+---
+
+## MCM
+
+### Tag widget
+
+Each MCM cause section uses one tag widget (`_tag()`, faded khaki) to display three lines: identity, description, rules. No separate `_desc()` widget — the description is folded into the tag so it shares the faded style with the rest.
+
+### Line order inside the tag
+
+```
+Type: <cause-type>, <mechanic>          ← umbrella (family-level) section
+   OR
+Cause: <Display Name>                    ← per-specific-cause section
+Desc: <one-line description>
+Rules: <semicolon-separated clauses>
+```
+
+### Rules clause order
+
+Semicolon-separated, always in this order:
+
+1. `alignment_<set>`
+2. `personality(<TRAIT>, <TRAIT>)` — adjacent to alignment
+3. world-state predicate (`not at base`, `stash non-empty`, `items >= min`, etc.)
+4. threshold mechanism (`Hull(<drive>)` or `MVT(<cause>)`)
+
+Alignment and personality always sit adjacent at the front. Branch-specific clauses (state, threshold) follow.
+
+### Display name vs code identifier
+
+The `Cause:` line uses display-name form: title-case, space-separated (`Stash Loot`, `Area Conquer`, `Hunger Campfire`). Never the cfg-key segment (`stash_loot`).
+
+For radiant causes only, the display name carries the suffix ` Available` on the `Cause:` line (e.g. `Cause: Stash Loot Available`, `Cause: Hunger Campfire Available`). This disambiguates the cause from its 1:1 consequence which shares the same noun internally per the radiant rule that cause and consequence share the noun. Reactive causes do not need the suffix because their causes and consequences already differ in name (massacre vs massacre_investigate, etc.). The consequence display name stays bare (`Stash Loot`, not `Stash Loot Available`).
+
+`MVT(<cause>)`, `Hull(<drive>)`, `personality(<trait>, <trait>)` are formal architecture vocabulary used in MCM tags as-is. Cause/drive/trait names are lowercase. Code enum constants (`CAUSE.STASH_LOOT`, `PERSONALITY.TERRITORY`) stay uppercase as Lua identifiers — formal vocabulary references the lowercase string form.
+
+`alignment_<set>` is internal vocabulary for technical docs (architecture.md, this file, integration-guide.md) only. User-facing MCM text uses plain English instead:
+
+| Code identifier | Plain English (user-facing MCM) |
+|---|---|
+| `alignment_human` | `any stalker` |
+| `alignment_loot` | `unprincipled or outlaw stalkers` |
+| `alignment_outlaw` | `outlaw stalkers` |
+| `alignment_conquer_human` | `any stalker except ecologists` |
+| `alignment_conquer_mutant` | `feral, predator, or aberrant mutants` |
+| `alignment_mutant` | `any mutant` |
+| `alignment_principled` | `principled stalkers` |
+| `alignment_selfserving` | `self-serving stalkers` |
+| `alignment_unprincipled` | `unprincipled stalkers` |
+| `alignment_naturalist` | `naturalist stalkers` |
+| `alignment_ecolog` | `ecologists` |
+| `alignment_mutant_cowardly` | `cowardly mutants` |
+| `alignment_mutant_feral` | `feral mutants` |
+| `alignment_mutant_predator` | `predator mutants` |
+| `alignment_mutant_aberrant` | `aberrant mutants` |
+
+### Section layout
+
+Family with multiple specific causes (e.g. stash, area, needs, instincts): one umbrella tag at the top (`Type:` line), then for each specific cause: a line divider followed by the sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, threshold, personality min/max, any branch-only sliders).
+
+Family with a single cause (e.g. alpha, alphakill, wounded): just one tag, no sub-divisions.

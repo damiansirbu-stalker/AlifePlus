@@ -37,18 +37,19 @@ local _alignment_surge
 local _alignment_pack
 
 --- 5 drives. Per-drive Hull weight + threshold cfg key + period gating.
+--- Enable check is per-cause (cause_<cause_name>_enabled) inside _try_cause; no drive-level enable.
 local INSTINCTS = {
     { instinct = "scatter", field = "last_scatter_at", weight = 4.0,
-      threshold_key = "cause_scatter_threshold", enabled_key = "cause_scatter_enabled",
+      threshold_key = "cause_scatter_threshold",
       max_tier_key = "scatter" },
     { instinct = "feed",    field = "last_feed_at",    weight = 3.0, active_period = true,
-      threshold_key = "cause_feed_threshold",    enabled_key = "cause_feed_enabled" },
+      threshold_key = "cause_feed_threshold" },
     { instinct = "slumber", field = "last_slumber_at", weight = 2.5, dormant_period = true,
-      threshold_key = "cause_slumber_threshold", enabled_key = "cause_slumber_enabled" },
+      threshold_key = "cause_slumber_threshold" },
     { instinct = "roam",    field = "last_roam_at",    weight = 1.0, active_period = true,
-      threshold_key = "cause_roam_threshold",    enabled_key = "cause_roam_enabled" },
+      threshold_key = "cause_roam_threshold" },
     { instinct = "pack",    field = "last_pack_at",    weight = 0.8, active_period = true,
-      threshold_key = "cause_pack_threshold",    enabled_key = "cause_pack_enabled" },
+      threshold_key = "cause_pack_threshold" },
 }
 
 --- 7 specific causes. Slumber splits 3 ways by shelter preference.
@@ -148,6 +149,7 @@ local function _scatter_smart(trace, squad, level_id, species)
 end
 
 local function _try_cause(trace, squad, level_id, species, entry)
+    if not ap_core_producer.take_check_slot() then return nil end
     local smart
     local alignment_ok = (not entry.alignment) or entry.alignment[species]
     local personality_ok = ap_ext_util.check_personality(entry.personality, species, {
@@ -199,7 +201,6 @@ local function _find_overdue_drives(dto, now, species)
     local out = {}
     for i = 1, #INSTINCTS do
         local inst = INSTINCTS[i]
-        if not cfg[inst.enabled_key] then goto continue end
         if inst.active_period and not is_active then goto continue end
         if inst.dormant_period and is_active then goto continue end
         if inst.max_tier_key == "scatter" then
@@ -223,14 +224,12 @@ end
 local function _init_dto(dto, now)
     for i = 1, #INSTINCTS do
         local inst = INSTINCTS[i]
-        if not cfg[inst.enabled_key] then goto init_next end
         if math_random() < 0.5 then
             dto[inst.field] = now
         else
             local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
             dto[inst.field] = now - threshold - math_random(0, math_floor(threshold))
         end
-        ::init_next::
     end
 end
 

@@ -107,6 +107,7 @@ local function _on_smart(trace, squad)
 
     local cause_const = _pick_branch(squad.player_id, is_empty, items_count)
     if not cause_const then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
+    if not ap_core_producer.take_check_slot() then return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED } end
 
     local keys = KEYS_BY_CAUSE[cause_const]
     local now = xtime.game_sec()

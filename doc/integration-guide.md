@@ -82,7 +82,7 @@ Rules:
 
 ### Consequence (handler)
 
-A consequence follows the three-phase template: rules -> eval -> action. Each phase returns immediately on failure with the corresponding result code.
+A consequence follows the three-phase template: rules -> scan -> action. Each phase returns immediately on failure with the corresponding result code.
 
 ```lua
 -- ap_ext_consequence_ambush_setup.script
@@ -117,7 +117,7 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
-        -- EVAL: world queries
+        -- SCAN: world queries
         local smart = xobject.se(event_data.smart_id)
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
@@ -167,7 +167,7 @@ end
 
 Rules:
 - Always return `{ code = RESULT.X }` where X is SUCCESS, FAILED_RULES, FAILED_SCAN, or FAILED_ACTION
-- Follow the consequence template: rules -> eval -> action (see conventions.md)
+- Follow the consequence template: rules -> scan -> action (see conventions.md)
 - Enabled gate goes in `condition` function (consumer pre-gate), not inside the handler
 - Personality checked inside handler via `ap_ext_util.check_personality`
 - Wrap the handler body in `ap_core_debug.observe(trace, CONSEQUENCE.X, function() ... end)`
@@ -325,9 +325,10 @@ end
 | cause:stash_ambush | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
 | cause:stash_fill | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
 | cause:area_conquer | radiant | position, level_id, squad_id, community, dto_field |
+| cause:area_swarm | radiant | position, level_id, squad_id, community, species, dto_field |
 | cause:area_infest | radiant | position, level_id, squad_id, community, species, dto_field |
-| cause:hunger / cause:sleep / cause:rest / cause:heal / cause:shelter / cause:supply / cause:money / cause:job / cause:social | radiant | position, level_id, squad_id, community, dto_field, drive |
-| cause:instinct_scatter / cause:instinct_feed / cause:instinct_sleep / cause:instinct_explore / cause:instinct_socialize | radiant | position, level_id, squad_id, community, species, dto_field, drive |
+| cause:hunger_campfire / cause:sleep_campfire / cause:rest_campfire / cause:heal_shelter / cause:shelter_indoor / cause:shelter_outdoor / cause:supply_trader / cause:money_harvest / cause:money_hunt / cause:job_outpost / cause:job_explore / cause:job_research / cause:social_campfire / cause:social_base | radiant | position, level_id, squad_id, community, dto_field, drive |
+| cause:scatter / cause:feed / cause:slumber_field / cause:slumber_lair / cause:slumber_surge / cause:roam / cause:pack | radiant | position, level_id, squad_id, community, species, dto_field, drive |
 
 All events include `_trace`, `_cause_id` (broker-assigned monotonic seq), and `cause_type` ("radiant" or "reactive"). The umbrella names (`cause:stash`, `cause:area`, `cause:needs`, `cause:instincts`) are **never published** — only the specific child causes above flow through xbus.
 
@@ -356,8 +357,8 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_alpha_level(entity_id)` | integer level or 0 |
 | `is_alpha(entity_id)` | boolean (true even during death grace period) |
 | `get_alphas()` | all alive alphas as { [npc_id] = data } |
-| `get_stalker_needs(squad_id)` | needs DTO { last_hunger_at, last_sleep_at, ... } or nil |
-| `get_mutant_instincts(squad_id)` | instinct DTO { last_feed_at, last_sleep_at, ... } or nil |
+| `get_stalker_needs(squad_id)` | needs DTO { last_hunger_at, last_sleep_at, last_rest_at, last_heal_at, last_shelter_at, last_supply_at, last_money_at, last_job_at, last_social_at } or nil |
+| `get_mutant_instincts(squad_id)` | instinct DTO { last_scatter_at, last_feed_at, last_slumber_at, last_roam_at, last_pack_at } or nil |
 | `projected_kill_count(killer_id, victim_id)` | kill count inclusive of a pending death |
 
 ---

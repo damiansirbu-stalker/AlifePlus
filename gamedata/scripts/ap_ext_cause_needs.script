@@ -38,25 +38,26 @@ local _alignment_principled
 local _alignment_ecolog = { ecolog = true }
 
 --- 9 drives. Per-need Hull weight, threshold cfg key, period gating.
+--- Enable check is per-cause (cause_<cause_name>_enabled) inside _try_cause; no drive-level enable.
 local NEEDS = {
     { need = "shelter", field = "last_shelter_at", weight = 5.0, dormant_period = true,
-      threshold_key = "cause_shelter_threshold", enabled_key = "cause_shelter_enabled" },
+      threshold_key = "cause_shelter_threshold" },
     { need = "heal",    field = "last_heal_at",    weight = 4.0,
-      threshold_key = "cause_heal_threshold",    enabled_key = "cause_heal_enabled" },
+      threshold_key = "cause_heal_threshold" },
     { need = "hunger",  field = "last_hunger_at",  weight = 3.0,
-      threshold_key = "cause_hunger_threshold",  enabled_key = "cause_hunger_enabled" },
+      threshold_key = "cause_hunger_threshold" },
     { need = "sleep",   field = "last_sleep_at",   weight = 2.5, dormant_period = true,
-      threshold_key = "cause_sleep_threshold",   enabled_key = "cause_sleep_enabled" },
+      threshold_key = "cause_sleep_threshold" },
     { need = "rest",    field = "last_rest_at",    weight = 2.0, dormant_period = true,
-      threshold_key = "cause_rest_threshold",    enabled_key = "cause_rest_enabled" },
+      threshold_key = "cause_rest_threshold" },
     { need = "supply",  field = "last_supply_at",  weight = 1.5, active_period = true,
-      threshold_key = "cause_supply_threshold",  enabled_key = "cause_supply_enabled" },
+      threshold_key = "cause_supply_threshold" },
     { need = "money",   field = "last_money_at",   weight = 1.2, active_period = true,
-      threshold_key = "cause_money_threshold",   enabled_key = "cause_money_enabled" },
+      threshold_key = "cause_money_threshold" },
     { need = "job",     field = "last_job_at",     weight = 1.0, active_period = true,
-      threshold_key = "cause_job_threshold",     enabled_key = "cause_job_enabled" },
+      threshold_key = "cause_job_threshold" },
     { need = "social",  field = "last_social_at",  weight = 0.8,
-      threshold_key = "cause_social_threshold",  enabled_key = "cause_social_enabled" },
+      threshold_key = "cause_social_threshold" },
 }
 
 --- 14 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
@@ -86,7 +87,6 @@ local function _find_overdue_needs(dto, now, identity)
     local out = {}
     for i = 1, #NEEDS do
         local need = NEEDS[i]
-        if not cfg[need.enabled_key] then goto continue end
         if need.active_period and not is_active then goto continue end
         if need.dormant_period and is_active then goto continue end
 
@@ -104,6 +104,7 @@ local function _find_overdue_needs(dto, now, identity)
 end
 
 local function _try_cause(trace, squad, level_id, entry)
+    if not ap_core_producer.take_check_slot() then return nil end
     local smart
     if cfg["cause_" .. entry.name .. "_enabled"]
         and ap_ext_util.check_alignment(entry.alignment, squad.player_id)
@@ -123,14 +124,12 @@ end
 local function _init_dto(dto, now)
     for i = 1, #NEEDS do
         local need = NEEDS[i]
-        if not cfg[need.enabled_key] then goto init_next end
         if math_random() < 0.5 then
             dto[need.field] = now
         else
             local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
             dto[need.field] = now - threshold - math_random(0, math_floor(threshold))
         end
-        ::init_next::
     end
 end
 

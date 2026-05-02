@@ -303,7 +303,7 @@
         <text>Alpha</text>
     </string>
     <string id="ui_mcm_ap_causes_alpha_tag">
-        <text>Type: reaction</text>
+        <text>Type: reaction\nRules: kill threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_alpha_desc">
         <text>Mutant accumulated enough kills to level up as an alpha. 10 levels, each requiring more kills. Stalkers use engine rank instead.</text>
@@ -326,7 +326,7 @@
         <text>Alphakill</text>
     </string>
     <string id="ui_mcm_ap_causes_alphakill_tag">
-        <text>Type: reaction</text>
+        <text>Type: reaction\nRules: alpha died</text>
     </string>
     <string id="ui_mcm_ap_causes_alphakill_desc">
         <text>An alpha mutant has died.</text>
@@ -343,7 +343,7 @@
         <text>Massacre</text>
     </string>
     <string id="ui_mcm_ap_causes_massacre_tag">
-        <text>Type:  reaction\nRules: alignment</text>
+        <text>Type: reaction\nRules: multiple human deaths; not at base</text>
     </string>
     <string id="ui_mcm_ap_causes_massacre_desc">
         <text>Deaths pile up at a smart terrain.</text>
@@ -372,10 +372,16 @@
         <text>Stash</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_tag">
-        <text>Type:  radiant, opportunistic\nRules: alignment</text>
+        <text>Type: radiant, opportunistic\nDesc: Squad discovers nearby stashes.\nRules: any stalker; not at base; stash in eye range</text>
     </string>
-    <string id="ui_mcm_ap_causes_stash_desc">
-        <text>Squad discovers nearby stashes.</text>
+    <string id="ui_mcm_ap_causes_stash_loot_tag">
+        <text>Cause: Stash Loot Available\nDesc: Squad finds a non-empty stash and loots it.\nRules: unprincipled or outlaw stalkers; personality(greed, perception); stash non-empty; MVT(stash_loot)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_ambush_tag">
+        <text>Cause: Stash Ambush Available\nDesc: Outlaw squad finds a heavily-stocked stash and stakes it out.\nRules: outlaw stalkers; personality(greed, aggression); items >= min; MVT(stash_ambush)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_stash_fill_tag">
+        <text>Cause: Stash Fill Available\nDesc: Squad finds an empty stash and stocks it.\nRules: any stalker; personality(greed, relation); stash empty; MVT(stash_fill)</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_loot_enabled">
         <text>Loot Enabled</text>
@@ -396,22 +402,22 @@
         <text>Allow the stash generator to publish cause:stash_fill.</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold">
-        <text>Loot Threshold (game hours)</text>
+        <text>Loot threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_loot_threshold_desc">
         <text>Game hours per squad before another loot attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold">
-        <text>Ambush Threshold (game hours)</text>
+        <text>Ambush threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_ambush_threshold_desc">
-        <text>Game hours per outlaw squad between ambush stakeouts.</text>
+        <text>Game hours per squad before another ambush attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold">
-        <text>Fill Threshold (game hours)</text>
+        <text>Fill threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_fill_threshold_desc">
-        <text>Game hours per squad between attempts to seed an empty stash.</text>
+        <text>Game hours per squad before another fill attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_stash_cause_stash_fill_personality_min">
         <text>Personality floor</text>
@@ -461,7 +467,7 @@
         <text>Squadkill</text>
     </string>
     <string id="ui_mcm_ap_causes_squadkill_tag">
-        <text>Type:  reaction\nRules: alignment</text>
+        <text>Type: reaction\nRules: human squad wiped; not at base</text>
     </string>
     <string id="ui_mcm_ap_causes_squadkill_desc">
         <text>A squad has been wiped out.</text>
@@ -478,7 +484,7 @@
         <text>Basekill</text>
     </string>
     <string id="ui_mcm_ap_causes_basekill_tag">
-        <text>Type:  reaction\nRules: alignment</text>
+        <text>Type: reaction\nRules: multiple human deaths; at base</text>
     </string>
     <string id="ui_mcm_ap_causes_basekill_desc">
         <text>Deaths pile up at a faction base.</text>
@@ -507,7 +513,7 @@
         <text>Wounded</text>
     </string>
     <string id="ui_mcm_ap_causes_wounded_tag">
-        <text>Type: reaction</text>
+        <text>Type: reaction\nRules: healing item used; not at base</text>
     </string>
     <string id="ui_mcm_ap_causes_wounded_desc">
         <text>An NPC or player used a healing item.</text>
@@ -524,10 +530,16 @@
         <text>Area</text>
     </string>
     <string id="ui_mcm_ap_causes_area_tag">
-        <text>Type:  radiant, opportunistic\nRules: alignment</text>
+        <text>Type: radiant, opportunistic\nDesc: Squad discovers nearby unguarded area.\nRules: any stalker (no ecologists) or any mutant</text>
     </string>
-    <string id="ui_mcm_ap_causes_area_desc">
-        <text>Squad discovers nearby unguarded area.</text>
+    <string id="ui_mcm_ap_causes_area_conquer_tag">
+        <text>Cause: Area Conquer Available\nDesc: Stalker squad claims an empty smart with additive shared spawn.\nRules: any stalker except ecologists; personality(territory, aggression); empty smart in eye range; not at base; MVT(area_conquer)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_swarm_tag">
+        <text>Cause: Area Swarm Available\nDesc: Mutant squad claims an empty smart with additive shared spawn.\nRules: feral, predator, or aberrant mutants; personality(territory, aggression); empty smart in eye range; not at base; MVT(area_swarm)</text>
+    </string>
+    <string id="ui_mcm_ap_causes_area_infest_tag">
+        <text>Cause: Area Infest Available\nDesc: Mutant claims a lair or surge shelter with exclusive spawn replacement.\nRules: feral, predator, or aberrant mutants; personality(territory, survival); has alpha; lair or surge in scent range; per-level cap; MVT(area_infest)</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_conquer_enabled">
         <text>Conquer</text>
@@ -539,7 +551,7 @@
         <text>Conquer threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_conquer_threshold_desc">
-        <text>[game-hours]\nTime between conquer events per squad. Default 24.</text>
+        <text>Game hours per squad before another conquer attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_conquer_personality_min">
         <text>Conquer personality floor</text>
@@ -563,7 +575,7 @@
         <text>Swarm threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_swarm_threshold_desc">
-        <text>[game-hours]\nTime between swarm events per squad. Default 24.</text>
+        <text>Game hours per squad before another swarm attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_swarm_personality_min">
         <text>Swarm personality floor</text>
@@ -583,7 +595,7 @@
         <text>Harvest</text>
     </string>
     <string id="ui_mcm_ap_causes_harvest_tag">
-        <text>Type: reaction</text>
+        <text>Type: reaction\nRules: artefact picked up</text>
     </string>
     <string id="ui_mcm_ap_causes_harvest_desc">
         <text>An NPC or player picked up an artefact.</text>
@@ -604,60 +616,6 @@
     </string>
     <string id="ui_mcm_ap_causes_needs_desc">
         <text>Squads develop human needs over time (hunger, sleep, rest, healing, shelter, money, supplies, duty, social). Hull drive scoring picks the strongest unmet need. Thresholds are game-hours between need events.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled">
-        <text>Hunger</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_hunger_enabled_desc">
-        <text>Enable hunger need. Squads seek campfires to eat when overdue.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_sleep_enabled">
-        <text>Sleep</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_sleep_enabled_desc">
-        <text>Enable sleep need. Dormant-period only (night for stalkers). Squads seek campfires to sleep.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_rest_enabled">
-        <text>Rest</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_rest_enabled_desc">
-        <text>Enable rest need. Squads seek campfires to smoke, drink, or relax.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_heal_enabled">
-        <text>Heal</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_heal_enabled_desc">
-        <text>Enable heal need. Squads return to friendly bases for medical attention.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_shelter_enabled">
-        <text>Shelter</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_shelter_enabled_desc">
-        <text>Enable shelter need. Squads seek non-enemy bases for environmental protection.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_money_enabled">
-        <text>Money</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_money_enabled_desc">
-        <text>Enable money need. Squads visit anomaly zones or mutant lairs for resources.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_supply_enabled">
-        <text>Supply</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_supply_enabled_desc">
-        <text>Enable supply need. Squads visit traders for resupply.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_job_enabled">
-        <text>Job</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_job_enabled_desc">
-        <text>Enable job need. Squads guard, explore, or research based on faction.</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_social_enabled">
-        <text>Social</text>
-    </string>
-    <string id="ui_mcm_ap_causes_needs_cause_social_enabled_desc">
-        <text>Enable social need. Squads gather at campfires or bases for human connection.</text>
     </string>
     <string id="ui_mcm_ap_causes_needs_cause_hunger_threshold">
         <text>Hunger threshold</text>
@@ -860,7 +818,7 @@
         <text>Alphakill Targeted</text>
     </string>
     <string id="ui_mcm_ap_consequences_alphakill_targeted_tag">
-        <text>Cause: alphakill\nRules: personality\nEval:  scent range</text>
+        <text>Cause: alphakill\nRules: personality\nScan:  scent range</text>
     </string>
     <string id="ui_mcm_ap_consequences_alphakill_targeted_desc">
         <text>When an alpha mutant dies, same-species mutants on the same level hunt the killer.</text>
@@ -895,7 +853,7 @@
         <text>Massacre Scavenge</text>
     </string>
     <string id="ui_mcm_ap_consequences_massacre_scavenge_tag">
-        <text>Cause: massacre\nRules: alignment, personality\nEval:  scent range</text>
+        <text>Cause: massacre\nRules: alignment, personality\nScan:  scent range</text>
     </string>
     <string id="ui_mcm_ap_consequences_massacre_scavenge_desc">
         <text>When the Massacre cause fires, nearby outlaws and cowardly mutants (flesh, zombie, rats) converge on the site.</text>
@@ -924,7 +882,7 @@
         <text>Massacre\nInvestigate</text>
     </string>
     <string id="ui_mcm_ap_consequences_massacre_investigate_tag">
-        <text>Cause: massacre\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: massacre\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_massacre_investigate_desc">
         <text>When the Massacre cause fires, the victims' faction sends nearby squads to investigate the site.</text>
@@ -953,7 +911,7 @@
         <text>Stash\nAmbush</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_ambush_tag">
-        <text>Cause: stash\nRules: alignment, personality\nEval:  eye range</text>
+        <text>Cause: stash\nRules: alignment, personality\nScan:  eye range</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_ambush_desc">
         <text>When the Stash cause fires, the discovering squad (outlaws) camps at the stash location. They don't touch the stash, it's bait.</text>
@@ -976,7 +934,7 @@
         <text>Stash\nLoot</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_loot_tag">
-        <text>Cause: stash\nRules: alignment, personality\nEval:  eye range</text>
+        <text>Cause: stash\nRules: alignment, personality\nScan:  eye range</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_loot_desc">
         <text>When the Stash cause fires, the discovering stalker squad moves to loot the stash. What's inside is unknown until arrival.</text>
@@ -1005,7 +963,7 @@
         <text>Stash\nFill</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_fill_tag">
-        <text>Cause: stash\nRules: alignment\nEval:  eye range</text>
+        <text>Cause: stash\nRules: alignment\nScan:  eye range</text>
     </string>
     <string id="ui_mcm_ap_consequences_stash_fill_desc">
         <text>When the Stash cause fires, the discovering stalker squad moves to hide supplies in the stash. What's inside is unknown until arrival.</text>
@@ -1040,7 +998,7 @@
         <text>Squadkill Revenge</text>
     </string>
     <string id="ui_mcm_ap_consequences_squadkill_revenge_tag">
-        <text>Cause: squadkill\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: squadkill\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_squadkill_revenge_desc">
         <text>When the SquadKill cause fires, nearby same-faction squads pursue the killer (NPC or player) organically through the simulation as it moves.</text>
@@ -1075,7 +1033,7 @@
         <text>Squadkill Flee</text>
     </string>
     <string id="ui_mcm_ap_consequences_squadkill_flee_tag">
-        <text>Cause: squadkill\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: squadkill\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_squadkill_flee_desc">
         <text>When the SquadKill cause fires, nearby squads of the victim's faction flee to the nearest faction base.</text>
@@ -1104,7 +1062,7 @@
         <text>Basekill Support</text>
     </string>
     <string id="ui_mcm_ap_consequences_basekill_support_tag">
-        <text>Cause: basekill\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: basekill\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_basekill_support_desc">
         <text>When the BaseKill cause fires, nearby friendly squads rush to reinforce the base under attack.</text>
@@ -1133,7 +1091,7 @@
         <text>Basekill Flee</text>
     </string>
     <string id="ui_mcm_ap_consequences_basekill_flee_tag">
-        <text>Cause: basekill\nRules: alignment, personality\nEval:  eye range</text>
+        <text>Cause: basekill\nRules: alignment, personality\nScan:  eye range</text>
     </string>
     <string id="ui_mcm_ap_consequences_basekill_flee_desc">
         <text>When the BaseKill cause fires, squads at the base evacuate to the nearest faction base.</text>
@@ -1162,7 +1120,7 @@
         <text>Wounded\nHunt</text>
     </string>
     <string id="ui_mcm_ap_consequences_wounded_hunt_tag">
-        <text>Cause: wounded\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: wounded\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_wounded_hunt_desc">
         <text>When the Wounded cause fires, nearby predator and aberrant mutants move toward the wounded NPC or player.</text>
@@ -1191,7 +1149,7 @@
         <text>Wounded\nHelp</text>
     </string>
     <string id="ui_mcm_ap_consequences_wounded_help_tag">
-        <text>Cause: wounded\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: wounded\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_wounded_help_desc">
         <text>When the Wounded cause fires, nearby same-faction squads rush to help the wounded NPC or player.</text>
@@ -1296,7 +1254,7 @@
         <text>Harvest\nRob</text>
     </string>
     <string id="ui_mcm_ap_consequences_harvest_rob_tag">
-        <text>Cause: harvest\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: harvest\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_harvest_rob_desc">
         <text>When the Harvest cause fires, nearby outlaws pursue the NPC or player who picked up the artefact.</text>
@@ -1331,7 +1289,7 @@
         <text>Harvest\nHaunt</text>
     </string>
     <string id="ui_mcm_ap_consequences_harvest_haunt_tag">
-        <text>Cause: harvest\nRules: alignment, personality\nEval:  scent range</text>
+        <text>Cause: harvest\nRules: alignment, personality\nScan:  scent range</text>
     </string>
     <string id="ui_mcm_ap_consequences_harvest_haunt_desc">
         <text>When the Harvest cause fires, nearby aberrant mutants converge on the artefact pickup site.</text>
@@ -1360,7 +1318,7 @@
         <text>Hunger Campfire</text>
     </string>
     <string id="ui_mcm_ap_consequences_hunger_campfire_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_hunger_campfire_desc">
         <text>When hunger fires, squad moves to a campfire smart to eat and drink.</text>
@@ -1389,7 +1347,7 @@
         <text>Sleep Campfire</text>
     </string>
     <string id="ui_mcm_ap_consequences_sleep_campfire_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_sleep_campfire_desc">
         <text>When sleep fires, squad moves to a campfire smart to sleep. Night-gated by cause (20:00-05:00).</text>
@@ -1412,7 +1370,7 @@
         <text>Rest Campfire</text>
     </string>
     <string id="ui_mcm_ap_consequences_rest_campfire_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_rest_campfire_desc">
         <text>When rest fires, squad moves to a campfire smart to relax, smoke, or drink.</text>
@@ -1441,7 +1399,7 @@
         <text>Heal Shelter</text>
     </string>
     <string id="ui_mcm_ap_consequences_heal_shelter_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_heal_shelter_desc">
         <text>When heal fires, squad moves to a sheltered location for medical attention.</text>
@@ -1470,7 +1428,7 @@
         <text>Shelter</text>
     </string>
     <string id="ui_mcm_ap_consequences_shelter_indoor_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_shelter_indoor_desc">
         <text>When shelter fires, squad moves to a surge-sheltered location for protection.</text>
@@ -1493,7 +1451,7 @@
         <text>Shelter Outdoor</text>
     </string>
     <string id="ui_mcm_ap_consequences_shelter_outdoor_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_shelter_outdoor_desc">
         <text>When no indoor shelter is available, squad moves to a campfire for outdoor cover.</text>
@@ -1516,7 +1474,7 @@
         <text>Money Harvest</text>
     </string>
     <string id="ui_mcm_ap_consequences_money_harvest_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_money_harvest_desc">
         <text>When money fires, squad moves to an anomaly zone to harvest artefacts.</text>
@@ -1539,7 +1497,7 @@
         <text>Money Hunt</text>
     </string>
     <string id="ui_mcm_ap_consequences_money_hunt_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_money_hunt_desc">
         <text>When money fires, squad moves to a mutant lair to hunt for trophies and pelts.</text>
@@ -1562,7 +1520,7 @@
         <text>Supply Trader</text>
     </string>
     <string id="ui_mcm_ap_consequences_supply_trader_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_supply_trader_desc">
         <text>When supply fires, squad moves to a trader smart to exchange goods.</text>
@@ -1591,7 +1549,7 @@
         <text>Job Outpost</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_outpost_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_outpost_desc">
         <text>When job fires, squad moves to a friendly outpost or checkpoint for guard duty.</text>
@@ -1620,7 +1578,7 @@
         <text>Job Explore</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_explore_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_explore_desc">
         <text>When job fires, squad moves to a distant or unvisited smart terrain to explore.</text>
@@ -1643,7 +1601,7 @@
         <text>Job Research</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_research_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_job_research_desc">
         <text>When job fires, squad moves to an anomaly zone to study anomalous phenomena.</text>
@@ -1666,7 +1624,7 @@
         <text>Social Campfire</text>
     </string>
     <string id="ui_mcm_ap_consequences_social_campfire_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_social_campfire_desc">
         <text>When social fires, squad moves to a campfire smart to play guitar, tell stories, or socialize.</text>
@@ -1695,7 +1653,7 @@
         <text>Social Base</text>
     </string>
     <string id="ui_mcm_ap_consequences_social_base_tag">
-        <text>Cause: needs\nRules: alignment, personality\nEval:  radio range</text>
+        <text>Cause: needs\nRules: alignment, personality\nScan:  radio range</text>
     </string>
     <string id="ui_mcm_ap_consequences_social_base_desc">
         <text>When social fires, squad moves to own-faction base for companionship and morale.</text>
@@ -1859,8 +1817,6 @@
     <string id="ui_mcm_ap_causes_instincts_cause_scatter_enabled_desc"><text>Enable scatter drive. Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range.</text></string>
     <string id="ui_mcm_ap_causes_instincts_cause_feed_enabled"><text>Feed</text></string>
     <string id="ui_mcm_ap_causes_instincts_cause_feed_enabled_desc"><text>Enable feed drive. Mutants move to open territory to hunt or scavenge during active hours.</text></string>
-    <string id="ui_mcm_ap_causes_instincts_cause_slumber_enabled"><text>Slumber</text></string>
-    <string id="ui_mcm_ap_causes_instincts_cause_slumber_enabled_desc"><text>Enable slumber drive. Mutants return to shelter during dormant hours. The cascade walks slumber answers (field, lair, surge) per species preference.</text></string>
     <string id="ui_mcm_ap_causes_instincts_cause_roam_enabled"><text>Roam</text></string>
     <string id="ui_mcm_ap_causes_instincts_cause_roam_enabled_desc"><text>Enable roam drive. Mutants wander to nearby territory or lair during active hours.</text></string>
     <string id="ui_mcm_ap_causes_instincts_cause_pack_enabled"><text>Pack</text></string>
@@ -2177,7 +2133,7 @@
         <text>Area Infest</text>
     </string>
     <string id="ui_mcm_ap_consequences_area_infest_tag">
-        <text>Eval: TERRITORY + SURVIVAL</text>
+        <text>Cause: area_infest\nAction: dispatch</text>
     </string>
     <string id="ui_mcm_ap_consequences_area_infest_desc">
         <text>Mutants claim smart terrains as nests. Exclusive spawn injection replaces original spawns with the infesting species. Feral, predator, and aberrant species only (cowardly excluded). Per-level cap limits how many smarts can be infested on each level.</text>
@@ -2230,7 +2186,7 @@
         <text>Infest threshold</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_infest_threshold_desc">
-        <text>[game-hours]\nTime between infest events per squad. Default 24.</text>
+        <text>Game hours per squad before another infest attempt. MVT recovery time.</text>
     </string>
     <string id="ui_mcm_ap_causes_area_cause_area_infest_personality_min">
         <text>Infest personality floor</text>

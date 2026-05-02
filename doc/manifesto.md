@@ -255,7 +255,7 @@ Any stable heartbeat the engine provides can feed the gate chain.
 
 ---
 
-### Round-Robin Dispatch
+### Shuffle Dispatch
 
 When a cause publishes an event, multiple consequences may subscribe to it.
 A massacre can trigger both scavengers converging and the victim's faction investigating.
@@ -270,8 +270,8 @@ GSC's faction settings add another layer: per-faction sim_prior tables at each e
 
 This approach serves simulation targeting well, but consequence dispatch is a different problem.
 Priority creates starvation: if scavenge always outranks investigate, the victim's faction never responds.
-AlifePlus rotates the dispatch order through a round-robin cursor per cause type.
-If scavenge claimed first on the last massacre, investigate goes first on the next one.
+AlifePlus shuffles the dispatch order on each cause publish.
+No consequence has a fixed priority; ordering is randomized per publish, so over many massacres scavenge and investigate each go first roughly half the time.
 Personality already gates by faction identity, so priority-based differentiation is redundant at the consequence layer.
 
 > "The more points with artifacts the faction controls, the cooler stalkers it can recruit."

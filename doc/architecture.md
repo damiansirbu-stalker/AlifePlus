@@ -1,6 +1,6 @@
 # AlifePlus Architecture
 
-AlifePlus is a reactive framework for STALKER Anomaly. It intercepts X-Ray engine callbacks, classifies them into causes through world-state predicates, and dispatches consequences through two pipelines: an **Event Pipeline** that filters engine noise into meaningful cause events, and a **Dispatch Pipeline** that routes causes to consequence handlers. The framework owns protection, rate limiting, squad ownership, lifecycle management, and structured tracing. Domain logic registers a predicate and a handler. The framework runs the pipeline.
+AlifePlus is a reactive framework for STALKER Anomaly. It intercepts X-Ray engine callbacks, classifies them into causes through cause generators, and dispatches consequences through two pipelines: an **Event Pipeline** that filters engine noise into meaningful cause events, and a **Dispatch Pipeline** that routes causes to consequence handlers. The framework owns protection, rate limiting, squad ownership, lifecycle management, and structured tracing. Domain logic registers a cause generator and a consequence handler. The framework runs the pipeline.
 
 The architecture splits into **core** (pipeline infrastructure) and **ext** (domain logic). Core never imports ext. All domain logic reaches the framework through registered function references.
 
@@ -14,27 +14,28 @@ Built on xlibs. See `conventions.md` for naming rules, result codes, MCM setting
 
 | Term | Definition |
 |------|------------|
-| Cause | Engine callback + world-state predicate -> meaningful event or nil |
-| Consequence | Handler subscribed to a cause; executes response logic + side effects |
-| Predicate | Pure function: `(trace, ...args) -> { cause, ...payload }` or nil |
-| Umbrella | Radiant cause file containing one predicate that picks among N specific causes (needs, instincts, stash, area). Never published itself; the picker emits a specific child cause (`cause:hunger`, `cause:stash_loot`, etc.) |
-| Picker | Predicate logic that selects which specific child cause to publish: drive-scoring (Hull), state-classifier (stash), or priority-gate (area) |
-| Drive | Hull's deprivation-driven motivation. Score = `weight * (elapsed / threshold)^2`; arrival action resets the timestamp |
-| MVT | Charnov's Marginal Value Theorem (1976). Patch-foraging recovery: threshold encodes patch handling + travel time; gate is `elapsed > threshold` |
-| Opportunity | Non-deprivation MVT-shaped cause (stash, area). Recovery-driven, not deprivation-driven |
-| Cross-DTO read | Pattern: any predicate may read any DTO; only the owning predicate writes. Decouples read-side cause logic from write-side state ownership |
-| CAUSE_CATEGORY | Behavioral axis parallel to CAUSE_TYPE. Four values: REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES. Drives rate-limit grouping, MCM organization |
-| Producer | Dispatches callbacks through gate chain, pre-checks per-category rate, calls predicates, publishes to xbus |
-| Consumer | Receives cause events from xbus, dispatches to consequences via round-robin |
-| xbus | Pub/sub event bus (xlibs). Causes publish, consequences subscribe |
-| Core | Framework modules (ap_core_*). Pipeline, lifecycle, protection, rate limiting |
-| Ext | Domain modules (ap_ext_*). Causes, consequences, data, messages |
+| Cause | A labeled event the framework publishes. Engine callback or radiant tick + world-state check. Specific name (`cause:hunger_campfire`, `cause:massacre`) — never an umbrella string. |
+| Consequence | Handler subscribed to a cause; executes the action and side effects. |
+| CAUSE_GENERATOR | The function that picks and emits one specific cause per call, or none. One generator per family lives in `ap_ext_cause_<family>.script`. |
+| RULES | Business rules that do not need world scanning. Toggle, alignment, personality roll, payload field check, threshold. Cheap. No find_smart, no find_squads. Always ordered cheapest-first. |
+| SCAN | World lookup. find_smart, find_squads, find_stashes. Returns a thing (a smart, a list of squads, a list of stashes) or empty. Two types: destination SCAN (locates a target smart) and responder SCAN (locates responder squads). |
+| ACTION | The consequence's effect: dispatch (`script_squad` / `script_actor_target`), state mutation, news record, on_arrive callback. |
+| Drive | Hull's deprivation-driven motivation. Score = `weight * (elapsed / threshold)^2`; arrival action resets the timestamp. |
+| MVT | Charnov's Marginal Value Theorem (1976). Patch-foraging recovery: threshold encodes patch handling + travel time; gate is `elapsed > threshold`. |
+| Opportunity | Non-deprivation MVT-shaped cause (stash, area). Recovery-driven, not deprivation-driven. |
+| Cross-DTO read | Pattern: any cause generator may read any DTO; only the owning generator writes. Decouples read-side cause logic from write-side state ownership. |
+| CAUSE_CATEGORY | Behavioral axis parallel to CAUSE_TYPE. Four values: REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES. Drives rate-limit grouping, MCM organization. |
+| Producer | Dispatches callbacks through gate chain, pre-checks per-category rate, calls cause generators, publishes to xbus. |
+| Consumer | Receives cause events from xbus, dispatches to consequences. |
+| xbus | Pub/sub event bus (xlibs). Causes publish, consequences subscribe. |
+| Core | Framework modules (ap_core_*). Pipeline, lifecycle, protection, rate limiting. |
+| Ext | Domain modules (ap_ext_*). Causes, consequences, data, messages. |
 
 ---
 
 ## System Layers
 
-AlifePlus is split into two layers: **core** and **ext**. Core is the framework - it knows nothing about massacres, stashes, or alphas. Ext is the domain - it knows nothing about gate chains, rate limiting, or squad lifecycle. The boundary is enforced by a hard rule: **core never imports ext**. All domain logic reaches the framework through registered function references (predicates, handlers, arrival callbacks).
+AlifePlus is split into two layers: **core** and **ext**. Core is the framework - it knows nothing about massacres, stashes, or alphas. Ext is the domain - it knows nothing about gate chains, rate limiting, or squad lifecycle. The boundary is enforced by a hard rule: **core never imports ext**. All domain logic reaches the framework through registered function references (cause generators, consequence handlers, arrival callbacks).
 
 ### Core
 
@@ -42,7 +43,7 @@ The pipeline, protection, squad lifecycle, rate limiting, tracing, and configura
 
 | File | Role |
 |------|------|
-| ap_core_producer | Gate chain, predicate evaluation, xbus publish |
+| ap_core_producer | Gate chain, generator evaluation, xbus publish |
 | ap_core_consumer | Dispatch: xbus subscribe, consequence iteration, result codes, rate gating |
 | ap_core_broker | Ownership registry, squad scripting lifecycle, activity record (FIFO), arrival detection, protection |
 | ap_core_hud | PDA map markers, pipeline statistics, HUD overlay |
@@ -60,7 +61,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 
 | File | Role |
 |------|------|
-| ap_ext_cause_* | Cause predicates (one file per cause group) |
+| ap_ext_cause_* | Cause generators (one file per family) |
 | ap_ext_consequence_* | Consequence handlers (one or more files per cause) |
 | ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest, mutant infestation) |
@@ -76,14 +77,14 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 
 ### Execution Model
 
-X-Ray runs Lua on a single thread. There is no concurrency within one engine tick. When the engine fires a callback like `squad_on_update`, the entire AP pipeline executes synchronously in one Lua call stack before control returns to the engine. The producer evaluates gates, the cause predicate runs, xbus publishes, the consumer iterates all consequences, each handler runs and may script a squad. All of this completes inside a single function call.
+X-Ray runs Lua on a single thread. There is no concurrency within one engine tick. When the engine fires a callback like `squad_on_update`, the entire AP pipeline executes synchronously in one Lua call stack before control returns to the engine. The producer evaluates gates, the cause generator runs, xbus publishes, the consumer iterates all consequences, each handler runs and may script a squad. All of this completes inside a single function call.
 
 ```
 engine squad_on_update
   -> producer._on_radiant (gate chain: pacer_1, is_protected, ratio, pacer_2)
-    -> cause cascade: shuffle causes, try each predicate, stop on first publish
-      -> cause predicate (ext) returns nil -> try next cause
-      -> cause predicate (ext) returns { cause = CAUSE.X, ...payload } -> publish + break
+    -> cause cascade: shuffle generators, try each, stop on first publish
+      -> cause generator (ext) returns nil -> try next cause
+      -> cause generator (ext) returns { cause = CAUSE.X, ...payload } -> publish + break
         -> _try_publish -> xbus.publish (synchronous, inline)
           -> consumer._process (shuffle consequences, iterate)
             -> consequence handler (ext) returns { code = RESULT.X }
@@ -96,7 +97,7 @@ When `_try_publish` returns, the consequences have already executed, squads have
 
 ### Event Pipeline
 
-The producer receives engine callbacks and filters them through a chain of gates before evaluating cause predicates. Two variants exist because radiant and reactive events have fundamentally different characteristics.
+The producer receives engine callbacks and filters them through a chain of gates before evaluating cause generators. Two variants exist because radiant and reactive events have fundamentally different characteristics.
 
 **Radiant events** are ambient observations. A squad periodically scans its surroundings and notices something (a stash, empty territory, an unmet need). The squad is both sensor and responder. High frequency, low significance per event.
 
@@ -106,7 +107,7 @@ The producer receives engine callbacks and filters them through a chain of gates
 
 Radiant causes fire on `squad_on_update` - the only stable, uniform heartbeat covering both online and offline squads. The engine fires this callback from `sim_squad_scripted:update()` for every squad every tick. Online squads fire at frame rate (~3/sec per squad), offline squads fire via the A-Life scheduler round-robin (~0.03/sec per squad, ~20 squads per tick across ~776 total). This produces a raw volume of ~6,600 calls/min that the gate chain must reduce to a manageable rate.
 
-Radiant causes are an open collection. New causes can be added by registering a predicate on `RADIANT_CALLBACKS`. Each admitted call shuffles the registered radiant causes (`xtable.shuffle`) and cascades through them in random order. The first cause whose predicate publishes stops the cascade. If all predicates reject, nothing publishes. Shuffling ensures fair distribution regardless of how many causes apply to a given squad's alignment -- no cause is systematically favored. With `distributor_interval_sec = 5s` (~12 triggers/min), every admission tries up to 4 causes (worst case). This is different from reactive causes, where all causes for a callback evaluate independently on every admitted event.
+Radiant cause generators are an open collection. New ones can be registered on `RADIANT_CALLBACKS`. Each admitted call shuffles the registered generators (`xtable.shuffle`) and cascades through them in random order. The first generator that publishes stops the cascade. If all generators reject, nothing publishes. Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment -- no generator is systematically favored. With `distributor_interval_sec = 5s` (~12 triggers/min), every admission walks up to `RADIANT_MAX_CHECKS_PER_TICK` generator calls (cap = 5). Reactive is different: each reactive cause has its own generator registered on its callback; all generators for that callback evaluate independently on every admitted event.
 
 The triggering squad is both sensor and responder - it evaluates its own surroundings and acts on what it finds (stashes, empty territory, unmet needs).
 
@@ -119,11 +120,11 @@ Protection is not a single gate - it is applied at four layers across the pipeli
 | Layer | Where | What is checked |
 |-------|-------|-----------------|
 | Producer | Radiant gate 2 (is_protected) | Triggering squad, before any cause evaluates |
-| Cause | Reactive predicates | The entity AP would act on (killer, patient, taker) |
+| Cause | Reactive cause generators | The entity AP would act on (killer, patient, taker) |
 | Consequence | `ap_core_utils.find_squads` | Every candidate responder squad |
 | Squad | `ap_core_broker.script_squad` | No inline check - protection is upstream |
 
-Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the predicate itself: `alpha` and `alphakill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
+Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the generator itself: `alpha` and `alphakill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
 
 `script_squad` does not check protection. It assumes all upstream layers have already verified the squad. Direct callers outside the pipeline must check `is_protected` themselves.
 
@@ -131,7 +132,7 @@ Reactive causes skip the producer protection gate because the callback entity (e
 
 **Gate 4: PACER_2.** Budget limiter. `os.clock()` timestamp comparison with `cfg.distributor_interval_sec` (default 5s, ~12 triggers/min). Only fully eligible, ratio-balanced squads consume triggers. Every PACER_2 admit produces an EVAL -- zero waste. This is the key improvement over the old pipeline: the old single pacer ran before eligibility checks, so ineligible squads (scripted dogs, story NPCs) consumed triggers and starved the pipeline.
 
-**EVAL (cascade).** Shuffles the registered cause predicates in-place inside a reusable buffer (no per-tick allocation) and cascades through them in random order. Each entry's category is checked against a per-CAUSE_CATEGORY sliding window rate limit (`cfg.cause_max_<category>`, 60s window) before the predicate runs; rate-blocked entries are skipped and the cascade continues. The first predicate to publish a specific cause stops the cascade. If all predicates reject (or are rate-blocked), nothing publishes. Predicates self-observe under their picked specific cause; producer calls them directly. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer (see Execution Model). Worst case: 4 predicate evaluations per admission (0.00-0.08ms each). At 12 admissions/min = ~1ms/min extra.
+**EVAL (cascade).** Shuffles the registered cause generators in-place inside a reusable buffer (no per-tick allocation) and cascades through them in random order. Each generator's category is checked against a per-CAUSE_CATEGORY sliding window rate limit before the generator runs; rate-blocked entries are skipped. The first generator to publish stops the cascade. If all reject (or are rate-blocked), nothing publishes. Generators self-observe under their picked specific cause. The per-tick cause-check budget (`RADIANT_MAX_CHECKS_PER_TICK = 5`) is consumed inside generators, one slot per cause attempt; when exhausted, in-flight cause attempts return nil and remaining generators contribute nothing. On publish, xbus dispatch is synchronous: the consumer runs all consequences inline before control returns to the producer.
 
 #### Reactive variant
 
@@ -141,11 +142,11 @@ Reactive causes fire on world events: `squad_on_npc_death`, `x_npc_medkit_use`, 
 
 **Gate 2: RATIO.** Same Bresenham algorithm as radiant but with its own counter pair (`_reactive_ct`). Some reactive callbacks (`actor_on_item_use`, `actor_on_item_take`) are always on-map (they require a game_object which only exists online).
 
-**Gate 3: EVAL.** Iterates all registered reactive cause predicates for the callback type in deterministic order (indexed array). Each predicate is checked against the per-cause sliding window rate limit, then evaluated. All causes evaluate independently. A single death event can trigger MASSACRE, SQUADKILL, and ALPHA simultaneously because different responder squads act independently. Radiant cascade stops on first publish because the triggering squad can only do one thing.
+**Gate 3: EVAL.** Iterates all registered reactive cause generators for the callback type in deterministic order. Each generator's category is checked against the per-cause sliding window rate limit, then the generator runs. All generators evaluate independently. A single death event can trigger MASSACRE, SQUADKILL, and ALPHA generators in sequence because different responder squads act independently. Reactive does not cascade-and-stop — every generator gets its chance to publish.
 
 #### Instrumentation
 
-Both pipelines measure gate span and eval span. Gate span covers the time from first eligibility check to budget admission (radiant: is_protected + RATIO + PACER_2; reactive: PACER + RATIO). Eval span covers cause predicate evaluation, xbus dispatch, and all consequence handlers. Spans are accumulated per `PACER_LOG_INTERVAL` (60s) and reported as avg/max in the periodic `[PIPELINE]` dump. All timing uses `os.clock()` and is gated by `ap_core_debug.enabled()` -- zero overhead when log level is above DEBUG.
+Both pipelines measure gate span and eval span. Gate span covers the time from first eligibility check to budget admission (radiant: is_protected + RATIO + PACER_2; reactive: PACER + RATIO). Eval span covers cause generator evaluation, xbus dispatch, and all consequence handlers. Spans are accumulated per `PACER_LOG_INTERVAL` (60s) and reported as avg/max in the periodic `[PIPELINE]` dump. All timing uses `os.clock()` and is gated by debug enablement — zero overhead when log level is above DEBUG.
 
 ### Dispatch Pipeline
 
@@ -153,25 +154,25 @@ After a cause publishes to xbus, the consumer receives the event and iterates re
 
 #### Dispatch Rules
 
-1. **Radiant cascade (producer).** The producer shuffles registered radiant cause predicates and cascades through them in random order. The first predicate to publish stops the cascade. Remaining causes do not evaluate. Shuffling ensures fair distribution across causes regardless of alignment subset.
+1. **Radiant cascade (producer).** The producer shuffles registered radiant generators and cascades through them in random order. The first generator to publish stops the cascade. Remaining generators do not evaluate. Shuffling ensures fair distribution across generators regardless of alignment subset.
 
-2. **Cause publish contract.** A cause predicate must not publish if no consequence can act on the event. The cascade stops on publish -- if every consequence rejects, the trigger is wasted. Causes that serve a subset of alignments must filter at the cause level (e.g. `alignment_human` for stash/needs, `alignment_mutant` for instincts) rather than relying on consequences to reject.
+2. **Cause publish contract.** A cause generator must not publish if no consequence can act on the event. The cascade stops on publish -- if every consequence rejects, the trigger is wasted. Causes that serve a subset of alignments must filter at the cause level (e.g. `alignment_human` for stash/needs, `alignment_mutant` for instincts) rather than relying on consequences to reject.
 
-3. **Per-need/per-instinct routing.** Needs and instincts causes register one predicate with the producer but publish specific xbus events per need/instinct (`cause:hunger`, `cause:heal`, `cause:instinct_scatter`, etc.). Each consequence subscribes to its specific event. Only consequences that handle the winning need/instinct receive the event. No mismatch iteration.
+3. **Per-need/per-instinct routing.** Needs and instincts each register one generator with the producer but publish specific xbus events per need/instinct (`cause:hunger_campfire`, `cause:heal_shelter`, `cause:scatter`, etc.). Each consequence subscribes to its specific event. Only consequences that handle the winning need/instinct receive the event. No mismatch iteration.
 
-4. **Consequence shuffle.** The consumer shuffles consequences for each event before iterating. This distributes evaluations fairly across alternative handlers (e.g. shelter_indoor vs shelter_outdoor, stash_loot vs stash_fill).
+4. **Consequence shuffle (reactive only).** A reactive cause can have multiple consequences listening to it (e.g. massacre_investigate and massacre_scavenge both listen to massacre). The consumer shuffles them before iterating so the order isn't fixed. Radiant causes have one consequence each (1:1 shared noun), so there is no shuffle for radiant.
 
-5. **Radiant: stop on first success.** For radiant events, the consumer stops the loop after the first consequence returns `SUCCESS`. One squad, one action per trigger. Alternatives compete via shuffle -- each has equal probability of being tried first.
+5. **Radiant: at most one consequence runs per cause.** A radiant cause has exactly one consequence (1:1 shared noun). The consumer either runs it or skips it (pre-gates, rate limit). There is no loop and no alternatives.
 
 6. **Reactive: all run independently.** For reactive events, all consequences for the cause run regardless of results. Multiple consequences can fire from a single event (e.g. massacre_investigate and massacre_scavenge both respond to the same massacre). Different actor types respond simultaneously.
 
-7. **Loop stop conditions.** The consequence loop stops early on: (a) radiant success (rule 5), (b) global radiant budget exhaustion (`global_consequence_max_events`). All other results (FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED, rate-limited) skip to the next consequence.
+7. **Loop stop (reactive only).** The reactive consumer loop stops when `REACTIVE_MAX_CONSEQUENCES_PER_CAUSE` (5) consequences have actually run. Other results (FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED, rate-limited) skip to the next consequence and continue. Radiant has one consequence per cause and no loop.
 
 #### Pre-gates and Result Codes
 
 **Before each handler runs, the consumer checks two pre-gates.** The `condition` function (registered at init, typically checks MCM enabled flag) determines if the consequence is active. If it returns false, the consumer skips the consequence. Then the rate limiters are checked: if the per-type budget for this consequence is exhausted, the consumer skips it. If the global radiant budget is exhausted, the consumer stops the entire loop. The handler never runs when a pre-gate rejects.
 
-**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, validation) and rejected the event. `FAILED_SCAN` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and eval passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
+**The handler runs and returns `{ code = RESULT.X, reason = "..." }`.** The result code tells the consumer which phase of the handler answered. Every consequence handler follows a three-phase structure called the consequence template (see Consequence Template below). `FAILED_RULES` means the handler checked its business rules (alignment, personality, species, validation) and rejected the event. `FAILED_SCAN` means the rules passed but a world query found nothing (find_squads returned empty, find_smart found no match, an entity lookup returned nil). `FAILED_ACTION` means the rules and scan passed but the action failed (script_squad could not route the squad, a registration call returned false). `SUCCESS` means the consequence executed its action.
 
 **On `SUCCESS`, the consumer increments the per-type counter, increments the global radiant counter (for radiant events only), and sets `event_data._fired = true`.** For radiant events, success also stops the loop (rule 5).
 
@@ -188,23 +189,23 @@ Rate limiting lives in `ap_core_limiter`. Six independent layers operate at diff
 | Per-consequence budget | token bucket (peek/acquire) | per-consequence | 2/60s | MCM consequence_max_events |
 | Global radiant consequence | TTL counter | radiant only | 5/60s | MCM global_consequence_max_events |
 
-**Per-squad MVT/Hull threshold.** Owned by each cause file's predicate. Caps how often the same squad can republish the same specific cause. Reads `last_<X>_at` from a DTO (`_ap_stalker_needs`, `_ap_mutant_instincts`, or `_ap_squad_opportunities`); arrival action resets the timestamp. Hull family (needs, instincts) compares elapsed against `weight * (elapsed / threshold)^2`; MVT family (stash, area) compares elapsed directly against `cfg.cause_<X>_threshold * HOURS_TO_SECONDS`.
+**Per-squad threshold (Hull / MVT).** Owned by each cause generator. Caps how often the same squad can re-trigger the drive (Hull) or revisit the patch (MVT). Reads `last_<X>_at` from a DTO (`_ap_stalker_needs`, `_ap_mutant_instincts`, or `_ap_squad_opportunities`); the arrival action resets the timestamp. Hull family (needs, instincts) is per-drive — multiple answers under one drive share the timestamp, and any answer firing resets it. Score = `weight * (elapsed / threshold)^2`. MVT family (stash, area) is per-cause — each cause has its own threshold and timestamp. Gate is binary: `elapsed > threshold`.
 
-**Per-category cause budget.** Pre-handler check on `entry.category` inside `ap_core_producer._eval_*`. Skips the predicate entirely when the category is rate-blocked, freeing the cascade slot for the next entry. Four MCM sliders mirror `CAUSE_CATEGORY`: `cause_max_reactions`, `cause_max_needs`, `cause_max_instincts`, `cause_max_opportunities`. Each handler declares its category at register time; predicates carry no rate-limit awareness.
+**Per-category cause budget.** Pre-handler check on `entry.category` inside the producer's eval cascade. Skips the generator entirely when the category is rate-blocked, freeing the cascade slot for the next entry. Four MCM sliders mirror `CAUSE_CATEGORY`: `cause_max_reactions`, `cause_max_needs`, `cause_max_instincts`, `cause_max_opportunities`. Each generator declares its category at register time; generators carry no rate-limit awareness.
 
 ### Tracing
 
-Hierarchical tracing via `observe()` (consequences, internal phases) and the prof+trace:push+debug pattern (cause predicates) in `ap_core_debug`. Each trace carries a monotonic **tid** (trace ID) and a slash-separated **path** (span hierarchy). A single `tid` links a cause through its consequence chain into individual actions:
+Hierarchical tracing via `observe()` (consequences, internal phases) and the prof+trace:push+debug pattern (cause generators) in `ap_core_debug`. Each trace carries a monotonic **tid** (trace ID) and a slash-separated **path** (span hierarchy). A single `tid` links a cause through its consequence chain into individual actions:
 
 ```
-[CAUSE.HUNGER] [tid=42 path=cause:hunger] sq=1337 need=hunger drive=4.2 [0.15ms]
-[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
-[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=cause:hunger/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
+[CAUSE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger_campfire] sq=1337 drive=hunger weight=4.2 [0.15ms]
+[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
+[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
 ```
 
-The path root is the **specific cause** (`cause:hunger`), never an umbrella label. Predicates self-observe: they pick the winning specific cause, then build the result, then `trace:push(result.cause)` and emit a debug line under `bracket(result.cause)`. Producer no longer wraps predicates in `observe()` — predicates are pure and own their own timing.
+The path root is the **specific cause** (`cause:hunger_campfire`), never an umbrella label. Generators self-observe: they pick the winning specific cause, build the result, push the trace, and emit a debug line under the picked cause. The producer does not wrap generators in `observe()` — generators are pure and own their own timing.
 
-`bracket(constant)` in `ap_core_debug` composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger" -> "[CAUSE.HUNGER]"`. Each cause/consequence file caches its bracket strings at module load (e.g. `LOG_INIT = bracket(CAUSE_CATEGORY.OPPORTUNITIES)` for the umbrella init log, `LOG_BY_CAUSE[c] = bracket(c)` for per-publish logs). No hardcoded `[CAUSE.X]` literals.
+`bracket(constant)` in `ap_core_debug` composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger_campfire" -> "[CAUSE.HUNGER_CAMPFIRE]"`. Each cause/consequence file caches its bracket strings at module load. No hardcoded `[CAUSE.X]` literals.
 
 Below DEBUG log level: `observe()` is a bare passthrough (calls the function, returns the result). `trace()` returns a null singleton. `xprofiler.new_if(false)` returns a null singleton. Cost: one `enabled()` check (~150ns) per call. All null singletons are pre-allocated — no allocation at non-debug levels.
 
@@ -252,10 +253,10 @@ Four phases. Each requires the previous to complete.
 - `ap_core_broker` registers save/load callbacks, creates the 20s scripted squad scan timer.
 - `ap_core_hud` resets statistics, registers first_update/option_change/net_destroy/GUI/entity_unregister callbacks.
 - `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxy (warfare).
-- `ap_ext_cause_*` register predicates with producer via `register()`.
+- `ap_ext_cause_*` register generators with producer via `register()`.
 - `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
 
-After phase 1: all predicates and handlers are registered, but no callbacks are subscribed and no xbus subscriptions are active. The deferred init pattern avoids alphabetical ordering bugs - `ap_core_producer` (alphabetically before cause files) cannot build its radiant handler set until all causes have registered, so it defers to `actor_on_first_update`.
+After phase 1: all generators and handlers are registered, but no callbacks are subscribed and no xbus subscriptions are active. The deferred init pattern avoids alphabetical ordering bugs - `ap_core_producer` (alphabetically before cause files) cannot build its radiant handler set until all causes have registered, so it defers to `actor_on_first_update`.
 
 **Phase 2: actor_on_first_update.** Game world and actor exist. Deferred initialization runs:
 
@@ -281,7 +282,7 @@ Critical timing from the engine load sequence:
 
 Domain state manager. Tracks kill counts per entity (`_ap_killers`), alpha status with level/kills/name (`_ap_alphas`), alpha death grace period (`_ap_alpha_dead`, xttltable TTL, 3600s), stalker needs DTO (`_ap_stalker_needs`, per-squad timestamps for 9 Hull drives), mutant instincts DTO (`_ap_mutant_instincts`, 5 Hull drives), and squad opportunities DTO (`_ap_squad_opportunities`, MVT timestamps for stash and area causes — single shared table since squad_id is unique across stalker/mutant). Only mutants become alphas. Stalker rank is handled natively by the engine. Registers the `squad_on_npc_death` handler for kill/alpha tracking. Save/load to `m_data.ap_ext_tracker`.
 
-DTOs hold primitive timestamps. Multiple predicates may derive different conclusions from the same DTO (Cross-DTO read pattern); only the owning predicate writes. Example: `_ap_stalker_needs` is written by the needs predicate on arrival reset; future area_abandon predicate reads it to count overdue fields without writing.
+DTOs hold primitive timestamps. Multiple generators may derive different conclusions from the same DTO (Cross-DTO read pattern); only the owning generator writes. Example: `_ap_stalker_needs` is written by the needs generator on arrival reset; a future area_abandon generator reads it to count overdue fields without writing.
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
@@ -385,7 +386,7 @@ State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news`
 | Per-consequence | `st_ap_news_tpl_<consequence>_NNN` | default — focal entry alone |
 | Pair-composite | `st_ap_news_tpl_cause_<cause>_pair_<a>_<b>_NNN` | both reactive sibling consequences of one cause publish are present |
 
-The composer picks an entry and tries pair first (when `sib_count >= 2` and both pair members are present), falling back to per-consequence. Only the five reactive pair causes (MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST) can accumulate siblings sharing a `cause_id` — radiant causes are one-consequence-per-cause by invariant 7. The pair pool is the only multi-sibling path: when both halves of a pair fire, pair always wins; when only one fires, sib_count=1 and per-consequence fires.
+The composer picks an entry and tries pair first (when `sib_count >= 2` and both pair members are present), falling back to per-consequence. Only the five reactive pair causes (MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST) can accumulate siblings sharing a `cause_id` — radiant causes are 1:1 with their consequence and never accumulate siblings. The pair pool is the only multi-sibling path: when both halves of a pair fire, pair always wins; when only one fires, sib_count=1 and per-consequence fires.
 
 **Slots.** Every template uses some subset of these slots, populated per compose tick by `_slots_for(entry_a, entry_b, count_n)`. Squad-side values come pre-resolved from the entry (eager capture at record_event); smart and level resolve lazily at compose. Pair-composite templates use `_a` / `_b` suffixed variants of the subject slots:
 
@@ -447,25 +448,48 @@ A random NPC is sampled from the filtered pool. The speaker's community becomes 
 - `cons_id` is broker-assigned. News passes no monotonic counter through `opts`.
 - `record_event` resolves squad-side display strings eagerly via `xsquad.get_commander_name`, `xcreature.get_mutant_species`, and `game.translate_string` (~6-12 luabind + 4 translate_string per call). Smart and level resolve at compose.
 - Locale switches mid-session leave the FIFO holding strings in the previous locale until natural churn (~10-50 min at typical record rates). Pragmatic accept: switches are rare, no crash, self-resolving.
-- The pair pool requires `sib_count >= 2`, structurally only reachable for the 5 reactive paired causes (massacre, squadkill, basekill, wounded, harvest). Radiant causes are 1:1 by invariant 7; ALPHA/ALPHAKILL each have a single consequence.
+- The pair pool requires `sib_count >= 2`, structurally only reachable for the 5 reactive paired causes (massacre, squadkill, basekill, wounded, harvest). Radiant causes are 1:1 with their consequence; ALPHA/ALPHAKILL each have a single consequence.
 
 ### Causes
 
-| Cause family | Type | Callback(s) | Conditions | Specific causes published |
-|---|---|---|---|---|
-| MASSACRE | reactive | `squad_on_npc_death` | alignment_human victim, at smart, not is_base, kill_count >= threshold | `cause:massacre` |
-| SQUADKILL | reactive | `squad_on_npc_death` | alignment_human victim, last member dead, not is_base | `cause:squadkill` |
-| BASEKILL | reactive | `squad_on_npc_death` | alignment_human victim, at is_base, kill_count >= threshold | `cause:basekill` |
-| ALPHA | reactive | `squad_on_npc_death` | killer is mutant, not protected, projected kills cross new level | `cause:alpha` |
-| ALPHAKILL | reactive | `squad_on_npc_death` | victim is alpha, killer not protected, cooldown clear | `cause:alphakill` |
-| WOUNDED | reactive | family `WOUNDED_CALLBACKS` (`x_npc_medkit_use`, `actor_on_item_use`) | subject not protected, not is_base | `cause:wounded` |
-| HARVEST | reactive | family `HARVEST_CALLBACKS` (`actor_on_item_take`, `npc_on_item_take`) | IsArtefact(item), NPC taker not protected | `cause:harvest` |
-| STASH | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_human, not at base. State-classifier picker over one stash in EYE range; per-cause RULES + SCAN. | `cause:stash_fill`, `cause:stash_loot`, `cause:stash_ambush` |
-| AREA | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_area. Three eligibility helpers; alignment routes mutants to infest first then swarm, humans to conquer only. | `cause:area_conquer`, `cause:area_swarm`, `cause:area_infest` |
-| NEEDS | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_human, level.present(). Hull-cascade two-table generator: 9 drives → 14 specific causes; first cause that passes RULES + SCAN publishes. | `cause:hunger_campfire`, `cause:sleep_campfire`, `cause:rest_campfire`, `cause:heal_shelter`, `cause:shelter_indoor`, `cause:shelter_outdoor`, `cause:supply_trader`, `cause:money_harvest`, `cause:money_hunt`, `cause:job_outpost`, `cause:job_explore`, `cause:job_research`, `cause:social_campfire`, `cause:social_base` |
-| INSTINCTS | radiant | family `RADIANT_CALLBACKS` | not protected, alignment_mutant, species resolved. Hull-cascade two-table generator: 5 drives → 7 specific causes; multi-answer slumber splits 3 ways by shelter preference. | `cause:scatter`, `cause:feed`, `cause:slumber_field`, `cause:slumber_lair`, `cause:slumber_surge`, `cause:roam`, `cause:pack` |
+| Category | Cause | Description | Xray event | RULES | SCAN | ACTION |
+|---|---|---|---|---|---|---|
+| Reactions | massacre | Deaths pile up at a smart that is not a base. | squad_on_npc_death | alignment_human victim; kill_count >= threshold; at smart; not is_base | — | publish cause:massacre |
+| Reactions | squadkill | A squad's last member dies away from base. | squad_on_npc_death | alignment_human victim; last member dead; not is_base | — | publish cause:squadkill |
+| Reactions | basekill | Deaths pile up at a faction base. | squad_on_npc_death | alignment_human victim; kill_count >= threshold; at is_base | — | publish cause:basekill |
+| Reactions | alpha | A mutant accumulates enough kills to level up as an alpha. | squad_on_npc_death | killer is mutant; killer not protected; projected kills cross new level | — | publish cause:alpha |
+| Reactions | alphakill | An alpha mutant dies. | squad_on_npc_death | victim is alpha; killer not protected; cooldown clear | — | publish cause:alphakill |
+| Reactions | wounded | An NPC or player uses a healing item. | WOUNDED_CALLBACKS | subject not protected; not is_base | — | publish cause:wounded |
+| Reactions | harvest | An NPC or player picks up an artefact. | HARVEST_CALLBACKS | IsArtefact(item); NPC taker not protected | — | publish cause:harvest |
+| Opportunities | stash_fill | Squad finds an empty stash and stocks it. | RADIANT_CALLBACKS | alignment_human; not at base; MVT(stash_fill); personality(GREED, RELATION) | find_stashes in eye range (empty); find_smart for destination | publish cause:stash_fill |
+| Opportunities | stash_loot | Squad finds a non-empty stash and loots it. | RADIANT_CALLBACKS | alignment_loot; not at base; MVT(stash_loot); personality(GREED, PERCEPTION) | find_stashes in eye range (non-empty); find_smart for destination | publish cause:stash_loot |
+| Opportunities | stash_ambush | Outlaw squad finds a heavily-stocked stash and stakes it out. | RADIANT_CALLBACKS | alignment_outlaw; not at base; items_count >= ambush_min_items; MVT(stash_ambush); personality(GREED, AGGRESSION) | find_stashes in eye range (non-empty); find_smart for destination | publish cause:stash_ambush |
+| Opportunities | area_conquer | Stalker squad claims an empty smart with additive shared spawn. | RADIANT_CALLBACKS | alignment_conquer_human; MVT(area_conquer); personality(TERRITORY, AGGRESSION) | find_smart in eye range; filter is_smart_empty, not_base | publish cause:area_conquer |
+| Opportunities | area_swarm | Mutant squad claims an empty smart with additive shared spawn. | RADIANT_CALLBACKS | alignment_conquer_mutant; MVT(area_swarm); personality(TERRITORY, AGGRESSION) | find_smart in eye range; filter is_smart_empty, not_base | publish cause:area_swarm |
+| Opportunities | area_infest | Mutant claims a lair or surge shelter with exclusive spawn replacement. | RADIANT_CALLBACKS | alignment_mutant by species; squad has alpha; per-level cap; MVT(area_infest); personality(TERRITORY, SURVIVAL) | find_smart in scent range; filter by species (lair, lair_or_surge, or surge), not infested | publish cause:area_infest |
+| Needs | hunger_campfire | Hunger drive overdue; squad heads to a campfire. | RADIANT_CALLBACKS | alignment_human; Hull(hunger); personality(SURVIVAL) | find_smart in radio range; filter has_campfire, exclude_enemy | publish cause:hunger_campfire |
+| Needs | sleep_campfire | Sleep drive overdue; squad heads to a campfire for the night. | RADIANT_CALLBACKS | alignment_human; Hull(sleep); personality(SURVIVAL) | find_smart in radio range; filter has_campfire, exclude_enemy | publish cause:sleep_campfire |
+| Needs | rest_campfire | Rest drive overdue; squad heads to a campfire to consume rest item. | RADIANT_CALLBACKS | alignment_human; Hull(rest); personality(SURVIVAL) | find_smart in radio range; filter has_campfire, exclude_enemy | publish cause:rest_campfire |
+| Needs | heal_shelter | Heal drive overdue; squad heads to a surge shelter to consume medkit. | RADIANT_CALLBACKS | alignment_human; Hull(heal); personality(TERRITORY, SURVIVAL) | find_smart in radio range; filter has_surge_shelter, exclude_enemy | publish cause:heal_shelter |
+| Needs | shelter_indoor | Shelter drive overdue; squad heads to a surge shelter. | RADIANT_CALLBACKS | alignment_human; Hull(shelter); personality(TERRITORY, DISCIPLINE) | find_smart in radio range; filter has_surge_shelter, exclude_enemy | publish cause:shelter_indoor |
+| Needs | shelter_outdoor | Shelter drive overdue; squad heads to a campfire as outdoor shelter. | RADIANT_CALLBACKS | alignment_human; Hull(shelter); personality(PERCEPTION) | find_smart in radio range; filter has_campfire, exclude_enemy | publish cause:shelter_outdoor |
+| Needs | supply_trader | Supply drive overdue; squad heads to a trader. | RADIANT_CALLBACKS | alignment_human; Hull(supply); personality(GREED, RELATION) | find_smart in radio range; filter has_trader_job | publish cause:supply_trader |
+| Needs | money_harvest | Money drive overdue; selfserving stalker heads to anomaly field. | RADIANT_CALLBACKS | alignment_selfserving; Hull(money); personality(GREED, PERCEPTION) | find_smart in radio range; filter has_anomaly | publish cause:money_harvest |
+| Needs | money_hunt | Money drive overdue; naturalist stalker heads to mutant lair. | RADIANT_CALLBACKS | alignment_naturalist; Hull(money); personality(GREED, PERCEPTION) | find_smart in radio range; filter is_lair | publish cause:money_hunt |
+| Needs | job_outpost | Job drive overdue; principled stalker heads to non-base smart to guard. | RADIANT_CALLBACKS | alignment_principled; Hull(job); personality(TERRITORY, DISCIPLINE) | find_smart in radio range; filter not_base, not_lair, exclude_enemy | publish cause:job_outpost |
+| Needs | job_explore | Job drive overdue; selfserving stalker heads to unclaimed smart. | RADIANT_CALLBACKS | alignment_selfserving; Hull(job); personality(PERCEPTION, TERRITORY) | find_smart in radio range; filter is_unclaimed | publish cause:job_explore |
+| Needs | job_research | Job drive overdue; ecolog stalker heads to anomaly field. | RADIANT_CALLBACKS | alignment_ecolog; Hull(job); personality(PERCEPTION, DISCIPLINE) | find_smart in radio range; filter has_anomaly | publish cause:job_research |
+| Needs | social_campfire | Social drive overdue; squad heads to campfire to share stories. | RADIANT_CALLBACKS | alignment_human; Hull(social); personality(RELATION) | find_smart in radio range; filter has_campfire, exclude_enemy | publish cause:social_campfire |
+| Needs | social_base | Social drive overdue; principled stalker heads to faction base. | RADIANT_CALLBACKS | alignment_principled; Hull(social); personality(RELATION, TERRITORY) | find_smart in radio range; filter is_base, exclude_enemy | publish cause:social_base |
+| Instincts | scatter | Lower-tier mutant detects a higher-tier predator in line of sight; flees. | RADIANT_CALLBACKS | alignment_mutant tier 0-2; threats present in eye range; Hull(scatter); personality(INV_AGGRESSION, SURVIVAL) | find_squads in eye range (detect threats); find_smart in eye range; filter not_base, no threats | publish cause:scatter |
+| Instincts | feed | Feed drive overdue; mutant heads to open territory to hunt or scavenge. | RADIANT_CALLBACKS | alignment_mutant; Hull(feed); personality(SURVIVAL, PERCEPTION) | find_smart in scent range; filter is_territory, not_base | publish cause:feed |
+| Instincts | slumber_field | Slumber drive overdue; cowardly mutant beds down in open territory. | RADIANT_CALLBACKS | alignment_mutant_cowardly; Hull(slumber); personality(SURVIVAL) | find_smart in scent range; filter is_territory, not_base | publish cause:slumber_field |
+| Instincts | slumber_lair | Slumber drive overdue; feral or predator returns to lair. | RADIANT_CALLBACKS | alignment_mutant_feral or _predator; Hull(slumber); personality(SURVIVAL) | find_smart in scent range; filter is_lair, not_base | publish cause:slumber_lair |
+| Instincts | slumber_surge | Slumber drive overdue; aberrant or predator takes to surge shelter. | RADIANT_CALLBACKS | alignment_mutant_aberrant or _predator; Hull(slumber); personality(SURVIVAL) | find_smart in scent range; filter has_surge_shelter, not_base | publish cause:slumber_surge |
+| Instincts | roam | Roam drive overdue; mutant wanders to nearby territory or lair. | RADIANT_CALLBACKS | alignment_mutant cowardly + feral + predator; Hull(roam); personality(PERCEPTION, TERRITORY) | find_smart in eye-to-scent range; filter is_territory or is_lair, not_base, exclude current | publish cause:roam |
+| Instincts | pack | Pack drive overdue; feral or predator moves toward kin. | RADIANT_CALLBACKS | alignment_mutant_feral or _predator; Hull(pack); personality(RELATION) | find_smart in scent range; filter has same-faction kin, not_base | publish cause:pack |
 
-Predicate contract: `function(trace, ...callback_args) -> { cause = CAUSE.X, ...payload } | nil`. Producer pre-checks the per-category rate limit on `entry.category` and calls the predicate directly (no `observe()` wrapping). On success, producer attaches `._trace`, publishes `result.cause` to xbus, and increments the per-category counter. Predicates self-observe: prof+trace:push+debug under the picked specific cause, never an umbrella label. Predicates are pure — no rate-limit awareness, no counter manipulation, no side effects beyond the published payload.
+Cause generator contract: takes the callback args, returns either a payload table tagged with the picked specific cause or nil. The producer pre-checks the per-category rate limit, calls the generator, attaches the trace, publishes to xbus, and increments the per-category counter. Generators self-observe under the picked cause name. Generators are pure — no rate-limit awareness, no counter manipulation, no side effects beyond the published payload.
 
 #### Cause Classification
 
@@ -485,45 +509,9 @@ Reactions are simple-mechanism (the engine callback IS the event). Opportunities
 The find lives where 1 expands to N candidates.
 
 - Reactive: 1 event → N witnesses → **consequence** `find_squads` (responder SCAN). Some reactive consequences also `find_smart` (destination SCAN) before the responder scan.
-- Radiant: 1 squad → 1 destination → **cause** `find_smart` (destination SCAN). Per concept invariant 4, SCAN lives in the cause-side generator. Consequence is action-only.
+- Radiant: 1 squad → 1 destination → **cause** `find_smart` (destination SCAN). The SCAN lives in the cause generator; the consequence is action-only.
 
 Reactive expands over witnesses (consequence-side). Radiant expands over the world but resolves the destination in the cause; the consequence consumes the resolved destination from the published payload.
-
-##### Cause vs consequence (radiant, post invariant 5)
-
-| Cause owns | Consequence owns |
-|---|---|
-| trigger (Hull score, world peek, callback event) | the action (`script_squad`, `record_event`, `on_arrive`) |
-| RULES (per-cause toggle, alignment subset, personality, world-state predicate) | nothing else |
-| SCAN (destination filter + `find_smart_observed`) | |
-
-Per concept invariants 4 + 5: RULES + SCAN live in the cause; the consequence is action-only. The published payload carries the resolved destination (`dst_smart_id`) and the DTO field name (`dto_field`). Consequence on_arrive resets the DTO field and runs the action verb (consume item, trade, conquer smart, etc.).
-
-##### Cause-consequence cardinality (HARD RULE)
-
-**Radiant causes are 1:1 with consequences. Always (invariant 10 — cause and consequence share the noun).**
-**Reactive causes can be 1:N with consequences.**
-
-Reason: reactive cascades pull N actors (witnesses) from one event. Each witness can react differently — different alignment, different personality — so multiple consequences make sense. Radiant pushes one actor (the ticking squad) per tick; that squad can only do one thing at a time.
-
-When a radiant family appears to have one cause with multiple consequences (e.g. shelter has indoor + outdoor answers), the family splits into multiple causes — each cause is its own 1:1 pair. The drive that scores the urgency stays unique (one DTO timer), but the picker walks per-drive answers and publishes ONE specific cause per tick. See "Multi-answer drive" below.
-
-##### Bundling rule
-
-One predicate per shared computation with mutually-exclusive sub-cause output.
-
-**Required for bundling (both must hold):**
-
-1. **Shared computation.** Sub-causes derive from the same input scan or score.
-2. **One emit per call.** Picker emits exactly one sub-cause; precedence resolves overlap when needed.
-
-If either fails → separate predicates, cascade orchestrates.
-
-| Pattern | Bundle? |
-|---|---|
-| Loop scoring N drives, picks strongest | yes — single loop, single winner |
-| Independent scans with different filters | no — different finds, separate predicates |
-| Independent engine callbacks | no — different trigger sources, separate predicates |
 
 #### Theoretical Foundations
 
@@ -562,95 +550,85 @@ Used by `ap_ext_cause_needs.script` (9 drives, 14 answers) and `ap_ext_cause_ins
 
 ### Consequences
 
-Reactive families fan out to multiple consequences (1:N — each subscriber acts independently). Radiant families are 1:1 — every cause has exactly one consequence sharing the noun (invariant 10).
+Reactive consequences carry their own RULES and SCAN. Radiant consequences are action-only — RULES and SCAN already happened in the cause generator (so those columns show — for radiant rows).
 
-**Reactive (1:N):**
+| Cause | Consequence | Description | RULES | SCAN | ACTION |
+|---|---|---|---|---|---|
+| massacre | massacre_investigate | Victim's faction sends squads to investigate the kill site. | alignment_human minus renegade; personality(PERCEPTION, RELATION) | find_squads in radio range; factions = victim faction; max_squads | per responder: script_squad to massacre site; record_event |
+| massacre | massacre_scavenge | Cowardly mutants converge to feed on corpses. | alignment_mutant_cowardly; personality(SURVIVAL, PERCEPTION) | find_squads in scent range; factions = mutant cowardly; max_squads | per responder: script_squad to massacre site; record_event |
+| squadkill | squadkill_revenge | Same-faction squads pursue the killer. | alignment_human; personality(AGGRESSION, RELATION) | find_squads in radio range; factions = victim faction; max_squads, max_chases | per responder: script_actor_target chase killer; record_event |
+| squadkill | squadkill_flee | Same-faction squads retreat to nearest faction base. | alignment_human; personality(INV_DISCIPLINE, INV_TERRITORY) | find_smart for evacuation base; find_squads in radio range; factions = victim faction; max_squads | per responder: script_squad to base; record_event |
+| basekill | basekill_support | Friendly squads rush to reinforce the base. | alignment_human; personality(TERRITORY, RELATION) | find_squads in radio range; factions = base faction; max_squads | per responder: script_squad to base; record_event |
+| basekill | basekill_flee | Squads at the attacked base evacuate to nearest base. | alignment_human; personality(INV_DISCIPLINE, INV_TERRITORY) | find_smart for evacuation base; find_squads at the attacked base; max_squads | per responder: script_squad to evacuation base; record_event |
+| alpha | alpha_promote | Mutant becomes alpha; gains hit-power buffs and loot. | killer not protected; not at max_alphas | — | update_alpha; set hit power; record_event |
+| alphakill | alphakill_targeted | Same-species mutants on same level pursue the killer. | alignment_mutant by species; personality(AGGRESSION, RELATION) | find_smart near killer; find_squads in scent range; factions = alpha species; max_squads, max_chases | per responder: script_squad or script_actor_target chase; record_event |
+| wounded | wounded_hunt | Predator and aberrant mutants converge on the wounded. | alignment_mutant_predator + aberrant; personality(AGGRESSION, PERCEPTION) | find_smart near subject; find_squads in scent range; max_squads | per responder: script_squad to subject; record_event |
+| wounded | wounded_help | Same-faction squads rush to help the wounded. | alignment_human; personality(RELATION, SURVIVAL) | find_smart near subject; find_squads in radio range; factions = subject faction; max_squads | per responder: script_squad to subject; record_event |
+| harvest | harvest_rob | Outlaws pursue the artefact taker. | alignment_outlaw; personality(GREED, AGGRESSION) | find_smart near taker; find_squads in radio range; factions = outlaw; max_squads, max_chases | per responder: script_actor_target chase taker; record_event |
+| harvest | harvest_haunt | Aberrant mutants converge on the artefact pickup site. | alignment_mutant_aberrant; personality(SURVIVAL, PERCEPTION) | find_smart near pickup; find_squads in scent range; factions = aberrant; max_squads | per responder: script_squad to pickup; record_event |
+| stash_fill | stash_fill | Stalker walks to empty stash, hides supplies. | — | — | resolve squad+smart; script_squad; on_arrive: pick items, fill_stash; record_event |
+| stash_loot | stash_loot | Stalker walks to non-empty stash, loots. | — | — | resolve squad+smart; script_squad; on_arrive: loot_stash (skip if protected toolkits); record_event |
+| stash_ambush | stash_ambush | Stalker walks to non-empty stash, stakes out. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| area_conquer | area_conquer | Stalker claims empty smart with additive shared spawn. | — | — | resolve squad+smart; script_squad; on_arrive: conquer_smart; record_event |
+| area_swarm | area_swarm | Mutant claims empty smart with additive shared spawn. | — | — | resolve squad+smart; script_squad; on_arrive: conquer_smart; record_event |
+| area_infest | area_infest | Mutant claims lair or surge shelter with exclusive spawn replacement. | — | — | resolve squad+smart; script_squad; on_arrive: infest_smart; record_event |
+| hunger_campfire | hunger_campfire | Stalker walks to campfire and consumes food item. | — | — | resolve squad+smart; script_squad; on_arrive: consume HUNGER section; record_event |
+| sleep_campfire | sleep_campfire | Stalker walks to campfire for the night. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| rest_campfire | rest_campfire | Stalker walks to campfire and consumes rest item. | — | — | resolve squad+smart; script_squad; on_arrive: consume REST section; record_event |
+| heal_shelter | heal_shelter | Stalker walks to surge shelter and consumes medkit. | — | — | resolve squad+smart; script_squad; on_arrive: consume HEAL section; record_event |
+| shelter_indoor | shelter_indoor | Stalker walks to surge shelter. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| shelter_outdoor | shelter_outdoor | Stalker walks to campfire as outdoor shelter. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| supply_trader | supply_trader | Stalker walks to trader, exchanges artefact for supplies. | — | — | resolve squad+smart; script_squad; on_arrive: trade artefact; record_event |
+| money_harvest | money_harvest | Stalker walks to anomaly field for artefact harvest. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| money_hunt | money_hunt | Stalker walks to mutant lair for hide hunt. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| job_outpost | job_outpost | Stalker walks to non-base smart to guard. | — | — | resolve squad+smart; script_squad; on_arrive: consume GUARD section; record_event |
+| job_explore | job_explore | Stalker walks to unclaimed smart to explore. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| job_research | job_research | Stalker walks to anomaly field to research. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| social_campfire | social_campfire | Stalker walks to campfire to share stories. | — | — | resolve squad+smart; script_squad; on_arrive: consume SOCIAL section; record_event |
+| social_base | social_base | Principled stalker walks to faction base for downtime. | — | — | resolve squad+smart; script_squad; on_arrive: consume SOCIAL section; record_event |
+| feed | feed | Mutant pack moves to open territory to hunt or scavenge. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| slumber_field | slumber_field | Cowardly mutant beds down in open territory. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| slumber_lair | slumber_lair | Feral or predator returns to lair. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| slumber_surge | slumber_surge | Aberrant or predator takes to surge shelter. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| roam | roam | Mutant wanders to nearby territory or lair. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| pack | pack | Feral or predator moves toward smart with same-faction squads. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
+| scatter | scatter | Mutant flees from higher-tier predator to safe smart in eye range. | — | — | resolve squad+smart; script_squad; on_arrive: passive (DTO reset); record_event |
 
-| Cause | Consequence | Actor | Effect |
-|---|---|---|---|
-| `cause:massacre` | `consequence:massacre_investigate` | stalker | victim faction investigates |
-| `cause:massacre` | `consequence:massacre_scavenge` | mutant | cowardly mutants converge on massacre site |
-| `cause:squadkill` | `consequence:squadkill_revenge` | stalker | victim faction pursues killer (chase) |
-| `cause:squadkill` | `consequence:squadkill_flee` | stalker | victim faction retreats to base |
-| `cause:basekill` | `consequence:basekill_support` | stalker | friendly squads reinforce attacked base |
-| `cause:basekill` | `consequence:basekill_flee` | stalker | squads at base evacuate |
-| `cause:alpha` | `consequence:alpha_promote` | mutant | update alpha level, apply hit power buffs, grant loot |
-| `cause:alphakill` | `consequence:alphakill_targeted` | mutant | same-species mutants on same level pursue killer (chase) |
-| `cause:wounded` | `consequence:wounded_hunt` | mutant | predator + aberrant mutants close in |
-| `cause:wounded` | `consequence:wounded_help` | stalker | same-faction squads rush to help |
-| `cause:harvest` | `consequence:harvest_rob` | stalker | outlaws pursue artefact taker (chase) |
-| `cause:harvest` | `consequence:harvest_haunt` | mutant | aberrant mutants converge on pickup site |
+Handler contract: takes the cause payload, returns a result code. Domain gates (alignment, species, personality) live in cause generators for radiant and in consequence handlers for reactive — always in ext, never in core. Dispatch order: shuffled per cause publish.
 
-**Radiant (1:1, shared noun):**
+### Consequence shapes
 
-| Cause = Consequence | Actor | Effect |
-|---|---|---|
-| `stash_fill` | stalker | walks to empty stash, hides supplies (CONFIGS factory) |
-| `stash_loot` | stalker | walks to non-empty stash, loots to NPC inventory |
-| `stash_ambush` | stalker | walks to non-empty stash with valuable cache, stakes out |
-| `area_conquer` | stalker | claims empty smart with additive shared spawn |
-| `area_swarm` | mutant | mutants claim empty smart with additive shared spawn |
-| `area_infest` | mutant (feral+predator+aberrant) | claims lair or surge shelter with exclusive spawn replacement (per-level cap) |
-| `hunger_campfire` | stalker | walks to campfire, consumes food item |
-| `sleep_campfire` | stalker | walks to campfire for the night |
-| `rest_campfire` | stalker | walks to campfire, consumes rest item |
-| `heal_shelter` | stalker | walks to surge shelter, consumes medkit |
-| `shelter_indoor` | stalker | walks to surge shelter |
-| `shelter_outdoor` | stalker | walks to campfire smart (outdoor shelter) |
-| `supply_trader` | stalker | walks to trader, exchanges artefact for ammo / medkit |
-| `money_harvest` | selfserving stalker | walks to anomaly field for artefact harvest |
-| `money_hunt` | naturalist stalker | walks to mutant lair for hide hunt |
-| `job_outpost` | principled stalker | walks to non-base / non-lair smart to guard |
-| `job_explore` | selfserving stalker | walks to unclaimed smart to explore |
-| `job_research` | ecolog stalker | walks to anomaly field to research |
-| `social_campfire` | stalker | walks to campfire to share stories |
-| `social_base` | principled stalker | walks to faction base for downtime |
-| `feed` | mutant | walks to open territory to hunt or scavenge |
-| `slumber_field` | cowardly mutant | beds down in open territory |
-| `slumber_lair` | feral + predator | returns to lair |
-| `slumber_surge` | aberrant + predator | takes to surge shelter |
-| `roam` | cowardly + feral + predator | wanders to nearby territory or lair (aberrant excluded — lair-bound) |
-| `pack` | feral + predator | moves toward smart with same-faction squads (cowardly + aberrant excluded) |
-| `scatter` | cowardly + feral + predator (tier 0-2) | flees from higher-tier predator within eye range to safe smart |
+Two shapes by cause type. Radiant consequences carry only the ACTION because the cause generator already handled RULES and SCAN. Reactive consequences come in two variants — RESPOND (find responder squads, dispatch each) and TRANSFORM (act on the cause-target entity directly, no responder loop).
 
-Handler contract: `function(event_data) -> { code = RESULT.X, reason = "..." }`. All domain gates (alignment, species, personality) live in ext consequence code, never in core. Dispatch order: round-robin cursor per cause type.
+**Radiant: action-only.** The cause generator delivered the squad and the destination smart in the payload. The handler routes the squad to the smart, registers the on-arrival action, records the event for news, returns SUCCESS. No alignment, no species, no personality, no find — those happened in the cause generator.
 
-### Consequence Template
+**Reactive RESPOND.** Three phases: RULES (alignment, species, personality, payload validation) → SCAN (find responder squads, optionally a destination smart) → ACTION (per responder, route and record). At least one responder routed = SUCCESS.
 
-Every consequence handler follows a fixed three-phase structure (Template Method):
+Examples: massacre_investigate, massacre_scavenge, basekill_support, basekill_flee, wounded_hunt, wounded_help, harvest_rob, harvest_haunt, squadkill_revenge, squadkill_flee, alphakill_targeted.
 
-```
-rules -> eval -> action
-```
+**Reactive TRANSFORM.** Two phases: RULES (payload validation, threshold or cap checks) → ACTION (mutate state, register, dispatch on the entity in the cause payload). No responder loop.
 
-| Phase | What runs | Returns on fail |
-|-------|-----------|-----------------|
-| rules | alignment, species (direct hash), personality, match (need/instinct), validation (nil args, at_base) | `FAILED_RULES` |
-| eval | find_squads, find_smart, xobject.se (entity lookup) | `FAILED_SCAN` |
-| action | script_squad, script_actor_target, update_alpha, conquer_smart | `FAILED_ACTION` |
-| action (ok) | | `SUCCESS` |
+Examples: alpha_promote.
 
-Each phase runs in order. If a phase fails, the handler returns immediately with the corresponding result code. The handler never reaches a later phase if an earlier phase failed.
+Gate order within the RULES phase (where present): alignment → species → personality → match → validation.
 
-Gate order within the rules phase: alignment -> species (direct hash on resolved identity) -> personality -> match -> validation.
+### Domain gates
 
-### Domain Gates
+Three gates filter who participates in a cause: alignment (hard, deterministic), species (hard, deterministic), personality (probability, non-deterministic). All three live in ext, never in core. Their location depends on cause type — for radiant they live in the cause generator; for reactive they live in the consequence handler.
 
-Alignment and personality are domain-level gates. They live exclusively in ext consequence code (`ap_ext_util`), never in core. Core knows nothing about factions, species, or personality traits. Species filtering is a direct hash lookup on the resolved identity, not a separate function.
+**Alignment** decides if a faction can participate in this cause at all. Static set lookup.
 
-**Gate order inside every consequence handler:**
+**Species** filters mutant kinds (cowardly, feral, predator, aberrant). Stalkers have no species and pass automatically. Resolved once per squad, cached.
 
-1. **Alignment** (hard filter, deterministic). Can this faction participate at all? Static hash set lookup on engine faction (`squad.player_id`), O(1). Checked via `ap_ext_util.check_alignment`.
-2. **Species** (hard filter, deterministic). For mutants: is this the right kind of mutant? Species is resolved once via `ap_ext_util.get_species` (FIFO-cached, 0 luabind on hit). Stalkers have nil species and pass automatically. Mutants are checked via direct hash lookup on the species alignment set.
-3. **Personality** (probability, non-deterministic). How likely is this faction/species to act? Averages relevant traits (max 2 per consequence), clamps to MCM `personality_min`/`personality_max` (defaults 0.20/0.70), rolls. INV_ traits resolve as `1 - base_value` before averaging. Checked via `ap_ext_util.check_personality`. The identity key (species for mutants, community for stalkers) is resolved once and shared with the species gate.
+**Personality** rolls the probability of acting given relevant trait scores. Averages the consequence's relevant traits, clamps between a configured floor and ceiling (MCM), rolls a uniform value. Inverted traits resolve as 1 minus the base trait before averaging. Used for behaviors driven by absence of a quality (e.g. fleeing as low aggression).
 
-Not every consequence uses all three gates. Human-only consequences skip species. Some consequences (alpha_promote) have no gates beyond enabled check. But when gates are present, the order is always alignment -> species -> personality.
+Not every consequence uses all three. Human-only consequences skip species. Some have no gates beyond the enable toggle. When gates are present, the order is always alignment → species → personality.
 
-**Where gates apply depends on cause type:**
+**Where they apply by cause type:**
 
-- **Radiant:** the ticking squad is both sensor and responder. Gates check `event_data.community` (the squad's faction) and `event_data.squad_id` (for species).
-- **Reactive, same-faction:** gates check the event faction (victim faction, wounded faction). Responders are found via `find_squads` with that faction.
-- **Reactive, cross-faction:** the alignment set IS the `factions` parameter to `find_squads`. Species and personality are checked per-squad on the found candidates, inside the find loop.
+- **Radiant.** Gates run in the cause generator on the ticking squad. The squad is both sensor and responder.
+- **Reactive same-faction.** Gates run in the consequence handler on the event faction (victim, wounded). Responders inherit that faction.
+- **Reactive cross-faction.** The alignment set is passed as the responder filter to the find. Species and personality run per-responder inside the find loop.
 
 ### Alignment
 
@@ -753,69 +731,59 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 (Infest is an opportunity in the AREA family — `cause:area_infest` — not a mutant instinct drive.)
 
-### Invariants
+## Rules
 
-1. **Serialization boundary.** `m_data` accepts only primitives and tables of primitives. Functions, userdata, metatables are silently dropped on save. Arrival handler keys are strings; handler functions are transient, re-registered every load.
+Reference vocabulary first, then the rule set split into universal, radiant, and reactive.
 
-2. **Result code contract.** Every consequence returns `{ code = RESULT.X }` where X is one of `SUCCESS`, `FAILED_RULES`, `FAILED_SCAN`, `FAILED_ACTION`. Consumer reads `.code` for chain control and counter updates. Missing or malformed return = error.
+### Reference vocabulary
 
-3. **Scripted bypass.** `scripted_target` overrides `SIMBOARD:get_squad_target()`. Engine `target_precondition` (faction check, capacity check) is NOT evaluated for scripted squads. AP enforces faction safety in consequence filters. Capacity is handled by arrival overflow.
+Two cause types: REACTIVE (triggered by an engine event, fans out 1:N to consequences) and RADIANT (triggered by the squad tick, 1:1 with its consequence).
 
-4. **Mutation volatility.** Runtime smart terrain mutations are rebuilt from LTX on every load. The smart mutator saves and restores independently using two-phase restore. A 60s periodic scanner re-applies monster faction ownership (engine's `check_smart_faction` ignores monsters) and decays expired conquests.
+Two consequence file shapes: `_set` (hand-written N handlers, used for per-handler quirks) and CONFIGS factory (one CONFIGS table + one closure builder generates N handlers from a single body).
 
-5. **Core/ext boundary.** Core never imports ext. All domain logic reaches core through registered function references.
+Five result codes: SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED. Handlers return the first four. DISABLED is consumer-only (pre-gate when the MCM toggle is off).
 
-6. **Stalker/mutant consequence separation.** When stalkers and mutants respond to the same cause, they get separate consequences. A massacre triggers `massacre_investigate` (stalkers) and `massacre_scavenge` (mutants) independently. Separation exists because the behaviors differ (stalkers investigate, mutants feed) and because simultaneous responses create emergent interactions (stalkers arrive to investigate, mutant pack is already feeding, conflict erupts). Both consequences subscribe to the same cause through the event bus. Neither references the other.
+### Universal rules
 
-7. **Radiant consequence singularity.** A radiant cause evaluates one squad per tick. That squad is the actor. Only one consequence fires per evaluation (enforced by dispatch rule 5: stop on first radiant success). Alternatives compete via shuffle -- each has equal probability of being tried first. Reactive causes have no such constraint -- multiple consequences fire independently.
+1. Core never imports ext. All domain logic reaches core through registered function references.
+2. m_data accepts only primitives and tables of primitives. Functions, userdata, and metatables are silently dropped on save.
+3. Every consequence returns one of SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION. Missing or malformed return = error.
+4. Published causes are always specific names (`cause:hunger_campfire`, `cause:massacre`). Umbrella names (NEEDS, REACTIONS) are categories, never published.
+5. Every cause has its own MCM toggle. No file-level master toggle.
+6. Every consequence has its own MCM toggle.
+7. The activity record carries the published cause name verbatim. Never an umbrella constant.
+8. Every cause registration declares a CAUSE_CATEGORY (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Category drives rate-limit grouping; it is never published.
+9. Domain gates (alignment, species, personality) live in ext, never in core. Location depends on cause type — see radiant and reactive rules.
+10. Runtime smart terrain mutations are rebuilt from LTX on load. Two-phase restore re-applies them after entities exist.
+11. `scripted_target` overrides SIMBOARD's target_precondition. AP consequences enforce faction safety inline; capacity is handled by arrival overflow.
+12. Many cause attempts fail by design — RULES (especially personality) make outcomes likely or unlikely. Variance comes from cascade ordering, not from clamping personality.
+13. One generator per family. Bundle when causes share input or scoring (Hull cascade over drives, state-classifier over a peek). Use separate generator files when causes have independent triggers or scans (every reactive cause has its own file).
 
-8. **Domain gates in ext only.** Core pipeline has zero domain knowledge — only rate limiting, protection, tracing, squad lifecycle. All domain logic lives in ext. Cause-side handles squad invariants (alignment, species) for family pre-filter and sub-cause pick. Consequence-side handles probabilistic gates (personality, chance) and the action. See Cause Classification.
+### Radiant rules
 
-9. **Radiant cascade.** When a radiant cause's predicate publishes, the cascade stops — other registered radiant predicates do not evaluate this tick. Predicates pre-filter by squad invariants (alignment, species) so the cascade does not spend slots on squads outside the family. Consequences may still fail post-publish on probabilistic gates (personality, chance) or destination rejection. Reactive causes do not cascade; consequences fan out independently.
+1. The actor is always the ticking squad. No actor scan in radiant.
+2. Cause and consequence are 1:1 and share the noun. Multi-answer drives split into multiple causes; each cause has its own 1:1 consequence.
+3. The cause generator owns RULES (toggle, alignment, personality, threshold) and SCAN (find_smart). The consequence is action-only — resolve squad and smart from the payload, route the squad, record the event, return SUCCESS.
+4. The generator cascades internally (cause-to-cause within the generator, top-down) and externally (generator-to-generator at the producer). HULL scoring runs first for bundled generators (needs, instincts) to produce the candidate list; state-classifier generators (stash, area) skip HULL and pick directly from world peek.
+5. No fallbacks inside a single cause. One SCAN with one filter. Variant outcomes are separate causes. The generator may apply a per-cause backoff on SCAN-fail (e.g. needs reset the DTO timestamp on SCAN-fail so the drive deprioritizes next tick on a level where no destination matches).
+6. Per-tick cause-check cap: `RADIANT_MAX_CHECKS_PER_TICK = 5`. One check = one cause attempt (RULES + optional SCAN, regardless of where it exits). Internal tuning, not MCM.
+7. Stalker and mutant get separate causes for the same world state — needs (stalker) and instincts (mutant) are distinct families with distinct DTOs.
+8. CONFIGS factory is the default consequence file shape. `_set` is vestigial for radiant.
+9. on_arrive: the DTO reset is unconditional (online or offline — the abstract state advances either way). World mutation (item consume, trade, inventory operations) runs only when online.
 
-10. **Cause/consequence structural rules — see dedicated section.** The structural shape of cause and consequence code (specific causes only, predicate-per-cause, umbrella generator pattern, N:M mapping, file naming, factory-vs-handwritten) is governed by the Cause/Consequence Structural Rules section below.
+### Reactive rules
 
-### Cause/Consequence Structural Rules
-
-These rules govern how cause and consequence code is written. They apply to every family — present and future, radiant and reactive. Code, MCM keys, log labels, comments, and prose all comply.
-
-**Concepts.**
-- **Generator** — the file. Holds N specific causes for one family. Picker. Emits one cause per call or none.
-- **Cause** — a labeled event the framework publishes. The label is always specific (`cause:hunger_campfire`, `cause:area_conquer`, `cause:slumber_lair`). Never an umbrella string.
-- **Consequence** — a handler that subscribes to a cause via xbus.
-- **Picker / predicate** — the function inside the generator that runs and publishes one specific cause per call.
-
-**Cause side.**
-
-1. **Specific causes only.** Causes are specific perceptions or events, never umbrella categories. Umbrella names (REACTIONS, OPPORTUNITIES, NEEDS, INSTINCTS) are categories, not published causes. Family prefixes are dropped from cause names — every cause has its own bare or compound noun (`feed`, `slumber_lair`, `hunger_campfire`). The DTO container disambiguates collision between human and mutant variants of shared drive nouns (e.g. stalker `cause:hunger_campfire` and mutant `cause:feed` both score against their container's DTO).
-
-2. **Each cause-side function publishes one specific cause per call.** A generator may emit different specific cause tags across different calls based on its picker, but each individual call returns exactly one specific cause name (or nil).
-
-3. **Bundling: one generator per family with mutually-exclusive cause output.** When N causes derive from the same input scan or score (Hull cascade over drives, state-classifier over a peeked stash, alignment router over a smart's eligibility), one generator file holds the bundle. When causes have independent scans, filters, or trigger sources, they live in separate generator files (every reactive cause has its own file).
-
-4. **Per-cause enable toggle.** Each cause has its own `cause_<specific_name>_enabled` toggle. No umbrella master toggle. For multi-answer drives (e.g. slumber), the drive also has a Hull-level toggle (`cause_<drive>_enabled`) that disables the entire drive; per-answer toggles disable individual answers.
-
-**Consequence side.**
-
-5. **One handler per consequence.** Each consequence has its own dedicated handler function. Two different consequences never share a function, even when they live in the same file.
-
-6. **CONFIGS factory is the radiant default.** Per concept, every radiant consequence body collapses to the same shape: resolve squad → resolve smart from `event_data.dst_smart_id` → `script_squad` → `record_event` → SUCCESS. One factory in the family file generates one handler per consequence. Differences are pure data (cause id, on_arrive function, pre_release_gulag, section_key). All radiant families use this shape today: needs, instincts, area, stash. `_set` is vestigial for radiant.
-
-7. **`_set` file for reactive families with hand-written quirks.** Reactive consequences may legitimately differ in body shape (different SCAN filters, different action types, different per-responder logic). `_set` is the natural choice for those. Single-consequence files keep their direct name (`ap_ext_consequence_alpha_promote.script`).
-
-8. **Per-consequence enable toggle.** Each consequence has its own `consequence_<specific_name>_enabled` toggle.
-
-**Cause-to-consequence mapping.**
-
-9. **Cardinality by cause type.** Radiant: every cause is **strictly 1:1** with its consequence; both sides share the noun (invariant 10). When one drive has multiple alternative satisfactions, the family adds multiple causes (each its own 1:1 pair) — see Multi-answer drive section. Reactive: 1:N is allowed; multiple consequences fan out independently per publish.
-
-**Pipeline.**
-
-10. **Activity record carries the published cause.** `record_event(squad, event_data.cause, consequence, ...)`. Never an umbrella constant. `event_data.cause` is verbatim what the picker published; pass it through.
-
-11. **Category at registration.** Each cause registration declares its `category` (`CAUSE_CATEGORY.REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES`) in `producer.register` config. Category drives rate-limit grouping. Category is not a cause and is never published.
-
-12. **Cause/consequence work split (concept invariants 4 + 5).** For radiant: cause owns RULES (per-cause toggle, alignment subset, personality, world-state predicate) and SCAN (filter + `find_smart_observed`). Consequence owns the ACTION only. The published payload carries `dst_smart_id` and `dto_field`; consequence resolves the smart from id and dispatches `script_squad`. For reactive: same RULES (per-cause event RULES), but the consequence-side may carry a SCAN (`find_squads` for responders, optional `find_smart` for destination) since 1 event expands to N witnesses on the consequence side. The find lives where 1 expands to N over world entities.
+1. A reactive cause subscribes to one engine callback or one callback-family constant. Callback families collapse multiple engine paths into one logical cause — `HARVEST_CALLBACKS = { ACTOR_ON_ITEM_TAKE, NPC_ON_ITEM_TAKE }`, `WOUNDED_CALLBACKS = { X_NPC_MEDKIT_USE, ACTOR_ON_ITEM_USE }`.
+2. Cause:consequence is 1:N. Multiple consequences fan out independently per publish.
+3. RULES split across three locations:
+   - **Cause-level event RULES** — universal event criteria (does this event qualify for publishing at all). Runs once per event. Fail = no publish.
+   - **Consequence-level event RULES** — per-consequence event criteria (does THIS consequence apply to this event). Runs once per consequence dispatch. Fail = skip this consequence.
+   - **Per-responder RULES** — per-responder identity filter (personality, species). Runs per responder during the cascade.
+4. Consequence shapes: RESPOND (find responder squads, dispatch each) or TRANSFORM (act directly on the cause-target entity, no responder loop). RESPOND consequences may run two SCANs — destination SCAN (find_smart) and responder SCAN (find_squads) — typically destination first since responder SCAN may use destination to exclude already-arrived squads.
+5. Responder SCAN returns up to a per-consequence configurable max_count (default 2).
+6. Stalker and mutant get separate consequences subscribed to the same cause — massacre fires both massacre_investigate (stalkers) and massacre_scavenge (mutants) independently.
+7. Per-publish consequence cap: `REACTIVE_MAX_CONSEQUENCES_PER_CAUSE = 5`. One unit = one consequence run, independent of how many responders the consequence cascaded through.
+8. `_set` is the natural file shape for hand-written quirks (varying SCAN filters, varying actions, varying per-responder logic). CONFIGS factory only when consequence bodies are uniform.
 
 ---
 
@@ -837,7 +805,7 @@ end, "my_mod")
 
 ### Level 2: Register (pipeline participant)
 
-Register a cause predicate with `ap_core_producer.register(config, predicate)` and a consequence handler with `ap_core_consumer.register(name, config, handler)`. The framework handles gates, protection, rate limiting, tracing, arrival, and cleanup.
+Register a cause generator with `ap_core_producer.register(config, generator)` and a consequence handler with `ap_core_consumer.register(name, config, handler)`. The framework handles gates, protection, rate limiting, tracing, arrival, and cleanup.
 
 | Parameter | Producer | Consumer |
 |-----------|----------|----------|

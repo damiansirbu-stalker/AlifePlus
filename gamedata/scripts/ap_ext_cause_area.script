@@ -87,6 +87,7 @@ local function _read_dto_field(squad_id, field, now)
 end
 
 local function _eligible_conquer(squad, now, level_id, trace)
+    if not ap_core_producer.take_check_slot() then return nil end
     if not cfg.cause_area_conquer_enabled then return nil end
     if not _alignment_conquer_human[squad.player_id] then return nil end
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
@@ -111,6 +112,7 @@ local function _eligible_conquer(squad, now, level_id, trace)
 end
 
 local function _eligible_swarm(squad, species, now, level_id, trace)
+    if not ap_core_producer.take_check_slot() then return nil end
     if not cfg.cause_area_swarm_enabled then return nil end
     if not _alignment_conquer_mutant[squad.player_id] then return nil end
     local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
@@ -136,6 +138,7 @@ local function _eligible_swarm(squad, species, now, level_id, trace)
 end
 
 local function _eligible_infest(squad, species, now, level_id, trace)
+    if not ap_core_producer.take_check_slot() then return nil end
     if not cfg.cause_area_infest_enabled then return nil end
     if not ap_ext_util.is_active_period(species) then return nil end
     local elapsed = now - _read_dto_field(squad.id, INFEST_FIELD, now)
