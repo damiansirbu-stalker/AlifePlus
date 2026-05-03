@@ -63,10 +63,9 @@ CONSEQUENCE = CAUSE + VERB
 | MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
 | MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
-| Script file (cause) | `ap_ext_cause_{family}.script` | `ap_ext_cause_massacre.script`, `ap_ext_cause_area.script` (umbrella) |
-| Script file (consequence, single) | `ap_ext_consequence_{name}.script` | `ap_ext_consequence_massacre_scavenge.script` |
-| Script file (consequence, CONFIGS factory) | `ap_ext_consequence_{family}.script` (radiant default per concept) | `ap_ext_consequence_area.script`, `ap_ext_consequence_stash.script`, `ap_ext_consequence_instincts.script` |
-| Script file (consequence, hand-written `_set`) | `ap_ext_consequence_{family}_set.script` (use only when handler bodies have meaningful per-handler quirks) | reactive examples only after the radiant sweep completes |
+| Script file (cause, single) | `ap_ext_cause_{family}.script` — generator publishes exactly one cause | `ap_ext_cause_massacre.script`, `ap_ext_cause_alpha.script` |
+| Script file (cause, multi) | `ap_ext_causes_{family}.script` — generator publishes multiple causes | `ap_ext_causes_area.script`, `ap_ext_causes_stash.script`, `ap_ext_causes_needs.script`, `ap_ext_causes_instincts.script` |
+| Script file (consequence) | `ap_ext_consequences_{family}.script` — holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (14 handlers) |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |

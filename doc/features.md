@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-05-03
 
-> **WARNING: NOT SYNCED WITH CODE.** This document is a snapshot of cause and consequence inventory at the date above. The code may have moved on (renames, new causes, dropped causes, changed RULES/SCAN). Treat this as a reference, not a contract. Re-verify against `gamedata/scripts/ap_ext_cause_*.script` and `ap_ext_consequence_*.script` before relying on any specific row. When the inventory changes, update this file and bump the date.
+> **WARNING: NOT SYNCED WITH CODE.** This document is a snapshot of cause and consequence inventory at the date above. The code may have moved on (renames, new causes, dropped causes, changed RULES/SCAN). Treat this as a reference, not a contract. Re-verify against `gamedata/scripts/ap_ext_cause_*.script` / `ap_ext_causes_*.script` and `ap_ext_consequences_*.script` before relying on any specific row. When the inventory changes, update this file and bump the date.
 
 For the abstract pipeline rules and category model, see `architecture.md`. This file holds only the per-cause and per-consequence inventory tables.
 

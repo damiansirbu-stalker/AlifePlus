@@ -85,7 +85,7 @@ Rules:
 A consequence follows the three-phase template: rules -> scan -> action. Each phase returns immediately on failure with the corresponding result code.
 
 ```lua
--- ap_ext_consequence_ambush_setup.script
+-- ap_ext_consequences_ambush.script
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
@@ -216,8 +216,8 @@ Link arrival to squad: pass `on_arrive = CONSEQUENCE.AMBUSH_SETUP` in `script_sq
 1. Add `CAUSE.X` to ap_core_const CAUSE table
 2. Add `CONSEQUENCE.X_VERB` to ap_core_const CONSEQUENCE table
 3. Add MCM defaults to ap_core_mcm.defaults
-4. Create `ap_ext_cause_x.script` with predicate, register in on_game_start
-5. Create `ap_ext_consequence_x_verb.script` with handler, register in on_game_start
+4. Create `ap_ext_cause_<family>.script` (singular — generator publishes one cause) or `ap_ext_causes_<family>.script` (plural — generator publishes multiple) with predicate, register in on_game_start
+5. Create `ap_ext_consequences_<family>.script` (always plural) with handler(s), register in on_game_start
 6. (Optional) Add 5 templates at `st_ap_news_tpl_<consequence>_001..005` in `gamedata/configs/text/eng/ui_st_ap_news.xml` so the consequence surfaces in PDA news
 7. Add MCM UI entries to ap_core_mcm menu builder
 8. Run validator: `stalker-manager.sh validate`

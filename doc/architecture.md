@@ -16,7 +16,7 @@ Built on xlibs. See `conventions.md` for naming rules, result codes, MCM setting
 |------|------------|
 | Cause | A labeled event the framework publishes. Engine callback or radiant tick + world-state check. Specific name (`cause:hunger_campfire`, `cause:massacre`) — never an umbrella string. |
 | Consequence | Handler subscribed to a cause; executes the action and side effects. |
-| CAUSE_GENERATOR | The function that picks and emits one specific cause per call, or none. One generator per family lives in `ap_ext_cause_<family>.script`. |
+| CAUSE_GENERATOR | The function that picks and emits one specific cause per call, or none. One generator per family lives in `ap_ext_cause_<family>.script` (single-cause) or `ap_ext_causes_<family>.script` (multi-cause). |
 | RULES | Business rules that do not need world scanning. Toggle, alignment, personality roll, payload field check, threshold. Cheap. No find_smart, no find_squads. Always ordered cheapest-first. |
 | SCAN | World lookup. find_smart, find_squads, find_stashes. Returns a thing (a smart, a list of squads, a list of stashes) or empty. Two types: destination SCAN (locates a target smart) and responder SCAN (locates responder squads). |
 | ACTION | The consequence's effect: dispatch (`script_squad` / `script_actor_target`), state mutation, news record, on_arrive callback. |
@@ -61,8 +61,8 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 
 | File | Role |
 |------|------|
-| ap_ext_cause_* | Cause generators (one file per family) |
-| ap_ext_consequence_* | Consequence handlers (one or more files per cause) |
+| ap_ext_cause_* / ap_ext_causes_* | Cause generators (one file per family; singular prefix when generator publishes one cause, plural when multi) |
+| ap_ext_consequences_* | Consequence handlers (one file per cause; plural always) |
 | ap_ext_tracker | Domain state: kill counts, alphas, stalker needs DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest, mutant infestation) |
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
@@ -253,8 +253,8 @@ Four phases. Each requires the previous to complete.
 - `ap_core_broker` registers save/load callbacks, creates the 20s scripted squad scan timer.
 - `ap_core_hud` resets statistics, registers first_update/option_change/net_destroy/GUI/entity_unregister callbacks.
 - `ap_core_compat` registers `load_state` for save cleanup, registers ownership proxy (warfare).
-- `ap_ext_cause_*` register generators with producer via `register()`.
-- `ap_ext_consequence_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
+- `ap_ext_cause_*` / `ap_ext_causes_*` register generators with producer via `register()`.
+- `ap_ext_consequences_*` register handlers with consumer via `register()`. Arrival handlers registered via consumer opts.
 
 After phase 1: all generators and handlers are registered, but no callbacks are subscribed and no xbus subscriptions are active. The deferred init pattern avoids alphabetical ordering bugs - `ap_core_producer` (alphabetically before cause files) cannot build its radiant handler set until all causes have registered, so it defers to `actor_on_first_update`.
 
@@ -513,7 +513,7 @@ cfg key layout:
 - `cause_<answer>_enabled` — per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (`feed`, `roam`, `pack`, `scatter`), so the cfg key reads as `cause_<drive>_enabled` but it is conceptually per-answer.
 - Personality clamp is global, not per-cause. Defined as `PERSONALITY_FLOOR` / `PERSONALITY_CEILING` constants in `ap_ext_const`. Applies uniformly to every cause and consequence personality roll.
 
-Used by `ap_ext_cause_needs.script` (9 drives, 14 answers) and `ap_ext_cause_instincts.script` (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) don't follow this pattern — they pick one cause by inspecting world state at peek time, not by Hull score.
+Used by `ap_ext_causes_needs.script` (9 drives, 14 answers) and `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) don't follow this pattern — they pick one cause by inspecting world state at peek time, not by Hull score.
 
 ### Consequences
 

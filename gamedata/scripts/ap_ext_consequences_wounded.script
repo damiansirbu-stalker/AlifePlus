@@ -1,0 +1,135 @@
+--- ap_ext_consequences_wounded: WOUNDED responses
+--- wounded_help: same-faction medic squads converge on the wounded
+--- wounded_hunt: predator + aberrant mutants converge on the wounded
+
+local ipairs = ipairs
+
+local RESULT = ap_core_const.RESULT
+local REASON = ap_core_const.REASON
+local CAUSE = ap_core_const.CAUSE
+local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
+local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
+local PERSONALITY = ap_ext_const.PERSONALITY
+
+local cfg = ap_core_mcm.cfg
+
+local _alignment_help = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_outlaw)
+local _personality_help = { PERSONALITY.RELATION, PERSONALITY.DISCIPLINE }
+
+local _alignment_hunt = xtable.merge(ap_ext_const.alignment_mutant, ap_ext_const.alignment_outlaw)
+local _species_hunt = xtable.merge(ap_ext_const.alignment_mutant_predator, ap_ext_const.alignment_mutant_aberrant)
+local _personality_hunt = { PERSONALITY.AGGRESSION, PERSONALITY.PERCEPTION }
+
+local function _get_faction(npc_id, is_player)
+    if is_player then
+        return get_actor_true_community()
+    end
+    return xcreature.community(npc_id)
+end
+
+local function _handler_help(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.WOUNDED_HELP, function()
+        local npc_id, is_player = event_data.npc_id, event_data.is_player
+        local position, level_id = event_data.position, event_data.level_id
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+
+        local faction = _get_faction(npc_id, is_player)
+        if not faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
+        if not ap_ext_util.check_alignment(_alignment_help, faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = faction } end
+        if not ap_ext_util.check_personality(_personality_help, faction,
+            { name = CONSEQUENCE.WOUNDED_HELP }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
+        if not target_smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+
+        local squads = ap_core_utils.find_squads_observed(trace, position, {
+            factions = { [faction] = true },
+            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+            level_id = level_id, max_count = cfg.consequence_wounded_help_max_squads,
+            exclude_at_smart_id = target_smart.id,
+            exclude_squad_id = event_data.squad_id,
+        })
+        if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+
+        local moved = {}
+        local last_reason
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
+            for _, squad in ipairs(squads) do
+                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_help_rush, pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HELP })
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HELP, {
+                cause_id = event_data._cause_id,
+                other_squad = event_data.patient_squad,
+                smart = target_smart, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = target_smart.id, faction = faction })
+    end)
+end
+
+local function _handler_hunt(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.WOUNDED_HUNT, function()
+        local position, level_id = event_data.position, event_data.level_id
+        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+
+        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
+        if not target_smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+
+        local candidates = ap_core_utils.find_squads_observed(trace, position, {
+            factions = _alignment_hunt, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+            level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
+            exclude_at_smart_id = target_smart.id,
+        })
+        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+        local squads = {}
+        for _, squad in ipairs(candidates) do
+            local species = ap_ext_util.get_species(squad.id)
+            local identity = species or squad.player_id
+            local dominated = (not species or _species_hunt[species])
+                and ap_ext_util.check_personality(_personality_hunt, identity, { name = CONSEQUENCE.WOUNDED_HUNT })
+            if dominated then squads[#squads + 1] = squad end
+        end
+        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
+
+        local moved = {}
+        local last_reason
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
+            for _, squad in ipairs(squads) do
+                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_hunt_rush })
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT, {
+                cause_id = event_data._cause_id,
+                other_squad = event_data.patient_squad,
+                smart = target_smart, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = target_smart.id, species = "predator+aberrant" })
+    end)
+end
+
+function on_game_start()
+    ap_core_consumer.register(CONSEQUENCE.WOUNDED_HELP, {
+        event = CAUSE.WOUNDED,
+        condition = function() return cfg.consequence_wounded_help_enabled end,
+    }, _handler_help)
+    ap_core_consumer.register(CONSEQUENCE.WOUNDED_HUNT, {
+        event = CAUSE.WOUNDED,
+        condition = function() return cfg.consequence_wounded_hunt_enabled end,
+    }, _handler_hunt)
+    ap_core_debug.info("[CONSEQUENCES.WOUNDED] Initialized: 2 consequences (help, hunt)")
+end
