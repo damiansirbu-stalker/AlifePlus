@@ -164,6 +164,11 @@ defaults = {
     consequence_massacre_investigate_rush = true,
     consequence_massacre_investigate_max_squads = 2,
 
+    -- Consequence: Massacre Loot
+    consequence_massacre_loot_enabled = true,
+    consequence_massacre_loot_rush = true,
+    consequence_massacre_loot_max_squads = 2,
+
     -- Consequence: Stash Ambush
     consequence_stash_ambush_enabled = true,
     consequence_stash_ambush_rush = false,
@@ -427,6 +432,9 @@ local _key_to_tab = {
     consequence_massacre_investigate_enabled = "consequences/massacre_investigate",
     consequence_massacre_investigate_rush = "consequences/massacre_investigate",
     consequence_massacre_investigate_max_squads = "consequences/massacre_investigate",
+    consequence_massacre_loot_enabled = "consequences/massacre_loot",
+    consequence_massacre_loot_rush = "consequences/massacre_loot",
+    consequence_massacre_loot_max_squads = "consequences/massacre_loot",
     consequence_stash_ambush_enabled = "consequences/stash_ambush",
     consequence_stash_ambush_rush = "consequences/stash_ambush",
     consequence_stash_loot_enabled = "consequences/stash_loot",
@@ -859,6 +867,18 @@ function on_mcm_load()
                             _check("consequence_massacre_investigate_enabled"),
                             _check("consequence_massacre_investigate_rush"),
                             _track("consequence_massacre_investigate_max_squads", 1, 20, 1),
+                        },
+                    },
+                    {
+                        id = "massacre_loot",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_massacre_loot_title"),
+                            _tag("ui_mcm_ap_consequences_massacre_loot_tag"),
+                            _desc("ui_mcm_ap_consequences_massacre_loot_desc"),
+                            _check("consequence_massacre_loot_enabled"),
+                            _check("consequence_massacre_loot_rush"),
+                            _track("consequence_massacre_loot_max_squads", 1, 20, 1),
                         },
                     },
                     {

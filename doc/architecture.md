@@ -370,6 +370,7 @@ State is session-lifetime. FIFO resets on load. News flags live in `ap_ext_news`
 |---|---|---|
 | massacre_investigate | responding same-faction squad | killer |
 | massacre_scavenge | mutant scavenger | victim squad |
+| massacre_loot | outlaw looter | victim squad |
 | squadkill_revenge | avenger (same-faction) | killer (chased) |
 | squadkill_flee | survivor (same-faction) | killer |
 | basekill_support / basekill_flee | reinforcement / evacuator | attacker |

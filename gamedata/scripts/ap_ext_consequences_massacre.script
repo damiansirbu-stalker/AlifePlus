@@ -1,6 +1,7 @@
 --- ap_ext_consequences_massacre: MASSACRE responses
 --- massacre_investigate: nearby stalker squads investigate the massacre site
---- massacre_scavenge: outlaws and cowardly mutants scavenge corpses
+--- massacre_scavenge: cowardly mutants feed on the corpses
+--- massacre_loot: outlaw stalkers strip the corpses
 
 local ipairs = ipairs
 
@@ -17,9 +18,12 @@ local cfg = ap_core_mcm.cfg
 local _alignment_investigate = xtable.subtract(ap_ext_const.alignment_human, { ["renegade"] = true })
 local _personality_investigate = { PERSONALITY.PERCEPTION, PERSONALITY.RELATION }
 
-local _alignment_scavenge = xtable.merge(ap_ext_const.alignment_outlaw, ap_ext_const.alignment_mutant)
+local _alignment_scavenge = ap_ext_const.alignment_mutant
 local _species_scavenge = ap_ext_const.alignment_mutant_cowardly
 local _personality_scavenge = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
+
+local _alignment_loot = ap_ext_const.alignment_outlaw
+local _personality_loot = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
 
 local function _handler_investigate(event_data)
     local trace = event_data._trace
@@ -80,11 +84,10 @@ local function _handler_scavenge(event_data)
         local squads = {}
         for _, squad in ipairs(candidates) do
             local species = ap_ext_util.get_species(squad.id)
-            local identity = species or squad.player_id
-            local dominated = (not species or _species_scavenge[species])
-                and ap_ext_util.check_personality(_personality_scavenge, identity,
-                    { name = CONSEQUENCE.MASSACRE_SCAVENGE })
-            if dominated then squads[#squads + 1] = squad end
+            if not species or not _species_scavenge[species] then goto continue end
+            if not ap_ext_util.check_personality(_personality_scavenge, species, { name = CONSEQUENCE.MASSACRE_SCAVENGE }) then goto continue end
+            squads[#squads + 1] = squad
+            ::continue::
         end
         if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SQUAD } end
 
@@ -109,6 +112,47 @@ local function _handler_scavenge(event_data)
     end)
 end
 
+local function _handler_loot(event_data)
+    local trace = event_data._trace
+    return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_LOOT, function()
+        local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
+        if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+
+        local candidates = ap_core_util.find_squads_observed(trace, position, {
+            factions = _alignment_loot, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+            level_id = level_id, max_count = cfg.consequence_massacre_loot_max_squads,
+            exclude_at_smart_id = smart.id,
+        })
+        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+        local squads = {}
+        for _, squad in ipairs(candidates) do
+            if ap_ext_util.check_personality(_personality_loot, squad.player_id, { name = CONSEQUENCE.MASSACRE_LOOT }) then
+                squads[#squads + 1] = squad
+            end
+        end
+        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
+
+        local moved = {}
+        local last_reason
+        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
+            for _, squad in ipairs(squads) do
+                local res = ap_core_broker.script_squad(squad, smart, { rush = cfg.consequence_massacre_loot_rush, pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_LOOT })
+                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
+            end
+            return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
+        end)
+        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
+        for i = 1, #moved do
+            ap_ext_news.record_event(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_LOOT, {
+                cause_id = event_data._cause_id,
+                other_squad = event_data.victim_squad,
+                smart = smart, level_id = level_id,
+            })
+        end
+        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = smart.id })
+    end)
+end
+
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_INVESTIGATE, {
         event = CAUSE.MASSACRE,
@@ -118,5 +162,9 @@ function on_game_start()
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_scavenge_enabled end,
     }, _handler_scavenge)
-    ap_core_debug.info("[CONSEQUENCE.MASSACRE] Initialized: 2 consequences (investigate, scavenge)")
+    ap_core_consumer.register(CONSEQUENCE.MASSACRE_LOOT, {
+        event = CAUSE.MASSACRE,
+        condition = function() return cfg.consequence_massacre_loot_enabled end,
+    }, _handler_loot)
+    ap_core_debug.info("[CONSEQUENCE.MASSACRE] Initialized: 3 consequences (investigate, scavenge, loot)")
 end
