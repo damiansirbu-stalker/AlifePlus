@@ -150,7 +150,9 @@ local function _try_need(trace, squad, level_id, overdue_entry)
     local result
     for j = 1, #CAUSES do
         local entry = CAUSES[j]
-        if not result and entry.need == need_name then
+        if not result and entry.need == need_name
+            and cfg["cause_" .. entry.name .. "_enabled"]
+            and ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
             if not ap_core_producer.take_check_slot() then break end
             local smart = _try_cause(trace, squad, level_id, entry)
             if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart) end

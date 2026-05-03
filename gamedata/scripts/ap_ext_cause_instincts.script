@@ -186,7 +186,9 @@ local function _try_drive(trace, squad, level_id, species, overdue_entry)
     local result
     for j = 1, #CAUSES do
         local entry = CAUSES[j]
-        if not result and entry.drive == drive_name then
+        if not result and entry.drive == drive_name
+            and cfg["cause_" .. entry.name .. "_enabled"]
+            and ((not entry.alignment) or entry.alignment[species]) then
             if not ap_core_producer.take_check_slot() then break end
             local smart = _try_cause(trace, squad, level_id, species, entry)
             if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart, species) end
