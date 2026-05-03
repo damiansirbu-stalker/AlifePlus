@@ -48,12 +48,41 @@ local _personality_by_cause = {
     [CAUSE.STASH_AMBUSH] = { traits = _personality_ambush },
 }
 
+-- Stash fill item pool (medical, tools, artefacts). Weighted via duplicates.
+local STASH_FILL_ITEMS = {
+    -- Medical - bandages/tourniquets
+    "bandage", "bandage", "bandage",
+    "army_bandage", "army_bandage",
+    "salicidic_bandage",
+    "tourniquet", "tourniquet",
+    -- Medical - medkits
+    "medkit", "medkit", "medkit",
+    "medkit_army", "medkit_army",
+    "medkit_scientic",
+    -- Medical - drugs
+    "antirad", "antirad",
+    "drug_antidot", "drug_antidot",
+    "drug_radioprotector",
+    "drug_coagulant", "drug_coagulant",
+    "drug_psy_blockade",
+    "yadex",
+    -- Repair tools
+    "toolkit_p", "toolkit_p", "toolkit_p",
+    "toolkit_w", "toolkit_w",
+    "toolkit_a", "toolkit_a",
+    -- Artefacts - low tier (base Anomaly, src: items_artefacts.ltx)
+    "af_itcher", "af_pin", "af_cristall", "af_fireball",
+    "af_blood", "af_bracelet", "af_baloon", "af_electra_sparkler",
+    "af_sponge", "af_ring",
+    -- Artefacts - mid tier (base Anomaly)
+    "af_electra_flash", "af_medusa", "af_vyvert", "af_ameba_slime",
+}
+
 --- Pick N random sections from the fill pool at publish time. Cause owns the items list.
 local function _pick_random_items(count)
-    local pool = ap_ext_const.stash_fill_items
     local items = {}
     for i = 1, count do
-        items[i] = pool[random(#pool)]
+        items[i] = STASH_FILL_ITEMS[random(#STASH_FILL_ITEMS)]
     end
     return items
 end

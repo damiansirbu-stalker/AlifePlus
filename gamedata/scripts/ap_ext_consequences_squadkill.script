@@ -85,7 +85,7 @@ local function _handler_revenge(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
         local killer_squad_id = event_data.killer_squad_id
-        local is_player_kill = event_data.killer_id and event_data.killer_id == 0
+        local is_player_kill = event_data.killer_id and event_data.killer_id == xconst.ACTOR_ENTITY_ID
         local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
 
         if not killer_squad_id and not is_player_kill then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER_SQUAD } end

@@ -35,6 +35,7 @@ next
     Changed: ap_ext_util.check_personality opts no longer carries p_min / p_max. Floor and ceiling are read from ap_ext_const.PERSONALITY_FLOOR / PERSONALITY_CEILING.
     Added: CAUSE_CATEGORY enum (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES) for rate-limit grouping and MCM organization.
     Added: structural rules section in architecture.md governing cause/consequence code shape (specific causes only, umbrella generators, _set files, CONFIGS factory scope, N:M mapping, toggle requirements).
+    Added: synchronous payload only rule (conventions.md A-Life Rules). Server userdata in cause payloads is valid for the synchronous dispatch chain only; deferred consumers (xlice/CreateTimeEvent jobs, on_arrive callbacks, periodic scanners) must use server IDs and re-resolve.
   Compatibility:
     Added: v1.5.5 save migration releases scripted_target on all broker squads then drops the table. Required because the INFEST consequence rename leaves stale arrival keys.
   Fixed:

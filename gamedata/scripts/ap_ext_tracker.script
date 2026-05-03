@@ -71,7 +71,7 @@ end
 --- @param victim_id number|nil Victim entity ID (logging only)
 --- @return number Current kill count for killer
 local function _register_kill(killer_id, victim_id)
-    if not killer_id or killer_id == 0 then return 0 end
+    if not killer_id or killer_id == xconst.ACTOR_ENTITY_ID then return 0 end
     if killer_id == victim_id then return 0 end
     _last_victim_id = victim_id
     local old = _ap_killers[killer_id] or 0
@@ -84,7 +84,7 @@ end
 
 --- Projected kill count inclusive of a pending death (order-independent of _register_kill)
 function projected_kill_count(killer_id, victim_id)
-    if not killer_id or killer_id == 0 then return 0 end
+    if not killer_id or killer_id == xconst.ACTOR_ENTITY_ID then return 0 end
     local count = _ap_killers[killer_id] or 0
     if killer_id == victim_id then return count end
     if victim_id and victim_id ~= _last_victim_id then

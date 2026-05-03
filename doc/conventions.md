@@ -205,6 +205,7 @@ Rules:
 ## A-Life Rules
 
 - **ID-based** - Track by server ID, not game_object (ephemeral)
+- **Synchronous payload only** - Server userdata in cause payloads is valid only for the synchronous dispatch chain (producer -> consumer -> consequence handler -> record_event). Anything invoked on a later tick (xlice/CreateTimeEvent jobs, on_arrive callbacks, deferred scanners) references entities by server ID and re-resolves via `xobject.se(id)` / `alife_object(id)`.
 - **Squad-based** - Squads are atomic units, NPCs are members
 - **Bias not command** - scripted_target is suggestion, not force
 - **Same-level** - Operations constrained to current level
