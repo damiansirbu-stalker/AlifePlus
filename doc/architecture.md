@@ -318,11 +318,11 @@ The engine has two respawn pathways for smart terrains (src: smart_terrain.scrip
 
 **Faction re-apply.** `check_smart_faction` runs every tick on online smarts and counts only `IsStalker` NPCs -- monsters are invisible. When only mutants occupy an online smart, `self.faction` reverts to `default_faction`, breaking the faction gate match. A 60s periodic scanner re-applies `smart.faction` via `set_exclusive_spawn` for all infested smarts.
 
-**Per-level cap.** `can_infest_on_level(level_id)` counts infested smarts with matching `level_id`. Rejects if count >= `cfg.infest_max_per_level` (default 1, MCM 1-5).
+**Per-level cap.** `can_infest_on_level(level_id)` counts infested smarts with matching `level_id`. Rejects if count >= `cfg.area_infest_max_per_level` (default 1, MCM 1-5).
 
 **Volatility.** Same as conquest: engine rebuilds `faction_controlled`, `faction`, and `respawn_params` from LTX on every load. Two-phase restore re-applies all three in `_on_game_load`. The 60s scanner handles ongoing faction reversion for online smarts.
 
-**Decay.** Separate from conquest. `cfg.infest_decay_hours` (default 0 = permanent). `clear_exclusive_spawn` reverts `faction_controlled` to nil, `faction` to `default_faction`, and removes the infest entry. Original LTX spawns resume on next `try_respawn`.
+**Decay.** Separate from conquest. `cfg.area_infest_decay_hours` (default 0 = permanent). `clear_exclusive_spawn` reverts `faction_controlled` to nil, `faction` to `default_faction`, and removes the infest entry. Original LTX spawns resume on next `try_respawn`.
 
 **Interaction with conquest.** If a smart is both conquered and infested, the exclusive spawn's faction gate suppresses the conquest entry (no `.faction` field). Infest wins at runtime. Both data tables coexist independently -- clearing infest restores conquest if it hasn't decayed.
 

@@ -39,8 +39,7 @@ end
 
 function conquer_smart(smart_id, faction)
     if not smart_id or not faction then return false end
-    if not cfg or not cfg.area_conquest_enabled then return false end
-    if not cfg.area_conquest_mutate_smart then return false end
+    if not cfg or not cfg.area_conquest_mutate_smart then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
     local now = xtime.game_sec()
@@ -82,7 +81,6 @@ end
 -- Re-apply conquest injection if engine wiped respawn_params (STATE_Read rebuilds from LTX)
 -- @cost O(1) | 1 luabind (xobject.se)
 local function _check_conquest_respawn(smart_id, data)
-    if not cfg.area_conquest_mutate_smart then return end
     local smart = xobject.se(smart_id)
     if not smart then return end
     xsmart.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.area_conquest_spawn_num)
@@ -108,12 +106,13 @@ end
 local function _check_infest_respawn(smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
-    xsmart.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.infest_spawn_num)
+    xsmart.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.area_infest_spawn_num)
 end
 
 --- Update all conquered smarts: re-apply injection, decay expired entries.
 -- @cost O(n) conquered smarts (max area_conquest_max_smarts)
 local function _update_conquered(now)
+    if not cfg or not cfg.area_conquest_mutate_smart then return end
     local decay_sec = cfg.area_conquest_decay_hours * 3600
     local count = 0
     for smart_id, data in pairs(_conquered_smarts) do
@@ -131,9 +130,10 @@ local function _update_conquered(now)
 end
 
 --- Update all infested smarts: re-apply exclusive spawn + faction, decay expired entries.
--- @cost O(n) infested smarts (max infest_max_per_level * ~14 levels)
+-- @cost O(n) infested smarts (max area_infest_max_per_level * ~14 levels)
 local function _update_infested(now)
-    local decay_sec = cfg.infest_decay_hours * 3600
+    if not cfg or not cfg.area_infest_mutate_smart then return end
+    local decay_sec = cfg.area_infest_decay_hours * 3600
     local count = 0
     for smart_id, data in pairs(_infested_smarts) do
         if _check_infest_decay(smart_id, data, now, decay_sec) then
@@ -168,7 +168,7 @@ function can_infest_on_level(level_id)
     for _, data in pairs(_infested_smarts) do
         if data.level_id == level_id then
             count = count + 1
-            if count >= cfg.infest_max_per_level then return false end
+            if count >= cfg.area_infest_max_per_level then return false end
         end
     end
     return true
@@ -177,12 +177,12 @@ end
 --- Infest a smart terrain with exclusive spawn injection
 function infest_smart(smart_id, faction, level_id)
     if not smart_id or not faction or not level_id then return false end
-    if not cfg or not cfg.infest_enabled then return false end
+    if not cfg or not cfg.area_infest_mutate_smart then return false end
     if _infested_smarts[smart_id] then return false end
     if not can_infest_on_level(level_id) then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
-    if not xsmart.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.infest_spawn_num) then
+    if not xsmart.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.area_infest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
@@ -211,7 +211,7 @@ end
 
 local function _restore_conquered(now)
     if not _conquered_pending then return end
-    if not cfg or not cfg.area_conquest_enabled then
+    if not cfg or not cfg.area_conquest_mutate_smart then
         _conquered_pending = nil
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
         return
@@ -230,7 +230,7 @@ end
 
 local function _restore_infested(now)
     if not _infested_pending then return end
-    if not cfg or not cfg.infest_enabled then
+    if not cfg or not cfg.area_infest_mutate_smart then
         _infested_pending = nil
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: infest disabled, skipped restore")
         return
