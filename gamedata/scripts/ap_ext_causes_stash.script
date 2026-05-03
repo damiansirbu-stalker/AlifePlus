@@ -20,9 +20,9 @@ local LOG_BY_CAUSE = {
 }
 
 local cfg = ap_core_mcm.cfg
-local _alignment_human
-local _alignment_loot
-local _alignment_outlaw
+local _alignment_human = ap_ext_const.alignment_human
+local _alignment_loot = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
+local _alignment_outlaw = ap_ext_const.alignment_outlaw
 
 local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
 local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
@@ -175,9 +175,6 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    _alignment_human = ap_ext_const.alignment_human
-    _alignment_loot = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
-    _alignment_outlaw = ap_ext_const.alignment_outlaw
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register({

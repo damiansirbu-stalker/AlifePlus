@@ -10,7 +10,7 @@ local LOG = ap_core_debug.bracket(CAUSE.MASSACRE)
 
 local cfg = ap_core_mcm.cfg
 local deaths = nil
-local _alignment_human
+local _alignment_human = ap_ext_const.alignment_human
 
 local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     local prof = xprofiler.new_if(ap_core_debug.enabled())
@@ -37,7 +37,7 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
         faction = xcreature.community(se_victim),
         victim_squad = squad,
         killer_squad = killer_squad,
-        total_deaths = count,
+        kill_count = count,
     }
     prof:stop()
     if ap_core_debug.enabled() then
@@ -49,7 +49,6 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
 end
 
 function on_game_start()
-    _alignment_human = ap_ext_const.alignment_human
     deaths = xttltable.create_ttl_table({ default_ttl = cfg.cause_massacre_decay_time, clock = xtime.game_sec })
 
     ap_core_producer.register({

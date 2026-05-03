@@ -31,10 +31,10 @@ local LOG_BY_CAUSE = {
 }
 
 local cfg = ap_core_mcm.cfg
-local _alignment_human
-local _alignment_selfserving
-local _alignment_naturalist
-local _alignment_principled
+local _alignment_human = ap_ext_const.alignment_human
+local _alignment_selfserving = ap_ext_const.alignment_selfserving
+local _alignment_naturalist = ap_ext_const.alignment_naturalist
+local _alignment_principled = ap_ext_const.alignment_principled
 local _alignment_ecolog = { ecolog = true }
 
 --- 9 drives. Per-need Hull weight, threshold cfg key, period gating.
@@ -62,7 +62,6 @@ local NEEDS = {
 
 --- 14 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
 --- per-cause RULES (alignment subset, personality traits), per-cause SCAN (filter, exclude_enemy).
---- Populated in on_game_start because alignment tables hydrate from ap_ext_const at that phase.
 local CAUSES
 
 local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
@@ -198,11 +197,6 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    _alignment_human = ap_ext_const.alignment_human
-    _alignment_selfserving = ap_ext_const.alignment_selfserving
-    _alignment_naturalist = ap_ext_const.alignment_naturalist
-    _alignment_principled = ap_ext_const.alignment_principled
-
     CAUSES = {
         { cause = CAUSE.HUNGER_CAMPFIRE,  name = "hunger_campfire",  need = "hunger",
           filter = xsmart.has_campfire,       exclude_enemy = true,

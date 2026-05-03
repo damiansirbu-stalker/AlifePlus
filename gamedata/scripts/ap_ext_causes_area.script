@@ -26,12 +26,15 @@ local INFEST_FIELD  = "last_area_infest_at"
 
 local cfg = ap_core_mcm.cfg
 
-local _alignment_mutant
-local _alignment_conquer_human
-local _alignment_conquer_mutant
-local _alignment_mutant_feral
-local _alignment_mutant_predator
-local _alignment_mutant_aberrant
+local _alignment_mutant = ap_ext_const.alignment_mutant
+local _alignment_conquer_human = xtable.subtract(ap_ext_const.alignment_human, { ["ecolog"] = true })
+local _alignment_mutant_feral    = ap_ext_const.alignment_mutant_feral
+local _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
+local _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
+local _alignment_conquer_mutant = xtable.merge(
+    _alignment_mutant_feral,
+    _alignment_mutant_predator,
+    _alignment_mutant_aberrant)
 
 local _personality_conquer = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
 local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
@@ -205,16 +208,6 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    _alignment_mutant = ap_ext_const.alignment_mutant
-    _alignment_conquer_human = xtable.subtract(ap_ext_const.alignment_human, { ["ecolog"] = true })
-    _alignment_conquer_mutant = xtable.merge(
-        ap_ext_const.alignment_mutant_feral,
-        ap_ext_const.alignment_mutant_predator,
-        ap_ext_const.alignment_mutant_aberrant)
-    _alignment_mutant_feral    = ap_ext_const.alignment_mutant_feral
-    _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
-    _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
-
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do
         ap_core_producer.register({

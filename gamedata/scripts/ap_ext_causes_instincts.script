@@ -24,16 +24,19 @@ local LOG_BY_CAUSE = {
 }
 
 local cfg = ap_core_mcm.cfg
-local _alignment_mutant
-local _alignment_mutant_cowardly
-local _alignment_mutant_feral
-local _alignment_mutant_predator
-local _alignment_mutant_aberrant
-local _food_chain_tier
-local _scatter_from
-local _alignment_lair
-local _alignment_surge
-local _alignment_pack
+local _alignment_mutant = ap_ext_const.alignment_mutant
+local _alignment_mutant_cowardly = ap_ext_const.alignment_mutant_cowardly
+local _alignment_mutant_feral = ap_ext_const.alignment_mutant_feral
+local _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
+local _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
+local _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
+local _scatter_from = ap_ext_const.SCATTER_FROM
+
+-- alignment subsets for slumber answers (predator covered by both lair + surge)
+local _alignment_lair = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
+local _alignment_surge = xtable.merge(_alignment_mutant_aberrant, _alignment_mutant_predator)
+-- pack: feral + predator (cowardly + aberrant excluded)
+local _alignment_pack = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
 
 --- 5 drives. Per-drive Hull weight + threshold cfg key + period gating.
 --- Enable check is per-cause (cause_<cause_name>_enabled) inside _try_cause; no drive-level enable.
@@ -53,7 +56,6 @@ local INSTINCTS = {
 
 --- 7 specific causes. Slumber splits 3 ways by shelter preference.
 --- Each cause carries: cause const, name, parent drive, alignment subset, personality, filter.
---- Populated in on_game_start because alignment tables hydrate from ap_ext_const at that phase.
 local CAUSES
 
 local function _not_base(smart)
@@ -274,20 +276,6 @@ local function _on_smart(trace, squad)
 end
 
 function on_game_start()
-    _alignment_mutant = ap_ext_const.alignment_mutant
-    _alignment_mutant_cowardly = ap_ext_const.alignment_mutant_cowardly
-    _alignment_mutant_feral = ap_ext_const.alignment_mutant_feral
-    _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
-    _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
-    _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
-    _scatter_from = ap_ext_const.SCATTER_FROM
-
-    -- alignment subsets for slumber answers (predator covered by both lair + surge)
-    _alignment_lair = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
-    _alignment_surge = xtable.merge(_alignment_mutant_aberrant, _alignment_mutant_predator)
-    -- pack: feral + predator (cowardly + aberrant excluded)
-    _alignment_pack = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
-
     CAUSES = {
         { cause = CAUSE.SCATTER, name = "scatter", drive = "scatter",
           scan = "scatter",

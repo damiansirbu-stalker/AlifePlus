@@ -66,10 +66,11 @@ function pull_alpha()
     local pos = actor:position()
     local tp = vector():set(pos.x + 10, pos.y, pos.z)
     TeleportSquad(result.squad, tp, actor:level_vertex_id(), actor:game_vertex_id())
+    local name = xcreature.get_name(result.id) or "?"
     ap_core_debug.debug("[TEST] pull_alpha OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
-        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        result.id, result.squad.id, result.data.level, name,
         math_floor(result.dist), result.squad:get_squad_community())
-    _tip("Pulled alpha L" .. result.data.level .. " " .. (result.data.name or "?") .. " from " .. math_floor(result.dist) .. "m")
+    _tip("Pulled alpha L" .. result.data.level .. " " .. name .. " from " .. math_floor(result.dist) .. "m")
 end
 
 --- @export console
@@ -81,10 +82,11 @@ function goto_alpha()
         return _tip(reason)
     end
     db.actor:set_actor_position(result.pos)
+    local name = xcreature.get_name(result.id) or "?"
     ap_core_debug.debug("[TEST] goto_alpha OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
-        result.id, result.squad.id, result.data.level, result.data.name or "?",
+        result.id, result.squad.id, result.data.level, name,
         math_floor(result.dist), result.squad:get_squad_community())
-    _tip("Teleported to alpha L" .. result.data.level .. " " .. (result.data.name or "?") .. " (" .. math_floor(result.dist) .. "m)")
+    _tip("Teleported to alpha L" .. result.data.level .. " " .. name .. " (" .. math_floor(result.dist) .. "m)")
 end
 
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
@@ -283,7 +285,7 @@ function spawn_alpha()
     local npc_id = se.id
     local test_level = 8
     local test_kills = test_level * ap_core_mcm.cfg.alpha_kills_per_level
-    ap_ext_tracker.update_alpha(npc_id, { kills = test_kills, name = "Test Alpha", level_id = xlevel.get_level_id(se) })
+    ap_ext_tracker.update_alpha(npc_id, { kills = test_kills })
     ap_ext_object_mutator.set_alpha_hit_power(npc_id, test_level)
     ap_core_debug.debug("[TEST] spawn_alpha OK id=%d section=%s level=%d kills=%d", npc_id, section, test_level, test_kills)
     _tip(string_format("Spawned alpha L%d %s (id=%d)", test_level, section, npc_id))

@@ -21,16 +21,13 @@ local function _handler(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.MAX_ALPHAS }
         end
 
-        local name = xcreature.get_name(killer_id)
         local level_id = event_data.level_id
         local level = event_data.level
         local kills = event_data.kills
 
         local updated
         ap_core_debug.observe(trace, PHASE.UPDATE_ALPHA, function()
-            updated = ap_ext_tracker.update_alpha(killer_id, {
-                kills = kills, name = name, level_id = level_id,
-            })
+            updated = ap_ext_tracker.update_alpha(killer_id, { kills = kills })
             if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
             return { code = TRACE.OK, id = killer_id, level = level }
         end)

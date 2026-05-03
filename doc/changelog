@@ -5,6 +5,9 @@ next
     Changed: INFEST moved from mutant instincts to AREA family. Trigger conditions are unchanged. Cause name and rate-limit budget differ.
     Changed: stash AMBUSH now fires on-arrive. The arrival resets the opportunity DTO timestamp. There is no item action.
     Changed: instincts use scent range exclusively. Scatter detects higher-tier threats by scent (was eye range). Roam destination is any-distance scent (no minimum).
+    Added: massacre_loot consequence. Outlaws (bandits, renegades, Greh) walk to massacre sites and strip corpses for weapons and gear, alongside the cowardly mutants that scavenge.
+    Changed: massacre_scavenge narrowed to cowardly mutants (flesh, zombie, tushkano, rat, karlik). Outlaws no longer scavenge through this path; they loot via the new massacre_loot consequence.
+    Changed: wounded_hunt narrowed to predator and aberrant mutants. Outlaws no longer hunt wounded NPCs.
   Core:
     Changed: cause-side rate limit is per-CATEGORY (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES). Single global cap removed.
     Changed: opportunity DTO threshold gates replace wall-clock cooldowns for stash and area causes.
@@ -30,6 +33,7 @@ next
     Moved: smart mutator settings (area_conquest_*, area_infest_*) from the area_conquer / area_infest consequence sections into the Mutators tab. Smart mutations are smart-terrain behavior, parallel to alpha and rank object mutators. Cause and consequence sections now hold squad behavior only.
     Changed: alignment text uses plain English in MCM tags. alignment_human renders as "any stalker", alignment_outlaw as "outlaw stalkers", alignment_conquer_mutant as "feral, predator, or aberrant mutants", etc. Internal alignment_* codes stay in technical docs.
     Changed: trait names are lowercase in MCM tags. personality(survival), personality(greed, perception). PERSONALITY.* enum constants in code stay uppercase.
+    Added: Massacre Loot section under Consequences. Enabled toggle, rush mode, max squads slider.
   Integration:
     Changed: producer.register signature is now register(config, handler). config must include callback, cause_type, category.
     Changed: ap_ext_util.check_personality opts no longer carries p_min / p_max. Floor and ceiling are read from ap_ext_const.PERSONALITY_FLOOR / PERSONALITY_CEILING.
@@ -39,15 +43,20 @@ next
     Added: scan tracing layered rule (conventions.md Logging). Top-level destination SCAN -> find_smart_observed / find_squads_observed; inside a nested PHASE observe -> plain (parent captures via dst_id); inside a deferred-tick fresh-trace envelope -> plain.
     Renamed: ap_core_utils -> ap_core_util (singular, matching ap_ext_util). All find_smart / find_squads / find_*_observed / event_publish / event_subscribe / get_entity_id / count_until_threshold callers must update the namespace prefix.
     Added: ap_ext_common module hosting shared ext-domain dispatch patterns. Today: chase pattern (move_actor_chasers, make_move_smart_chasers, make_on_arrive). Used internally by harvest_rob, alphakill_targeted, squadkill_revenge; available to integrators implementing similar pursuit consequences.
+    Renamed: cause:massacre and cause:basekill payload field "total_deaths" / "death_count" -> "kill_count". External listeners reading the diagnostic field must update.
+    Removed: cause:alphakill payload fields "name", "alpha_level", "kills". Never read by AP. Subscribers that need them should resolve via xcreature.get_name(killer_id) and ap_ext_tracker.get_alpha_level(victim_id) at read time.
   Compatibility:
     Added: v1.5.5 save migration releases scripted_target on all broker squads then drops the table. Required because the INFEST consequence rename leaves stale arrival keys.
   Fixed:
     Fixed: AREA_CONQUER handler crammed stalker and mutant logic in one function. They are now two distinct handlers.
     Fixed: news template pool for INFEST was orphaned after the cause rename. Templates now align with consequence:area_infest.
+    Fixed: harvest_haunt and wounded_hunt no longer dispatch mutant squads with broken commander state into species-restricted consequences. Only resolved aberrant species reach harvest_haunt; only resolved predator and aberrant species reach wounded_hunt.
+    Fixed: alpha kill events (cause:alphakill) no longer fire when the killer is a protected story NPC, trader, or named character. Aligns with the protection rule already applied to the alpha, wounded, and harvest causes.
   Localization:
     Changed: news voice and #ago# anchor sweep across EN and RU templates.
     Changed: English copyediting pass via gwalls PR.
     Added: Stalker_Boss credited as Russian translator. gwalls credited for English copyediting.
+    Added: 5 EN + 5 RU news templates for the new massacre_loot consequence.
 
 1.5.0
   Summary: PDA news system, mutant infestation, additive territory conquest, generative templates, localization (EN+RU), modder API, personality retune

@@ -302,7 +302,7 @@ Subscribe to cause events via xbus. No AP dependency -- xlibs only.
 function on_game_start()
     xbus.subscribe("cause:massacre", function(e)
         printf("massacre at level %s: %d dead, faction %s",
-            e.level_id, e.total_deaths, e.faction)
+            e.level_id, e.kill_count, e.faction)
     end, "my_mod_listener")
 end
 ```
@@ -313,11 +313,11 @@ end
 
 | Event | Type | Key payload |
 |-------|------|-------------|
-| cause:massacre | reactive | position, level_id, smart, total_deaths, faction |
+| cause:massacre | reactive | position, level_id, smart, kill_count, faction |
 | cause:squadkill | reactive | position, level_id, squad_id, killer_id, victim_faction |
-| cause:basekill | reactive | position, level_id, smart, factions, faction, death_count |
+| cause:basekill | reactive | position, level_id, smart, factions, faction, kill_count |
 | cause:alpha | reactive | killer_id, species, kills, level, level_id |
-| cause:alphakill | reactive | id, killer_id, community, name, alpha_level, kills |
+| cause:alphakill | reactive | id, killer_id, community, species, killer_is_player, position, level_id |
 | cause:wounded | reactive | position, level_id, npc_id, squad_id, is_player, health |
 | cause:harvest | reactive | position, level_id, taker_id, taker_squad_id, artefact_section |
 | cause:stash_loot | radiant | position, level_id, squad_id, community, stash_id, stash_position, items_count, dto_field |
@@ -352,7 +352,7 @@ Direct access to AP domain systems. APIs may change between versions.
 
 | Function | Returns |
 |----------|---------|
-| `get_alpha(entity_id)` | alpha data table { level, kills, name, level_id } or nil |
+| `get_alpha(entity_id)` | alpha data table { level, kills } or nil |
 | `get_alpha_level(entity_id)` | integer level or 0 |
 | `is_alpha(entity_id)` | boolean (true even during death grace period) |
 | `get_alphas()` | all alive alphas as { [npc_id] = data } |

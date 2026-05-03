@@ -126,15 +126,8 @@ function update_alpha(id, data)
     if not id or not data or not data.kills then return nil end
     local level = compute_level(data.kills)
     if level < 1 then return nil end
-    local existing = _ap_alphas[id]
-    local name = data.name or (existing and existing.name) or "Alpha"
-    local level_id = data.level_id or (existing and existing.level_id)
-    if not level_id then
-        ap_core_debug.warn("[TRACKER] update_alpha: missing level_id for id=%d", id)
-        return nil
-    end
-    _ap_alphas[id] = { level = level, kills = data.kills, level_id = level_id, name = name }
-    ap_core_debug.debug("[TRACKER] update_alpha: id=%d kills=%d level=%d name=%s", id, data.kills, level, name)
+    _ap_alphas[id] = { level = level, kills = data.kills }
+    ap_core_debug.debug("[TRACKER] update_alpha: id=%d kills=%d level=%d", id, data.kills, level)
     return _ap_alphas[id]
 end
 
@@ -146,7 +139,7 @@ local function _unregister_alpha(id)
     _ap_alpha_dead:set(id, data)
     _ap_alphas[id] = nil
     ap_ext_object_mutator.clear_alpha_hit_power(id)
-    ap_core_debug.debug("[TRACKER] _unregister_alpha: name=%s id=%d level=%d (dead)", data.name or "?", id, data.level or 0)
+    ap_core_debug.debug("[TRACKER] _unregister_alpha: id=%d level=%d (dead)", id, data.level or 0)
     return true
 end
 

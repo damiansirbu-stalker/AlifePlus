@@ -29,8 +29,13 @@ local function _on_death(trace, squad, npc, killer)
     if _cooldown.check(key, now) then return { code = RESULT.FAILED_RULES } end
     _cooldown.mark(key, now)
 
-    local alpha_data = ap_ext_tracker.get_alpha(victim_id)
     local killer_id = ap_core_util.get_entity_id(killer)
+    local killer_squad = killer_id and xsquad.get_squad_by_member(killer_id)
+    if killer_squad then
+        local protected, reason, detail, pname = ap_core_broker.is_protected(killer_squad)
+        if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
+    end
+
     local species = squad and ap_ext_util.get_species(squad.id)
 
     local result = {
@@ -39,9 +44,6 @@ local function _on_death(trace, squad, npc, killer)
         community = squad and squad.player_id,
         species = species,
         killer_id = killer_id,
-        name = alpha_data and alpha_data.name or "unknown",
-        alpha_level = alpha_data and alpha_data.level or 0,
-        kills = alpha_data and alpha_data.kills or 0,
         killer_is_player = killer_id == xconst.ACTOR_ENTITY_ID,
         position = npc and npc.position,
         level_id = xlevel.get_level_id(npc),
