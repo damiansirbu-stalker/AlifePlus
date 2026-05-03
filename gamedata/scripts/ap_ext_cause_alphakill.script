@@ -20,7 +20,7 @@ local function _on_death(trace, squad, npc, killer)
 
     if not cfg.cause_alphakill_enabled then return { code = RESULT.FAILED_RULES } end
 
-    local victim_id = ap_core_utils.get_entity_id(npc)
+    local victim_id = ap_core_util.get_entity_id(npc)
     if not victim_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_VICTIM } end
     if not ap_ext_tracker.is_alpha(victim_id) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
 
@@ -30,7 +30,7 @@ local function _on_death(trace, squad, npc, killer)
     _cooldown.mark(key, now)
 
     local alpha_data = ap_ext_tracker.get_alpha(victim_id)
-    local killer_id = ap_core_utils.get_entity_id(killer)
+    local killer_id = ap_core_util.get_entity_id(killer)
     local species = squad and ap_ext_util.get_species(squad.id)
 
     local result = {

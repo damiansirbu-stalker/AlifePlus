@@ -15,7 +15,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
 
     if not cfg.cause_alpha_enabled then return { code = RESULT.FAILED_RULES } end
 
-    local killer_id = ap_core_utils.get_entity_id(se_killer)
+    local killer_id = ap_core_util.get_entity_id(se_killer)
     if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
     local killer_squad = xsquad.get_squad_by_member(killer_id)
     local species = ap_ext_util.get_species(killer_squad and killer_squad.id)
@@ -23,7 +23,7 @@ local function _on_death(trace, squad, se_victim, se_killer)
     local protected, reason, detail, pname = ap_core_broker.is_protected(killer_squad)
     if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
 
-    local victim_id = ap_core_utils.get_entity_id(se_victim)
+    local victim_id = ap_core_util.get_entity_id(se_victim)
     local kills = ap_ext_tracker.projected_kill_count(killer_id, victim_id)
     local level = ap_ext_tracker.compute_level(kills)
     if level < 1 then

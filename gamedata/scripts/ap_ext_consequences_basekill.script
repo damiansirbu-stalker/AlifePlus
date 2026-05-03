@@ -32,7 +32,7 @@ local function _handler_support(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
-        local squads = ap_core_utils.find_squads_observed(trace, position, {
+        local squads = ap_core_util.find_squads_observed(trace, position, {
             factions = factions,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id,
@@ -75,7 +75,7 @@ local function _handler_flee(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
-        local destination = ap_core_utils.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
+        local destination = ap_core_util.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
         if not destination then
             if ap_core_debug.enabled() then
                 ap_core_debug.debug("[CONSEQUENCE.BASEKILL_FLEE] no flee smart | %s", xsmart.dump_smarts(factions, level_id))
@@ -83,7 +83,7 @@ local function _handler_flee(event_data)
             return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART }
         end
 
-        local fleeing = ap_core_utils.find_squads_observed(trace, smart.position, {
+        local fleeing = ap_core_util.find_squads_observed(trace, smart.position, {
             factions = factions,
             min_distance = 0, max_distance = ap_core_const.RANGE_EYE,
             level_id = level_id, max_count = cfg.consequence_basekill_flee_max_squads,
@@ -121,5 +121,5 @@ function on_game_start()
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_flee_enabled end,
     }, _handler_flee)
-    ap_core_debug.info("[CONSEQUENCES.BASEKILL] Initialized: 2 consequences (support, flee)")
+    ap_core_debug.info("[CONSEQUENCE.BASEKILL] Initialized: 2 consequences (support, flee)")
 end

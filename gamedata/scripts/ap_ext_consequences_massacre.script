@@ -37,7 +37,7 @@ local function _handler_investigate(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
 
-        local squads = ap_core_utils.find_squads_observed(trace, position, {
+        local squads = ap_core_util.find_squads_observed(trace, position, {
             factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
             exclude_at_smart_id = smart.id,
@@ -71,7 +71,7 @@ local function _handler_scavenge(event_data)
         local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
         if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local candidates = ap_core_utils.find_squads_observed(trace, position, {
+        local candidates = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_scavenge, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
             exclude_at_smart_id = smart.id,
@@ -118,5 +118,5 @@ function on_game_start()
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_scavenge_enabled end,
     }, _handler_scavenge)
-    ap_core_debug.info("[CONSEQUENCES.MASSACRE] Initialized: 2 consequences (investigate, scavenge)")
+    ap_core_debug.info("[CONSEQUENCE.MASSACRE] Initialized: 2 consequences (investigate, scavenge)")
 end

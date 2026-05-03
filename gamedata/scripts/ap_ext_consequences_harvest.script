@@ -1,4 +1,4 @@
---- ap_ext_consequence_harvest_set: Harvest consequences (rob + haunt)
+--- ap_ext_consequences_harvest: Harvest consequences (rob + haunt)
 --- harvest_rob: outlaws pursue artefact taker (chase)
 --- harvest_haunt: aberrant mutants converge on pickup site
 
@@ -22,74 +22,19 @@ local _alignment_haunt = ap_ext_const.alignment_mutant
 local _species_haunt = ap_ext_const.alignment_mutant_aberrant
 local _personality_haunt = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 
---- Shared chase helpers
-
-local function _move_actor_chasers(squads, moved)
-    for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser)
-        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-    end
-end
-
-local function _make_move_smart_chasers(consequence_key, rush_key, gulag_key)
-    return function(squads, smart, target_squad_id, moved)
-        for _, chaser in ipairs(squads) do
-            local res = ap_core_broker.script_squad(chaser, smart, {
-                rush = cfg[rush_key],
-                on_arrive = consequence_key,
-                on_arrive_args = { target_squad_id = target_squad_id },
-                pre_release_gulag = gulag_key,
-            })
-            if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-        end
-    end
-end
-
-local function _make_on_arrive(opts)
-    local consequence_key = opts.consequence_key
-    local rush_key, gulag_key = opts.rush_key, opts.gulag_key
-    local max_chases_key = opts.max_chases_key
-    return function(squad, args)
-        local target_squad_id = args.target_squad_id
-        if not target_squad_id then return end
-        local chase_count = (args.chase_count or 0) + 1
-        if chase_count > cfg[max_chases_key] then
-            ap_core_debug.debug("[%s] chase_limit: squad=%d chases=%d", consequence_key, squad.id, chase_count)
-            return
-        end
-        local target_squad = xobject.se(target_squad_id)
-        if not target_squad then return end
-        local level_id = xlevel.get_level_id(target_squad)
-        if not level_id then return end
-        if xlevel.get_level_id(squad) ~= level_id then return end
-        ap_core_debug.observe(nil, PHASE.CHASE_TARGET, function()
-            local smart = ap_core_utils.find_smart(target_squad.position, {
-                level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
-            })
-            if not smart then return { code = TRACE.NO_SMART } end
-            if xsmart.is_arrived(squad, smart) then
-                return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
-            end
-            local res = ap_core_broker.script_squad(squad, smart, {
-                rush = cfg[rush_key],
-                on_arrive = consequence_key,
-                on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
-                pre_release_gulag = gulag_key,
-            })
-            if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
-            return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
-        end)
-    end
-end
-
 --- harvest_rob: outlaws chase artefact taker
 
-local _move_smart_rob = _make_move_smart_chasers(
+local _move_actor_chasers = ap_ext_common.move_actor_chasers
+
+local _move_smart_rob = ap_ext_common.make_move_smart_chasers(
     CONSEQUENCE.HARVEST_ROB, "consequence_harvest_rob_rush", PRE_RELEASE_GULAG.HARVEST_ROB)
 
-local _on_arrive_rob = _make_on_arrive({
-    consequence_key = CONSEQUENCE.HARVEST_ROB, rush_key = "consequence_harvest_rob_rush",
-    gulag_key = PRE_RELEASE_GULAG.HARVEST_ROB, max_chases_key = "consequence_harvest_rob_max_chases",
+local _on_arrive_rob = ap_ext_common.make_on_arrive({
+    consequence_key = CONSEQUENCE.HARVEST_ROB,
+    rush_cfg_key = "consequence_harvest_rob_rush",
+    gulag_value = PRE_RELEASE_GULAG.HARVEST_ROB,
+    max_chases_cfg_key = "consequence_harvest_rob_max_chases",
+    max_distance = ap_core_const.RANGE_RADIO,
 })
 
 local function _handler_rob(event_data)
@@ -100,7 +45,7 @@ local function _handler_rob(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local chasers = ap_core_utils.find_squads_observed(trace, position, {
+        local chasers = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_rob,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
@@ -129,7 +74,7 @@ local function _handler_rob(event_data)
             if taker_is_player then
                 _move_actor_chasers(robbers, moved)
             else
-                dst_smart = ap_core_utils.find_smart(target_squad.position, {
+                dst_smart = ap_core_util.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
                 })
                 if not dst_smart then return { code = TRACE.NO_SMART } end
@@ -162,10 +107,10 @@ local function _handler_haunt(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local target_smart = ap_core_utils.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
+        local target_smart = ap_core_util.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
         if not target_smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
-        local candidates = ap_core_utils.find_squads_observed(trace, position, {
+        local candidates = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_haunt,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_harvest_haunt_max_squads,
@@ -214,5 +159,5 @@ function on_game_start()
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_haunt_enabled end,
     }, _handler_haunt)
-    ap_core_debug.info("[CONSEQUENCE.HARVEST_SET] Initialized (harvest_rob, harvest_haunt)")
+    ap_core_debug.info("[CONSEQUENCE.HARVEST] Initialized (harvest_rob, harvest_haunt)")
 end

@@ -1,4 +1,4 @@
---- ap_ext_consequence_alphakill_targeted: Same-species mutants hunt the alpha's killer
+--- ap_ext_consequences_alphakill: Same-species mutants hunt the alpha's killer (alphakill_targeted)
 
 local ipairs = ipairs
 
@@ -17,56 +17,18 @@ local cfg = ap_core_mcm.cfg
 local _alignment_mutant = ap_ext_const.alignment_mutant
 local _personality = { PERSONALITY.AGGRESSION }
 
-local function _move_actor_chasers(squads, moved)
-    for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser)
-        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-    end
-end
+local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
-local function _move_smart_chasers(squads, smart, target_squad_id, moved)
-    for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_squad(chaser, smart, {
-            rush = cfg.consequence_alphakill_targeted_rush,
-            on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
-            on_arrive_args = { target_squad_id = target_squad_id },
-            pre_release_gulag = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
-        })
-        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-    end
-end
+local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
+    CONSEQUENCE.ALPHAKILL_TARGETED, "consequence_alphakill_targeted_rush", PRE_RELEASE_GULAG.ALPHAKILL_TARGETED)
 
-local function _on_arrive(squad, args)
-    local target_squad_id = args.target_squad_id
-    if not target_squad_id then return end
-    local chase_count = (args.chase_count or 0) + 1
-    if chase_count > cfg.consequence_alphakill_targeted_max_chases then
-        ap_core_debug.debug(LOG .. " chase_limit: squad=%d chases=%d", squad.id, chase_count)
-        return
-    end
-    local target_squad = xobject.se(target_squad_id)
-    if not target_squad then return end
-    local level_id = xlevel.get_level_id(target_squad)
-    if not level_id then return end
-    if xlevel.get_level_id(squad) ~= level_id then return end
-    ap_core_debug.observe(nil, PHASE.CHASE_TARGET, function()
-        local smart = ap_core_utils.find_smart(target_squad.position, {
-            level_id = level_id, max_distance = ap_core_const.RANGE_SCENT,
-        })
-        if not smart then return { code = TRACE.NO_SMART } end
-        if xsmart.is_arrived(squad, smart) then
-            return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
-        end
-        local res = ap_core_broker.script_squad(squad, smart, {
-            rush = cfg.consequence_alphakill_targeted_rush,
-            on_arrive = CONSEQUENCE.ALPHAKILL_TARGETED,
-            on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
-            pre_release_gulag = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
-        })
-        if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
-        return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
-    end)
-end
+local _on_arrive = ap_ext_common.make_on_arrive({
+    consequence_key = CONSEQUENCE.ALPHAKILL_TARGETED,
+    rush_cfg_key = "consequence_alphakill_targeted_rush",
+    gulag_value = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
+    max_chases_cfg_key = "consequence_alphakill_targeted_max_chases",
+    max_distance = ap_core_const.RANGE_SCENT,
+})
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -87,7 +49,7 @@ local function _handler(event_data)
             if not killer_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_KILLER_SQUAD } end
         end
 
-        local candidates = ap_core_utils.find_squads_observed(trace, position, {
+        local candidates = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_mutant, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_alphakill_targeted_max_squads,
         })
@@ -110,7 +72,7 @@ local function _handler(event_data)
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else
-                dst_smart = ap_core_utils.find_smart(killer_squad.position, {
+                dst_smart = ap_core_util.find_smart(killer_squad.position, {
                     level_id = level_id, max_distance = RANGE_SCENT,
                 })
                 if not dst_smart then return { code = TRACE.NO_SMART } end

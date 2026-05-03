@@ -23,56 +23,18 @@ local _personality_flee = { PERSONALITY.INV_DISCIPLINE, PERSONALITY.INV_AGGRESSI
 
 -- Revenge chase helpers (only used by _handler_revenge)
 
-local function _move_actor_chasers(squads, moved)
-    for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser)
-        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-    end
-end
+local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
-local function _move_smart_chasers(squads, smart, target_squad_id, moved)
-    for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_squad(chaser, smart, {
-            rush = cfg.consequence_squadkill_revenge_rush,
-            on_arrive = CONSEQUENCE.SQUADKILL_REVENGE,
-            on_arrive_args = { target_squad_id = target_squad_id },
-            pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
-        })
-        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
-    end
-end
+local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
+    CONSEQUENCE.SQUADKILL_REVENGE, "consequence_squadkill_revenge_rush", PRE_RELEASE_GULAG.SQUADKILL_REVENGE)
 
-local function _on_arrive_revenge(squad, args)
-    local target_squad_id = args.target_squad_id
-    if not target_squad_id then return end
-    local chase_count = (args.chase_count or 0) + 1
-    if chase_count > cfg.consequence_squadkill_revenge_max_chases then
-        ap_core_debug.debug("[CONSEQUENCE.SQUADKILL_REVENGE] chase_limit: squad=%d chases=%d", squad.id, chase_count)
-        return
-    end
-    local target_squad = xobject.se(target_squad_id)
-    if not target_squad then return end
-    local level_id = xlevel.get_level_id(target_squad)
-    if not level_id then return end
-    if xlevel.get_level_id(squad) ~= level_id then return end
-    ap_core_debug.observe(nil, PHASE.CHASE_TARGET, function()
-        local smart = ap_core_utils.find_smart(target_squad.position, {
-            level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
-        })
-        if not smart then return { code = TRACE.NO_SMART } end
-        if xsmart.is_arrived(squad, smart) then
-            return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
-        end
-        local res = ap_core_broker.script_squad(squad, smart, {
-            rush = cfg.consequence_squadkill_revenge_rush,
-            on_arrive = CONSEQUENCE.SQUADKILL_REVENGE,
-            on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
-            pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
-        })
-        if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
-        return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
-    end)
-end
+local _on_arrive_revenge = ap_ext_common.make_on_arrive({
+    consequence_key = CONSEQUENCE.SQUADKILL_REVENGE,
+    rush_cfg_key = "consequence_squadkill_revenge_rush",
+    gulag_value = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
+    max_chases_cfg_key = "consequence_squadkill_revenge_max_chases",
+    max_distance = ap_core_const.RANGE_RADIO,
+})
 
 local function _handler_revenge(event_data)
     local trace = event_data._trace
@@ -94,7 +56,7 @@ local function _handler_revenge(event_data)
             return { code = RESULT.FAILED_RULES, reason = REASON.FRIENDLY_FACTION }
         end
 
-        local avengers = ap_core_utils.find_squads_observed(trace, position, {
+        local avengers = ap_core_util.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_squadkill_revenge_max_squads,
@@ -116,7 +78,7 @@ local function _handler_revenge(event_data)
             if is_player_kill then
                 _move_actor_chasers(avengers, moved)
             else
-                dst_smart = ap_core_utils.find_smart(target_squad.position, {
+                dst_smart = ap_core_util.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
                 })
                 if not dst_smart then return { code = TRACE.NO_SMART } end
@@ -157,10 +119,10 @@ local function _handler_flee(event_data)
 
         if not position or not victim_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local base = ap_core_utils.find_smart_observed(trace, position, { factions = victim_faction, level_id = level_id, filter = xsmart.is_base })
+        local base = ap_core_util.find_smart_observed(trace, position, { factions = victim_faction, level_id = level_id, filter = xsmart.is_base })
         if not base then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_BASE } end
 
-        local fleeing = ap_core_utils.find_squads_observed(trace, position, {
+        local fleeing = ap_core_util.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_squadkill_flee_max_squads,
@@ -200,5 +162,5 @@ function on_game_start()
         event = CAUSE.SQUADKILL,
         condition = function() return cfg.consequence_squadkill_flee_enabled end,
     }, _handler_flee)
-    ap_core_debug.info("[CONSEQUENCES.SQUADKILL] Initialized: 2 consequences (revenge, flee)")
+    ap_core_debug.info("[CONSEQUENCE.SQUADKILL] Initialized: 2 consequences (revenge, flee)")
 end

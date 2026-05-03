@@ -36,6 +36,9 @@ next
     Added: CAUSE_CATEGORY enum (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES) for rate-limit grouping and MCM organization.
     Added: structural rules section in architecture.md governing cause/consequence code shape (specific causes only, umbrella generators, _set files, CONFIGS factory scope, N:M mapping, toggle requirements).
     Added: synchronous payload only rule (conventions.md A-Life Rules). Server userdata in cause payloads is valid for the synchronous dispatch chain only; deferred consumers (xlice/CreateTimeEvent jobs, on_arrive callbacks, periodic scanners) must use server IDs and re-resolve.
+    Added: scan tracing layered rule (conventions.md Logging). Top-level destination SCAN -> find_smart_observed / find_squads_observed; inside a nested PHASE observe -> plain (parent captures via dst_id); inside a deferred-tick fresh-trace envelope -> plain.
+    Renamed: ap_core_utils -> ap_core_util (singular, matching ap_ext_util). All find_smart / find_squads / find_*_observed / event_publish / event_subscribe / get_entity_id / count_until_threshold callers must update the namespace prefix.
+    Added: ap_ext_common module hosting shared ext-domain dispatch patterns. Today: chase pattern (move_actor_chasers, make_move_smart_chasers, make_on_arrive). Used internally by harvest_rob, alphakill_targeted, squadkill_revenge; available to integrators implementing similar pursuit consequences.
   Compatibility:
     Added: v1.5.5 save migration releases scripted_target on all broker squads then drops the table. Required because the INFEST consequence rename leaves stale arrival keys.
   Fixed:

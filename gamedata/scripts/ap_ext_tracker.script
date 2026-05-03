@@ -274,7 +274,7 @@ end
 local function _on_squad_npc_death(squad, npc, killer)
     return ap_core_debug.observe(nil, "tracker:death", function()
         local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
-        local killer_id = ap_core_utils.get_entity_id(killer)
+        local killer_id = ap_core_util.get_entity_id(killer)
         if killer_id and xcreature.is_npc(killer_id) then
             _register_kill(killer_id, victim_id)
         end

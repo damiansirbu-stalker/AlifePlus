@@ -49,7 +49,7 @@ The pipeline, protection, squad lifecycle, rate limiting, tracing, and configura
 | ap_core_hud | PDA map markers, pipeline statistics, HUD overlay |
 | ap_core_limiter | Rate limiting: cause counter, consequence token bucket, global consequence counter, cooldowns |
 | ap_core_debug | Logger, observe() tracing, result helpers. Zero overhead below DEBUG |
-| ap_core_utils | Event pub/sub wrappers, PDA dispatch, find_squads/find_smart with protection filters |
+| ap_core_util | Event pub/sub wrappers, PDA dispatch, find_squads/find_smart with protection filters |
 | ap_core_const | Enums: CALLBACK, CAUSE_TYPE, RESULT, TRACE, SQUAD_ACTION, timing constants |
 | ap_core_mcm | MCM defaults, config snapshot (cfg table), UI builder |
 | ap_core_compat | Save data cleanup for version upgrades, proxy ownership registrations |
@@ -67,6 +67,7 @@ Causes, consequences, domain state, messages, test tools. Ext files register wit
 | ap_ext_smart_mutator | Runtime smart terrain mutations (territory conquest, mutant infestation) |
 | ap_ext_object_mutator | Runtime combat modifiers for alpha mutants (hit power scaling, panic immunity) and high-rank stalkers (rank-based hit power) |
 | ap_ext_util | Domain gates: alignment, personality checks, FIFO-cached species resolution |
+| ap_ext_common | Shared ext-domain dispatch patterns (chase: recursive on_arrive, move_actor_chasers / make_move_smart_chasers / make_on_arrive) |
 | ap_ext_const | Community sets, faction lists, item pools |
 | ap_ext_news | News composer (flat per-consequence + per-cause templates, xpda dispatch) |
 | ap_ext_test | In-game debug commands |
@@ -121,7 +122,7 @@ Protection is not a single gate - it is applied at four layers across the pipeli
 |-------|-------|-----------------|
 | Producer | Radiant gate 2 (is_protected) | Triggering squad, before any cause evaluates |
 | Cause | Reactive cause generators | The entity AP would act on (killer, patient, taker) |
-| Consequence | `ap_core_utils.find_squads` | Every candidate responder squad |
+| Consequence | `ap_core_util.find_squads` | Every candidate responder squad |
 | Squad | `ap_core_broker.script_squad` | No inline check - protection is upstream |
 
 Reactive causes skip the producer protection gate because the callback entity (e.g. a dead victim in `squad_on_npc_death`) is not the entity AP would script. Instead, reactive causes check protection on the relevant entity inside the generator itself: `alpha` and `alphakill` guard the killer, `wounded` guards the patient, `harvest` guards the taker. Causes where the trigger is a dead victim (`massacre`, `squadkill`, `basekill`) need no guard - consequences find responders through `find_squads` which applies all exclusions.
@@ -538,6 +539,20 @@ Examples: massacre_investigate, massacre_scavenge, basekill_support, basekill_fl
 Examples: alpha_promote.
 
 Gate order within the RULES phase (where present): alignment → species → personality → match → validation.
+
+### Chase pattern
+
+Three reactive RESPOND consequences (`harvest_rob`, `alphakill_targeted`, `squadkill_revenge`) share a chase pattern: a chaser squad pursues a non-stationary target by re-finding the target's current smart on each arrival and re-routing. The pattern is implemented once in `ap_ext_common` and consumed by the three consequences via factory closures.
+
+Three helpers form the pattern:
+
+- `move_actor_chasers(squads, moved)` - dispatch chasers via `script_actor_target` when the target is the player. No arrival detection; engine native pursuit.
+- `make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value)` - factory; builds the initial dispatch closure when the target is a non-player squad. The squad gets `script_squad` with `on_arrive = consequence_key` so the recursion handler fires on arrival.
+- `make_on_arrive({ consequence_key, rush_cfg_key, gulag_value, max_chases_cfg_key, max_distance })` - factory; builds the recursive on_arrive closure. Re-finds the target's current smart at `max_distance`, scripts the squad there, increments `chase_count`, stops when `chase_count > cfg[max_chases_cfg_key]`.
+
+Each chase consequence calls the two factories at module load with its own consequence key, cfg key strings, gulag value, and search range (RADIO for human chasers, SCENT for mutant chasers). The resulting closures are stored as module-locals (`_move_smart_chasers`, `_on_arrive_X`); the closures are then registered with the consumer via `consumer.register(name, { on_arrive = closure }, handler)`. Each chase handler also references `_move_actor_chasers` (alias for the shared module function) for the player-target branch.
+
+The on_arrive key passed in `script_squad` opts is the consequence's enum string, identical for both initial dispatch and every recursion step. The broker's arrival handler registry resolves the key to the same closure each time.
 
 ### Domain gates
 

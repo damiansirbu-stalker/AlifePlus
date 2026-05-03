@@ -1,4 +1,4 @@
---- ap_ext_consequence_alpha_promote: Registers new alpha mutants and updates alpha level
+--- ap_ext_consequences_alpha: Registers new alpha mutants and updates alpha level (alpha_promote)
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -41,7 +41,7 @@ local function _handler(event_data)
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then
             local se = xobject.se(killer_id)
-            local smart = se and ap_core_utils.find_smart(se.position, { level_id = level_id })
+            local smart = se and ap_core_util.find_smart(se.position, { level_id = level_id })
             ap_ext_news.record_event(killer_squad, CAUSE.ALPHA, CONSEQUENCE.ALPHA_PROMOTE, {
                 cause_id = event_data._cause_id,
                 smart = smart, level_id = level_id,

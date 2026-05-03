@@ -1,4 +1,4 @@
---- ap_ext_cause_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
+--- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
 local math_random, math_floor = math.random, math.floor
@@ -111,7 +111,7 @@ local function _try_cause(trace, squad, level_id, entry)
             name = entry.name,
         }) then
         local filter = _build_filter(entry, squad.player_id)
-        smart = ap_core_utils.find_smart_observed(trace, squad.position, {
+        smart = ap_core_util.find_smart_observed(trace, squad.position, {
             level_id = level_id, filter = filter, max_distance = RANGE_RADIO,
         })
     end

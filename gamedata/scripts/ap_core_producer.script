@@ -164,7 +164,7 @@ local function _try_publish(on_map, result, trace, category, cause_type)
     result.cause_type = cause_type
     _cause_seq = _cause_seq + 1
     result._cause_id = _cause_seq
-    ap_core_utils.event_publish(result.cause, result)
+    ap_core_util.event_publish(result.cause, result)
     ap_core_limiter.increment_cause_counter(category)
     if stats_collecting() then stats.inc_causes(cause_type) end
     ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s category=%s sq=%s on_map=%s level=%s",

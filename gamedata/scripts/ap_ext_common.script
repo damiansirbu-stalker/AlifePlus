@@ -1,0 +1,83 @@
+--- ap_ext_common: Shared ext-domain dispatch patterns. Today: chase pattern (recursive on_arrive).
+
+local ipairs = ipairs
+
+local RESULT = ap_core_const.RESULT
+local PHASE = ap_core_const.CONSEQUENCE_PHASE
+local TRACE = ap_core_const.TRACE
+
+local cfg = ap_core_mcm.cfg
+
+--- Dispatch chasers via engine actor targeting (no arrival detection; engine handles pursuit).
+--- Used when the chase target is the player.
+function move_actor_chasers(squads, moved)
+    for _, chaser in ipairs(squads) do
+        local res = ap_core_broker.script_actor_target(chaser)
+        if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
+    end
+end
+
+--- Build a closure that scripts chasers to a known smart and registers recursive on_arrive.
+--- Used for the initial dispatch when the target is a non-player squad.
+--- @param consequence_key string CONSEQUENCE.X (also the on_arrive key for recursion)
+--- @param rush_cfg_key string MCM cfg key name for rush slider
+--- @param gulag_value number PRE_RELEASE_GULAG.X seconds
+function make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value)
+    return function(squads, smart, target_squad_id, moved)
+        for _, chaser in ipairs(squads) do
+            local res = ap_core_broker.script_squad(chaser, smart, {
+                rush = cfg[rush_cfg_key],
+                on_arrive = consequence_key,
+                on_arrive_args = { target_squad_id = target_squad_id },
+                pre_release_gulag = gulag_value,
+            })
+            if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
+        end
+    end
+end
+
+--- Build the recursive on_arrive closure for a chase. Re-finds the target's current smart on
+--- each arrival and re-routes the chaser, until max_chases is reached.
+--- @param opts table { consequence_key, rush_cfg_key, gulag_value, max_chases_cfg_key, max_distance }
+function make_on_arrive(opts)
+    local consequence_key = opts.consequence_key
+    local rush_cfg_key = opts.rush_cfg_key
+    local gulag_value = opts.gulag_value
+    local max_chases_cfg_key = opts.max_chases_cfg_key
+    local max_distance = opts.max_distance
+    local LOG = ap_core_debug.bracket(consequence_key)
+    return function(squad, args)
+        local target_squad_id = args.target_squad_id
+        if not target_squad_id then return end
+        local chase_count = (args.chase_count or 0) + 1
+        if chase_count > cfg[max_chases_cfg_key] then
+            ap_core_debug.debug(LOG .. " chase_limit: squad=%d chases=%d", squad.id, chase_count)
+            return
+        end
+        local target_squad = xobject.se(target_squad_id)
+        if not target_squad then return end
+        local level_id = xlevel.get_level_id(target_squad)
+        if not level_id then return end
+        if xlevel.get_level_id(squad) ~= level_id then return end
+        ap_core_debug.observe(nil, PHASE.CHASE_TARGET, function()
+            local smart = ap_core_util.find_smart(target_squad.position, {
+                level_id = level_id, max_distance = max_distance,
+            })
+            if not smart then return { code = TRACE.NO_SMART } end
+            if xsmart.is_arrived(squad, smart) then
+                return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
+            end
+            local res = ap_core_broker.script_squad(squad, smart, {
+                rush = cfg[rush_cfg_key],
+                on_arrive = consequence_key,
+                on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
+                pre_release_gulag = gulag_value,
+            })
+            if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
+            return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }
+        end)
+    end
+end
+
+function on_game_start()
+end

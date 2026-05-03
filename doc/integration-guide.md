@@ -40,7 +40,7 @@ local function _predicate(trace, squad)
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
-    local smart = ap_core_utils.find_smart(squad.position, {
+    local smart = ap_core_util.find_smart(squad.position, {
         level_id = level_id, max_distance = ap_core_const.RANGE_EYE,
         filter = xsmart.is_smart_empty,
     })
@@ -120,7 +120,7 @@ local function _handler(event_data)
         local smart = xobject.se(event_data.smart_id)
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
-        local squads = ap_core_utils.find_squads_observed(trace, event_data.position, {
+        local squads = ap_core_util.find_squads_observed(trace, event_data.position, {
             factions = _alignment,
             level_id = event_data.level_id,
             max_distance = ap_core_const.RANGE_RADIO,
@@ -193,7 +193,7 @@ local function _on_arrive(squad, args)
     local level_id = xlevel.get_level_id(target_squad)
     if not level_id or xlevel.get_level_id(squad) ~= level_id then return end
 
-    local smart = ap_core_utils.find_smart(target_squad.position, {
+    local smart = ap_core_util.find_smart(target_squad.position, {
         level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
     })
     if not smart then return end
@@ -400,7 +400,7 @@ Read-only static tables and enums that integrators reference directly. No regist
 | `CONSEQUENCE_PHASE` | trace-only enum used by `observe()` for sub-phase paths (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.). Integrators rarely need this; it shows up in DEBUG-level traces. |
 | `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED). |
 | `REASON` | reason codes for skip/failure traces (NIL_ARGS, IS_OWNED, NO_SQUAD, ...). |
-| `RANGE_EYE` / `RANGE_RADIO` / `RANGE_SCENT` | range tier constants in meters. Use when calling `ap_core_utils.find_squads`/`find_smart`. |
+| `RANGE_EYE` / `RANGE_RADIO` / `RANGE_SCENT` | range tier constants in meters. Use when calling `ap_core_util.find_squads`/`find_smart`. |
 
 `script_squad` does not check protection. Caller must verify:
 

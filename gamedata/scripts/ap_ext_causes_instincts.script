@@ -1,4 +1,4 @@
---- ap_ext_cause_instincts: Hull-scored mutant instinct generator. INSTINCTS table holds 5 drives;
+--- ap_ext_causes_instincts: Hull-scored mutant instinct generator. INSTINCTS table holds 5 drives;
 --- CAUSES table holds 7 specific causes (slumber splits 3 ways by shelter type). Picker emits
 --- one specific cause per call.
 
@@ -104,7 +104,7 @@ local function _build_pack_filter(community, exclude_smart_id)
 end
 
 local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
-    local nearby = ap_core_utils.find_squads_observed(trace, pos, {
+    local nearby = ap_core_util.find_squads_observed(trace, pos, {
         factions = _alignment_mutant,
         level_id = level_id,
         max_distance = RANGE_SCENT,
@@ -139,7 +139,7 @@ local function _scatter_smart(trace, squad, level_id, species)
     local smart
     if threats and _has_nearby_threat(trace, squad.position, level_id, squad.id, threats) then
         local filter = _build_scatter_filter(threats, squad.player_id)
-        smart = ap_core_utils.find_smart_observed(trace, squad.position, {
+        smart = ap_core_util.find_smart_observed(trace, squad.position, {
             level_id = level_id, filter = filter,
             max_distance = RANGE_SCENT, exclude_id = squad.smart_id,
         })
@@ -161,7 +161,7 @@ local function _try_cause(trace, squad, level_id, species, entry)
             local opts = entry.find_opts and entry.find_opts(squad) or { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
             opts.level_id = level_id
             opts.filter = filter
-            smart = ap_core_utils.find_smart_observed(trace, squad.position, opts)
+            smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
         end
     end
     return smart

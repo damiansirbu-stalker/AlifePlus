@@ -1,4 +1,4 @@
---- ap_ext_cause_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
+--- ap_ext_causes_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
 --- area_swarm (mutant empty smart), area_infest (mutant lair/surge). RULES and SCAN live here
 --- per radiant invariants 4 + 5 + 10. Mutants try INFEST first (territorial-claim dominance),
 --- fall through to SWARM. Humans only check CONQUER.
@@ -96,7 +96,7 @@ local function _eligible_conquer(squad, now, level_id, trace)
         { name = "area_conquer" }) then
         return nil
     end
-    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+    local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
     if not smart then return nil end
     return {
@@ -121,7 +121,7 @@ local function _eligible_swarm(squad, species, now, level_id, trace)
         { name = "area_swarm" }) then
         return nil
     end
-    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+    local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
     if not smart then return nil end
     return {
@@ -156,7 +156,7 @@ local function _eligible_infest(squad, species, now, level_id, trace)
         if ap_ext_smart_mutator.is_infested(smart.id) then return false end
         return base_filter(smart)
     end
-    local smart = ap_core_utils.find_smart_observed(trace, squad.position,
+    local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = filter, max_distance = RANGE_SCENT })
     if not smart then return nil end
     return {

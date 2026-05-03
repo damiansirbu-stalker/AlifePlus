@@ -73,8 +73,7 @@ CONSEQUENCE = CAUSE + VERB
 | MCM sidebar | 1 word per line (underscore = newline) | `Alpha\nKill\nTargeted` |
 | XML title (cause) | `ui_mcm_ap_causes_{name}_title` | `ui_mcm_ap_causes_massacre_title` |
 | XML title (consequence) | `ui_mcm_ap_consequences_{name}_title` | `ui_mcm_ap_consequences_massacre_scavenge_title` |
-| Chase handler key | `{cause}_chase` | `squadkill_chase`, `alphakill_chase` |
-| Arrival handler key | consequence name (1:1) | `stash_loot`, `stash_fill` |
+| On-arrive handler key | consequence name | `stash_loot`, `squadkill_revenge` (radiant arrivals and chase recursion both use the consequence enum string) |
 | DTO table | `stalker_needs[squad_id]` | future: `mutant_needs[squad_id]` |
 | DTO field | `last_{short}_at` | `last_hunger_at`, `last_sleep_at` |
 
@@ -103,7 +102,7 @@ When to use: a drive that has multiple alternative satisfactions (mutant slumber
 
 When NOT to use: state classifiers where the picker selects exactly one branch by inspecting world state (stash empty/full/trap pattern). Those use a state-by-state KEYS_BY_CAUSE picker, not Hull cascade.
 
-Used by: `ap_ext_cause_needs.script` (9 drives, 14 answers), `ap_ext_cause_instincts.script` (5 drives, 7 answers, multi-answer slumber).
+Used by: `ap_ext_causes_needs.script` (9 drives, 14 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
 
 ---
 
@@ -242,6 +241,16 @@ Rules:
 | `path` | Breadcrumb trail like `massacre(5)/loot(6)` |
 
 No spanId - path contains operation names with counters.
+
+### Scan tracing (`find_smart`, `find_squads`)
+
+`*_observed` wraps the scan in `observe(trace, PHASE.FIND_DESTINATION, ...)`. Plain `find_smart` / `find_squads` push no span (DEBUG line on miss only). Layered rule:
+
+| Context | Form | Why |
+|---|---|---|
+| Top-level destination/responder SCAN in handler | `*_observed(trace, ...)` | Primary SCAN; deserves its own FIND_DESTINATION span |
+| Inside a nested `observe(trace, PHASE.X, ...)` block (e.g. PHASE.MOVE_SQUAD) | plain | Parent PHASE captures the result via free scalars (`dst_id`, `count`, `ids`) and short-circuits with `code = TRACE.NO_SMART` on miss; an inner span would be redundant nesting |
+| Inside a deferred-tick fresh-trace envelope (`observe(nil, PHASE.CHASE_TARGET, ...)`) | plain | Original cause trace is gone (see **Synchronous payload only** under A-Life Rules); the deferred tick mints its own fresh trace via `xtrace.new()` |
 
 ### Log Levels
 

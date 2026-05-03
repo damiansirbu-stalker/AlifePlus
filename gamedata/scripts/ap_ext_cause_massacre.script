@@ -24,7 +24,7 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     if not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SMART } end
     if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
 
-    local count = ap_core_utils.count_until_threshold(deaths, smart.id, cfg.cause_massacre_threshold)
+    local count = ap_core_util.count_until_threshold(deaths, smart.id, cfg.cause_massacre_threshold)
     if not count then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
