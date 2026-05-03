@@ -9,7 +9,6 @@ local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_EYE = ap_core_const.RANGE_EYE
-local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
@@ -93,6 +92,7 @@ local function _eligible_conquer(squad, now, level_id, trace)
     if not cfg.cause_area_conquer_enabled then return nil end
     if not _alignment_conquer_human[squad.player_id] then return nil end
     if not ap_core_producer.take_check_slot() then return nil end
+    if not ap_ext_util.is_active_period(squad.player_id) then return nil end
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
     if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then return nil end
     if not ap_ext_util.check_personality(_personality_conquer, squad.player_id,
@@ -118,6 +118,7 @@ local function _eligible_swarm(squad, species, now, level_id, trace)
     if not cfg.cause_area_swarm_enabled then return nil end
     if not _alignment_conquer_mutant[species] then return nil end
     if not ap_core_producer.take_check_slot() then return nil end
+    if not ap_ext_util.is_active_period(species) then return nil end
     local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
     if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then return nil end
     if not ap_ext_util.check_personality(_personality_conquer, species,
@@ -160,7 +161,7 @@ local function _eligible_infest(squad, species, now, level_id, trace)
         return base_filter(smart)
     end
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
-        { level_id = level_id, filter = filter, max_distance = RANGE_SCENT })
+        { level_id = level_id, filter = filter, max_distance = RANGE_EYE })
     if not smart then return nil end
     return {
         cause = CAUSE.AREA_INFEST,

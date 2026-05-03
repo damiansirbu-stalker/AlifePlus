@@ -651,7 +651,7 @@ Three tiers create a natural separation: opportunities are local and opportunist
 
 ### Day/Night Cycle
 
-All drives (stalker needs and mutant instincts) are gated by the active/dormant period system. Each drive entry declares `active_period = true` (fires only when the creature is active) or `dormant_period = true` (fires only when dormant). Drives with neither flag fire at any time.
+**All radiant causes are gated by the active/dormant period system. Reactions are not.** Drives (needs + instincts) declare a per-drive flag (`active_period = true` or `dormant_period = true`). Opportunities (stash, area) gate on `active_period` implicitly — every opportunity fires only when the squad's identity is in its active period.
 
 `ap_ext_util.is_active_period(identity)` resolves the current period for any species or community. Nocturnal species (`alignment_mutant_night`) are active at night (20:00-05:00). All others (stalkers, diurnal mutants) are active during day (05:00-20:00).
 
@@ -659,27 +659,34 @@ All drives (stalker needs and mutant instincts) are gated by the active/dormant 
 
 | Drive | Flag | Effect |
 |-------|------|--------|
-| hunger | (none) | any time |
+| hunger | active_period | day only |
 | sleep | dormant_period | night only |
 | rest | dormant_period | night only |
-| heal | (none) | any time |
+| heal | active_period | day only |
 | shelter | dormant_period | night only |
 | supply | active_period | day only |
 | money | active_period | day only |
 | job | active_period | day only |
-| social | (none) | any time |
+| social | active_period | day only |
 
 **Mutant instincts:**
 
 | Drive | Flag | Effect |
 |-------|------|--------|
-| scatter | (none) | any time |
+| scatter | (none) | any time (transitional — moving to FLEE family per n102) |
 | feed | active_period | active period only |
 | slumber | dormant_period | dormant period only |
 | roam | active_period | active period only |
 | pack | active_period | active period only |
 
-(Infest is an opportunity in the AREA family — `cause:area_infest` — not a mutant instinct drive.)
+**Opportunities (no per-cause flag, all implicit `active_period`):**
+
+| Cause | Effect |
+|-------|--------|
+| stash_loot / stash_ambush / stash_fill | stalkers active period (day) |
+| area_conquer | stalkers active period (day) |
+| area_swarm | mutant species active period (day for diurnal, night for nocturnal) |
+| area_infest | mutant species active period (day for diurnal, night for nocturnal) |
 
 ## Rules
 

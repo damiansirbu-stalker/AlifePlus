@@ -299,17 +299,20 @@ Never use `get_actor_level_id()` as fallback. The player may be on a different l
 
 ### Tag widget
 
-Each MCM cause section uses one tag widget (`_tag()`, faded khaki) to display three lines: identity, description, rules. No separate `_desc()` widget — the description is folded into the tag so it shares the faded style with the rest.
+Each MCM cause section uses one tag widget (`_tag()`, faded khaki) per per-cause block. No umbrella tag at the family level — multi-cause families (area, stash, needs, instincts) render each sub-cause as a self-contained tag with a divider between them. The slide banner at the top of the page provides the family identity.
 
 ### Line order inside the tag
 
 ```
-Type: <cause-type>, <mechanic>          ← umbrella (family-level) section
-   OR
-Cause: <Display Name>                    ← per-specific-cause section
-Desc: <one-line description>
-Rules: <semicolon-separated clauses>
+Cause: <Display Name> Available    ← radiant; "Available" suffix only on radiant
+Cause: <Display Name>              ← reactive consequence
+Desc: <one short sentence; no implementation jargon>
+Range: <eye | radio | scent>
+Period: <active | dormant>         ← radiant only; reactions omit
+Rules: <semicolon-separated clauses, max 3 words each>
 ```
+
+Range and Period are intrinsic properties of the cause, separated from filter rules. Reactions omit `Period:` (they fire on engine events, not gated by squad period).
 
 ### Rules clause order
 
@@ -322,23 +325,31 @@ Semicolon-separated, always in this order:
 
 Alignment and personality always sit adjacent at the front. Branch-specific clauses (state, threshold) follow.
 
+### Clause brevity
+
+Max 3 words per clause. Hyphenated compounds count as one word; formal vocabulary forms like `personality(territory, aggression)`, `Hull(<drive>)`, `MVT(<cause>)` count as one token regardless of inner length. Union alignments (multi-set merges) use a single short label (`non-cowardly mutants`, `non-ecologist stalkers`) rather than enumerating the members. If a clause naturally needs more than 3 words, coin a shorter label or split it into two clauses.
+
 ### Display name vs code identifier
 
 The `Cause:` line uses display-name form: title-case, space-separated (`Stash Loot`, `Area Conquer`, `Hunger Campfire`). Never the cfg-key segment (`stash_loot`).
 
 For radiant causes only, the display name carries the suffix ` Available` on the `Cause:` line (e.g. `Cause: Stash Loot Available`, `Cause: Hunger Campfire Available`). This disambiguates the cause from its 1:1 consequence which shares the same noun internally per the radiant rule that cause and consequence share the noun. Reactive causes do not need the suffix because their causes and consequences already differ in name (massacre vs massacre_investigate, etc.). The consequence display name stays bare (`Stash Loot`, not `Stash Loot Available`).
 
-`MVT(<cause>)`, `Hull(<drive>)`, `personality(<trait>, <trait>)` are formal architecture vocabulary used in MCM tags as-is. Cause/drive/trait names are lowercase. Code enum constants (`CAUSE.STASH_LOOT`, `PERSONALITY.TERRITORY`) stay uppercase as Lua identifiers — formal vocabulary references the lowercase string form.
+`MVT`, `Hull`, `personality(<trait>, <trait>)` are formal architecture vocabulary used in MCM tags. Inside a per-cause section the cause/drive name is already clear from context, so `MVT` and `Hull` are written bare — no parenthesized inner name. Personality keeps its traits because they vary across causes in the same family. When a parenthesized inner name IS needed (multi-answer drive header that names the shared drive, or cross-section reference), use the display-name form: `MVT(Area Conquer)` not `MVT(area_conquer)`. Single-word inner names that read as ordinary English (`Hull(hunger)`, `personality(territory, aggression)`) stay lowercase. Code enum constants (`CAUSE.STASH_LOOT`, `PERSONALITY.TERRITORY`) stay uppercase as Lua identifiers.
+
+### No identifiers in MCM
+
+Never put underscore-joined programmer identifiers (`area_conquer`, `stash_loot`, `cause_area_infest_threshold`) in user-facing MCM text — slider labels, descriptions, tag bodies. Use the display-name form (`Area Conquer`, `Stash Loot`) inside formal vocabulary, and plain English everywhere else. The cfg-key (`cause_area_conquer_threshold`) lives in code only; the user sees `MVT(Area Conquer)`.
 
 `alignment_<set>` is internal vocabulary for technical docs (architecture.md, this file, integration-guide.md) only. User-facing MCM text uses plain English instead:
 
 | Code identifier | Plain English (user-facing MCM) |
 |---|---|
 | `alignment_human` | `any stalker` |
-| `alignment_loot` | `unprincipled or outlaw stalkers` |
+| `alignment_loot` | `loot-seeking stalkers` |
 | `alignment_outlaw` | `outlaw stalkers` |
-| `alignment_conquer_human` | `any stalker except ecologists` |
-| `alignment_conquer_mutant` | `feral, predator, or aberrant mutants` |
+| `alignment_conquer_human` | `non-ecologist stalkers` |
+| `alignment_conquer_mutant` | `non-cowardly mutants` |
 | `alignment_mutant` | `any mutant` |
 | `alignment_principled` | `principled stalkers` |
 | `alignment_selfserving` | `self-serving stalkers` |
@@ -352,6 +363,8 @@ For radiant causes only, the display name carries the suffix ` Available` on the
 
 ### Section layout
 
-Family with multiple specific causes (e.g. stash, area, needs, instincts): one umbrella tag at the top (`Type:` line), then for each specific cause: a line divider followed by the sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, threshold, personality min/max, any branch-only sliders).
+Family with multiple specific causes (area, stash, needs, instincts): slide banner at the top (no umbrella tag), then for each specific cause: a self-contained sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, MVT/Hull threshold slider, any branch-only sliders), separated by line dividers.
 
-Family with a single cause (e.g. alpha, alphakill, wounded): just one tag, no sub-divisions.
+Family with a single cause (alpha, alphakill, massacre, squadkill, basekill, wounded, harvest): just one tag, no sub-divisions.
+
+The per-cause budget (`cause_max_<category>`) is exposed in the Framework MCM tab, not duplicated on family pages.
