@@ -1,7 +1,6 @@
 --- ap_core_hud: PDA map markers, pipeline statistics, HUD overlay
 --- Counters collect when statistics overlay is on OR log level is DEBUG. HUD displays when overlay is on.
-local pairs, string_format, tostring = pairs, string.format, tostring
-local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
+local pairs, string_format, tostring, math_floor, clock, RegisterScriptCallback = pairs, string.format, tostring, math.floor, os.clock, RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -137,16 +136,18 @@ end
 local DUMP_INTERVAL_SEC = 10
 
 --- Radiant pipeline counters (stable reference, zeroed on reset)
+--- Gate fields (pacer1, protected, ratio, pacer2) hold BLOCK counts. events is input count.
+--- Cause/csq filter fields hold BLOCK counts. causes, pub are pipeline-stage totals.
 r = { events = 0, pacer1 = 0, protected = 0, ratio = 0, pacer2 = 0,
     causes = 0, pub = 0, consequences = 0,
-    cause_rules = 0, cause_scan = 0, cause_ratelim = 0,
-    csq_rules = 0, csq_scan = 0, csq_action = 0, csq_ratelim_keyed = 0, csq_ratelim_global = 0 }
+    cause_rules = 0, cause_scan = 0, cause_budget = 0,
+    csq_rules = 0, csq_scan = 0, csq_action = 0, csq_bucket = 0, csq_cap = 0 }
 
 --- Reactive pipeline counters (stable reference, zeroed on reset)
 x = { events = 0, pacer = 0, ratio = 0,
     causes = 0, pub = 0, consequences = 0,
-    cause_rules = 0, cause_scan = 0, cause_ratelim = 0,
-    csq_rules = 0, csq_scan = 0, csq_action = 0, csq_ratelim_keyed = 0 }
+    cause_rules = 0, cause_scan = 0, cause_budget = 0,
+    csq_rules = 0, csq_scan = 0, csq_action = 0, csq_bucket = 0 }
 
 local _start_time = 0
 local _was_enabled = false
@@ -171,7 +172,7 @@ local function _reset()
 end
 
 --- Classify a predicate (cause-side) non-publishing result into the appropriate counter
---- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED reason -> cause_ratelim, else -> cause_rules
+--- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED reason -> cause_budget, else -> cause_rules
 --- @safety SAFE
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
@@ -181,7 +182,7 @@ function classify_cause(result, is_radiant)
     if result.code == RESULT.FAILED_SCAN then
         counters.cause_scan = counters.cause_scan + 1
     elseif result.reason == REASON.BUDGET_EXHAUSTED then
-        counters.cause_ratelim = counters.cause_ratelim + 1
+        counters.cause_budget = counters.cause_budget + 1
     else
         counters.cause_rules = counters.cause_rules + 1
     end
@@ -207,22 +208,22 @@ function classify_csq(result, is_radiant)
     end
 end
 
---- Increment per-consequence rate-limit counter
+--- Increment per-consequence token-bucket block counter
 --- Called when consumer's per-consequence token bucket exhausts; the handler never ran
 --- @safety SAFE
 --- @cost O(1) | 0 luabind
 --- @param is_radiant boolean
-function inc_ratelim_keyed(is_radiant)
+function inc_bucket(is_radiant)
     local counters = is_radiant and r or x
-    counters.csq_ratelim_keyed = counters.csq_ratelim_keyed + 1
+    counters.csq_bucket = counters.csq_bucket + 1
 end
 
---- Increment global radiant rate-limit counter
+--- Increment global radiant cap block counter
 --- Called when consumer's global radiant cap exhausts; radiant-only by construction
 --- @safety SAFE
 --- @cost O(1) | 0 luabind
-function inc_ratelim_global()
-    r.csq_ratelim_global = r.csq_ratelim_global + 1
+function inc_cap()
+    r.csq_cap = r.csq_cap + 1
 end
 
 --- Increment publish counter (called from producer on cause publish)
@@ -243,37 +244,56 @@ local function _csq_tried(counters)
     return counters.consequences + counters.csq_rules + counters.csq_scan + counters.csq_action
 end
 
--- Log format (full detail, one line per pipeline)
+-- Log format. Sections: gates | cause stage | publish stage | classify stage | exec.
+-- Within sections, no prefix; position disambiguates collisions (rules/scan appear in cause and classify).
 local _LOG_R = "[STATS] TOTAL R: events=%d pacer1=%d prot=%d ratio=%d pacer2=%d"
-    .. " | causes=%d c.rules=%d c.scan=%d c.rl=%d | pub=%d csqs=%d q.rules=%d q.scan=%d q.act=%d q.rlk=%d q.rlg=%d exec=%d"
+    .. " | causes=%d rules=%d scan=%d budget=%d"
+    .. " | pub=%d cap=%d bucket=%d"
+    .. " | csqs=%d rules=%d scan=%d action=%d"
+    .. " | exec=%d"
 local _LOG_X = "[STATS] TOTAL X: events=%d pacer=%d ratio=%d"
-    .. " | causes=%d c.rules=%d c.scan=%d c.rl=%d | pub=%d csqs=%d q.rules=%d q.scan=%d q.act=%d q.rlk=%d exec=%d"
+    .. " | causes=%d rules=%d scan=%d budget=%d"
+    .. " | pub=%d bucket=%d"
+    .. " | csqs=%d rules=%d scan=%d action=%d"
+    .. " | exec=%d"
 local _LOG_R_AVG = "[STATS] /MIN R: events=%.1f pacer1=%.1f prot=%.1f ratio=%.1f pacer2=%.1f"
-    .. " | causes=%.1f c.rules=%.1f c.scan=%.1f c.rl=%.1f | pub=%.1f csqs=%.1f q.rules=%.1f q.scan=%.1f q.act=%.1f q.rlk=%.1f q.rlg=%.1f exec=%.1f"
+    .. " | causes=%.1f rules=%.1f scan=%.1f budget=%.1f"
+    .. " | pub=%.1f cap=%.1f bucket=%.1f"
+    .. " | csqs=%.1f rules=%.1f scan=%.1f action=%.1f"
+    .. " | exec=%.1f"
 local _LOG_X_AVG = "[STATS] /MIN X: events=%.1f pacer=%.1f ratio=%.1f"
-    .. " | causes=%.1f c.rules=%.1f c.scan=%.1f c.rl=%.1f | pub=%.1f csqs=%.1f q.rules=%.1f q.scan=%.1f q.act=%.1f q.rlk=%.1f exec=%.1f"
+    .. " | causes=%.1f rules=%.1f scan=%.1f budget=%.1f"
+    .. " | pub=%.1f bucket=%.1f"
+    .. " | csqs=%.1f rules=%.1f scan=%.1f action=%.1f"
+    .. " | exec=%.1f"
 
 local function _log_dump(minutes)
     local r_tried = _csq_tried(r)
     local x_tried = _csq_tried(x)
     ap_core_debug.info(_LOG_R,
         r.events, r.pacer1, r.protected, r.ratio, r.pacer2,
-        r.causes, r.cause_rules, r.cause_scan, r.cause_ratelim,
-        r.pub, r_tried, r.csq_rules, r.csq_scan, r.csq_action, r.csq_ratelim_keyed, r.csq_ratelim_global, r.consequences)
+        r.causes, r.cause_rules, r.cause_scan, r.cause_budget,
+        r.pub, r.csq_cap, r.csq_bucket,
+        r_tried, r.csq_rules, r.csq_scan, r.csq_action,
+        r.consequences)
     ap_core_debug.info(_LOG_X,
         x.events, x.pacer, x.ratio,
-        x.causes, x.cause_rules, x.cause_scan, x.cause_ratelim,
-        x.pub, x_tried, x.csq_rules, x.csq_scan, x.csq_action, x.csq_ratelim_keyed, x.consequences)
+        x.causes, x.cause_rules, x.cause_scan, x.cause_budget,
+        x.pub, x.csq_bucket,
+        x_tried, x.csq_rules, x.csq_scan, x.csq_action,
+        x.consequences)
     ap_core_debug.info(_LOG_R_AVG,
         r.events / minutes, r.pacer1 / minutes, r.protected / minutes, r.ratio / minutes, r.pacer2 / minutes,
-        r.causes / minutes, r.cause_rules / minutes, r.cause_scan / minutes, r.cause_ratelim / minutes,
-        r.pub / minutes, r_tried / minutes, r.csq_rules / minutes, r.csq_scan / minutes, r.csq_action / minutes,
-        r.csq_ratelim_keyed / minutes, r.csq_ratelim_global / minutes, r.consequences / minutes)
+        r.causes / minutes, r.cause_rules / minutes, r.cause_scan / minutes, r.cause_budget / minutes,
+        r.pub / minutes, r.csq_cap / minutes, r.csq_bucket / minutes,
+        r_tried / minutes, r.csq_rules / minutes, r.csq_scan / minutes, r.csq_action / minutes,
+        r.consequences / minutes)
     ap_core_debug.info(_LOG_X_AVG,
         x.events / minutes, x.pacer / minutes, x.ratio / minutes,
-        x.causes / minutes, x.cause_rules / minutes, x.cause_scan / minutes, x.cause_ratelim / minutes,
-        x.pub / minutes, x_tried / minutes, x.csq_rules / minutes, x.csq_scan / minutes, x.csq_action / minutes,
-        x.csq_ratelim_keyed / minutes, x.consequences / minutes)
+        x.causes / minutes, x.cause_rules / minutes, x.cause_scan / minutes, x.cause_budget / minutes,
+        x.pub / minutes, x.csq_bucket / minutes,
+        x_tried / minutes, x.csq_rules / minutes, x.csq_scan / minutes, x.csq_action / minutes,
+        x.consequences / minutes)
 end
 
 local function _dump()
@@ -282,7 +302,7 @@ local function _dump()
     local minutes = elapsed / 60
     if minutes < 0.1 then minutes = 0.1 end
     _log_dump(minutes)
-    if _hud then _hud:Refresh(minutes) end
+    if _hud then _hud:Refresh(minutes, elapsed) end
 end
 
 local function _on_dump_timer()
@@ -305,28 +325,37 @@ local function _on_visibility_timer()
     ResetTimeEvent("ap_stats", "vis", 2)
 end
 
--- HUD layout: single table with R and X value columns + extra column (/m or %)
--- { label, field, type, field_x }
+-- HUD layout: { type, label, field, field_x, denom }
+-- type: "input" (white, totals), "output" (green, passed), "filter" (red, blocked), "separator" (blank row)
 -- field_x: nil = same as field, false = N/A for X, string = different field name for X
--- type: "gate" | "count" | "ok" | "derived" | "blocker"
+-- denom: filter rows only - the field used as denominator for the % column (R+X summed)
 local _ROWS = {
-    { "events",   "events",             "gate" },
-    { "pacer",    "pacer1",             "gate",    "pacer" },
-    { "prot",     "protected",          "gate",    false },
-    { "ratio",    "ratio",              "gate" },
-    { "budget",   "pacer2",             "gate",    false },
-    { "causes",   "causes",             "count" },
-    { "c.rules",  "cause_rules",        "blocker" },
-    { "c.scan",   "cause_scan",         "blocker" },
-    { "c.rl",     "cause_ratelim",      "blocker" },
-    { "pub",      "pub",                "count" },
-    { "csqs",     "_csq_tried",         "derived" },
-    { "q.rules",  "csq_rules",          "blocker" },
-    { "q.scan",   "csq_scan",           "blocker" },
-    { "q.act",    "csq_action",         "blocker" },
-    { "q.rlk",    "csq_ratelim_keyed",  "blocker" },
-    { "q.rlg",    "csq_ratelim_global", "blocker", false },
-    { "exec",     "consequences",       "ok" },
+    -- Gates (preamble: events is input, gates count what they blocked)
+    { type = "input",  label = "events", field = "events" },
+    { type = "filter", label = "pacer1", field = "pacer1",    field_x = "pacer", denom = "events" },
+    { type = "filter", label = "prot",   field = "protected", field_x = false,   denom = "events" },
+    { type = "filter", label = "ratio",  field = "ratio",                        denom = "events" },
+    { type = "filter", label = "pacer2", field = "pacer2",    field_x = false,   denom = "events" },
+    { type = "separator" },
+    -- Cause stage (causes is total predicate runs, filters count blocked)
+    { type = "input",  label = "causes", field = "causes" },
+    { type = "filter", label = "rules",  field = "cause_rules",  denom = "causes" },
+    { type = "filter", label = "scan",   field = "cause_scan",   denom = "causes" },
+    { type = "filter", label = "budget", field = "cause_budget", denom = "causes" },
+    { type = "separator" },
+    -- Publish/dispatch stage (pub is published causes, cap/bucket count blocked at consumer entry)
+    { type = "output", label = "pub",    field = "pub" },
+    { type = "filter", label = "cap",    field = "csq_cap",    field_x = false, denom = "pub" },
+    { type = "filter", label = "bucket", field = "csq_bucket",                  denom = "pub" },
+    { type = "separator" },
+    -- Classify stage (csqs is handlers actually invoked, filters count blocked)
+    { type = "input",  label = "csqs",   field = "_csq_tried" },
+    { type = "filter", label = "rules",  field = "csq_rules",  denom = "_csq_tried" },
+    { type = "filter", label = "scan",   field = "csq_scan",   denom = "_csq_tried" },
+    { type = "filter", label = "action", field = "csq_action", denom = "_csq_tried" },
+    { type = "separator" },
+    -- Final (exec is successful consequences)
+    { type = "output", label = "exec",   field = "consequences" },
 }
 
 local ROW_H = 13
@@ -334,7 +363,9 @@ local LABEL_W = 42
 local VAL_W = 28
 local EXTRA_W = 30
 local TOTAL_W = LABEL_W + VAL_W * 2 + EXTRA_W
-local PANEL_H = (#_ROWS + 1) * ROW_H + 4
+-- Layout: row 0 = elapsed, row 1 = column header (R/X), rows 2..(#_ROWS+1) = data + separators
+local NUM_HEADER_ROWS = 2
+local PANEL_H = (#_ROWS + NUM_HEADER_ROWS) * ROW_H + 4
 
 -- Position presets: { x, y }
 local MARGIN = 15
@@ -359,43 +390,41 @@ function UIStatsHUD:__init() super()
     local xml = CScriptXmlInit()
     xml:ParseFile("ui_ap_stats.xml")
 
-    local clr_hdr = GetARGB(220, 200, 180, 130)
-    local clr_gate_lbl = GetARGB(160, 120, 140, 180)
-    local clr_gate_val = GetARGB(180, 140, 160, 200)
-    local clr_lbl = GetARGB(220, 200, 200, 200)
-    local clr_val = GetARGB(240, 240, 240, 240)
-    local clr_ok_lbl = GetARGB(220, 140, 200, 140)
-    local clr_ok_val = GetARGB(240, 160, 220, 160)
-    local clr_blk_lbl = GetARGB(140, 180, 100, 100)
-    local clr_blk_val = GetARGB(160, 200, 120, 120)
-    local clr_extra = GetARGB(140, 160, 140, 140)
+    local clr_hdr        = GetARGB(220, 200, 180, 130)
+    local clr_input_lbl  = GetARGB(220, 200, 200, 200)
+    local clr_input_val  = GetARGB(240, 240, 240, 240)
+    local clr_output_lbl = GetARGB(220, 140, 200, 140)
+    local clr_output_val = GetARGB(240, 160, 220, 160)
+    local clr_filter_lbl = GetARGB(140, 180, 100, 100)
+    local clr_filter_val = GetARGB(160, 200, 120, 120)
+    local clr_extra      = GetARGB(140, 160, 140, 140)
 
-    -- Header row: label, R, X
-    local hdr_y = 2
-    self:_text(xml, 0, hdr_y, LABEL_W, "", clr_hdr)
+    self._elapsed = self:_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_hdr)
+
+    local hdr_y = ROW_H + 2
     self:_text(xml, LABEL_W, hdr_y, VAL_W, "R", clr_hdr)
     self:_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "X", clr_hdr)
 
-    -- Color per row type: { label, value }
     local colors = {
-        gate    = { clr_gate_lbl, clr_gate_val },
-        count   = { clr_lbl, clr_val },
-        ok      = { clr_ok_lbl, clr_ok_val },
-        derived = { clr_lbl, clr_val },
-        blocker = { clr_blk_lbl, clr_blk_val },
+        input  = { clr_input_lbl,  clr_input_val },
+        output = { clr_output_lbl, clr_output_val },
+        filter = { clr_filter_lbl, clr_filter_val },
     }
 
-    -- Data rows
+    -- Data rows (separator rows reserve vertical space, render nothing)
     self._entries = {}
     for row_idx = 1, #_ROWS do
         local row = _ROWS[row_idx]
-        local row_y = row_idx * ROW_H + 2
-        local clr = colors[row[3]]
-        self:_text(xml, 0, row_y, LABEL_W, row[1], clr[1])
-        local val_r = self:_text(xml, LABEL_W, row_y, VAL_W, "0", clr[2])
-        local val_x = self:_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", clr[2])
-        local extra = self:_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_extra)
-        self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra, field = row[2], field_x = row[4], row_type = row[3] }
+        if row.type ~= "separator" then
+            local row_y = (row_idx + 1) * ROW_H + 2
+            local clr = colors[row.type]
+            self:_text(xml, 0, row_y, LABEL_W, row.label, clr[1])
+            local val_r = self:_text(xml, LABEL_W, row_y, VAL_W, "0", clr[2])
+            local val_x = self:_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", clr[2])
+            local extra = self:_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_extra)
+            self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
+                field = row.field, field_x = row.field_x, row_type = row.type, denom = row.denom }
+        end
     end
 end
 
@@ -422,19 +451,28 @@ local function _x_field_val(entry)
     return x[entry.field_x or entry.field] or 0
 end
 
-local function _extra_text(entry, minutes)
-    if entry.row_type == "gate" or entry.row_type == "count" or entry.row_type == "ok" then
-        return string_format("%.1f/m", ((r[entry.field] or 0) + _x_field_val(entry)) / minutes)
-    end
-    if entry.row_type == "derived" then return "" end
-    local total = _csq_tried(r) + _csq_tried(x)
-    if total == 0 then return "" end
-    local blocked = (r[entry.field] or 0) + _x_field_val(entry)
-    if blocked == 0 then return "" end
-    return string_format("%d%%", blocked * 100 / total)
+local function _sum_rx(field)
+    if field == "_csq_tried" then return _csq_tried(r) + _csq_tried(x) end
+    return (r[field] or 0) + (x[field] or 0)
 end
 
-function UIStatsHUD:Refresh(minutes)
+local function _extra_text(entry, minutes)
+    if entry.row_type == "input" or entry.row_type == "output" then
+        return string_format("%.1f/m", _sum_rx(entry.field) / minutes)
+    end
+    -- filter row: show % of its denominator field (R+X summed)
+    local denom = _sum_rx(entry.denom)
+    if denom == 0 then return "" end
+    local blocked = (r[entry.field] or 0) + _x_field_val(entry)
+    if blocked == 0 then return "" end
+    return string_format("%d%%", blocked * 100 / denom)
+end
+
+function UIStatsHUD:Refresh(minutes, elapsed_sec)
+    local h = math_floor(elapsed_sec / 3600)
+    local m = math_floor((elapsed_sec % 3600) / 60)
+    local s = math_floor(elapsed_sec % 60)
+    self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", h, m, s))
     for i = 1, #self._entries do
         local entry = self._entries[i]
         entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
