@@ -9,12 +9,15 @@ next
     Changed: massacre_scavenge narrowed to cowardly mutants (flesh, zombie, tushkano, rat, karlik). Outlaws no longer scavenge through this path; they loot via the new massacre_loot consequence.
     Changed: wounded_hunt narrowed to predator and aberrant mutants. Outlaws no longer hunt wounded NPCs.
   Core:
+    Changed: news pipeline owns its session FIFO. Activity record removed from broker. Each consequence rolls a chance to publish; on hit, the entry is appended with display strings eager-captured at write time.
+    Changed: per-category cause budget check moved from core to ext. Each cause predicate self-gates against its own MCM cap; core's limiter is now a generic counter primitive.
+    Changed: HUD reads two live registers per tick (broker scripted squads, tracker alpha squads). No internal copy, no intersection logic. Scripted wins on overlap by fill order. Marker label is two lines (action phrase, subject); the "Other:" line is dropped.
     Changed: cause-side rate limit is per-CATEGORY (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES). Single global cap removed.
     Changed: opportunity DTO threshold gates replace wall-clock cooldowns for stash and area causes.
     Changed: stash predicate finds and classifies the stash before publishing. Cascade slots are not wasted when no stash is in range.
-    Changed: activity record stores the actual published cause name, not the umbrella label. Specific causes (cause:hunger, cause:area_conquer) flow through to journal entries.
     Changed: every cause carries its own enable toggle. Drive-level enable cfg keys removed for needs and instincts. Multi-answer drives share only Hull threshold + DTO timestamp.
   MCM:
+    Added: news_chance slider (0-100, default 20) under News tab. Chance any single consequence publishes a news entry on success.
     Added: cause_max_reactions, cause_max_needs, cause_max_instincts, cause_max_opportunities (4 sliders, default 20/60s each).
     Added: cause_stash_loot_enabled, cause_stash_ambush_enabled, cause_stash_fill_enabled (per-cause toggles).
     Added: cause_stash_loot_threshold, cause_stash_ambush_threshold, cause_stash_fill_threshold (game hours).
@@ -38,6 +41,15 @@ next
     Changed: needs and instincts cause pages reordered. All cause blocks first (uniform tag + enable per answer), then drive thresholds in a second block. Drive-vs-answer surfaced by page structure rather than subtitles.
     Fixed: missing menu sidebar labels rendering raw keys for massacre_loot, conquest, infest.
   Integration:
+    Changed: ap_ext_news.record_event(squad, cause, consequence, opts) -> ap_ext_news.add(squad, cause, consequence, opts). Same arity. opts.cause_id dropped.
+    Added: ap_ext_news.add_unfiltered(squad, cause, consequence, opts) for debug seeders that bypass news_chance.
+    Removed: ap_core_broker.record / get_record / get_records / clear_record / RECORD_CAPACITY. News owns its FIFO.
+    Removed: opts.cause_id and result._cause_id from cause/consequence payloads. cause_id was used only by the deleted pair pool.
+    Changed: ap_core_limiter.check_cause_rate_limit signature -> (key, max). Caller supplies counter key and cap.
+    Moved: CAUSE_CATEGORY enum from ap_core_const to ap_ext_const.
+    Added: ap_ext_tracker.get_alpha_marker_squads() returns array of squad ids hosting alphas (for HUD identity-source registration).
+    Added: ap_ext_util.get_faction_display(faction) and ap_ext_util.get_species_display(species). Lifted from ap_ext_news so HUD and news share one translation path.
+    Added: ap_core_hud.register_identity_source(fn) and ap_core_hud.register_subject_resolver(fn). Ext registers at on_game_start; core has zero ext imports.
     Changed: producer.register signature is now register(config, handler). config must include callback, cause_type, category.
     Changed: ap_ext_util.check_personality opts no longer carries p_min / p_max. Floor and ceiling are read from ap_ext_const.PERSONALITY_FLOOR / PERSONALITY_CEILING.
     Added: CAUSE_CATEGORY enum (REACTIONS / NEEDS / INSTINCTS / OPPORTUNITIES) for rate-limit grouping and MCM organization.
@@ -56,6 +68,8 @@ next
     Fixed: harvest_haunt and wounded_hunt no longer dispatch mutant squads with broken commander state into species-restricted consequences. Only resolved aberrant species reach harvest_haunt; only resolved predator and aberrant species reach wounded_hunt.
     Fixed: alpha kill events (cause:alphakill) no longer fire when the killer is a protected story NPC, trader, or named character. Aligns with the protection rule already applied to the alpha, wounded, and harvest causes.
   Localization:
+    Removed: pair-composite news templates (25 ids per locale). News now uses per-consequence templates only.
+    Removed: news count words (st_ap_news_count_two/three/four/five/many, 5 ids per locale). Vestigial #count# slot dropped.
     Changed: news voice and #ago# anchor sweep across EN and RU templates.
     Changed: English copyediting pass via gwalls PR.
     Added: Stalker_Boss credited as Russian translator. gwalls credited for English copyediting.
