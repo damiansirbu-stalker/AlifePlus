@@ -17,15 +17,6 @@ local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
-local LOG_BY_CAUSE = {
-    [CAUSE.SCATTER]       = ap_core_debug.bracket(CAUSE.SCATTER),
-    [CAUSE.FEED]          = ap_core_debug.bracket(CAUSE.FEED),
-    [CAUSE.SLUMBER_FIELD] = ap_core_debug.bracket(CAUSE.SLUMBER_FIELD),
-    [CAUSE.SLUMBER_LAIR]  = ap_core_debug.bracket(CAUSE.SLUMBER_LAIR),
-    [CAUSE.SLUMBER_SURGE] = ap_core_debug.bracket(CAUSE.SLUMBER_SURGE),
-    [CAUSE.ROAM]          = ap_core_debug.bracket(CAUSE.ROAM),
-    [CAUSE.PACK]          = ap_core_debug.bracket(CAUSE.PACK),
-}
 
 local cfg = ap_core_mcm.cfg
 local _alignment_mutant = ap_ext_const.alignment_mutant
@@ -153,26 +144,33 @@ local function _scatter_smart(trace, squad, level_id, species)
     return smart
 end
 
+-- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
 local function _try_cause(trace, squad, level_id, species, entry)
-    local smart
-    local alignment_ok = (not entry.alignment) or entry.alignment[species]
-    local personality_ok = ap_ext_util.check_personality(entry.personality, species, {
-        name = entry.name,
-    })
-    if cfg["cause_" .. entry.name .. "_enabled"] and alignment_ok and personality_ok
-        and ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
-        if entry.scan == "scatter" then
-            smart = _scatter_smart(trace, squad, level_id, species)
-        else
-            local filter = entry.make_filter(squad)
-            local opts = entry.find_opts and entry.find_opts(squad) or { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
-            opts.level_id = level_id
-            opts.filter = filter
-            smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
-        end
-        if smart then ap_core_limiter.increment_cause_counter(SCAN_KEY) end
+    if not cfg["cause_" .. entry.name .. "_enabled"] then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
     end
-    return smart
+    if entry.alignment and not entry.alignment[species] then
+        return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
+    end
+    if not ap_ext_util.check_personality(entry.personality, species, { name = entry.name }) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
+    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
+    local smart
+    if entry.scan == "scatter" then
+        smart = _scatter_smart(trace, squad, level_id, species)
+    else
+        local filter = entry.make_filter(squad)
+        local opts = entry.find_opts and entry.find_opts(squad) or { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
+        opts.level_id = level_id
+        opts.filter = filter
+        smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
+    end
+    if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+    ap_core_limiter.increment_cause_counter(SCAN_KEY)
+    return { code = RESULT.SUCCESS, smart = smart }
 end
 
 local function _make_result(squad, level_id, overdue_entry, entry, smart, species)
@@ -189,19 +187,25 @@ local function _make_result(squad, level_id, overdue_entry, entry, smart, specie
     }
 end
 
+-- Per-cause attempt for one CAUSES entry under an overdue drive. Returns a published-payload
+-- result on SUCCESS, nil otherwise. observe() wraps _try_cause so every attempt logs.
+-- opts: { species, overdue, entry, drive }
+local function _try_one_drive_cause(trace, squad, level_id, opts)
+    if opts.entry.drive ~= opts.drive then return nil end
+    local cause_result = ap_core_debug.observe(trace, opts.entry.cause, _try_cause, squad, level_id, opts.species, opts.entry)
+    if not cause_result or cause_result.code ~= RESULT.SUCCESS then return nil end
+    return _make_result(squad, level_id, opts.overdue, opts.entry, cause_result.smart, opts.species)
+end
+
+--- Walk CAUSES for one overdue drive; first cause that publishes wins.
 local function _try_drive(trace, squad, level_id, species, overdue_entry)
     local drive_name = overdue_entry.instinct.instinct
-    local result
     for j = 1, #CAUSES do
-        local entry = CAUSES[j]
-        if not result and entry.drive == drive_name
-            and cfg["cause_" .. entry.name .. "_enabled"]
-            and ((not entry.alignment) or entry.alignment[species]) then
-            local smart = _try_cause(trace, squad, level_id, species, entry)
-            if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart, species) end
-        end
+        local result = _try_one_drive_cause(trace, squad, level_id,
+            { species = species, overdue = overdue_entry, entry = CAUSES[j], drive = drive_name })
+        if result then return result end
     end
-    return result
+    return nil
 end
 
 local function _find_overdue_drives(dto, now, species)
@@ -242,9 +246,6 @@ local function _init_dto(dto, now)
 end
 
 local function _on_smart(trace, squad)
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
-
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_mutant[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
@@ -268,18 +269,12 @@ local function _on_smart(trace, squad)
     local overdue = _find_overdue_drives(dto, now, species)
     if #overdue == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
-    local result, won_idx
+    local result
     for i = 1, #overdue do
-        if not result then result = _try_drive(trace, squad, level_id, species, overdue[i]); won_idx = i end
+        if not result then result = _try_drive(trace, squad, level_id, species, overdue[i]) end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    prof:stop()
-    if ap_core_debug.enabled() then
-        trace:push(result.cause)
-        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d species=%s drive=%.2f [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, species, overdue[won_idx].drive, prof:get_ms())
-    end
     ap_core_limiter.increment_cause_counter(CATEGORY)
     return result
 end
@@ -319,7 +314,7 @@ function on_game_start()
     for i = 1, #radiant do
         ap_core_producer.register({
             callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
-            category = CAUSE_CATEGORY.INSTINCTS,
+            category = CAUSE_CATEGORY.INSTINCTS, name = "instincts",
         }, _on_smart)
     end
     ap_core_debug.info(LOG_INIT .. " Initialized")

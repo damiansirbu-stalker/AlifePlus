@@ -17,11 +17,6 @@ local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
-local LOG_BY_CAUSE = {
-    [CAUSE.STASH_LOOT]   = ap_core_debug.bracket(CAUSE.STASH_LOOT),
-    [CAUSE.STASH_AMBUSH] = ap_core_debug.bracket(CAUSE.STASH_AMBUSH),
-    [CAUSE.STASH_FILL]   = ap_core_debug.bracket(CAUSE.STASH_FILL),
-}
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human = ap_ext_const.alignment_human
@@ -107,10 +102,56 @@ local function _pick_branch(community, is_empty, items_count)
     return nil
 end
 
-local function _on_smart(trace, squad)
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
+-- Per-cause threshold + personality + SCAN for the cause picked by _pick_branch.
+-- Returns publish payload (with .cause) on SUCCESS, rejection result otherwise.
+-- observe() wraps every call so each picked-cause attempt logs.
+-- opts: { now, stash, items_count, cause_const }
+local function _try_picked_cause(trace, squad, level_id, opts)
+    local cause_const = opts.cause_const
+    local keys = KEYS_BY_CAUSE[cause_const]
+    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
+    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, opts.now) end
+    local elapsed = opts.now - (opp_dto[keys.field] or 0)
+    if elapsed <= cfg[keys.threshold_key] * HOURS_TO_SECONDS then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
+    end
 
+    local pcfg = _personality_by_cause[cause_const]
+    local dst_smart_id
+    if pcfg then
+        if not ap_ext_util.check_personality(pcfg.traits, squad.player_id, { name = cause_const }) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        end
+        if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+        end
+        local dst = ap_core_util.find_smart_observed(trace, opts.stash.position, { level_id = level_id })
+        if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        ap_core_limiter.increment_cause_counter(SCAN_KEY)
+        dst_smart_id = dst.id
+    end
+
+    local fill_items
+    if cause_const == CAUSE.STASH_FILL then
+        fill_items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
+    end
+
+    return {
+        cause = cause_const,
+        squad_id = squad.id,
+        community = squad.player_id,
+        position = squad.position,
+        level_id = level_id,
+        stash_id = opts.stash.id,
+        stash_position = opts.stash.position,
+        items_count = opts.items_count,
+        dto_field = keys.field,
+        dst_smart_id = dst_smart_id,
+        fill_items = fill_items,
+    }
+end
+
+local function _on_smart(trace, squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
     if xsquad.is_squad_at_base(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE } end
@@ -133,55 +174,11 @@ local function _on_smart(trace, squad)
     local cause_const = _pick_branch(squad.player_id, is_empty, items_count)
     if not cause_const then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    local keys = KEYS_BY_CAUSE[cause_const]
     local now = xtime.game_sec()
-    local opp_dto = ap_ext_tracker.get_squad_opportunities(squad.id)
-    if not opp_dto then opp_dto = ap_ext_tracker.init_squad_opportunities(squad.id, now) end
-    local elapsed = now - (opp_dto[keys.field] or 0)
-    if elapsed <= cfg[keys.threshold_key] * HOURS_TO_SECONDS then
-        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
-    end
+    local result = ap_core_debug.observe(trace, cause_const, _try_picked_cause, squad, level_id,
+        { now = now, stash = stash, items_count = items_count, cause_const = cause_const })
+    if not result or not result.cause then return result end
 
-    local dst_smart_id
-    local pcfg = _personality_by_cause[cause_const]
-    if pcfg then
-        if not ap_ext_util.check_personality(pcfg.traits, squad.player_id,
-            { name = cause_const }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
-        end
-        if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
-        end
-        local dst = ap_core_util.find_smart_observed(trace, stash.position, { level_id = level_id })
-        if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-        ap_core_limiter.increment_cause_counter(SCAN_KEY)
-        dst_smart_id = dst.id
-    end
-
-    local fill_items
-    if cause_const == CAUSE.STASH_FILL then
-        fill_items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
-    end
-
-    local result = {
-        cause = cause_const,
-        squad_id = squad.id,
-        community = squad.player_id,
-        position = squad.position,
-        level_id = level_id,
-        stash_id = stash.id,
-        stash_position = stash.position,
-        items_count = items_count,
-        dto_field = keys.field,
-        dst_smart_id = dst_smart_id,
-        fill_items = fill_items,
-    }
-    prof:stop()
-    if ap_core_debug.enabled() then
-        trace:push(result.cause)
-        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d items=%d [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, items_count, prof:get_ms())
-    end
     ap_core_limiter.increment_cause_counter(CATEGORY)
     return result
 end
@@ -191,7 +188,7 @@ function on_game_start()
     for i = 1, #radiant do
         ap_core_producer.register({
             callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
-            category = CAUSE_CATEGORY.OPPORTUNITIES,
+            category = CAUSE_CATEGORY.OPPORTUNITIES, name = "stash",
         }, _on_smart)
     end
     ap_core_debug.info(LOG_INIT .. " Initialized")

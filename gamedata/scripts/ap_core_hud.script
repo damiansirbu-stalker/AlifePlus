@@ -469,10 +469,10 @@ local function _extra_text(entry, minutes)
 end
 
 function UIStatsHUD:Refresh(minutes, elapsed_sec)
-    local h = math_floor(elapsed_sec / 3600)
-    local m = math_floor((elapsed_sec % 3600) / 60)
-    local s = math_floor(elapsed_sec % 60)
-    self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", h, m, s))
+    local hours = math_floor(elapsed_sec / 3600)
+    local mins = math_floor((elapsed_sec % 3600) / 60)
+    local secs = math_floor(elapsed_sec % 60)
+    self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", hours, mins, secs))
     for i = 1, #self._entries do
         local entry = self._entries[i]
         entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))

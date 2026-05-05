@@ -17,11 +17,6 @@ local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
-local LOG_BY_CAUSE = {
-    [CAUSE.AREA_CONQUER] = ap_core_debug.bracket(CAUSE.AREA_CONQUER),
-    [CAUSE.AREA_SWARM]   = ap_core_debug.bracket(CAUSE.AREA_SWARM),
-    [CAUSE.AREA_INFEST]  = ap_core_debug.bracket(CAUSE.AREA_INFEST),
-}
 
 local CONQUER_FIELD = "last_area_conquer_at"
 local SWARM_FIELD   = "last_area_swarm_at"
@@ -92,20 +87,25 @@ local function _read_dto_field(squad_id, field, now)
     return opp_dto[field] or 0
 end
 
-local function _eligible_conquer(squad, now, level_id, trace)
-    if not cfg.cause_area_conquer_enabled then return nil end
-    if not _alignment_conquer_human[squad.player_id] then return nil end
-    if not ap_ext_util.is_active_period(squad.player_id) then return nil end
+-- Per-cause RULES + SCAN. Returns publish payload (with .cause) on SUCCESS,
+-- or { code = FAILED_*, reason = REASON.* } on rejection. observe() logs every call.
+local function _eligible_conquer(trace, squad, now, level_id)
+    if not cfg.cause_area_conquer_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
+    if not _alignment_conquer_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_ext_util.is_active_period(squad.player_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
-    if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then return nil end
-    if not ap_ext_util.check_personality(_personality_conquer, squad.player_id,
-        { name = "area_conquer" }) then
-        return nil
+    if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then return nil end
+    if not ap_ext_util.check_personality(_personality_conquer, squad.player_id, { name = "area_conquer" }) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
+    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
-    if not smart then return nil end
+    if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     ap_core_limiter.increment_cause_counter(SCAN_KEY)
     return {
         cause = CAUSE.AREA_CONQUER,
@@ -119,20 +119,23 @@ local function _eligible_conquer(squad, now, level_id, trace)
     }
 end
 
-local function _eligible_swarm(squad, species, now, level_id, trace)
-    if not cfg.cause_area_swarm_enabled then return nil end
-    if not _alignment_conquer_mutant[species] then return nil end
-    if not ap_ext_util.is_active_period(species) then return nil end
+local function _eligible_swarm(trace, squad, species, now, level_id)
+    if not cfg.cause_area_swarm_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
+    if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
-    if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then return nil end
-    if not ap_ext_util.check_personality(_personality_conquer, species,
-        { name = "area_swarm" }) then
-        return nil
+    if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then return nil end
+    if not ap_ext_util.check_personality(_personality_conquer, species, { name = "area_swarm" }) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
+    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
-    if not smart then return nil end
+    if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     ap_core_limiter.increment_cause_counter(SCAN_KEY)
     return {
         cause = CAUSE.AREA_SWARM,
@@ -147,28 +150,31 @@ local function _eligible_swarm(squad, species, now, level_id, trace)
     }
 end
 
-local function _eligible_infest(squad, species, now, level_id, trace)
-    if not cfg.cause_area_infest_enabled then return nil end
-    if not _alignment_conquer_mutant[species] then return nil end
-    if not ap_ext_util.is_active_period(species) then return nil end
+local function _eligible_infest(trace, squad, species, now, level_id)
+    if not cfg.cause_area_infest_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
+    if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, INFEST_FIELD, now)
-    if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then return nil end
-    if not ap_ext_util.check_personality(_personality_infest, species,
-        { name = "area_infest" }) then
-        return nil
+    if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not _squad_has_alpha(squad) then return nil end
-    if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return nil end
+    if not ap_ext_util.check_personality(_personality_infest, species, { name = "area_infest" }) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
+    if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
+    if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
-    if not base_filter then return nil end
+    if not base_filter then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     local filter = function(smart)
         if ap_ext_smart_mutator.is_infested(smart.id) then return false end
         return base_filter(smart)
     end
-    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then return nil end
+    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = filter, max_distance = RANGE_EYE })
-    if not smart then return nil end
+    if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     ap_core_limiter.increment_cause_counter(SCAN_KEY)
     return {
         cause = CAUSE.AREA_INFEST,
@@ -183,10 +189,14 @@ local function _eligible_infest(squad, species, now, level_id, trace)
     }
 end
 
-local function _on_smart(trace, squad)
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
+-- observe() the cause attempt; return the publish payload if it has .cause, nil otherwise.
+local function _try_eligible(trace, cause_name, fn, ...)
+    local result = ap_core_debug.observe(trace, cause_name, fn, ...)
+    if result and result.cause then return result end
+    return nil
+end
 
+local function _on_smart(trace, squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
@@ -199,22 +209,16 @@ local function _on_smart(trace, squad)
     if _alignment_mutant[squad.player_id] then
         local species = ap_ext_util.get_species(squad.id)
         if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
-        result = _eligible_infest(squad, species, now, level_id, trace)
-        if not result then result = _eligible_swarm(squad, species, now, level_id, trace) end
+        result = _try_eligible(trace, CAUSE.AREA_INFEST, _eligible_infest, squad, species, now, level_id)
+        if not result then result = _try_eligible(trace, CAUSE.AREA_SWARM, _eligible_swarm, squad, species, now, level_id) end
     elseif _alignment_conquer_human[squad.player_id] then
-        result = _eligible_conquer(squad, now, level_id, trace)
+        result = _try_eligible(trace, CAUSE.AREA_CONQUER, _eligible_conquer, squad, now, level_id)
     else
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
     end
 
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    prof:stop()
-    if ap_core_debug.enabled() then
-        trace:push(result.cause)
-        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d community=%s [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, squad.player_id, prof:get_ms())
-    end
     ap_core_limiter.increment_cause_counter(CATEGORY)
     return result
 end
@@ -224,7 +228,7 @@ function on_game_start()
     for i = 1, #radiant do
         ap_core_producer.register({
             callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
-            category = CAUSE_CATEGORY.OPPORTUNITIES,
+            category = CAUSE_CATEGORY.OPPORTUNITIES, name = "area",
         }, _on_smart)
     end
     ap_core_debug.info(LOG_INIT .. " Initialized")

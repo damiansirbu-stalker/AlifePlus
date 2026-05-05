@@ -17,22 +17,6 @@ local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
-local LOG_BY_CAUSE = {
-    [CAUSE.HUNGER_CAMPFIRE] = ap_core_debug.bracket(CAUSE.HUNGER_CAMPFIRE),
-    [CAUSE.SLEEP_CAMPFIRE]  = ap_core_debug.bracket(CAUSE.SLEEP_CAMPFIRE),
-    [CAUSE.REST_CAMPFIRE]   = ap_core_debug.bracket(CAUSE.REST_CAMPFIRE),
-    [CAUSE.HEAL_SHELTER]    = ap_core_debug.bracket(CAUSE.HEAL_SHELTER),
-    [CAUSE.SHELTER_INDOOR]  = ap_core_debug.bracket(CAUSE.SHELTER_INDOOR),
-    [CAUSE.SHELTER_OUTDOOR] = ap_core_debug.bracket(CAUSE.SHELTER_OUTDOOR),
-    [CAUSE.SUPPLY_TRADER]   = ap_core_debug.bracket(CAUSE.SUPPLY_TRADER),
-    [CAUSE.MONEY_HARVEST]   = ap_core_debug.bracket(CAUSE.MONEY_HARVEST),
-    [CAUSE.MONEY_HUNT]      = ap_core_debug.bracket(CAUSE.MONEY_HUNT),
-    [CAUSE.JOB_OUTPOST]     = ap_core_debug.bracket(CAUSE.JOB_OUTPOST),
-    [CAUSE.JOB_EXPLORE]     = ap_core_debug.bracket(CAUSE.JOB_EXPLORE),
-    [CAUSE.JOB_RESEARCH]    = ap_core_debug.bracket(CAUSE.JOB_RESEARCH),
-    [CAUSE.SOCIAL_CAMPFIRE] = ap_core_debug.bracket(CAUSE.SOCIAL_CAMPFIRE),
-    [CAUSE.SOCIAL_BASE]     = ap_core_debug.bracket(CAUSE.SOCIAL_BASE),
-}
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human = ap_ext_const.alignment_human
@@ -106,21 +90,27 @@ local function _find_overdue_needs(dto, now, identity)
     return out
 end
 
+-- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
 local function _try_cause(trace, squad, level_id, entry)
-    local smart
-    if cfg["cause_" .. entry.name .. "_enabled"]
-        and ap_ext_util.check_alignment(entry.alignment, squad.player_id)
-        and ap_ext_util.check_personality(entry.personality, squad.player_id, {
-            name = entry.name,
-        })
-        and ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
-        local filter = _build_filter(entry, squad.player_id)
-        smart = ap_core_util.find_smart_observed(trace, squad.position, {
-            level_id = level_id, filter = filter, max_distance = RANGE_RADIO,
-        })
-        if smart then ap_core_limiter.increment_cause_counter(SCAN_KEY) end
+    if not cfg["cause_" .. entry.name .. "_enabled"] then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
     end
-    return smart
+    if not ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
+    end
+    if not ap_ext_util.check_personality(entry.personality, squad.player_id, { name = entry.name }) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
+    if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
+    local filter = _build_filter(entry, squad.player_id)
+    local smart = ap_core_util.find_smart_observed(trace, squad.position, {
+        level_id = level_id, filter = filter, max_distance = RANGE_RADIO,
+    })
+    if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+    ap_core_limiter.increment_cause_counter(SCAN_KEY)
+    return { code = RESULT.SUCCESS, smart = smart }
 end
 
 local function _init_dto(dto, now)
@@ -149,26 +139,26 @@ local function _make_result(squad, level_id, overdue_entry, entry, smart)
     }
 end
 
+-- Per-cause attempt for one CAUSES entry under an overdue need. Returns a published-payload
+-- result on SUCCESS, nil otherwise. observe() wraps _try_cause so every attempt logs.
+local function _try_one_need_cause(trace, squad, level_id, overdue_entry, entry, need_name)
+    if entry.need ~= need_name then return nil end
+    local cause_result = ap_core_debug.observe(trace, entry.cause, _try_cause, squad, level_id, entry)
+    if not cause_result or cause_result.code ~= RESULT.SUCCESS then return nil end
+    return _make_result(squad, level_id, overdue_entry, entry, cause_result.smart)
+end
+
 --- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
 local function _try_need(trace, squad, level_id, overdue_entry)
     local need_name = overdue_entry.need.need
-    local result
     for j = 1, #CAUSES do
-        local entry = CAUSES[j]
-        if not result and entry.need == need_name
-            and cfg["cause_" .. entry.name .. "_enabled"]
-            and ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
-            local smart = _try_cause(trace, squad, level_id, entry)
-            if smart then result = _make_result(squad, level_id, overdue_entry, entry, smart) end
-        end
+        local result = _try_one_need_cause(trace, squad, level_id, overdue_entry, CAUSES[j], need_name)
+        if result then return result end
     end
-    return result
+    return nil
 end
 
 local function _on_smart(trace, squad)
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
-
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
     if not level.present() then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
@@ -189,18 +179,12 @@ local function _on_smart(trace, squad)
     local overdue = _find_overdue_needs(dto, now, squad.player_id)
     if #overdue == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
-    local result, won_idx
+    local result
     for i = 1, #overdue do
-        if not result then result = _try_need(trace, squad, level_id, overdue[i]); won_idx = i end
+        if not result then result = _try_need(trace, squad, level_id, overdue[i]) end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    prof:stop()
-    if ap_core_debug.enabled() then
-        trace:push(result.cause)
-        ap_core_debug.debug("%s [tid=%d path=%s] sq=%d need=%s drive=%.2f [%.2fms]",
-            LOG_BY_CAUSE[result.cause], trace.id, trace.path, squad.id, overdue[won_idx].need.need, overdue[won_idx].drive, prof:get_ms())
-    end
     ap_core_limiter.increment_cause_counter(CATEGORY)
     return result
 end
@@ -255,7 +239,7 @@ function on_game_start()
     for i = 1, #radiant do
         ap_core_producer.register({
             callback = radiant[i], cause_type = CAUSE_TYPE.RADIANT,
-            category = CAUSE_CATEGORY.NEEDS,
+            category = CAUSE_CATEGORY.NEEDS, name = "needs",
         }, _on_smart)
     end
     ap_core_debug.info(LOG_INIT .. " Initialized")
