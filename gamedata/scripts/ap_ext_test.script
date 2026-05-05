@@ -145,53 +145,76 @@ function spawn_artefact()
     end
 end
 
-local KIT_ITEMS = {
+local KIT_EQUIPMENT_ITEMS = {
     -- weapon + ammo + knife
-    { sec = "wpn_spas12", count = 1 },
-    { sec = "ammo_12x76_zhekan", count = 100 },
-    { sec = "wpn_knife5", count = 1 },
-    -- meds
-    { sec = "bandage", count = 10 },
-    { sec = "medkit_army", count = 10 },
-    { sec = "drug_sleepingpills", count = 30 },
-    { sec = "antirad", count = 10 },
-    { sec = "drug_radioprotector", count = 5 },
-    -- food + water
-    { sec = "kolbasa", count = 10 },
-    { sec = "conserva", count = 10 },
-    { sec = "bread", count = 10 },
-    { sec = "water_drink", count = 20 },
-    { sec = "vodka_quality", count = 5 },
+    { sec = "wpn_saiga12s_kobra",    count = 1 },
+    { sec = "ammo_12x76_zhekan",     count = 120 },
+    { sec = "ammo_12x76_dart",       count = 60 },
+    { sec = "wpn_knife5",            count = 1 },
+    -- armor + backpack
+    { sec = "scientific_outfit",     count = 1 },
+    { sec = "equ_tourist_pack",      count = 1 },
 }
 
---- Spawn a playtest survival kit into actor inventory
+local KIT_CONSUMABLES_ITEMS = {
+    -- meds (top-tier first)
+    { sec = "medkit_scientic",       count = 10 },
+    { sec = "medkit_army",           count = 20 },
+    { sec = "bandage",               count = 30 },
+    { sec = "drug_anabiotic",        count = 5 },
+    { sec = "drug_sleepingpills",    count = 30 },
+    { sec = "antirad",               count = 20 },
+    { sec = "drug_radioprotector",   count = 10 },
+    -- food + water
+    { sec = "kolbasa",               count = 10 },
+    { sec = "conserva",              count = 10 },
+    { sec = "bread",                 count = 10 },
+    { sec = "water_drink",           count = 20 },
+    { sec = "vodka_quality",         count = 5 },
+}
+
+local function _spawn_kit_items(items, label)
+    local id = db.actor:id()
+    local spawned, skipped = 0, 0
+    for i = 1, #items do
+        local item = items[i]
+        if not ini_sys:section_exist(item.sec) then
+            ap_core_debug.debug("[TEST] %s SKIP missing section=%s", label, item.sec)
+            skipped = skipped + 1
+        else
+            for idx = 1, item.count do
+                xobject.create_item(item.sec, id)
+            end
+            spawned = spawned + 1
+        end
+    end
+    return spawned, skipped
+end
+
+--- Spawn playtest equipment (weapon, armor, backpack, money, fast travel, scorcher off)
 --- @export console
-function kit()
-    ap_core_debug.debug("[TEST] kit pressed")
+function kit_equipment()
+    ap_core_debug.debug("[TEST] kit_equipment pressed")
     local actor = db.actor
     if not actor then return _tip("Not in game") end
-    local id = actor:id()
-    local spawned, skipped = 0, 0
-    for i = 1, #KIT_ITEMS do
-        local item = KIT_ITEMS[i]
-        if not ini_sys:section_exist(item.sec) then
-            ap_core_debug.debug("[TEST] kit SKIP missing section=%s", item.sec)
-            skipped = skipped + 1
-            goto continue
-        end
-        for idx = 1, item.count do
-            xobject.create_item(item.sec, id)
-        end
-        spawned = spawned + 1
-        ::continue::
-    end
+    local spawned, skipped = _spawn_kit_items(KIT_EQUIPMENT_ITEMS, "kit_equipment")
     actor:give_money(500000)
-    xobject.create_item("equ_tourist_backpack_full", id)
     ui_options.set("gameplay/fast_travel/state", 2)
     game_fast_travel.update_settings()
     xactor.give_info("drx_sl_brain_scorcher_switch_off")
-    _tip(string_format("Kit: %d items, %d skipped + 500k + backpack + travel + scorcher off", spawned, skipped))
-    ap_core_debug.debug("[TEST] kit OK spawned=%d skipped=%d", spawned, skipped)
+    _tip(string_format("Kit equipment: %d items, %d skipped + 500k + travel + scorcher off", spawned, skipped))
+    ap_core_debug.debug("[TEST] kit_equipment OK spawned=%d skipped=%d", spawned, skipped)
+end
+
+--- Spawn playtest consumables (meds, food, water)
+--- @export console
+function kit_consumables()
+    ap_core_debug.debug("[TEST] kit_consumables pressed")
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local spawned, skipped = _spawn_kit_items(KIT_CONSUMABLES_ITEMS, "kit_consumables")
+    _tip(string_format("Kit consumables: %d items, %d skipped", spawned, skipped))
+    ap_core_debug.debug("[TEST] kit_consumables OK spawned=%d skipped=%d", spawned, skipped)
 end
 
 local _test_marker_ids = {}
