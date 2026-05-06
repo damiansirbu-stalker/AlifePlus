@@ -1,8 +1,5 @@
 --- ap_ext_consequences_squadkill: SQUADKILL responses
 --- squadkill_revenge: nearby friendly squads pursue the killer (chase pattern with on_arrive)
---- squadkill_flee: nearby same-faction squads flee to nearest faction base
-
-local ipairs = ipairs
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -17,9 +14,6 @@ local cfg = ap_core_mcm.cfg
 
 local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
 local _personality_revenge = { PERSONALITY.AGGRESSION, PERSONALITY.RELATION }
-
-local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
-local _personality_flee = { PERSONALITY.INV_DISCIPLINE, PERSONALITY.INV_AGGRESSION }
 
 -- Revenge chase helpers (only used by _handler_revenge)
 
@@ -103,62 +97,11 @@ local function _handler_revenge(event_data)
     end)
 end
 
-local function _handler_flee(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.SQUADKILL_FLEE, function()
-        if not ap_ext_util.check_alignment(_alignment_flee, event_data.victim_faction) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
-        end
-        if not ap_ext_util.check_personality(_personality_flee, event_data.victim_faction,
-            { name = CONSEQUENCE.SQUADKILL_FLEE }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
-        end
-
-        local victim_faction, position, level_id = event_data.victim_faction, event_data.position, event_data.level_id
-
-        if not position or not victim_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
-
-        local base = ap_core_util.find_smart_observed(trace, position, { factions = victim_faction, level_id = level_id, filter = xsmart.is_base })
-        if not base then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_BASE } end
-
-        local fleeing = ap_core_util.find_squads_observed(trace, position, {
-            factions = { [victim_faction] = true },
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
-            level_id = level_id, max_count = cfg.consequence_squadkill_flee_max_squads,
-            exclude_at_smart_id = base.id,
-            exclude_squad_id = event_data.squad_id,
-        })
-        if #fleeing == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-
-        local moved = {}
-        local last_reason
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            for _, squad in ipairs(fleeing) do
-                local res = ap_core_broker.script_squad(squad, base, { rush = cfg.consequence_squadkill_flee_rush, pre_release_gulag = PRE_RELEASE_GULAG.SQUADKILL_FLEE })
-                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = base.id, rejected = #fleeing - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do
-            ap_ext_news.add(moved[i], CAUSE.SQUADKILL, CONSEQUENCE.SQUADKILL_FLEE, {
-                other_squad = event_data.killer_squad,
-                smart = base, level_id = level_id,
-            })
-        end
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = base.id, faction = victim_faction })
-    end)
-end
-
 function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.SQUADKILL_REVENGE, {
         event = CAUSE.SQUADKILL,
         condition = function() return cfg.consequence_squadkill_revenge_enabled end,
         on_arrive = _on_arrive_revenge,
     }, _handler_revenge)
-    ap_core_consumer.register(CONSEQUENCE.SQUADKILL_FLEE, {
-        event = CAUSE.SQUADKILL,
-        condition = function() return cfg.consequence_squadkill_flee_enabled end,
-    }, _handler_flee)
-    ap_core_debug.info("[CONSEQUENCE.SQUADKILL] Initialized: 2 consequences (revenge, flee)")
+    ap_core_debug.info("[CONSEQUENCE.SQUADKILL] Initialized: 1 consequence (revenge)")
 end

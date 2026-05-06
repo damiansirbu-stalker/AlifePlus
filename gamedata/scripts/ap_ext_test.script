@@ -181,12 +181,13 @@ local function _spawn_kit_items(items, label)
         if not ini_sys:section_exist(item.sec) then
             ap_core_debug.debug("[TEST] %s SKIP missing section=%s", label, item.sec)
             skipped = skipped + 1
-        else
-            for idx = 1, item.count do
-                xobject.create_item(item.sec, id)
-            end
-            spawned = spawned + 1
+            goto continue
         end
+        for idx = 1, item.count do
+            xobject.create_item(item.sec, id)
+        end
+        spawned = spawned + 1
+        ::continue::
     end
     return spawned, skipped
 end
@@ -443,7 +444,6 @@ local NEWS_DEMO_EVENTS = {
     { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_INVESTIGATE, kind = "human",  other = "human"  },
     { cause = CAUSE.MASSACRE,  cons = CONSEQUENCE.MASSACRE_SCAVENGE,    kind = "mutant", other = "human"  },
     { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_REVENGE,    kind = "human",  other = "human"  },
-    { cause = CAUSE.SQUADKILL, cons = CONSEQUENCE.SQUADKILL_FLEE,       kind = "human",  other = "human"  },
     { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_SUPPORT,     kind = "human",  other = "human"  },
     { cause = CAUSE.BASEKILL,  cons = CONSEQUENCE.BASEKILL_FLEE,        kind = "human",  other = "human"  },
     { cause = CAUSE.ALPHA,     cons = CONSEQUENCE.ALPHA_PROMOTE,        kind = "mutant", other = nil      },
