@@ -88,6 +88,7 @@ local function _handler_hunt(event_data)
             factions = _alignment_hunt, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
             level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
             exclude_at_smart_id = target_smart.id,
+            exclude_squad_id = event_data.squad_id,
         })
         if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         local squads = {}
