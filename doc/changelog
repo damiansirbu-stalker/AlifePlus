@@ -60,10 +60,12 @@ next
     Renamed: ap_core_utils -> ap_core_util (singular, matching ap_ext_util). All find_smart / find_squads / find_*_observed / event_publish / event_subscribe / get_entity_id / count_until_threshold callers must update the namespace prefix.
     Added: ap_ext_common module hosting shared ext-domain dispatch patterns. Today: chase pattern (move_actor_chasers, make_move_smart_chasers, make_on_arrive). Used internally by harvest_rob, alphakill_targeted, squadkill_revenge; available to integrators implementing similar pursuit consequences.
     Renamed: cause:massacre and cause:basekill payload field "total_deaths" / "death_count" -> "kill_count". External listeners reading the diagnostic field must update.
+    Removed: cause:squadkill payload field "killer_squad". Consumers re-resolve via xobject.se(killer_squad_id) per the synchronous payload only rule. The userdata field was unused after the killer_squad_id addition.
     Removed: cause:alphakill payload fields "name", "alpha_level", "kills". Never read by AP. Subscribers that need them should resolve via xcreature.get_name(killer_id) and ap_ext_tracker.get_alpha_level(victim_id) at read time.
   Compatibility:
     Added: v1.5.5 save migration releases scripted_target on all broker squads then drops the table. Required because the INFEST consequence rename leaves stale arrival keys.
   Fixed:
+    Fixed: scripted squads froze idle for the full pre_release_gulag duration when arriving at a smart with no free job slots while visible to the actor. Arrival path in ap_core_broker now checks xsmart.has_jobs_for when smart is online + on actor's level; releases the squad on failure (release_no_jobs) instead of entering the wait state.
     Fixed: AREA_CONQUER handler crammed stalker and mutant logic in one function. They are now two distinct handlers.
     Fixed: news template pool for INFEST was orphaned after the cause rename. Templates now align with consequence:area_infest.
     Fixed: harvest_haunt and wounded_hunt no longer dispatch mutant squads with broken commander state into species-restricted consequences. Only resolved aberrant species reach harvest_haunt; only resolved predator and aberrant species reach wounded_hunt.

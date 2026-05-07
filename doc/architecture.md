@@ -296,7 +296,7 @@ _update_scripted_squads runs every 20s via CreateTimeEvent. For each tracked squ
 1. Entity check. xobject.se(squad_id). Gone -> remove from tracking. Catches squads that died or despawned between scans.
 2. Reassert. xsquad.reassert_target(squad, data.scripted_target). Restores scripted_target if another mod overwrote it; clears __lock. Vintar-class mods set these fields every tick on their own squads; AP reasserts every 20s on its squads.
 3. TTL. 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
-4. Arrival. xsmart.is_arrived(squad, smart). On arrival: if smart is full and squad is online, fire arrival handler then unscript (overflow). Otherwise dispatch the registered on_arrive function, then enter wait state.
+4. Arrival. xsmart.is_arrived(squad, smart). On arrival: if smart is full and squad is online, fire arrival handler then unscript (overflow). Otherwise dispatch the registered on_arrive function, then check engine job assignment via xsmart.has_jobs_for: if smart is online + on actor's level and any member has no job, unscript (release_no_jobs) -- the visible freeze is avoided since the squad would have idled for the full hold; if smart is offline or off-level, AP cannot observe job state and enters the wait state by default.
 5. Wait. release_at = game_sec() + pre_release_gulag (default 300s). When game time exceeds release_at, unscript. Game time advances during sleep / time-skip and survives save/load.
 
 ### Save / load

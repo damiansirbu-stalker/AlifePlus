@@ -200,6 +200,18 @@ local function _try_arrival_overflow(squad_id, squad, smart, data)
     return true
 end
 
+local function _try_arrival_gulag(squad_id, squad, smart, data)
+    if smart.online and smart.is_on_actor_level
+       and not xsmart.has_jobs_for(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_no_jobs: squad=%d target=%s", squad_id, data.scripted_target)
+        _unscript_squad(squad)
+        return false
+    end
+    data.arrived = true
+    data.release_at = xtime.game_sec() + data.pre_release_gulag
+    return true
+end
+
 local function _update_arrival_flags(squad_id, data)
     if not data.target_smart_id then return end
     if data.arrived then return end
@@ -220,24 +232,23 @@ local function _update_arrival_flags(squad_id, data)
     if _try_arrival_overflow(squad_id, squad, smart, data) then return end
     local key = data.on_arrive
     if not key then
-        data.arrived = true
-        data.release_at = xtime.game_sec() + data.pre_release_gulag
-        ap_core_debug.debug("[SQUAD] gulag_started (no handler): squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
+        if _try_arrival_gulag(squad_id, squad, smart, data) then
+            ap_core_debug.debug("[SQUAD] gulag_started (no handler): squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
+        end
         return
     end
     local handler = _arrival_handlers[key]
     if not handler then
         ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
-        data.arrived = true
-        data.release_at = xtime.game_sec() + data.pre_release_gulag
+        _try_arrival_gulag(squad_id, squad, smart, data)
         return
     end
     ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s", squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     if _ap_scripted_squads[squad_id] ~= data then return end
-    data.arrived = true
-    data.release_at = xtime.game_sec() + data.pre_release_gulag
-    ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
+    if _try_arrival_gulag(squad_id, squad, smart, data) then
+        ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
+    end
 end
 
 local function _update_pre_release_gulag(squad_id, data)
