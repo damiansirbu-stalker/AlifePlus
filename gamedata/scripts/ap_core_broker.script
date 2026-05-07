@@ -185,21 +185,6 @@ function register_arrival_handler(key, fn)
 end
 
 
-local function _try_arrival_overflow(squad_id, squad, smart, data)
-    local cmd_id = squad:commander_id()
-    local is_online = cmd_id and db.storage[cmd_id] and db.storage[cmd_id].object ~= nil
-    if not is_online or xsmart.has_capacity(smart) then return false end
-    local key = data.on_arrive
-    local handler = key and _arrival_handlers[key]
-    if handler then
-        handler(squad, data.on_arrive_args)
-        if _ap_scripted_squads[squad_id] ~= data then return true end
-    end
-    ap_core_debug.debug("[SQUAD] arrival_overflow: squad=%d full=%s", squad_id, data.scripted_target)
-    _unscript_squad(squad)
-    return true
-end
-
 local function _try_arrival_gulag(squad_id, squad, smart, data)
     if smart.online and smart.is_on_actor_level
        and not xsmart.has_jobs_for(smart, squad) then
@@ -229,7 +214,6 @@ local function _update_arrival_flags(squad_id, data)
     end
     if not xsmart.is_arrived(squad, smart) then return end
     _log_proximity("arrived", squad, smart, data)
-    if _try_arrival_overflow(squad_id, squad, smart, data) then return end
     local key = data.on_arrive
     if not key then
         if _try_arrival_gulag(squad_id, squad, smart, data) then
@@ -253,9 +237,20 @@ end
 
 local function _update_pre_release_gulag(squad_id, data)
     if not data.arrived then return end
-    if xtime.game_sec() < data.release_at then return end
-    ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s", squad_id, data.scripted_target)
-    _unscript_squad(squad_id)
+    if xtime.game_sec() >= data.release_at then
+        ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s", squad_id, data.scripted_target)
+        _unscript_squad(squad_id)
+        return
+    end
+    if not data.target_smart_id then return end
+    local smart = xobject.se(data.target_smart_id)
+    if not smart or not smart.online or not smart.is_on_actor_level then return end
+    local squad = xobject.se(squad_id)
+    if not squad then return end
+    if not xsmart.has_jobs_for(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_no_jobs_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
+        _unscript_squad(squad)
+    end
 end
 
 --- 20s per-squad scan: reassert ownership, check TTL, detect arrival, release after gulag hold
