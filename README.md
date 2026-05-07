@@ -21,6 +21,6 @@ Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.2.0](https://www.moddb.com/mods/s
 
 ## License
 
-PolyForm Perimeter License. Other mods can depend on, call, and ship with AlifePlus in modpacks, with visible credit. What is not allowed: cloning the architecture, reverse-engineering internal systems, or reproducing the implementation in a competing mod. See [LICENSE](LICENSE) and [usage guide](https://damiansirbu-stalker.github.io/siski-report/guide.html).
+PolyForm Perimeter License. Other mods can depend on, call, and ship with AlifePlus in modpacks, with visible credit. What is not allowed: cloning the architecture, reverse-engineering internal systems, or reproducing the implementation in a competing mod. See [LICENSE](LICENSE) and [integration guide](doc/integration-guide.md).
 
 A report documenting unauthorized reproduction of this codebase is available at https://damiansirbu-stalker.github.io/siski-report/
