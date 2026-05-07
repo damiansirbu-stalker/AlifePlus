@@ -17,6 +17,7 @@ next
     Changed: opportunity DTO threshold gates replace wall-clock cooldowns for stash and area causes.
     Changed: stash predicate finds and classifies the stash before publishing. Cascade slots are not wasted when no stash is in range.
     Changed: every cause carries its own enable toggle. Drive-level enable cfg keys removed for needs and instincts. Multi-answer drives share only Hull threshold + DTO timestamp.
+    Changed: ap_core_producer.register is write-through. _cascade_buf and _radiant_callbacks are maintained synchronously at register time. Removed the dual-shape (_radiant_handlers + _rebuild_radiant_set) that snapshotted at actor_on_first_update. Engine subscription stays deferred to actor_on_first_update; after that point register() also subscribes new callbacks for late-bind integrators.
   MCM:
     Added: news_chance slider (0-100, default 20) under News tab. Chance any single consequence publishes a news entry on success.
     Added: cause_max_reactions, cause_max_needs, cause_max_instincts, cause_max_opportunities (4 sliders, default 20/60s each).
@@ -76,6 +77,7 @@ next
     Fixed: squadkill_revenge consequence dead for NPC-vs-NPC kills since 1.5.0. Cause publisher now ships killer_squad_id; the revenge gate no longer rejects every non-player kill with NO_KILLER_SQUAD.
     Fixed: map markers stuck on the engine map after squads were unscripted. _on_first_update now removes any stale marker timer before recreating it, so re-entry on level transition or save reload no longer breaks the recurring update chain.
     Fixed: alpha_promote markers vanished 60s after the alpha's last AP scripting cycle. Per-consequence persistent flag restored on CONSEQUENCE_INFO; persistent markers skip linger and clear only on entity unregister.
+    Fixed: ap_core_producer.register silently no-op'd for radiant causes registered after actor_on_first_update. The cause landed in _handlers but never reached _cascade_buf (which the cascade reads), so the cause was never evaluated. With the write-through register and post-first_update subscription path, late-bind integrators now work synchronously.
   Localization:
     Removed: pair-composite news templates (25 ids per locale). News now uses per-consequence templates only.
     Removed: news count words (st_ap_news_count_two/three/four/five/many, 5 ids per locale). Vestigial #count# slot dropped.

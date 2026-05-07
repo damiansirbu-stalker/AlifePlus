@@ -245,7 +245,7 @@ axr_main calls on_game_start() on every loaded script. File order alphabetical, 
 - _ap_deps asserts xlibs compatibility. Hard crash on mismatch.
 - ap_core_mcm loads config from defaults, registers on_option_change.
 - ap_core_debug registers actor_on_first_update for deferred log level init.
-- ap_core_producer resets dispatch state, registers actor_on_first_update. Does NOT subscribe to engine callbacks yet.
+- ap_core_producer resets dispatch state, registers actor_on_first_update. register() is write-through (maintains _handlers, _radiant_callbacks, _cascade_buf synchronously); engine subscription is deferred to actor_on_first_update.
 - ap_core_consumer registers actor_on_first_update. Does NOT subscribe to xbus yet.
 - ap_core_broker registers save/load callbacks, creates the 20s scripted-squad scan timer.
 - ap_core_hud resets statistics, registers first_update / option_change / net_destroy / GUI / entity_unregister callbacks.
@@ -254,13 +254,13 @@ axr_main calls on_game_start() on every loaded script. File order alphabetical, 
 - ap_ext_consequences_* register handlers with consumer via register(). Arrival handlers via consumer opts.
 - ap_ext_news registers compose timer.
 
-After phase 1: all generators and handlers are registered. No engine callbacks subscribed yet, no xbus subscriptions active. The deferred init avoids alphabetical-order bugs - ap_core_producer (alphabetically before cause files) cannot build its radiant handler set until all causes have registered, so it defers to actor_on_first_update.
+After phase 1: all generators and handlers are registered, _cascade_buf is fully populated (write-through from register()). No engine callbacks subscribed yet, no xbus subscriptions active. Subscription is deferred to actor_on_first_update so predicates do not run before the actor and supporting systems are live.
 
 ### Phase 2: actor_on_first_update
 
 Game world and actor exist. Deferred init runs:
 
-- Producer rebuilds the radiant handler set from all registrations, subscribes to engine callbacks.
+- Producer subscribes to engine callbacks (radiant: shared _on_radiant; reactive: per-callback dispatcher) and sets _first_update_done. Late register() calls (post-first_update) subscribe new callbacks synchronously.
 - Consumer subscribes to xbus cause events.
 - Debug reads MCM log level (config now loaded), dumps MCM at DEBUG.
 - HUD clears stale map markers from previous session, starts marker timer if MCM map_markers is enabled. Activates statistics overlay if MCM statistics_position is not "off".

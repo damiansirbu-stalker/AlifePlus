@@ -16,8 +16,9 @@ local _reactive_event_limiter = nil
 --- Radiant callback sources (built from registrations with cause_type = RADIANT)
 local _radiant_callbacks = {}
 
---- Radiant handlers (collapsed from all radiant registrations into one flat table)
-local _radiant_handlers = {}
+--- Phase flag: false during on_game_start (subscribe deferred to actor_on_first_update),
+--- true after first_update (register() subscribes new callbacks synchronously).
+local _first_update_done = false
 
 --- Callbacks that are always on the player's map (actor/npc game_objects only exist online)
 local _always_on_map = {
@@ -104,51 +105,6 @@ local function _check_cross_type(cause_type, callback)
     return nil
 end
 
---- Register a cause handler. Predicate publishes specific cause via result.cause; producer
---- never knows the cause string at registration time. Dedup is by handler function ref.
---- Category drives rate-limit grouping (decision 3+15): same-category handlers share one budget.
---- name is the observe() label: a CAUSE.X string for reactive (1:1 with the cause), or a
---- generator-family string for radiant cascades ("needs", "instincts", "area", "stash").
---- @param config table { callback, cause_type, category, name }
---- @param handler function(trace, ...) Handler function
-function register(config, handler)
-    if not config or not handler then
-        ap_core_debug.err("[PRODUCER] register: missing config or handler")
-        return false
-    end
-    local callback = config.callback
-    if not callback then
-        ap_core_debug.err("[PRODUCER] register: missing callback")
-        return false
-    end
-    local category = config.category
-    if not category then
-        ap_core_debug.err("[PRODUCER] register: missing category callback=%s", callback)
-        return false
-    end
-    local name = config.name
-    if not name then
-        ap_core_debug.err("[PRODUCER] register: missing name callback=%s category=%s", callback, category)
-        return false
-    end
-    local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
-    local conflict = _check_cross_type(cause_type, callback)
-    if conflict then
-        ap_core_debug.err("[PRODUCER] register: %s callback=%s category=%s name=%s", conflict, callback, category, name)
-        return false
-    end
-    if not _handlers[callback] then
-        _handlers[callback] = {}
-    end
-    local entries = _handlers[callback]
-    entries[_find_handler_index_by_handler(entries, handler) or #entries + 1] = { handler = handler, cause_type = cause_type, category = category, name = name }
-    if cause_type == CAUSE_TYPE.RADIANT then
-        _radiant_callbacks[callback] = true
-    end
-    ap_core_debug.info("[PRODUCER] registered: callback=%s type=%s category=%s name=%s", callback, cause_type, category, name)
-    return true
-end
-
 --- Publish a cause result. Rate-limit is enforced upstream (pre-handler check on entry.category
 --- in _eval_*); by the time we reach here the publish is guaranteed to go through. Increment
 --- counter keyed on entry.category so the next pre-check sees the +1.
@@ -194,10 +150,20 @@ local function _eval_reactive_handlers(handlers, on_map, ...)
     end
 end
 
---- Reusable cascade buffer. Sized + populated by _rebuild_radiant_set, shuffled in-place per tick.
---- Avoids per-tick allocation from xtable.shuffle (was a fresh array of 4 entries every PACER_2 tick).
+--- Cascade buffer for radiant entries. Maintained write-through by register() (append on new,
+--- replace in place on re-register). Shuffled in-place per tick; avoids per-tick allocation.
 local _cascade_buf = {}
 local math_random = math.random
+
+--- Replace the entry in _cascade_buf whose handler ref matches. Used by register() on re-register.
+local function _replace_cascade_entry(handler, entry)
+    for i = 1, #_cascade_buf do
+        if _cascade_buf[i].handler == handler then
+            _cascade_buf[i] = entry
+            return
+        end
+    end
+end
 
 --- Cascade through radiant generators in random order. Stop on first publish.
 --- Per-cause check budget is reset here and consumed inside generators per cause attempt.
@@ -310,6 +276,21 @@ end
 
 local _dispatchers = {}
 
+--- Late-bind subscribe: attach engine callback for a single (callback, cause_type) pair.
+--- Called from register() after actor_on_first_update. No-op if already subscribed.
+local function _subscribe_late(callback, cause_type)
+    if _subscribed[callback] then return end
+    if cause_type == CAUSE_TYPE.RADIANT then
+        RegisterScriptCallback(callback, _on_radiant)
+    else
+        local dispatcher = _create_reactive_dispatcher(callback)
+        _dispatchers[callback] = dispatcher
+        RegisterScriptCallback(callback, dispatcher)
+    end
+    _subscribed[callback] = true
+    ap_core_debug.debug("[PRODUCER.LATE_BIND] subscribed callback=%s type=%s", callback, cause_type)
+end
+
 --- Subscribe radiant (shared _on_radiant) and reactive (per-callback _on_reactive)
 local function _init_subscriptions()
     for callback in pairs(_radiant_callbacks) do
@@ -331,46 +312,75 @@ local function _init_subscriptions()
     end
 end
 
-local function _has_radiant_entry(entries)
-    for i = 1, #entries do
-        if entries[i].cause_type == CAUSE_TYPE.RADIANT then return true end
+--- Register a cause handler. Predicate publishes specific cause via result.cause; producer
+--- never knows the cause string at registration time. Dedup is by handler function ref.
+--- Category drives rate-limit grouping (decision 3+15): same-category handlers share one budget.
+--- name is the observe() label: a CAUSE.X string for reactive (1:1 with the cause), or a
+--- generator-family string for radiant cascades ("needs", "instincts", "area", "stash").
+--- Write-through: maintains _handlers, _radiant_callbacks, _cascade_buf synchronously. After
+--- actor_on_first_update, also subscribes the engine callback for new callbacks (late-bind).
+--- @param config table { callback, cause_type, category, name }
+--- @param handler function(trace, ...) Handler function
+function register(config, handler)
+    if not config or not handler then
+        ap_core_debug.err("[PRODUCER] register: missing config or handler")
+        return false
     end
-    return false
-end
-
-local function _collect_radiant_handlers(entries)
-    for i = 1, #entries do
-        if entries[i].cause_type ~= CAUSE_TYPE.RADIANT then goto continue end
-        _radiant_handlers[#_radiant_handlers + 1] = entries[i]
-        ::continue::
+    local callback = config.callback
+    if not callback then
+        ap_core_debug.err("[PRODUCER] register: missing callback")
+        return false
     end
-end
-
---- Rebuild radiant callback sources and collapse all radiant handlers into one flat table.
---- Also repopulates _cascade_buf (the in-place-shuffled buffer used by _eval_radiant_cascade).
-local function _rebuild_radiant_set()
-    _radiant_callbacks = {}
-    _radiant_handlers = {}
-    for callback, entries in pairs(_handlers) do
-        if not _has_radiant_entry(entries) then goto continue end
+    local category = config.category
+    if not category then
+        ap_core_debug.err("[PRODUCER] register: missing category callback=%s", callback)
+        return false
+    end
+    local name = config.name
+    if not name then
+        ap_core_debug.err("[PRODUCER] register: missing name callback=%s category=%s", callback, category)
+        return false
+    end
+    local cause_type = config.cause_type or CAUSE_TYPE.REACTIVE
+    local conflict = _check_cross_type(cause_type, callback)
+    if conflict then
+        ap_core_debug.err("[PRODUCER] register: %s callback=%s category=%s name=%s", conflict, callback, category, name)
+        return false
+    end
+    if not _handlers[callback] then
+        _handlers[callback] = {}
+    end
+    local entries = _handlers[callback]
+    local existing_idx = _find_handler_index_by_handler(entries, handler)
+    local entry = { handler = handler, cause_type = cause_type, category = category, name = name }
+    entries[existing_idx or #entries + 1] = entry
+    if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true
-        _collect_radiant_handlers(entries)
-        ::continue::
+        if existing_idx then
+            _replace_cascade_entry(handler, entry)
+        else
+            _cascade_buf[#_cascade_buf + 1] = entry
+        end
     end
-    for k = #_cascade_buf, 1, -1 do _cascade_buf[k] = nil end
-    for i = 1, #_radiant_handlers do _cascade_buf[i] = _radiant_handlers[i] end
+    if _first_update_done then
+        _subscribe_late(callback, cause_type)
+    end
+    ap_core_debug.info("[PRODUCER] registered: callback=%s type=%s category=%s name=%s", callback, cause_type, category, name)
+    return true
 end
 
---- Deferred init: runs on actor_on_first_update after all causes registered
+--- Deferred subscribe: runs on actor_on_first_update after all causes registered.
+--- After this point, register() subscribes new callbacks synchronously (late-bind).
 local function _on_first_update()
-    _rebuild_radiant_set()
     _init_subscriptions()
+    _first_update_done = true
 end
 
 --- on_game_start: reset state + register deferred init (no cross-module reads)
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}
+    _first_update_done = false
     _radiant_ct.on = 0
     _radiant_ct.off = 0
     _reactive_ct.on = 0
