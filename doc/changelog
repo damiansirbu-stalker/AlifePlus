@@ -47,6 +47,8 @@ next - "Maintenance"
     Fixed: dropped the arrival-overflow path. The counter it relied on was sim-routing intent, not physical occupancy; squads with free job slots no longer eject on arrival.
     Fixed: peaceful destination causes (supply_trader, money_harvest, money_hunt, job_research) now exclude hostile-faction smarts. Without an enemy-relation gate, dynamic faction relations (e.g. Warfare flipping CSky vs ISG) routed restocking squads into hostile bases. Issue #7.
     Fixed: stash loot, ambush, and fill no longer route the squad into a hostile base. The post-stash destination smart was picked as the nearest smart to the stash with no relation filter; an enemy-faction filter now mirrors the peaceful-needs gate.
+    Fixed: mutant species and faction display strings render lowercase in PDA news ("zombies" instead of "Zombies"). Capitalized common nouns mid-sentence read like UI labels; lowercase reads as prose. Issue #8.
+    Fixed: zombified factions no longer trigger human-narrative news templates ("watch rotation", "laid out a rotation"). The area cause now routes humans (alignment_human, excludes zombified) and mutants (species feral/predator/aberrant, excludes zombie species) on separate paths; zombies fall through both. Issue #9 (resolved by 1d49fc7).
   Performance:
     Changed: cascade buffer shuffles in place. The previous code allocated a new array per tick; the new code swaps entries in the existing buffer. Per-tick allocation eliminated for the radiant cascade.
     Changed: radiant scan budget consolidated onto a single keyed counter. Cheap rule checks (toggle, alignment, personality, period) no longer consume slots reserved for world queries; the budget bounds the expensive operation only.
