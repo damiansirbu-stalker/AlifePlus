@@ -147,7 +147,7 @@ script_squad does not check protection. It assumes upstream layers verified the 
 
 #### Cause generator contract
 
-Takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate via ap_core_limiter.check_cause_rate_limit and increment_cause_counter; the producer does not gate cause budgets. Generators self-observe via prof + trace:push + debug log under the picked specific cause name.
+Takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate via ap_core_limiter.check_cause_rate_limit and increment_cause_counter; the producer does not gate cause budgets. Producer wraps every generator call in observe(trace, entry.name, entry.handler, ...) so rejection branches (no result.cause) still log. Single-cause reactives register name = CAUSE.X; multi-cause radiants register name = family string (stash, area, needs, instincts) and additionally wrap each per-cause attempt in observe(trace, cause_const, ...) so picked causes nest under the family.
 
 ```lua
 local CATEGORY = CAUSE_CATEGORY.OPPORTUNITIES
@@ -217,12 +217,13 @@ Per-category cause budget is consumed inside the cause generator (self-gating). 
 Hierarchical via observe() (consequences, internal phases) and prof + trace:push + debug pattern (cause generators) in ap_core_debug. Each trace carries a monotonic tid (trace ID) and a slash-separated path (span hierarchy). One tid links a cause through its consequence chain into individual actions:
 
 ```
-[CAUSE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger_campfire] sq=1337 drive=hunger weight=4.2 [0.15ms]
-[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
-[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
+[NEEDS] [tid=42 path=needs] FAILED_RULES:WRONG_PERIOD sq=1337 [0.05ms]
+[CAUSE.HUNGER_CAMPFIRE] [tid=42 path=needs/cause:hunger_campfire] sq=1337 drive=hunger weight=4.2 [0.15ms]
+[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=needs/cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
+[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=needs/cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
 ```
 
-Path root is the specific cause (cause:hunger_campfire), never an umbrella label. Generators self-observe: pick the winning specific cause, build the result, push the trace, emit a debug line under the picked cause. The producer does not wrap generators in observe(); generators are pure and own their own timing.
+Path root is the registered name. Single-cause reactives register the specific cause (cause:massacre etc.) so the root IS the specific cause. Multi-cause radiants register the family string (stash, area, needs, instincts) — generators have to run alignment / scan / pick code before a specific cause is known, so the root names the family and the picked cause nests one level under. First line in the example shows a pre-pick rejection (no cause picked, logs under family); subsequent lines show the picked-cause chain.
 
 bracket(constant) in ap_core_debug composes log labels by uppercasing and replacing : with .: "cause:hunger_campfire" -> "[CAUSE.HUNGER_CAMPFIRE]". Each cause/consequence file caches its bracket strings at module load. No hardcoded [CAUSE.X] literals.
 
