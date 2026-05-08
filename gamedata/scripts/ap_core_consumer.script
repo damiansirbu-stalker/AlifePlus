@@ -1,10 +1,13 @@
 --- ap_core_consumer: Routes cause events to consequence handlers via shuffle
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
+local math_random = math.random
 
 local RESULT = ap_core_const.RESULT
 local CALLBACK = ap_core_const.CALLBACK
 
 local _registry = {}
+local _subscribed = false
+local _subscribe_event
 
 local stats = ap_core_hud
 local stats_collecting = stats.collecting
@@ -48,6 +51,9 @@ function register(name, config, handler)
     end
 
     entries[#entries + 1] = entry
+    if _subscribed and #entries == 1 then
+        _subscribe_event(event)
+    end
     ap_core_debug.info("[CONSUMER] registered: %s event=%s", name, event)
     return true
 end
@@ -98,12 +104,18 @@ local function _process(event_type, event_data)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
     local sc = stats_collecting()
-    local shuffled = xtable.shuffle(consequences)
+    -- In-place Fisher-Yates on _registry[event_type]. Order between events is permuted; every
+    -- entry still gets considered. Avoids per-event allocation. Mirrors ap_core_producer's _cascade_buf shuffle.
+    local n = #consequences
+    for i = n, 2, -1 do
+        local j = math_random(i)
+        if j ~= i then consequences[i], consequences[j] = consequences[j], consequences[i] end
+    end
     local cap = ap_core_const.REACTIVE_MAX_CONSEQUENCES_PER_CAUSE
     local ran_count = 0
 
-    for i = 1, #shuffled do
-        local stop, ran = _dispatch_entry(shuffled[i], event_type, event_data, is_radiant, sc)
+    for i = 1, n do
+        local stop, ran = _dispatch_entry(consequences[i], event_type, event_data, is_radiant, sc)
         if stop then break end
         if not ran or is_radiant then goto continue end
         ran_count = ran_count + 1
@@ -117,13 +129,15 @@ local function _make_handler(event)
     return function(event_data) _process(event, event_data) end
 end
 
-local function _subscribe()
-    for event, _ in pairs(_registry) do
-        ap_core_util.event_subscribe(event, _make_handler(event), "consumer")
-    end
+_subscribe_event = function(event)
+    ap_core_util.event_subscribe(event, _make_handler(event), "consumer")
 end
 
-local _subscribed = false
+local function _subscribe()
+    for event, _ in pairs(_registry) do
+        _subscribe_event(event)
+    end
+end
 
 local function _on_first_update()
     if _subscribed then return end
