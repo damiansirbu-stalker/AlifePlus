@@ -2,7 +2,7 @@
 --- CAUSES table holds 7 specific causes (slumber splits 3 ways by shelter type). Picker emits
 --- one specific cause per call.
 
-local math_random, math_floor, table_sort, pairs = math.random, math.floor, table.sort, pairs
+local table_sort, pairs = table.sort, pairs
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_ext_const.CAUSE_CATEGORY
@@ -247,15 +247,15 @@ local function _find_overdue_drives(dto, now, species)
     return out
 end
 
-local function _init_dto(dto, now)
+local function _init_dto(dto, now, species, squad_id)
+    local is_active = ap_ext_util.is_active_period(species)
     for i = 1, #INSTINCTS do
         local inst = INSTINCTS[i]
-        if math_random() < 0.5 then
-            dto[inst.field] = now
-        else
-            local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
-            dto[inst.field] = now - threshold - math_random(0, math_floor(threshold))
-        end
+        local in_period = (inst.active_period and is_active)
+            or (inst.dormant_period and not is_active)
+            or (not inst.active_period and not inst.dormant_period)
+        local threshold = cfg[inst.threshold_key] * HOURS_TO_SECONDS
+        dto[inst.field] = ap_ext_util.init_overdue_timestamp(now, threshold, in_period, squad_id)
     end
 end
 
@@ -277,7 +277,7 @@ local function _on_smart(trace, squad)
     local dto = ap_ext_tracker.get_mutant_instincts(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
-        _init_dto(dto, now)
+        _init_dto(dto, now, species, squad.id)
     end
 
     local overdue = _find_overdue_drives(dto, now, species)

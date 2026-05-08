@@ -1,7 +1,7 @@
 --- ap_ext_tracker: Kill registry, alpha system, stalker needs DTO, mutant instincts DTO
 local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
-local math_min, math_floor, math_random = math.min, math.floor, math.random
+local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
 local CALLBACK = ap_core_const.CALLBACK
 local TRACE = ap_core_const.TRACE
@@ -249,8 +249,8 @@ function get_squad_opportunities(squad_id)
     return _ap_squad_opportunities:get(squad_id)
 end
 
---- Initialize squad opportunities DTO with random offset within threshold.
---- 50% start "fresh" (just used), 50% start overdue (1x-2x threshold ago) -- mirrors needs/instincts init.
+--- Initialize squad opportunities DTO so the squad starts overdue with per-squad jitter.
+--- Uses ap_ext_util.init_overdue_timestamp; opportunities have no period gate, treated as in_period.
 --- Hard-fails on missing OPPORTUNITY_THRESHOLD_KEY entry or unloaded cfg key (logs error, leaves field nil).
 function init_squad_opportunities(squad_id, now)
     if not squad_id or not now then return nil end
@@ -261,11 +261,9 @@ function init_squad_opportunities(squad_id, now)
         local threshold_hours = threshold_key and cfg[threshold_key]
         if not threshold_hours then
             ap_core_debug.err("[TRACKER] init_squad_opportunities: missing threshold field=%s key=%s", field, tostring(threshold_key))
-        elseif math_random() < 0.5 then
-            dto[field] = now
         else
             local threshold = threshold_hours * HOURS_TO_SECONDS
-            dto[field] = now - threshold - math_random(0, math_floor(threshold))
+            dto[field] = ap_ext_util.init_overdue_timestamp(now, threshold, true, squad_id)
         end
     end
     _ap_squad_opportunities:set(squad_id, dto)

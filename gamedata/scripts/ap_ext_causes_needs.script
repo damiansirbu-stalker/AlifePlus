@@ -1,7 +1,6 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
-local math_random, math_floor = math.random, math.floor
 local table_sort = table.sort
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -119,15 +118,15 @@ local function _try_cause(trace, squad, level_id, entry)
     return { code = RESULT.SUCCESS, smart = smart }
 end
 
-local function _init_dto(dto, now)
+local function _init_dto(dto, now, identity, squad_id)
+    local is_active = ap_ext_util.is_active_period(identity)
     for i = 1, #NEEDS do
         local need = NEEDS[i]
-        if math_random() < 0.5 then
-            dto[need.field] = now
-        else
-            local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
-            dto[need.field] = now - threshold - math_random(0, math_floor(threshold))
-        end
+        local in_period = (need.active_period and is_active)
+            or (need.dormant_period and not is_active)
+            or (not need.active_period and not need.dormant_period)
+        local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
+        dto[need.field] = ap_ext_util.init_overdue_timestamp(now, threshold, in_period, squad_id)
     end
 end
 
@@ -187,7 +186,7 @@ local function _on_smart(trace, squad)
     local dto = ap_ext_tracker.get_stalker_needs(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_stalker_needs(squad.id, now)
-        _init_dto(dto, now)
+        _init_dto(dto, now, squad.player_id, squad.id)
     end
 
     local overdue = _find_overdue_needs(dto, now, squad.player_id)

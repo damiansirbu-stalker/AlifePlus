@@ -19,6 +19,27 @@ function is_active_period(identity)
     return not night
 end
 
+--- Compute a freshly-initialized timestamp for a per-squad cooldown DTO field so that
+--- the squad starts already overdue (or close to it) instead of waiting a full threshold
+--- to act on its first eval.
+---
+--- in_period needs land at 1.05x-1.50x threshold elapsed (just-overdue to clearly-overdue).
+--- Out-of-period needs land at 1.20x-2.00x threshold elapsed (overdue, will fire when period flips).
+--- Per-squad jitter (squad_id mod 32 minutes) prevents whole-cohort spike on the same need.
+---
+--- @param now number current game seconds
+--- @param threshold number threshold in game seconds
+--- @param in_period boolean true if the need's period matches current world period (or no period gate)
+--- @param squad_id number squad id used for jitter
+--- @return number last_*_at timestamp
+function init_overdue_timestamp(now, threshold, in_period, squad_id)
+    local factor = in_period
+        and (1.05 + math_random() * 0.45)
+        or  (1.20 + math_random() * 0.80)
+    local jitter = ((squad_id or 0) % 32) * 60
+    return now - (factor * threshold) - jitter
+end
+
 --- Check faction alignment (hard filter, deterministic)
 --- @param alignment table|nil Alignment hash set { ["faction"] = true, ... }
 --- @param community string Faction community string

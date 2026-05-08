@@ -1,6 +1,7 @@
 next - "Maintenance"
-  Summary: variety per personality, uniform cause cascade, business rules enforced (alignment, personality, day/night), cause-consequence separation, slumber by species, mutant area swarm, outlaw massacre loot, stash by alignment, MCM regroup, freeze fix, performance
+  Summary: animated destinations, variety per personality, uniform cause cascade, business rules enforced (alignment, personality, day/night), cause-consequence separation, slumber by species, mutant area swarm, outlaw massacre loot, stash by alignment, MCM regroup, freeze fix, performance
   Gameplay:
+    Changed: every dispatched squad arrives at a smart with authored animations matching the consequence -- campfire halts at smarts with cookfire jobs, surge slumber at smarts with shelter animations, restock at smarts with trader stalls, jobs at smarts with patrol/work/sleep slots. Smarts authored without real animation jobs are filtered at the cause stage and verified again at arrival; squads never park in a destination where they would stand idle. Faction routine reads visibly different per role and time of day.
     Changed: alignment, personality, species, and the day/night cycle now control squad action consistently. Rule checks execute at the cause level before expensive world queries. The cause cascade reaches every applicable predicate per tick rather than terminating on the first few. Gating resides in the cause; action resides in the consequence. Each squad's identity (faction, species, active period, personality roll) determines its action. Faction and species behavior matches design intent rather than collapsing across categories.
     Changed: every cascade decision selects one specific action rather than a category. A campfire halt, a lair retreat, a stash fill, a surge-shelter slumber are independent rolls within the same drive. Variety emerges from cascade order across many small causes; handler-side filtering is no longer used.
     Added: mutant slumber differentiated by species. Cowardly mutants bed down in territory. Feral and predator species retreat to lairs. Aberrant and predator species seek surge shelters. Three distinct destinations under one drive.
@@ -9,6 +10,7 @@ next - "Maintenance"
     Changed: post-conquest hold significantly reduced. Stalker conquerors and mutant swarm groups release smart terrains much sooner after arrival than the previous Area Conquer duration. Conquered territory turns over more frequently.
     Added: outlaw massacre loot. Bandits, renegades, and Greh route to massacre sites and strip corpses for weapons and gear, alongside the cowardly mutants that scavenge.
     Changed: work-shift causes gate on the day/night cycle, lifestyle causes do not. Stalkers run day-active work (trade, money harvest/hunt, outpost watches, exploration, research) and night-dormant survival (sleep, shelter). Eat, heal, rest, and socialize are any-hour -- nothing in the simulation says a squad cannot eat at night or take a halt during the day. Mutants follow species circadian rhythms; nocturnal species invert their active period.
+    Changed: freshly-tracked squads start at varied overdue states for their needs, instincts, and opportunities, with per-squad jitter so neighbouring squads do not spike on the same need at the same tick. Newly-encountered squads begin acting within the first per-tick budget instead of warming up over the full threshold window after a save load.
     Changed: stash work partitioned by alignment. Outlaws ambush; neutral stalkers (Loner, Clear Sky, Freedom, Mercenary) loot; principled stalkers (Duty, Military, Monolith, ISG) and Ecologists fill. Each human faction now covers exactly one stash role.
     Changed: stash ambush is presence-only. The squad arrives at the stash, the cooldown timestamp resets on arrival, and no item action runs.
     Changed: stash fill items roll at arrival rather than at cause publish. Each fill draws independently; cause publish payload no longer carries item commitments.
@@ -38,7 +40,7 @@ next - "Maintenance"
     Added: save migration releases scripted squads whose on-arrive consequence no longer exists. Self-healing: zero orphans on a clean load makes the next pass a no-op.
   Fixed:
     Fixed: mutant area swarm publishes correctly. The cause was looking up its species table by faction key; aggressive mutant squads now claim empty smarts on arrival as designed. Dead since 1.5.0.
-    Fixed: scripted squads no longer remain idle for the full pre-arrival hold when the engine has no real job slots at the destination. AP now verifies job allocation at arrival, filters out smarts authored without real patrol / sleep / work jobs at scan time, and re-checks during the wait so a precondition flip mid-hold (surge transition, day-to-night for sleepers, zombie state, trader running out of items) releases the squad cleanly.
+    Fixed: scripted squads release cleanly when an authored animation precondition flips during the pre-arrival hold (surge transition, day-to-night for sleepers, zombie state, trader running out of items). The arrival check verifies live engine job allocation and re-runs during the hold rather than waiting out the full duration on a stale destination.
     Fixed: alpha kill events no longer fire when the killer is a story NPC, trader, or named character. Aligns with the protection already applied to the alpha, wounded, and harvest causes.
     Fixed: Squadkill Revenge fires correctly on NPC-vs-NPC kills. The cause was publishing the wrong identifier field; the fix wires up the correct one. Dead since 1.5.0.
     Fixed: disabled or wrong-alignment radiant causes no longer consume a budget slot before the cheap gate runs. The cascade reaches every generator each tick rather than only the first few.
@@ -83,7 +85,7 @@ next - "Maintenance"
     Added: 5 EN + 5 RU news templates for the new massacre loot consequence.
     Added: Russian MCM XML rebuilt at parity with English (605 strings).
     Added: Stalker_Boss credited as Russian translator. gwalls credited for English copyediting pass.
-    Changed: news templates are per-consequence only. Multi-event composite lines retired (25 ids per locale removed).
+    Removed: 25 multi-event composite news template ids per locale (retired with the per-consequence template rework).
     Changed: news voice and time-anchor sweep across EN and RU templates.
 
 1.5.0
