@@ -26,6 +26,14 @@ local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
 local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
 local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
 
+local function _build_dst_filter(community)
+    return function(smart)
+        local fac = xsmart.get_smart_faction(smart)
+        if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
+        return true
+    end
+end
+
 --- Per-cause storage: opportunity DTO field, threshold cfg key.
 local KEYS_BY_CAUSE = {
     [CAUSE.STASH_LOOT] = {
@@ -86,7 +94,9 @@ local function _try_picked_cause(trace, squad, level_id, opts)
         if not ap_core_limiter.check_cause_rate_limit(SCAN_KEY, SCAN_MAX) then
             return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
         end
-        local dst = ap_core_util.find_smart_observed(trace, opts.stash.position, { level_id = level_id })
+        local dst = ap_core_util.find_smart_observed(trace, opts.stash.position, {
+            level_id = level_id, filter = _build_dst_filter(squad.player_id),
+        })
         if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         ap_core_limiter.increment_cause_counter(SCAN_KEY)
         dst_smart_id = dst.id

@@ -4,22 +4,22 @@ next - "Maintenance"
     Changed: alignment, personality, species, and the day/night cycle now control squad action consistently. Rule checks execute at the cause level before expensive world queries. The cause cascade reaches every applicable predicate per tick rather than terminating on the first few. Gating resides in the cause; action resides in the consequence. Each squad's identity (faction, species, active period, personality roll) determines its action. Faction and species behavior matches design intent rather than collapsing across categories.
     Changed: every cascade decision selects one specific action rather than a category. A campfire halt, a lair retreat, a stash fill, a surge-shelter slumber are independent rolls within the same drive. Variety emerges from cascade order across many small causes; handler-side filtering is no longer used.
     Added: mutant slumber differentiated by species. Cowardly mutants bed down in territory. Feral and predator species retreat to lairs. Aberrant and predator species seek surge shelters. Three distinct destinations under one drive.
-    Added: mutant area swarm. Feral, predator, and aberrant squads claim empty smart terrains with additive spawn alongside the originals. Parallel to stalker conquest with its own cause and consequence; each tunes independently. The previous single AREA_CONQUER consequence is now stalker conquer and mutant swarm.
+    Added: mutant area swarm. Feral, predator, and aberrant squads claim empty smart terrains with additive spawn alongside the originals. Parallel to stalker conquest with its own cause and consequence; each tunes independently. The previous single Area Conquer consequence is now stalker conquer and mutant swarm.
     Changed: infestation relocated from mutant instincts to the area family. Trigger conditions unchanged. Predator and aberrant alpha squads continue to claim lair-type smarts and convert them into single-species nests via exclusive spawn replacement. Grouped with conquer and swarm under one MCM section with its own rate budget and gulag duration.
-    Changed: post-conquest hold reduced. Stalker conquerors hold smart terrains for 2 game hours after arrival (was 12); mutant swarm groups hold for 4 hours. Conquered territory turns over more frequently.
+    Changed: post-conquest hold significantly reduced. Stalker conquerors and mutant swarm groups release smart terrains much sooner after arrival than the previous Area Conquer duration. Conquered territory turns over more frequently.
     Added: outlaw massacre loot. Bandits, renegades, and Greh route to massacre sites and strip corpses for weapons and gear, alongside the cowardly mutants that scavenge.
     Changed: radiant causes gate on the day/night cycle. Stalkers perform day-active causes (loot, hunt, trade, jobs, socialize) and night-dormant ones (sleep, rest, shelter). Mutants follow species circadian rhythms; nocturnal species invert the schedule. Reactive causes remain any-time. Squads are no longer dispatched to loot at night or sleep during the day.
-    Changed: stash work partitioned by alignment. Outlaws ambush; neutral stalkers (stalker, csky, freedom, killer) loot; principled stalkers (dolg, army, monolith, isg) and ecologists fill. Each human faction now covers exactly one stash role.
+    Changed: stash work partitioned by alignment. Outlaws ambush; neutral stalkers (Loner, Clear Sky, Freedom, Mercenary) loot; principled stalkers (Duty, Military, Monolith, ISG) and Ecologists fill. Each human faction now covers exactly one stash role.
     Changed: stash ambush is presence-only. The squad arrives at the stash, the cooldown timestamp resets on arrival, and no item action runs.
     Changed: stash fill items roll at arrival rather than at cause publish. Each fill draws independently; cause publish payload no longer carries item commitments.
-    Changed: massacre scavenge narrows to cowardly mutants (flesh, zombie, tushkano, rat, karlik). Outlaw scavenging migrated to the new massacre_loot consequence.
+    Changed: massacre scavenge narrows to cowardly mutants (Flesh, Zombie, Tushkano, Rat, Karlik). Outlaw scavenging migrated to the new Massacre Loot consequence.
     Changed: wounded hunt narrows to predator and aberrant mutants. Outlaws no longer participate.
     Changed: mutant instinct logic uses scent range exclusively. Eye-range checks removed. Scatter from higher-tier species and roam destinations both resolve via scent.
-    Changed: personality floor reduced from 20% to 10%. Low-trait factions act approximately half as often on consequences they are poorly suited to; faction differentiation across consequences widens accordingly.
-    Changed: stash and area cooldowns operate as per-cause game-hour thresholds, replacing the previous 5-minute wall-clock cooldown. Defaults: stash loot 6h, stash ambush 12h, stash fill 12h, area conquer / swarm / infest 24h. Survives saves and time-acceleration changes.
-    Removed: squadkill_flee consequence. cause:squadkill triggers only squadkill_revenge; same-faction squads no longer flee to base after a wipe.
+    Changed: personality floor lowered. The minimum chance applied to any personality roll dropped, so low-trait factions act less often on consequences they are poorly suited to. Faction differentiation across consequences widens accordingly.
+    Changed: stash and area cooldowns operate as per-cause game-hour thresholds, replacing the previous wall-clock cooldown. Each sub-cause has its own threshold tunable in MCM; stash thresholds are shorter than area thresholds by default. Survives saves and time-acceleration changes.
+    Removed: Squadkill Flee consequence. Squadkill now triggers only Squadkill Revenge; same-faction squads no longer flee to base after a wipe.
   News & Map:
-    Added: news-chance slider on the News tab (0-100, default 20). Each consequence success rolls news_chance against the slider value before feeding the news pipeline. 100 admits every event; lower values reduce frequency. Operates in addition to the existing compose-interval and scope throttles.
+    Added: news-chance slider on the News tab (0-100, default 20). Each consequence success rolls against the slider value before feeding the news pipeline. Higher values admit more events; lower values reduce frequency. Operates in addition to the existing compose-interval and scope throttles.
     Changed: news templates are per-consequence only. Multi-event composite templates (one entry covering both halves of a paired event) retired. Each consequence rolls its own news entry independently.
     Changed: PDA marker label reduced to two lines: action phrase and subject. Other-party identity moved into news template content.
     Fixed: five news templates assumed the PDA speaker shared the subject's faction (e.g. "I was with the Monolith patrol..."). Reworded to a neutral witness voice; any speaker can now voice any template without identity contradiction.
@@ -33,40 +33,43 @@ next - "Maintenance"
     Added: Massacre Loot section under Consequences (toggle, rush, max squads).
     Removed: master umbrella toggles for needs, instincts, stash, and area. Per-cause toggles cover the same scope individually.
     Removed: drive-level enable toggles for needs and instincts. Each answer carries its own enable.
-    Removed: per-cause and per-consequence personality min/max sliders. Replaced by a single global clamp: 10% floor, 70% ceiling, applied to every personality roll.
+    Removed: per-cause and per-consequence personality min/max sliders. Replaced by a single global clamp applied to every personality roll.
   Compatibility:
     Added: save migration releases scripted squads whose on-arrive consequence no longer exists. Self-healing: zero orphans on a clean load makes the next pass a no-op.
   Fixed:
     Fixed: mutant area swarm publishes correctly. The cause was looking up its species table by faction key; aggressive mutant squads now claim empty smarts on arrival as designed. Dead since 1.5.0.
-    Fixed: scripted squads no longer remain idle for the full pre-arrival hold (up to 3 game hours) when the engine has no real job slots at the destination. AP now verifies job allocation at arrival, filters out smarts authored without real patrol / sleep / work jobs at scan time, and re-checks during the wait so a precondition flip mid-hold (surge transition, day-to-night for sleepers, zombie state, trader running out of items) releases the squad cleanly.
+    Fixed: scripted squads no longer remain idle for the full pre-arrival hold when the engine has no real job slots at the destination. AP now verifies job allocation at arrival, filters out smarts authored without real patrol / sleep / work jobs at scan time, and re-checks during the wait so a precondition flip mid-hold (surge transition, day-to-night for sleepers, zombie state, trader running out of items) releases the squad cleanly.
     Fixed: alpha kill events no longer fire when the killer is a story NPC, trader, or named character. Aligns with the protection already applied to the alpha, wounded, and harvest causes.
-    Fixed: squadkill_revenge fires correctly on NPC-vs-NPC kills. The cause was publishing the wrong identifier field; the fix wires up the correct one. Dead since 1.5.0.
+    Fixed: Squadkill Revenge fires correctly on NPC-vs-NPC kills. The cause was publishing the wrong identifier field; the fix wires up the correct one. Dead since 1.5.0.
     Fixed: disabled or wrong-alignment radiant causes no longer consume a budget slot before the cheap gate runs. The cascade reaches every generator each tick rather than only the first few.
     Fixed: harvest haunt and wounded hunt no longer dispatch mutant squads with broken commander state into species-restricted consequences. Predator and aberrant species only.
     Fixed: late-bind cause registration runs synchronously. Mods that register their causes after the actor enters the world previously landed in storage but were never evaluated.
     Fixed: dropped the arrival-overflow path. The counter it relied on was sim-routing intent, not physical occupancy; squads with free job slots no longer eject on arrival.
+    Fixed: peaceful destination causes (supply_trader, money_harvest, money_hunt, job_research) now exclude hostile-faction smarts. Without an enemy-relation gate, dynamic faction relations (e.g. Warfare flipping CSky vs ISG) routed restocking squads into hostile bases. Issue #7.
+    Fixed: stash loot, ambush, and fill no longer route the squad into a hostile base. The post-stash destination smart was picked as the nearest smart to the stash with no relation filter; an enemy-faction filter now mirrors the peaceful-needs gate.
   Performance:
     Changed: cascade buffer shuffles in place. The previous code allocated a new array per tick; the new code swaps entries in the existing buffer. Per-tick allocation eliminated for the radiant cascade.
-    Changed: radiant scan budget consolidated onto a single keyed counter (cap 5 per scan window). Cheap rule checks (toggle, alignment, personality, period) no longer consume slots reserved for world queries; the budget bounds the expensive operation only.
+    Changed: radiant scan budget consolidated onto a single keyed counter. Cheap rule checks (toggle, alignment, personality, period) no longer consume slots reserved for world queries; the budget bounds the expensive operation only.
     Changed: scripted-squad scan checks lifetime before reasserting the target. The previous order reasserted on entries about to expire. One xsquad call saved per expiring entry per scan.
   Modder API:
-    Changed: news.record_event -> news.add. Same arity; opts.cause_id dropped. add() rolls news_chance before append; news.add_unfiltered bypasses for debug seeders.
-    Changed: producer.register takes (config, handler) with config { callback, cause_type, category, name }. Dedup is by handler reference.
-    Changed: limiter.check_cause_rate_limit is generic. Takes (key, max).
-    Changed: util.check_personality reads global PERSONALITY_FLOOR / CEILING from ext const. opts.p_min and opts.p_max removed.
-    Removed: broker activity record API (record / get_record / get_records / clear_record). News owns its FIFO; HUD reads scripted-squad and identity registers directly.
-    Removed: opts.cause_id on cause/consequence payloads. Used only by the deleted pair pool.
-    Removed: cause:squadkill payload field killer_squad. Re-resolve via xobject.se(killer_squad_id) per the synchronous payload rule.
-    Removed: cause:alphakill payload fields name, alpha_level, kills. Resolve via xcreature.get_name and tracker.get_alpha_level at read time.
-    Added: ap_core_hud.register_identity_source(fn) and register_subject_resolver(fn). Ext registers at on_game_start; core has zero ext imports.
-    Added: ap_ext_tracker.get_alpha_marker_squads(). Returns squad ids hosting alphas, for the HUD identity-source registration.
-    Added: ap_ext_util.get_faction_display(faction) and get_species_display(species). One translation path shared by HUD and news.
-    Added: CAUSE_CATEGORY enum (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES) for rate-limit grouping. Lives in ext const.
-    Added: HARVEST_CALLBACKS and WOUNDED_CALLBACKS callback families. A cause that subscribes to multiple engine callbacks for one logical event registers once per family member with the same predicate.
-    Added: REACTIVE_MAX_CONSEQUENCES_PER_CAUSE = 5 cap, enforced in consumer. Safety net for future causes; today's families have at most 3.
-    Added: ap_core_debug.bracket(constant) log-label helper. Renames propagate without touching log strings.
-    Added: ap_ext_common module. Hosts the chase pattern, used by harvest_rob, alphakill_targeted, squadkill_revenge; available to integrators building similar pursuit consequences.
-    Module rename: ap_core_utils -> ap_core_util. Diagnostic field rename: total_deaths / death_count -> kill_count on cause:massacre and cause:basekill.
+    Added: ap_core_hud.register_identity_source(fn), register_subject_resolver(fn). Ext-registered at on_game_start; core holds zero ext imports.
+    Added: ap_ext_tracker.get_alpha_marker_squads() - squad ids hosting alphas, for the HUD identity source.
+    Added: ap_ext_util.get_faction_display(faction), get_species_display(species). Shared HUD/news translation path.
+    Added: CAUSE_CATEGORY enum in ap_ext_const (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Each cause declares its category for rate-limit grouping.
+    Added: HARVEST_CALLBACKS, WOUNDED_CALLBACKS in ap_core_const. Cause registers once per family member with the same predicate.
+    Added: REACTIVE_MAX_CONSEQUENCES_PER_CAUSE in ap_core_const. Consumer-enforced cap; safety net for future families.
+    Added: ap_core_debug.bracket(constant). Log-label helper from CAUSE / CONSEQUENCE / TRACE constants; renames propagate.
+    Added: ap_ext_common module. Chase pattern (move_actor_chasers, make_move_smart_chasers, make_on_arrive); used by harvest_rob, alphakill_targeted, squadkill_revenge.
+    Changed: ap_ext_news.record_event(squad, cause, consequence, opts) -> add(...). add_unfiltered(...) bypasses the chance gate. opts.cause_id removed.
+    Changed: ap_core_producer.register(name, config, handler) -> register(config, handler). config requires callback, cause_type, category, name. Dedup by handler reference.
+    Changed: ap_core_limiter.check_cause_rate_limit(name) -> (key, max). Caller supplies key and cap.
+    Changed: ap_ext_util.check_personality opts drops p_min / p_max. Reads global PERSONALITY_FLOOR / CEILING from ap_ext_const.
+    Removed: ap_core_broker activity record API (record, get_record, get_records, clear_record, RECORD_CAPACITY). News owns its FIFO; HUD reads scripted-squad and identity registers.
+    Removed: opts.cause_id and result._cause_id on cause/consequence payloads. Used only by the deleted pair pool.
+    Removed: cause:squadkill payload field killer_squad. Re-resolve via xobject.se(killer_squad_id).
+    Removed: cause:alphakill payload fields name, alpha_level, kills. Resolve via xcreature.get_name and ap_ext_tracker.get_alpha_level.
+    Renamed: ap_core_utils -> ap_core_util. Singular form, matching ap_ext_util.
+    Renamed: payload field total_deaths / death_count -> kill_count on cause:massacre and cause:basekill.
   Internal:
     Changed: news pipeline owns its session FIFO. Activity record removed from broker. Each consequence rolls a chance to publish; on hit, the entry is appended with display strings captured at write time.
     Changed: per-cause RULES and SCAN trace lines emit one log line per attempt at DEBUG. New REASON codes (DISABLED, ON_COOLDOWN, NO_ELIGIBLE_SQUAD, WRONG_PERIOD, BUDGET_EXHAUSTED) distinguish post-filter rejects from scan-empty.
