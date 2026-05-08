@@ -1,8 +1,6 @@
 --- ap_ext_causes_stash: State-classifier picker. Peeks one stash in EYE range,
 --- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
 
-local random = math.random
-
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_ext_const.CAUSE_CATEGORY
@@ -20,8 +18,9 @@ local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human = ap_ext_const.alignment_human
-local _alignment_loot = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
+local _alignment_loot = ap_ext_const.alignment_unprincipled
 local _alignment_outlaw = ap_ext_const.alignment_outlaw
+local _alignment_fill = xtable.merge(ap_ext_const.alignment_principled, { ["ecolog"] = true })
 
 local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
 local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
@@ -47,51 +46,13 @@ local _personality_by_cause = {
     [CAUSE.STASH_AMBUSH] = { traits = _personality_ambush },
 }
 
--- Stash fill item pool (medical, tools, artefacts). Weighted via duplicates.
-local STASH_FILL_ITEMS = {
-    -- Medical - bandages/tourniquets
-    "bandage", "bandage", "bandage",
-    "army_bandage", "army_bandage",
-    "salicidic_bandage",
-    "tourniquet", "tourniquet",
-    -- Medical - medkits
-    "medkit", "medkit", "medkit",
-    "medkit_army", "medkit_army",
-    "medkit_scientic",
-    -- Medical - drugs
-    "antirad", "antirad",
-    "drug_antidot", "drug_antidot",
-    "drug_radioprotector",
-    "drug_coagulant", "drug_coagulant",
-    "drug_psy_blockade",
-    "yadex",
-    -- Repair tools
-    "toolkit_p", "toolkit_p", "toolkit_p",
-    "toolkit_w", "toolkit_w",
-    "toolkit_a", "toolkit_a",
-    -- Artefacts - low tier (base Anomaly, src: items_artefacts.ltx)
-    "af_itcher", "af_pin", "af_cristall", "af_fireball",
-    "af_blood", "af_bracelet", "af_baloon", "af_electra_sparkler",
-    "af_sponge", "af_ring",
-    -- Artefacts - mid tier (base Anomaly)
-    "af_electra_flash", "af_medusa", "af_vyvert", "af_ameba_slime",
-}
-
---- Pick N random sections from the fill pool at publish time. Cause owns the items list.
-local function _pick_random_items(count)
-    local items = {}
-    for i = 1, count do
-        items[i] = STASH_FILL_ITEMS[random(#STASH_FILL_ITEMS)]
-    end
-    return items
-end
-
---- Branch picker. Empty stash + human -> EMPTY. Non-empty + outlaw + valuable cache -> TRAP.
---- Non-empty + LOOT-eligible alignment -> FULL. Each branch checks its own per-cause toggle;
---- a disabled branch falls through to the next eligible branch.
+--- Branch picker. Empty stash + fill-eligible alignment -> CAUSE.STASH_FILL.
+--- Non-empty + outlaw + items_count >= cause_stash_ambush_min_items -> CAUSE.STASH_AMBUSH.
+--- Non-empty + loot-eligible alignment -> CAUSE.STASH_LOOT. Each branch checks its own
+--- per-cause toggle; a disabled branch falls through to the next eligible branch.
 local function _pick_branch(community, is_empty, items_count)
     if is_empty then
-        if _alignment_human[community] and cfg.cause_stash_fill_enabled then return CAUSE.STASH_FILL end
+        if _alignment_fill[community] and cfg.cause_stash_fill_enabled then return CAUSE.STASH_FILL end
         return nil
     end
     if _alignment_outlaw[community] and items_count >= cfg.cause_stash_ambush_min_items
@@ -131,11 +92,6 @@ local function _try_picked_cause(trace, squad, level_id, opts)
         dst_smart_id = dst.id
     end
 
-    local fill_items
-    if cause_const == CAUSE.STASH_FILL then
-        fill_items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
-    end
-
     return {
         cause = cause_const,
         squad_id = squad.id,
@@ -147,7 +103,6 @@ local function _try_picked_cause(trace, squad, level_id, opts)
         items_count = opts.items_count,
         dto_field = keys.field,
         dst_smart_id = dst_smart_id,
-        fill_items = fill_items,
     }
 end
 

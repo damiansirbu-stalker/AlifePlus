@@ -1,5 +1,7 @@
 --- ap_ext_consequences_stash: STASH family consequences (loot + ambush + fill). CONFIGS factory.
 
+local random = math.random
+
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -35,6 +37,45 @@ local function _is_protected_stash(stash_id)
     return false
 end
 
+-- Stash fill item pool (medical, tools, artefacts). Weighted via duplicates.
+local STASH_FILL_ITEMS = {
+    -- Medical - bandages/tourniquets
+    "bandage", "bandage", "bandage",
+    "army_bandage", "army_bandage",
+    "salicidic_bandage",
+    "tourniquet", "tourniquet",
+    -- Medical - medkits
+    "medkit", "medkit", "medkit",
+    "medkit_army", "medkit_army",
+    "medkit_scientic",
+    -- Medical - drugs
+    "antirad", "antirad",
+    "drug_antidot", "drug_antidot",
+    "drug_radioprotector",
+    "drug_coagulant", "drug_coagulant",
+    "drug_psy_blockade",
+    "yadex",
+    -- Repair tools
+    "toolkit_p", "toolkit_p", "toolkit_p",
+    "toolkit_w", "toolkit_w",
+    "toolkit_a", "toolkit_a",
+    -- Artefacts - low tier (base Anomaly, src: items_artefacts.ltx)
+    "af_itcher", "af_pin", "af_cristall", "af_fireball",
+    "af_blood", "af_bracelet", "af_baloon", "af_electra_sparkler",
+    "af_sponge", "af_ring",
+    -- Artefacts - mid tier (base Anomaly)
+    "af_electra_flash", "af_medusa", "af_vyvert", "af_ameba_slime",
+}
+
+--- Pick N random sections from the fill pool at arrival time.
+local function _pick_random_items(count)
+    local items = {}
+    for i = 1, count do
+        items[i] = STASH_FILL_ITEMS[random(#STASH_FILL_ITEMS)]
+    end
+    return items
+end
+
 local function _arrive_loot(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
@@ -64,7 +105,8 @@ end
 local function _arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
-    local stash_id, items = args.stash_id, args.items
+    local stash_id = args.stash_id
+    local items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
     if not xstash.fill_stash(stash_id, items, false) then
         ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d failed", stash_id, squad.id)
         return
@@ -77,7 +119,7 @@ local CONFIGS = {
       name = "stash_loot",
       enabled_key = "consequence_stash_loot_enabled",
       on_arrive_fn = _arrive_loot,
-      pre_release_gulag = nil },
+      pre_release_gulag = PRE_RELEASE_GULAG.STASH_LOOT },
     { consequence = CONSEQUENCE.STASH_AMBUSH, event = CAUSE.STASH_AMBUSH,
       name = "stash_ambush",
       enabled_key = "consequence_stash_ambush_enabled",
@@ -87,7 +129,7 @@ local CONFIGS = {
       name = "stash_fill",
       enabled_key = "consequence_stash_fill_enabled",
       on_arrive_fn = _arrive_fill,
-      pre_release_gulag = nil },
+      pre_release_gulag = PRE_RELEASE_GULAG.STASH_FILL },
 }
 
 local function _make_condition(enabled_key)
@@ -107,7 +149,7 @@ local function _make_handler(entry)
                 res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
-                    on_arrive_args = { stash_id = event_data.stash_id, dto_field = event_data.dto_field, items = event_data.fill_items },
+                    on_arrive_args = { stash_id = event_data.stash_id, dto_field = event_data.dto_field },
                     pre_release_gulag = entry.pre_release_gulag,
                 })
                 return res

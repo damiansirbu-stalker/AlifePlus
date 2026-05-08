@@ -4,6 +4,7 @@ next
     Changed: AREA_CONQUER is now two consequences. Human and Mutant run independently from the same cause and have their own MCM toggles.
     Changed: INFEST moved from mutant instincts to AREA family. Trigger conditions are unchanged. Cause name and rate-limit budget differ.
     Changed: stash AMBUSH now fires on-arrive. The arrival resets the opportunity DTO timestamp. There is no item action.
+    Changed: stash family alignment partition. AMBUSH stays outlaw (bandit, renegade, Greh). LOOT narrows to unprincipled stalkers (stalker, csky, freedom, killer); outlaws no longer loot stashes. FILL narrows to principled stalkers (dolg, army, monolith, isg) plus ecologists; the other factions no longer fill stashes. Each human faction now covers exactly one stash opportunity.
     Changed: instincts use scent range exclusively. Scatter detects higher-tier threats by scent (was eye range). Roam destination is any-distance scent (no minimum).
     Added: massacre_loot consequence. Outlaws (bandits, renegades, Greh) walk to massacre sites and strip corpses for weapons and gear, alongside the cowardly mutants that scavenge.
     Changed: massacre_scavenge narrowed to cowardly mutants (flesh, zombie, tushkano, rat, karlik). Outlaws no longer scavenge through this path; they loot via the new massacre_loot consequence.
@@ -18,6 +19,8 @@ next
     Changed: stash predicate finds and classifies the stash before publishing. Cascade slots are not wasted when no stash is in range.
     Changed: every cause carries its own enable toggle. Drive-level enable cfg keys removed for needs and instincts. Multi-answer drives share only Hull threshold + DTO timestamp.
     Changed: ap_core_producer.register is write-through. _cascade_buf and _radiant_callbacks are maintained synchronously at register time. Removed the dual-shape (_radiant_handlers + _rebuild_radiant_set) that snapshotted at actor_on_first_update. Engine subscription stays deferred to actor_on_first_update; after that point register() also subscribes new callbacks for late-bind integrators.
+    Changed: stash_fill chooses items at arrival. STASH_FILL_ITEMS pool and the random pick moved from cause to consequence; _arrive_fill picks at arrival via consequence_stash_fill_min_items / _max_items. Cause publish payload no longer carries fill_items; on_arrive_args no longer carries items.
+    Added: PRE_RELEASE_GULAG entries STASH_LOOT and STASH_FILL (300s each). Stash loot and fill CONFIGS reference the constants instead of nil-fallthrough to PRE_RELEASE_GULAG_DEFAULT.
   MCM:
     Added: news_chance slider (0-100, default 20) under News tab. Chance any single consequence publishes a news entry on success.
     Added: cause_max_reactions, cause_max_needs, cause_max_instincts, cause_max_opportunities (4 sliders, default 20/60s each).
