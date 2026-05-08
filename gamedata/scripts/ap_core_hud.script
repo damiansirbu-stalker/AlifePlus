@@ -72,7 +72,7 @@ end
 -- Inline two-loop. Scripted first; identity source fills empty slots. Scripted-wins
 -- precedence falls out of fill order — no scratch set, no source field.
 local function _apply_markers()
-    local scripted = ap_core_broker.get_scripted_ids()
+    local scripted = ap_core_broker.get_scripted_squads()
     for squad_id, data in pairs(scripted) do
         if data.on_arrive then _mark(squad_id, data.on_arrive) end
     end
@@ -88,7 +88,7 @@ end
 -- A squad is live while it appears in either register; otherwise start linger, expire, unmark.
 local function _validate_markers()
     local now = clock()
-    local scripted = ap_core_broker.get_scripted_ids()
+    local scripted = ap_core_broker.get_scripted_squads()
     local identity_set = {}
     local identities = _identity_source_fn()
     for i = 1, #identities do identity_set[identities[i]] = true end

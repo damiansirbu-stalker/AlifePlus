@@ -328,15 +328,15 @@ xsquad.control_squad sets scripted_target on acquire; xsquad.release_squad clear
 
 ## HUD
 
-ap_core_hud consolidates all visual output: PDA map markers and pipeline statistics overlay. Reads from ap_core_broker.get_scripted_ids() and from registered identity sources. Owns no domain state.
+ap_core_hud consolidates all visual output: PDA map markers and pipeline statistics overlay. Reads from ap_core_broker.get_scripted_squads() and from registered identity sources. Owns no domain state.
 
 ### Markers
 
 HUD owns the marker lifecycle end-to-end via a private _marker_state[squad_id] = { consequence, remove_at? } table. Marker timer fires every UPDATE_MARKERS_SEC = 10s (apply); validate piggybacks on the same timer at VALIDATE_MARKERS_SEC = 20s cadence.
 
-Apply pass. Iterates ap_core_broker.get_scripted_ids() for currently scripted squads, then iterates registered identity sources for non-scripted squads (alphas with no current consequence). For each squad, resolves scripted.on_arrive (or ALPHA_PROMOTE for identity-only squads) to ap_core_const.CONSEQUENCE_INFO[consequence].action_key, translated via game.translate_string. If the squad has no marker yet or its consequence changed, calls xpda.mark_squad and updates _marker_state.
+Apply pass. Iterates ap_core_broker.get_scripted_squads() for currently scripted squads, then iterates registered identity sources for non-scripted squads (alphas with no current consequence). For each squad, resolves scripted.on_arrive (or ALPHA_PROMOTE for identity-only squads) to ap_core_const.CONSEQUENCE_INFO[consequence].action_key, translated via game.translate_string. If the squad has no marker yet or its consequence changed, calls xpda.mark_squad and updates _marker_state.
 
-Validate pass. Iterates _marker_state itself. For squads no longer live (not in get_scripted_ids() AND not in any identity source list), starts a MARKER_LINGER_SEC = 60s linger timer (state.remove_at). When the linger expires, unmarks via xpda.unmark_squad and drops the slot. Entity death triggers _on_server_entity_on_unregister which unmarks immediately, no linger.
+Validate pass. Iterates _marker_state itself. For squads no longer live (not in get_scripted_squads() AND not in any identity source list), starts a MARKER_LINGER_SEC = 60s linger timer (state.remove_at). When the linger expires, unmarks via xpda.unmark_squad and drops the slot. Entity death triggers _on_server_entity_on_unregister which unmarks immediately, no linger.
 
 Identity sources (register_identity_source). Squad-id list providers registered by ext modules. Squads in any provider's returned list receive the consequence-specific marker (currently ALPHA_PROMOTE) when not currently scripted. Last writer wins on duplicate registration. Today: tracker registers get_alpha_marker_squads.
 

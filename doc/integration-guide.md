@@ -389,7 +389,7 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_owner(squad)` | `string` or nil - ownership query |
 | `register_owner(name, filter_fn)` | register ownership filter (replaces on name match) |
 | `register_arrival_handler(key, fn)` | register on-arrival callback by key. `consumer.register` also accepts an `on_arrive` opt that wires this for you |
-| `get_scripted_ids()` | read-only reference to `_ap_scripted_squads` table (keyed by squad id; each entry carries `scripted_target`, `target_smart_id`, `tracked_at`, `on_arrive`, `on_arrive_args`, `pre_release_gulag`, `arrived`, `release_at`) |
+| `get_scripted_squads()` | read-only reference to `_ap_scripted_squads` table (keyed by squad id; each entry carries `scripted_target`, `target_smart_id`, `tracked_at`, `on_arrive`, `on_arrive_args`, `pre_release_gulag`, `arrived`, `release_at`) |
 
 ---
 
@@ -411,7 +411,7 @@ Read-only static tables and enums that integrators reference directly. No regist
 | Symbol | Use |
 |--------|-----|
 | `CAUSE` | enum of cause event names (e.g. `CAUSE.MASSACRE` -> `"cause:massacre"`). Use as xbus event keys. |
-| `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Pass to `script_squad` `opts.on_arrive`; read back from `ap_core_broker.get_scripted_ids()[squad_id].on_arrive`. |
+| `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Pass to `script_squad` `opts.on_arrive`; read back from `ap_core_broker.get_scripted_squads()[squad_id].on_arrive`. |
 | `CONSEQUENCE_INFO` | per-consequence `{ name_key, action_key }`. `name_key` is the short caption ("Massacre Investigate"); `action_key` is the full action phrase ("Investigating a Massacre Site"). Both XML ids resolved via `game.translate_string`. |
 | `CONSEQUENCE_PHASE` | trace-only enum used by `observe()` for sub-phase paths (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.). Integrators rarely need this; it shows up in DEBUG-level traces. |
 | `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED). |
@@ -443,7 +443,7 @@ Goal: when your warfare map UI hovers a squad, append what the squad is doing ac
 local function get_ap_action(squad_id)
     if not ap_core_broker or not ap_core_const then return nil end
 
-    local scripted = ap_core_broker.get_scripted_ids()[squad_id]
+    local scripted = ap_core_broker.get_scripted_squads()[squad_id]
     if not scripted or not scripted.on_arrive then return nil end
 
     local info = ap_core_const.CONSEQUENCE_INFO[scripted.on_arrive]
@@ -463,7 +463,7 @@ end
 
 Notes for warfare authors:
 
-- Call `get_scripted_ids()` fresh on every render tick. Entries mutate as squads move between consequences.
+- Call `get_scripted_squads()` fresh on every render tick. Entries mutate as squads move between consequences.
 - `ap_core_const.CONSEQUENCE_INFO` is a static const table; read it directly, no caching needed.
 - Each entry has both `action_key` (full phrase shown to the player) and `name_key` (short caption for config / debug). Pick whichever fits your UI.
 - Locale switch (English / Russian) works automatically because the resolve happens at render time via `game.translate_string`.
