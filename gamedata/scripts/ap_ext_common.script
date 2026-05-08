@@ -10,9 +10,9 @@ local cfg = ap_core_mcm.cfg
 
 --- Dispatch chasers via engine actor targeting (no arrival detection; engine handles pursuit).
 --- Used when the chase target is the player.
-function move_actor_chasers(squads, moved)
+function move_actor_chasers(consequence_key, squads, moved)
     for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser)
+        local res = ap_core_broker.script_actor_target(chaser, { consequence = consequence_key })
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
@@ -26,6 +26,7 @@ function make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value)
     return function(squads, smart, target_squad_id, moved)
         for _, chaser in ipairs(squads) do
             local res = ap_core_broker.script_squad(chaser, smart, {
+                consequence = consequence_key,
                 rush = cfg[rush_cfg_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id },
@@ -68,6 +69,7 @@ function make_on_arrive(opts)
                 return { code = TRACE.CO_LOCATED, id = squad.id, chase = chase_count }
             end
             local res = ap_core_broker.script_squad(squad, smart, {
+                consequence = consequence_key,
                 rush = cfg[rush_cfg_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },

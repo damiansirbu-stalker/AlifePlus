@@ -70,7 +70,7 @@ local function _handler_revenge(event_data)
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if not avengers then return { code = TRACE.NO_SQUADS } end
             if is_player_kill then
-                _move_actor_chasers(avengers, moved)
+                _move_actor_chasers(CONSEQUENCE.SQUADKILL_REVENGE, avengers, moved)
             else
                 dst_smart = ap_core_util.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,

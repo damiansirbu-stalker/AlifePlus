@@ -52,6 +52,7 @@ next - "Maintenance"
     Fixed: stash loot, ambush, and fill no longer route the squad into a hostile base. The post-stash destination smart was picked as the nearest smart to the stash with no relation filter; an enemy-faction filter now mirrors the peaceful-needs gate.
     Fixed: mutant species and faction display strings render lowercase in PDA news ("zombies" instead of "Zombies"). Capitalized common nouns mid-sentence read like UI labels; lowercase reads as prose. Issue #8.
     Fixed: zombified factions no longer trigger human-narrative news templates ("watch rotation", "laid out a rotation"). The area cause now routes humans (alignment_human, excludes zombified) and mutants (species feral/predator/aberrant, excludes zombie species) on separate paths; zombies fall through both. Issue #9 (resolved by 1d49fc7).
+    Fixed: PDA map markers no longer silently drop scripted squads whose consequence registered no arrival handler. The hud was reading the broker's internal arrival-dispatch key (on_arrive) as if it were the consequence identity; massacre investigate/scavenge/loot, basekill support/flee, harvest haunt, and wounded help/hunt squads (none of which set on_arrive) had nil identity and rendered no marker.
   Performance:
     Changed: cascade buffer shuffles in place. The previous code allocated a new array per tick; the new code swaps entries in the existing buffer. Per-tick allocation eliminated for the radiant cascade.
     Changed: consumer dispatch shuffles in place. Mirrors the cascade buffer pattern on the consumer side: the per-event copy of the consequence list is gone. Per-event allocation eliminated on the dispatch path.
@@ -73,6 +74,7 @@ next - "Maintenance"
     Removed: ap_core_broker activity record API (record, get_record, get_records, clear_record, RECORD_CAPACITY). News owns its FIFO; HUD reads scripted-squad and identity registers.
     Removed: opts.cause_id and result._cause_id on cause/consequence payloads. Used only by the deleted pair pool.
     Removed: cause:squadkill payload field killer_squad. Re-resolve via xobject.se(killer_squad_id).
+    Added: ap_core_broker.script_squad / script_actor_target opts.consequence. Canonical identity field stored on _ap_scripted_squads records as data.consequence; integrators read it via get_scripted_squads()[squad_id].consequence. opts.on_arrive remains internal arrival-handler dispatch only.
     Removed: cause:alphakill payload fields name, alpha_level, kills. Resolve via xcreature.get_name and ap_ext_tracker.get_alpha_level.
     Renamed: ap_core_utils -> ap_core_util. Singular form, matching ap_ext_util.
     Renamed: payload field total_deaths / death_count -> kill_count on cause:massacre and cause:basekill.

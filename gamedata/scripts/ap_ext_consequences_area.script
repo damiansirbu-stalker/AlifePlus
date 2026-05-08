@@ -67,6 +67,7 @@ local function _make_handler(entry)
             local res
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
+                    consequence = entry.consequence,
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = {

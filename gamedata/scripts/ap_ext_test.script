@@ -108,7 +108,7 @@ function goto_need()
     local actor_community = db.actor:character_community()
     local scripted = ap_core_broker.get_scripted_squads()
     for squad_id, data in pairs(scripted) do
-        if not NEEDS_ARRIVE_KEYS[data.on_arrive] then goto skip end
+        if not NEEDS_ARRIVE_KEYS[data.consequence] then goto skip end
         local squad = sim:object(squad_id)
         if not squad then goto skip end
         if game_relations.is_factions_enemies(actor_community, squad:get_squad_community()) then goto skip end
@@ -117,8 +117,8 @@ function goto_need()
         db.actor:set_actor_position(cmd_se.position)
         local name = cmd_se:character_name()
         ap_core_debug.debug("[TEST] goto_need OK squad=%d need=%s target=%s npc=%s",
-            squad_id, data.on_arrive, data.scripted_target, name)
-        _tip("Teleported to " .. name .. " (" .. data.on_arrive .. " -> " .. data.scripted_target .. ")")
+            squad_id, data.consequence, data.scripted_target, name)
+        _tip("Teleported to " .. name .. " (" .. data.consequence .. " -> " .. data.scripted_target .. ")")
         do return end
         ::skip::
     end

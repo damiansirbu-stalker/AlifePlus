@@ -59,7 +59,7 @@ local function _handler_help(event_data)
         local last_reason
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_help_rush, pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HELP })
+                local res = ap_core_broker.script_squad(squad, target_smart, { consequence = CONSEQUENCE.WOUNDED_HELP, rush = cfg.consequence_wounded_help_rush, pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HELP })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
@@ -105,7 +105,7 @@ local function _handler_hunt(event_data)
         local last_reason
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_wounded_hunt_rush, pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HUNT })
+                local res = ap_core_broker.script_squad(squad, target_smart, { consequence = CONSEQUENCE.WOUNDED_HUNT, rush = cfg.consequence_wounded_hunt_rush, pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HUNT })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })

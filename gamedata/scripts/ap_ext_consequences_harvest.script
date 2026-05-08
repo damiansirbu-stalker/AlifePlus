@@ -72,7 +72,7 @@ local function _handler_rob(event_data)
         local dst_smart = nil
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if taker_is_player then
-                _move_actor_chasers(robbers, moved)
+                _move_actor_chasers(CONSEQUENCE.HARVEST_ROB, robbers, moved)
             else
                 dst_smart = ap_core_util.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
@@ -131,7 +131,7 @@ local function _handler_haunt(event_data)
         local last_reason
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_harvest_haunt_rush })
+                local res = ap_core_broker.script_squad(squad, target_smart, { consequence = CONSEQUENCE.HARVEST_HAUNT, rush = cfg.consequence_harvest_haunt_rush })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })

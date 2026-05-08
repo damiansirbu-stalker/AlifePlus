@@ -142,6 +142,7 @@ local function _handler(event_data)
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for i = 1, #squads do
                 local res = ap_core_broker.script_squad(squads[i], smart, {
+                    consequence = CONSEQUENCE.AMBUSH_SETUP,
                     rush = cfg.consequence_ambush_setup_rush,
                     on_arrive = CONSEQUENCE.AMBUSH_SETUP,
                     pre_release_gulag = PRE_RELEASE_GULAG.AMBUSH_SETUP,
@@ -206,6 +207,7 @@ local function _on_arrive(squad, args)
     if not smart then return end
 
     ap_core_broker.script_squad(squad, smart, {
+        consequence = CONSEQUENCE.AMBUSH_SETUP,
         rush = cfg.consequence_ambush_setup_rush,
         on_arrive = CONSEQUENCE.AMBUSH_SETUP,
         on_arrive_args = { target_squad_id = args.target_squad_id, chase_count = chase_count },
@@ -389,7 +391,7 @@ Direct access to AP domain systems. APIs may change between versions.
 | `get_owner(squad)` | `string` or nil - ownership query |
 | `register_owner(name, filter_fn)` | register ownership filter (replaces on name match) |
 | `register_arrival_handler(key, fn)` | register on-arrival callback by key. `consumer.register` also accepts an `on_arrive` opt that wires this for you |
-| `get_scripted_squads()` | read-only reference to `_ap_scripted_squads` table (keyed by squad id; each entry carries `scripted_target`, `target_smart_id`, `tracked_at`, `on_arrive`, `on_arrive_args`, `pre_release_gulag`, `arrived`, `release_at`) |
+| `get_scripted_squads()` | read-only reference to `_ap_scripted_squads` table (keyed by squad id; each entry carries `scripted_target`, `target_smart_id`, `tracked_at`, `consequence`, `on_arrive`, `on_arrive_args`, `pre_release_gulag`, `arrived`, `release_at`). The `consequence` field identifies what the squad is doing; `on_arrive` is internal dispatch. |
 
 ---
 
@@ -411,7 +413,7 @@ Read-only static tables and enums that integrators reference directly. No regist
 | Symbol | Use |
 |--------|-----|
 | `CAUSE` | enum of cause event names (e.g. `CAUSE.MASSACRE` -> `"cause:massacre"`). Use as xbus event keys. |
-| `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Pass to `script_squad` `opts.on_arrive`; read back from `ap_core_broker.get_scripted_squads()[squad_id].on_arrive`. |
+| `CONSEQUENCE` | enum of consequence keys (e.g. `CONSEQUENCE.MASSACRE_INVESTIGATE`). Pass to `script_squad` `opts.consequence` for identity; read back from `ap_core_broker.get_scripted_squads()[squad_id].consequence`. Pass to `opts.on_arrive` only if you've registered an arrival handler under that name via `consumer.register`. |
 | `CONSEQUENCE_INFO` | per-consequence `{ name_key, action_key }`. `name_key` is the short caption ("Massacre Investigate"); `action_key` is the full action phrase ("Investigating a Massacre Site"). Both XML ids resolved via `game.translate_string`. |
 | `CONSEQUENCE_PHASE` | trace-only enum used by `observe()` for sub-phase paths (FIND_TARGETS, MOVE_SQUAD, ARRIVE, etc.). Integrators rarely need this; it shows up in DEBUG-level traces. |
 | `RESULT` | consequence handler return codes (SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED). |
@@ -424,6 +426,7 @@ Read-only static tables and enums that integrators reference directly. No regist
 local protected = ap_core_broker.is_protected(squad)
 if protected then return end
 ap_core_broker.script_squad(squad, smart, {
+    consequence = CONSEQUENCE.MY_CONSEQUENCE,
     rush = true,
     on_arrive = CONSEQUENCE.MY_CONSEQUENCE,
     on_arrive_args = { target_id = target.id },
@@ -444,9 +447,9 @@ local function get_ap_action(squad_id)
     if not ap_core_broker or not ap_core_const then return nil end
 
     local scripted = ap_core_broker.get_scripted_squads()[squad_id]
-    if not scripted or not scripted.on_arrive then return nil end
+    if not scripted or not scripted.consequence then return nil end
 
-    local info = ap_core_const.CONSEQUENCE_INFO[scripted.on_arrive]
+    local info = ap_core_const.CONSEQUENCE_INFO[scripted.consequence]
     if not info then return nil end
 
     local text = game.translate_string(info.action_key)
