@@ -53,13 +53,15 @@ end
 -- Mark a squad with its action and consequence. Cache hits short-circuit when neither has
 -- changed since the last render. On miss, resolves squad via xobject.se and delegates the
 -- subject string to the registered resolver. Identity-source squads (alphas with no current
--- consequence) get the ALPHA_PROMOTE pair as a fallback.
+-- consequence) get the ALPHA_PROMOTE pair as a fallback. Consequence and action enum values
+-- are themselves localization ids resolved against ui_st_ap_consequence.xml.
 local function _mark(squad_id, consequence, action)
     local state = _marker_state[squad_id]
     if state and state.consequence == consequence and state.action == action then return end
     local action_text = action and game.translate_string(action)
     if not action_text or action_text == action or action_text == "" then action_text = action or consequence end
-    local consequence_text = consequence and consequence:match("^consequence:(.+)$") or ""
+    local consequence_text = consequence and game.translate_string(consequence) or ""
+    if consequence_text == consequence then consequence_text = "" end
     local squad = xobject.se(squad_id)
     if not squad then return end
     local subject = _subject_resolver_fn(squad)

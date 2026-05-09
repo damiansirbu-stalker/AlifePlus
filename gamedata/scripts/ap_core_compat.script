@@ -120,12 +120,15 @@ local function _on_load_state(m_data)
     xchange.run(m_data)
 end
 
---- Warfare A Life Overhaul compat: preserve old call shapes.
+--- Warfare A Life Overhaul (erepb GAMMA fork) compat: preserve old call shapes.
 --- Covers exactly the AP surface that mod reads:
 ---   ap_core_broker.get_scripted_ids()[id]                 -> aliased to get_scripted_squads
 ---   ap_core_broker.get_record({squad_id, assigned=true})  -> synthesized minimal record
----   ap_core_const.CONSEQUENCE_INFO[consequence].action_key -> rebuilt from CONSEQUENCE+ACTION
+---   ap_core_const.CONSEQUENCE_INFO[c].action_key          -> rebuilt from CONSEQUENCE+ACTION
 ---   ap_core_broker.register_owner("warfare", fn)          -> still public
+--- Warfare reads info.action_key and passes it to game.translate_string for tooltip text.
+--- ACTION enum values are themselves localization ids (action:<k>), so the indirection
+--- still resolves against ui_st_ap_consequence.xml.
 local function _wire_warfare_compat_shim()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
@@ -136,8 +139,6 @@ local function _wire_warfare_compat_shim()
         return { consequence = entry.consequence }
     end
 
-    -- Warfare reads info.action_key and passes it to game.translate_string.
-    -- New ACTION values are themselves localization ids, so the indirection still resolves.
     local info = {}
     for k, consequence in pairs(ap_core_const.CONSEQUENCE) do
         info[consequence] = { action_key = ap_core_const.ACTION[k] }

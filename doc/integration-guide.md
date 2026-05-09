@@ -87,12 +87,23 @@ ap_api.script_actor_target(squad, opts)
 ### Display text
 
 ```lua
-ap_api.get_text(action)
--- Resolve an action enum value to its localized phrase
--- ("Investigating a Massacre Site", "Heading to a Campfire to Rest", ...).
--- The action enum value is itself the localization id; get_text just translates.
--- @param action  string   ACTION.X enum value
--- @return string|nil      localized text, or nil for unknown / unresolved ids
+ap_api.get_text(id)
+-- Resolve a CONSEQUENCE.X or ACTION.X enum value to its localized phrase.
+-- Both enum sets share one localization file: ui_st_ap_consequence.xml.
+--   ACTION.X      -> "action:<key>"      -> "Investigating a Massacre Site"
+--   CONSEQUENCE.X -> "consequence:<key>" -> "Massacre Investigate"
+-- The enum value is itself the localization id; get_text just translates.
+-- @param id   string   CONSEQUENCE.X or ACTION.X enum value
+-- @return string|nil   localized text, or nil for unknown / unresolved ids
+```
+
+The PDA marker line for an AP-scripted squad shows the action phrase as the
+headline, the consequence caption in brackets underneath, and the subject line:
+
+```
+Investigating a Massacre Site
+[Massacre Investigate]
+Subject: Loner Squad (Loners)
 ```
 
 ### Cause and consequence registration
@@ -170,13 +181,28 @@ ap_core_const.CAUSE_CATEGORY.OPPORTUNITIES  -- triggered by environmental state 
 
 Foreign causes share AP's per-category MCM caps and stats grouping. `register_radiant_cause` and `register_reactive_cause` reject unknown categories.
 
-### Actions
+### Consequences and actions
 
-Each consequence handler passes both `consequence = CONSEQUENCE.X` and `action = ACTION.X` to `script_squad` / `script_actor_target`. The broker stores both on the record. `get_scripted_squads()[id].consequence` is the consequence that dispatched the squad; `get_scripted_squads()[id].action` is the player-facing label for what the squad is doing.
+Every call into `script_squad` / `script_actor_target` MUST pass both `consequence = CONSEQUENCE.X` and `action = ACTION.X`. The broker stores both on the record:
 
-The action enum value is itself the localization id. e.g. `ACTION.MASSACRE_INVESTIGATE = "action:massacre_investigate"`, and `gamedata/configs/text/eng/ui_st_ap_macros.xml` contains `<string id="action:massacre_investigate"><text>Investigating a Massacre Site</text></string>`. `ap_api.get_text(action)` is just `game.translate_string(action)`.
+- `consequence` — short caption. Routing key for arrival dispatch and the bracketed sub-label on the marker. Example: `"consequence:massacre_investigate"` -> "Massacre Investigate".
+- `action` — full action phrase. Headline on the marker. Example: `"action:massacre_investigate"` -> "Investigating a Massacre Site".
 
-For foreign mods adding new consequences: define your own action enum value (e.g. `"action:my_mod_ambush_setup"`), add a matching `<string id="action:my_mod_ambush_setup">` entry to your mod's localization XML, and pass the enum value as `action = ...` in `script_squad` opts.
+Both enum values are themselves localization ids. They share one file per locale: `gamedata/configs/text/eng/ui_st_ap_consequence.xml` and `gamedata/configs/text/rus/ui_st_ap_consequence.xml`. The Russian file is windows-1251; edit it via `xmlstarlet` only.
+
+`ap_api.get_text(id)` is `game.translate_string(id)` and works for both consequence and action ids.
+
+For foreign mods adding new consequences:
+
+1. Pick keys, define your enum constants:
+   ```lua
+   local CONSEQUENCE_AMBUSH_SETUP = "consequence:my_mod_ambush_setup"
+   local ACTION_AMBUSH_SETUP      = "action:my_mod_ambush_setup"
+   ```
+2. Add matching `<string id="...">` entries in your mod's own `ui_st_<modname>.xml` (eng + rus) with both ids.
+3. Pass both as `consequence = ...` and `action = ...` in `script_squad` opts.
+
+If you only ship one of the two strings, the marker falls back to the raw enum value (e.g. `[consequence:my_mod_ambush_setup]`) for the missing side.
 
 ---
 
@@ -320,22 +346,36 @@ Conventions:
 
 ### Resolve localized text outside the tooltip pattern
 
-For any action enum value you have:
+For any consequence or action enum value you have:
 
 ```lua
-local text = ap_api.get_text(ap_core_const.ACTION.MASSACRE_INVESTIGATE)
+local action_text     = ap_api.get_text(ap_core_const.ACTION.MASSACRE_INVESTIGATE)
 -- "Investigating a Massacre Site"
+
+local consequence_text = ap_api.get_text(ap_core_const.CONSEQUENCE.MASSACRE_INVESTIGATE)
+-- "Massacre Investigate"
 ```
 
-The action enum value is itself the localization id (e.g. `"action:massacre_investigate"`). Strings live in `gamedata/configs/text/<lang>/ui_st_ap_macros.xml`. AlifePlus includes English and Russian; locale switches via `game.translate_string`.
+Both enum values are themselves localization ids (`"action:massacre_investigate"`, `"consequence:massacre_investigate"`). Strings live in `gamedata/configs/text/<lang>/ui_st_ap_consequence.xml`. AlifePlus includes English and Russian; locale switches via `game.translate_string`.
 
 ---
 
 ## Notes
 
 - `ap_api` is the contract. `ap_core_*` modules are internal; using them directly is possible but unsupported across versions.
-- Backward-compatibility shims for pre-`ap_api` integrations live in `ap_core_compat.script` (e.g. `ap_core_broker.get_scripted_ids` aliased, `get_record` synthesized). New integrations should not rely on them.
 - For an alternative integration that doesn't use `ap_api`, you can subscribe directly to AP's xbus events. Cause names are listed in `ap_core_const.CAUSE`. Listener-only mods (telemetry, journal, sound) typically use this path.
+
+### Backward-compatibility shims
+
+`ap_core_compat.script` keeps pre-`ap_api` call shapes alive for one mod that pre-dates the public API: the **Warfare A Life Overhaul GAMMA fork** by erepb. Specifically:
+
+| Old call site                                                | Shim                                                      |
+|--------------------------------------------------------------|-----------------------------------------------------------|
+| `ap_core_broker.get_scripted_ids()[id]`                      | aliased to `get_scripted_squads`                          |
+| `ap_core_broker.get_record({squad_id = id})`                 | synthesized; returns `{ consequence = entry.consequence }`|
+| `ap_core_const.CONSEQUENCE_INFO[c].action_key`               | rebuilt from CONSEQUENCE+ACTION; `action_key` is the action enum value, which `game.translate_string` resolves directly |
+
+New integrations should not rely on these. They exist for one specific external consumer; the surface may shrink without notice once that consumer migrates.
 
 ---
 

@@ -77,7 +77,8 @@ next - "Maintenance"
     Removed: opts.cause_id and result._cause_id on cause/consequence payloads. Used only by the deleted pair pool.
     Removed: cause:squadkill payload field killer_squad. Re-resolve via xobject.se(killer_squad_id).
     Added: ap_core_broker.script_squad / script_actor_target opts.consequence and opts.action. consequence is which consequence dispatched the squad; action is the player-facing label (passed to ap_api.get_text). Both stored on _ap_scripted_squads records. opts.on_arrive remains internal arrival-handler dispatch.
-    Added: ACTION enum in ap_core_const, parallel to CONSEQUENCE. Values are the localization ids directly (e.g. ACTION.MASSACRE_INVESTIGATE = "action:massacre_investigate"). ap_api.get_text(action) is just game.translate_string(action).
+    Added: ACTION enum in ap_core_const, parallel to CONSEQUENCE. Both enum sets store their own localization id as the value (CONSEQUENCE.MASSACRE_INVESTIGATE = "consequence:massacre_investigate"; ACTION.MASSACRE_INVESTIGATE = "action:massacre_investigate"). ap_api.get_text(id) translates either directly via game.translate_string.
+    Added: gamedata/configs/text/{eng,rus}/ui_st_ap_consequence.xml is the canonical localization store for both consequence and action ids (78 entries). Foreign mods adding consequences supply their own strings under matching ids in their own localization XMLs.
     Removed: CONSEQUENCE_INFO from ap_core_const. action_key and name_key fields retired; persistent flag moved to CONSEQUENCE_PERSISTENT (today: ALPHA_PROMOTE only).
     Removed: cause:alphakill payload fields name, alpha_level, kills. Resolve via xcreature.get_name and ap_ext_tracker.get_alpha_level.
     Renamed: ap_core_utils -> ap_core_util. Singular form, matching ap_ext_util.
