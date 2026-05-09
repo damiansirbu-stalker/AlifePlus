@@ -1,4 +1,4 @@
-Version: 1.5.0 (xlibs 1.4.1)
+Version: 1.5.5 (xlibs 1.5.0)
 
 [url=https://github.com/damiansirbu-stalker/AlifePlus]GitHub[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md]Manifesto[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md]Integration Guide[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog]Changelog[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt]На русском[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/issues]Bugs, suggestions[/url]
 
@@ -34,6 +34,7 @@ The economy follows the same logic. Real items move between real stalkers, and r
 
 [b]Active opportunities[/b]
 [list]
+[*]Squads route only to smart terrains with real animation jobs (campfires, shelters, traders, patrols). Idle parking is filtered out.
 [*]NPCs walk to stashes to loot, ambush, or fill them with supplies.
 [/list]
 
@@ -202,8 +203,9 @@ World events trigger responses. Consequences search within radio or scent range.
 
 [b]Massacre[/b]
 [list]
-[*][b]Scavenge[/b] - Nearby scavengers and predators converge on the massacre site.
+[*][b]Scavenge[/b] - Cowardly mutants scavenge corpses at the massacre site.
 [*][b]Investigate[/b] - The victims' faction sends nearby squads to investigate.
+[*][b]Loot[/b] - Outlaws (Bandit, Renegade, Greh) strip the corpses for weapons and gear.
 [/list]
 
 [b]SquadKill[/b]
@@ -229,7 +231,7 @@ World events trigger responses. Consequences search within radio or scent range.
 
 [b]Wounded[/b]
 [list]
-[*][b]Hunt[/b] - Predator mutants sense weakness and close in.
+[*][b]Hunt[/b] - Predator and aberrant mutants sense weakness and close in.
 [*][b]Help[/b] - Nearby same-faction squads rush to help the wounded.
 [/list]
 
@@ -251,7 +253,8 @@ A squad sees what is nearby and acts on it. Consequences search within eye range
 
 [b]Area[/b]
 [list]
-[*][b]Conquer[/b] - Organized and aggressive factions claim empty territory. Both stalkers and mutants conquer, except ecologists, loners, renegades, and cowardly mutants. Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active). Territory decays over time (MCM configurable).
+[*][b]Conquer[/b] - Stalker factions claim empty territory (Ecologists excluded; mutants use Swarm). Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active). Territory decays over time (MCM configurable).
+[*][b]Swarm[/b] - Feral, predator, and aberrant mutant squads claim empty smart terrains. Parallel to Conquer; spawns share the smart with the originals.
 [*][b]Infest[/b] - Feral, predator, and aberrant mutants claim smart terrains as nests. Only squads carrying an alpha can infest. Infestation replaces original spawns with the infesting species as an exclusive injection (originals are suppressed). A per-level cap limits spread.
 [/list]
 
@@ -279,7 +282,6 @@ Mutants have instincts. Drives are scored by deprivation, the same way as stalke
 [*][b]Sleep[/b] - Mutants return to rest locations during dormant hours: cowardly in fields, feral in lairs, predators in lairs or buildings, aberrant underground.
 [*][b]Explore[/b] - Mutants wander to a different territory or lair during active hours.
 [*][b]Socialize[/b] - Pack animals move toward smart terrains where same-faction squads are present.
-[*][b]Infest[/b] - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours: feral in lairs, predators in lairs or buildings, aberrant in buildings and shelters. Only squads carrying an alpha can infest. Cowardly species are too weak to hold territory.
 [/list]
 
 [size=2][b]News: PDA radio gossip from the simulation[/b][/size]

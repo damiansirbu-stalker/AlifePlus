@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.5.0 (xlibs 1.4.1)
+- Version: 1.5.5 (xlibs 1.5.0)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration-guide.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -42,6 +42,7 @@ Reactive responses:
 - Outlaws hunt whoever picked up an artefact.
 
 Active opportunities:
+- Squads route only to smart terrains with real animation jobs (campfires, shelters, traders, patrols). Idle parking is filtered out.
 - NPCs walk to stashes to loot, ambush, or fill them with supplies.
 
 Territory and population:
@@ -222,8 +223,9 @@ Reactions
   Consequences search within radio or scent range.
 
   Massacre
-    - Scavenge - Nearby scavengers and predators converge on the massacre site.
+    - Scavenge - Cowardly mutants scavenge corpses at the massacre site.
     - Investigate - The victims' faction sends nearby squads to investigate.
+    - Loot - Outlaws (Bandit, Renegade, Greh) strip the corpses for weapons and gear.
 
   SquadKill
     - Revenge - Same-faction squads pursue the killer as it moves.
@@ -242,7 +244,7 @@ Reactions
     - Targeted - Same-species mutants on the same level hunt the killer.
 
   Wounded
-    - Hunt - Predator mutants sense weakness and close in.
+    - Hunt - Predator and aberrant mutants sense weakness and close in.
     - Help - Nearby same-faction squads rush to help the wounded.
 
   Harvest
@@ -261,10 +263,10 @@ Opportunities
     - Fill - A stalker squad spots the stash and hides supplies inside.
 
   Area
-    - Conquer - Organized and aggressive factions claim empty territory.
-      Both stalkers and mutants conquer, except ecologists, loners, renegades, and cowardly mutants.
+    - Conquer - Stalker factions claim empty territory (Ecologists excluded; mutants use Swarm).
       Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active).
       Territory decays over time (MCM configurable).
+    - Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains. Parallel to Conquer; spawns share the smart with the originals.
     - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
       Only squads carrying an alpha can infest.
       Infestation replaces original spawns with the infesting species as an exclusive injection (originals are suppressed).
@@ -304,9 +306,6 @@ Instincts
   - Sleep - Mutants return to rest locations during dormant hours: cowardly in fields, feral in lairs, predators in lairs or buildings, aberrant underground.
   - Explore - Mutants wander to a different territory or lair during active hours.
   - Socialize - Pack animals move toward smart terrains where same-faction squads are present.
-  - Infest - Feral, predator, and aberrant mutants claim a smart terrain as a nest during active hours: feral in lairs, predators in lairs or buildings, aberrant in buildings and shelters.
-    Only squads carrying an alpha can infest.
-    Cowardly species are too weak to hold territory.
 
 News: PDA radio gossip from the simulation
 
