@@ -1,6 +1,6 @@
 --- ap_core_broker: Squad scripting lifecycle, ownership registry, arrival, protection
 local pairs, tostring, type = pairs, tostring, type
-local RegisterScriptCallback = RegisterScriptCallback
+local table_remove, RegisterScriptCallback = table.remove, RegisterScriptCallback
 
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
@@ -50,9 +50,9 @@ end
 --- @param name string Owner name
 --- @return boolean true if removed, false if not found
 function unregister_owner(name)
-    for i = 1, #_owners do
+    for i = #_owners, 1, -1 do
         if _owners[i].name == name then
-            table.remove(_owners, i)
+            table_remove(_owners, i)
             ap_core_debug.info("[SQUAD] unregister_owner: %s", name)
             return true
         end
