@@ -507,7 +507,7 @@ Stalker rank (npc_on_before_hit). Outgoing hit power bonus and incoming hit powe
 
 ## Causes
 
-Per-cause inventory table moved to features.md. Cause generator contract: takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate (ap_core_limiter.check_cause_rate_limit + increment_cause_counter). Generators self-observe under the picked cause name. Generators are pure - no rate-limit awareness from outside, no counter manipulation, no side effects beyond the published payload.
+Per-cause inventory: see `ap_core_const.CAUSE` (canonical enum) and `ap_ext_cause_*.script` / `ap_ext_causes_*.script`. Cause generator contract: takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate (ap_core_limiter.check_cause_rate_limit + increment_cause_counter). Generators self-observe under the picked cause name. Generators are pure - no rate-limit awareness from outside, no counter manipulation, no side effects beyond the published payload.
 
 ### Cause classification
 
@@ -573,7 +573,7 @@ Used by ap_ext_causes_needs.script (9 drives, 14 answers) and ap_ext_causes_inst
 
 ## Consequences
 
-Per-consequence inventory table moved to features.md. Reactive consequences carry their own RULES and SCAN. Radiant consequences are action-only - RULES and SCAN already happened in the cause generator.
+Per-consequence inventory: see `ap_core_const.CONSEQUENCE` / `ACTION` (canonical enums) and `ap_ext_consequences_*.script`. Reactive consequences carry their own RULES and SCAN. Radiant consequences are action-only - RULES and SCAN already happened in the cause generator.
 
 Handler contract: takes the cause payload, returns a result code. Domain gates (alignment, species, personality) live in cause generators for radiant and in consequence handlers for reactive - always in ext, never in core. Dispatch order: shuffled per cause publish (reactive only).
 
