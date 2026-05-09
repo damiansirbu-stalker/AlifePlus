@@ -1,5 +1,5 @@
 --- ap_api: Public AlifePlus API surface for external integrators.
-local pairs = pairs
+local pairs, type, tostring = pairs, type, tostring
 
 -- Foreign causes must declare one of AP's standard categories so they share AP's
 -- per-category rate-limit caps and MCM organization. Built lazily (CAUSE_CATEGORY
@@ -24,7 +24,9 @@ end
 --- @param name string Owner name (e.g. "warfare")
 --- @param fn function(squad) -> boolean True if this mod owns the squad
 --- @return boolean true on success, false if args invalid
-function register_owner(name, fn) return ap_core_broker.register_owner(name, fn) end
+function register_owner(name, fn)
+    return ap_core_broker.register_owner(name, fn)
+end
 
 --- Remove a squad ownership filter. No-op if not registered.
 --- @param name string Owner name
@@ -138,7 +140,7 @@ function get_cause(consequence) return ap_core_consumer.cause_of(consequence) en
 --- @return boolean true if all registrations succeeded, false on any rejection
 function register_radiant_cause(category, predicate)
     if not _is_valid_category(category) then
-        ap_core_debug.err("[AP_API] register_radiant_cause: invalid category=%s; use ap_core_const.CAUSE_CATEGORY.X", tostring(category))
+        ap_core_debug.err("[API] register_radiant_cause: invalid category=%s; use ap_core_const.CAUSE_CATEGORY.X", tostring(category))
         return false
     end
     local callbacks = ap_core_const.RADIANT_CALLBACKS
@@ -167,7 +169,7 @@ end
 --- @return boolean true if registered, false if category invalid or producer rejected
 function register_reactive_cause(callback, category, predicate)
     if not _is_valid_category(category) then
-        ap_core_debug.err("[AP_API] register_reactive_cause: invalid category=%s; use ap_core_const.CAUSE_CATEGORY.X", tostring(category))
+        ap_core_debug.err("[API] register_reactive_cause: invalid category=%s; use ap_core_const.CAUSE_CATEGORY.X", tostring(category))
         return false
     end
     return ap_core_producer.register({
@@ -208,5 +210,5 @@ function unregister_consequence(name) return ap_core_consumer.unregister(name) e
 -- ============================================================================
 
 function on_game_start()
-    ap_core_debug.info("[AP_API] Initialized")
+    ap_core_debug.info("[API] Initialized")
 end
