@@ -12,11 +12,11 @@ local function _release_squad(squad_id)
     xsquad.release_squad(squad)
 end
 
---- v1.3.0: release orphaned squads from old save keys
+--- v1.2 -> v1.3: release orphaned squads from old save keys
 --- Old ap_scripted_squads entries reference squads with engine-side scripted_target still set.
 --- Without AP tracking, those squads stay permanently pinned to their destination.
 --- Covers both pre-branch (ap_alife_tracker.scripted_squads) and mid-branch (ap_squad.ap_scripted_squads).
-local function _v130_release_orphaned_squads(m_data)
+local function _v12_to_v13_release_orphaned_squads(m_data)
     local squads = m_data.ap_squad and m_data.ap_squad.ap_scripted_squads
     if squads and type(squads) == "table" then
         for squad_id in pairs(squads) do _release_squad(squad_id) end
@@ -27,36 +27,36 @@ local function _v130_release_orphaned_squads(m_data)
     end
 end
 
---- v1.3.0: delete deprecated save keys (released 1.2.3)
+--- v1.2 -> v1.3: delete deprecated save keys (released 1.2.3)
 --- Old keys cleared, new modules repopulate from scratch
-local function _v130_delete_old_save_keys(m_data)
+local function _v12_to_v13_delete_old_save_keys(m_data)
     m_data.ap_squad = nil
     m_data.ap_alife_tracker = nil
     m_data.ap_smart_mutator = nil
     m_data.ap_conquest = nil
 end
 
---- v1.3.0: reset smart mutator save data (conquest_seq -> game_sec migration)
+--- v1.2 -> v1.3: reset smart mutator save data (conquest_seq -> game_sec migration)
 --- Old format used integer sequence for conquered_at. New format uses game_sec.
 --- Detects old format by presence of conquest_seq key. Runs once per save.
-local function _v130_reset_smart_mutator(m_data)
+local function _v12_to_v13_reset_smart_mutator(m_data)
     local saved = m_data.ap_ext_smart_mutator
     if not saved then return end
     if not saved.conquest_seq then return end
     m_data.ap_ext_smart_mutator = nil
 end
 
---- v1.3.5: clear old elite data (renamed to alpha, stalker elites dropped)
+--- v1.3 -> v1.3.5: clear old elite data (renamed to alpha, stalker elites dropped)
 --- Old elites key deleted, tracker repopulates as alphas from scratch.
-local function _v135_clear_elite_data(m_data)
+local function _v13_to_v135_clear_elite_data(m_data)
     local tracker = m_data.ap_ext_tracker
     if not tracker then return end
     if tracker.elites then tracker.elites = nil end
 end
 
---- v1.3.5: release squads saved with old post_arrived_wait field (renamed to pre_release_gulag)
+--- v1.3 -> v1.3.5: release squads saved with old post_arrived_wait field (renamed to pre_release_gulag)
 --- Old entries lack pre_release_gulag, causing nil arithmetic crash. Release and drop.
-local function _v135_release_old_scripted_squads(m_data)
+local function _v13_to_v135_release_old_scripted_squads(m_data)
     local saved = m_data.ap_core_squad or m_data.ap_core_broker
     if not saved then return end
     local squads = saved.ap_scripted_squads
@@ -71,9 +71,9 @@ local function _v135_release_old_scripted_squads(m_data)
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
---- v1.4.0: delete old ap_core_squad save key (renamed to ap_core_broker)
+--- v1.3.5 -> v1.4: delete old ap_core_squad save key (renamed to ap_core_broker)
 --- Release orphaned squads, delete key. Broker repopulates from scratch.
-local function _v140_cleanup_squad_key(m_data)
+local function _v135_to_v14_cleanup_squad_key(m_data)
     local old = m_data.ap_core_squad
     if not old then return end
     local squads = old.ap_scripted_squads
@@ -83,12 +83,11 @@ local function _v140_cleanup_squad_key(m_data)
     m_data.ap_core_squad = nil
 end
 
---- v1.5.5: release scripted squads whose on_arrive references a consequence no longer
+--- v1.5 -> v1.5.5: release scripted squads whose on_arrive references a consequence no longer
 --- registered (n136 INFEST extracted to AREA family renamed consequence:instincts_infest
 --- to consequence:area_infest; future renames self-heal too). Detects orphans against the
---- live ap_core_const.CONSEQUENCE set; valid in-flight squads survive untouched. Self-healing:
---- zero orphans after run -> no-op next load.
-local function _v155_release_orphan_arrivals(m_data)
+--- live ap_core_const.CONSEQUENCE set; valid in-flight squads survive untouched.
+local function _v15_to_v155_release_orphan_arrivals(m_data)
     local broker = m_data.ap_core_broker
     if type(broker) ~= "table" then return end
     local squads = broker.ap_scripted_squads
@@ -105,24 +104,29 @@ local function _v155_release_orphan_arrivals(m_data)
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
---- Run all migrations on load_state.
+xchange.register("ap_v12_to_v13_release_orphaned_squads", _v12_to_v13_release_orphaned_squads)
+xchange.register("ap_v12_to_v13_delete_old_save_keys",    _v12_to_v13_delete_old_save_keys)
+xchange.register("ap_v12_to_v13_reset_smart_mutator",     _v12_to_v13_reset_smart_mutator)
+xchange.register("ap_v13_to_v135_clear_elite_data",          _v13_to_v135_clear_elite_data)
+xchange.register("ap_v13_to_v135_release_old_scripted_squads", _v13_to_v135_release_old_scripted_squads)
+xchange.register("ap_v135_to_v14_cleanup_squad_key",         _v135_to_v14_cleanup_squad_key)
+xchange.register("ap_v15_to_v155_release_orphan_arrivals",   _v15_to_v155_release_orphan_arrivals)
+
+--- Run all registered changesets on load_state.
 --- Alphabetical load order (ap_core_compat < ap_core_broker < ap_ext_tracker)
 --- ensures this runs before any module reads m_data.
 local function _on_load_state(m_data)
     if not m_data then return end
-    _v130_release_orphaned_squads(m_data)
-    _v130_delete_old_save_keys(m_data)
-    _v130_reset_smart_mutator(m_data)
-    _v135_clear_elite_data(m_data)
-    _v135_release_old_scripted_squads(m_data)
-    _v140_cleanup_squad_key(m_data)
-    _v155_release_orphan_arrivals(m_data)
+    xchange.run(m_data)
 end
 
---- erepb (warfare integrator) compat: preserve old broker call shape.
---- get_scripted_ids was renamed to get_scripted_squads; get_record family was removed.
---- Existing erepb code reads only record.consequence; the synthesized record is minimal.
-local function _wire_erepb_broker_shim()
+--- Warfare A Life Overhaul compat: preserve old call shapes.
+--- Covers exactly the AP surface that mod reads:
+---   ap_core_broker.get_scripted_ids()[id]                 -> aliased to get_scripted_squads
+---   ap_core_broker.get_record({squad_id, assigned=true})  -> synthesized minimal record
+---   ap_core_const.CONSEQUENCE_INFO[consequence].action_key -> rebuilt from CONSEQUENCE+ACTION
+---   ap_core_broker.register_owner("warfare", fn)          -> still public
+local function _wire_warfare_compat_shim()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
     function ap_core_broker.get_record(query)
@@ -131,6 +135,14 @@ local function _wire_erepb_broker_shim()
         if not entry then return nil end
         return { consequence = entry.consequence }
     end
+
+    -- Warfare reads info.action_key and passes it to game.translate_string.
+    -- New ACTION values are themselves localization ids, so the indirection still resolves.
+    local info = {}
+    for k, consequence in pairs(ap_core_const.CONSEQUENCE) do
+        info[consequence] = { action_key = ap_core_const.ACTION[k] }
+    end
+    ap_core_const.CONSEQUENCE_INFO = info
 end
 
 function on_game_start()
@@ -139,6 +151,6 @@ function on_game_start()
     ap_core_broker.register_owner("warfare", function(squad)
         return squad.registered_with_warfare == true
     end)
-    _wire_erepb_broker_shim()
+    _wire_warfare_compat_shim()
     ap_core_debug.info("[COMPAT] Initialized")
 end

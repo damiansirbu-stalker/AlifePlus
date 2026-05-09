@@ -328,51 +328,57 @@ CONSEQUENCE = {
     SCATTER = "consequence:scatter",
 }
 
---- Consequence -> { name_key, action_key } for localized rendering.
---- name_key:   short caption (e.g. "Alpha Kill Targeted").                   For config / debug context.
---- action_key: full phrase that names the consequence as an ongoing action.  For PDA marker, warfare tooltip, news.
----             e.g. "Chasing Alpha Killer", "Investigating a Massacre Site".
---- Both resolved via game.translate_string at render time.
-CONSEQUENCE_INFO = {
-    [CONSEQUENCE.ALPHA_PROMOTE]        = { name_key = "st_ap_consequence_alpha_promote",        action_key = "st_ap_action_alpha_promote", persistent = true },
-    [CONSEQUENCE.ALPHAKILL_TARGETED]   = { name_key = "st_ap_consequence_alphakill_targeted",   action_key = "st_ap_action_alphakill_targeted" },
-    [CONSEQUENCE.MASSACRE_SCAVENGE]    = { name_key = "st_ap_consequence_massacre_scavenge",    action_key = "st_ap_action_massacre_scavenge" },
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = { name_key = "st_ap_consequence_massacre_investigate", action_key = "st_ap_action_massacre_investigate" },
-    [CONSEQUENCE.MASSACRE_LOOT]        = { name_key = "st_ap_consequence_massacre_loot",        action_key = "st_ap_action_massacre_loot" },
-    [CONSEQUENCE.STASH_AMBUSH]         = { name_key = "st_ap_consequence_stash_ambush",         action_key = "st_ap_action_stash_ambush" },
-    [CONSEQUENCE.STASH_LOOT]           = { name_key = "st_ap_consequence_stash_loot",           action_key = "st_ap_action_stash_loot" },
-    [CONSEQUENCE.STASH_FILL]           = { name_key = "st_ap_consequence_stash_fill",           action_key = "st_ap_action_stash_fill" },
-    [CONSEQUENCE.SQUADKILL_REVENGE]    = { name_key = "st_ap_consequence_squadkill_revenge",    action_key = "st_ap_action_squadkill_revenge" },
-    [CONSEQUENCE.BASEKILL_SUPPORT]     = { name_key = "st_ap_consequence_basekill_support",     action_key = "st_ap_action_basekill_support" },
-    [CONSEQUENCE.BASEKILL_FLEE]        = { name_key = "st_ap_consequence_basekill_flee",        action_key = "st_ap_action_basekill_flee" },
-    [CONSEQUENCE.WOUNDED_HUNT]         = { name_key = "st_ap_consequence_wounded_hunt",         action_key = "st_ap_action_wounded_hunt" },
-    [CONSEQUENCE.WOUNDED_HELP]         = { name_key = "st_ap_consequence_wounded_help",         action_key = "st_ap_action_wounded_help" },
-    [CONSEQUENCE.AREA_CONQUER]         = { name_key = "st_ap_consequence_area_conquer",         action_key = "st_ap_action_area_conquer" },
-    [CONSEQUENCE.AREA_SWARM]           = { name_key = "st_ap_consequence_area_swarm",           action_key = "st_ap_action_area_swarm" },
-    [CONSEQUENCE.AREA_INFEST]          = { name_key = "st_ap_consequence_area_infest",          action_key = "st_ap_action_area_infest" },
-    [CONSEQUENCE.HARVEST_ROB]          = { name_key = "st_ap_consequence_harvest_rob",          action_key = "st_ap_action_harvest_rob" },
-    [CONSEQUENCE.HARVEST_HAUNT]        = { name_key = "st_ap_consequence_harvest_haunt",        action_key = "st_ap_action_harvest_haunt" },
-    [CONSEQUENCE.HUNGER_CAMPFIRE]      = { name_key = "st_ap_consequence_hunger_campfire",      action_key = "st_ap_action_hunger_campfire" },
-    [CONSEQUENCE.SLEEP_CAMPFIRE]       = { name_key = "st_ap_consequence_sleep_campfire",       action_key = "st_ap_action_sleep_campfire" },
-    [CONSEQUENCE.REST_CAMPFIRE]        = { name_key = "st_ap_consequence_rest_campfire",        action_key = "st_ap_action_rest_campfire" },
-    [CONSEQUENCE.HEAL_SHELTER]         = { name_key = "st_ap_consequence_heal_shelter",         action_key = "st_ap_action_heal_shelter" },
-    [CONSEQUENCE.SHELTER_INDOOR]       = { name_key = "st_ap_consequence_shelter_indoor",       action_key = "st_ap_action_shelter_indoor" },
-    [CONSEQUENCE.SHELTER_OUTDOOR]      = { name_key = "st_ap_consequence_shelter_outdoor",      action_key = "st_ap_action_shelter_outdoor" },
-    [CONSEQUENCE.MONEY_HARVEST]        = { name_key = "st_ap_consequence_money_harvest",        action_key = "st_ap_action_money_harvest" },
-    [CONSEQUENCE.MONEY_HUNT]           = { name_key = "st_ap_consequence_money_hunt",           action_key = "st_ap_action_money_hunt" },
-    [CONSEQUENCE.SUPPLY_TRADER]        = { name_key = "st_ap_consequence_supply_trader",        action_key = "st_ap_action_supply_trader" },
-    [CONSEQUENCE.JOB_OUTPOST]          = { name_key = "st_ap_consequence_job_outpost",          action_key = "st_ap_action_job_outpost" },
-    [CONSEQUENCE.JOB_EXPLORE]          = { name_key = "st_ap_consequence_job_explore",          action_key = "st_ap_action_job_explore" },
-    [CONSEQUENCE.JOB_RESEARCH]         = { name_key = "st_ap_consequence_job_research",         action_key = "st_ap_action_job_research" },
-    [CONSEQUENCE.SOCIAL_CAMPFIRE]      = { name_key = "st_ap_consequence_social_campfire",      action_key = "st_ap_action_social_campfire" },
-    [CONSEQUENCE.SOCIAL_BASE]          = { name_key = "st_ap_consequence_social_base",          action_key = "st_ap_action_social_base" },
-    [CONSEQUENCE.FEED]                 = { name_key = "st_ap_consequence_feed",                 action_key = "st_ap_action_feed" },
-    [CONSEQUENCE.SLUMBER_FIELD]        = { name_key = "st_ap_consequence_slumber_field",        action_key = "st_ap_action_slumber_field" },
-    [CONSEQUENCE.SLUMBER_LAIR]         = { name_key = "st_ap_consequence_slumber_lair",         action_key = "st_ap_action_slumber_lair" },
-    [CONSEQUENCE.SLUMBER_SURGE]        = { name_key = "st_ap_consequence_slumber_surge",        action_key = "st_ap_action_slumber_surge" },
-    [CONSEQUENCE.ROAM]                 = { name_key = "st_ap_consequence_roam",                 action_key = "st_ap_action_roam" },
-    [CONSEQUENCE.PACK]                 = { name_key = "st_ap_consequence_pack",                 action_key = "st_ap_action_pack" },
-    [CONSEQUENCE.SCATTER]              = { name_key = "st_ap_consequence_scatter",              action_key = "st_ap_action_scatter" },
+--- Action identifiers (player-facing label resolved via game.translate_string).
+--- One action per consequence today; same suffix as the consequence enum.
+--- Consequence handlers pass both `consequence = CONSEQUENCE.X` and `action = ACTION.X`
+--- to script_squad opts. The broker stores both on the _ap_scripted_squads record.
+--- Localized strings live in gamedata/configs/text/<lang>/ui_st_ap_macros.xml.
+ACTION = {
+    ALPHA_PROMOTE        = "action:alpha_promote",
+    ALPHAKILL_TARGETED   = "action:alphakill_targeted",
+    MASSACRE_SCAVENGE    = "action:massacre_scavenge",
+    MASSACRE_INVESTIGATE = "action:massacre_investigate",
+    MASSACRE_LOOT        = "action:massacre_loot",
+    STASH_AMBUSH         = "action:stash_ambush",
+    STASH_LOOT           = "action:stash_loot",
+    STASH_FILL           = "action:stash_fill",
+    SQUADKILL_REVENGE    = "action:squadkill_revenge",
+    BASEKILL_SUPPORT     = "action:basekill_support",
+    BASEKILL_FLEE        = "action:basekill_flee",
+    WOUNDED_HUNT         = "action:wounded_hunt",
+    WOUNDED_HELP         = "action:wounded_help",
+    AREA_CONQUER         = "action:area_conquer",
+    AREA_SWARM           = "action:area_swarm",
+    AREA_INFEST          = "action:area_infest",
+    HARVEST_ROB          = "action:harvest_rob",
+    HARVEST_HAUNT        = "action:harvest_haunt",
+    HUNGER_CAMPFIRE      = "action:hunger_campfire",
+    SLEEP_CAMPFIRE       = "action:sleep_campfire",
+    REST_CAMPFIRE        = "action:rest_campfire",
+    HEAL_SHELTER         = "action:heal_shelter",
+    SHELTER_INDOOR       = "action:shelter_indoor",
+    SHELTER_OUTDOOR      = "action:shelter_outdoor",
+    MONEY_HARVEST        = "action:money_harvest",
+    MONEY_HUNT           = "action:money_hunt",
+    SUPPLY_TRADER        = "action:supply_trader",
+    JOB_OUTPOST          = "action:job_outpost",
+    JOB_EXPLORE          = "action:job_explore",
+    JOB_RESEARCH         = "action:job_research",
+    SOCIAL_CAMPFIRE      = "action:social_campfire",
+    SOCIAL_BASE          = "action:social_base",
+    FEED                 = "action:feed",
+    SLUMBER_FIELD        = "action:slumber_field",
+    SLUMBER_LAIR         = "action:slumber_lair",
+    SLUMBER_SURGE        = "action:slumber_surge",
+    ROAM                 = "action:roam",
+    PACK                 = "action:pack",
+    SCATTER              = "action:scatter",
+}
+
+--- Consequences whose marker remains visible after the squad finishes the scripted hold.
+--- Today only ALPHA_PROMOTE: the alpha identity persists on the squad as long as the alpha lives.
+CONSEQUENCE_PERSISTENT = {
+    [CONSEQUENCE.ALPHA_PROMOTE] = true,
 }
 
 --- Phase names for xtrace path (ap_core_debug.observe). Internal trace ops within a consequence handler.

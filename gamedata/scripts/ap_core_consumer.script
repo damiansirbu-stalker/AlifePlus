@@ -13,10 +13,12 @@ local _subscribe_event
 local stats = ap_core_hud
 local stats_collecting = stats.collecting
 
---- Register a consequence handler for an event
+--- Register a consequence handler for an event. Strict: refuses duplicate names.
+--- Caller must call unregister(name) first if replacing.
 --- @param name string Consequence name (used as trace key, rate limit key, arrival key)
 --- @param config table { event, condition, on_arrive } condition: returns false to skip
 --- @param handler function(event_data) -> { code = RESULT.X, reason = "..." }
+--- @return boolean true on success, false if already registered or args invalid
 function register(name, config, handler)
     if not name or not config or not handler then
         ap_core_debug.err("[CONSUMER] register: missing name, config, or handler")
@@ -24,6 +26,10 @@ function register(name, config, handler)
     end
     if not config.event then
         ap_core_debug.err("[CONSUMER] register '%s': missing event", name)
+        return false
+    end
+    if _cause_for[name] then
+        ap_core_debug.warn("[CONSUMER] register: name already registered: %s (event=%s); call unregister first", name, _cause_for[name])
         return false
     end
 
@@ -36,27 +42,34 @@ function register(name, config, handler)
         _registry[event] = {}
     end
 
-    local entry = {
-        name = name,
-        condition = config.condition,
-        handler = handler,
-    }
-
     local entries = _registry[event]
-    for i = 1, #entries do
-        if entries[i].name == name then
-            entries[i] = entry
-            ap_core_debug.info("[CONSUMER] registered: %s event=%s (replaced)", name, event)
-            return true
-        end
-    end
-
-    entries[#entries + 1] = entry
+    entries[#entries + 1] = { name = name, condition = config.condition, handler = handler }
     _cause_for[name] = event
     if _subscribed and #entries == 1 then
         _subscribe_event(event)
     end
     ap_core_debug.info("[CONSUMER] registered: %s event=%s", name, event)
+    return true
+end
+
+local function _remove_named_entry(entries, name)
+    if not entries then return end
+    for i = #entries, 1, -1 do
+        if entries[i].name == name then table.remove(entries, i); return end
+    end
+end
+
+--- Unregister a consequence handler by name. Removes from event registry, clears
+--- cause-of mapping, and unhooks any arrival handler registered under the same name.
+--- @param name string Consequence name
+--- @return boolean true if removed, false if not registered
+function unregister(name)
+    local event = _cause_for[name]
+    if not event then return false end
+    _remove_named_entry(_registry[event], name)
+    _cause_for[name] = nil
+    ap_core_broker.unregister_arrival_handler(name)
+    ap_core_debug.info("[CONSUMER] unregistered: %s event=%s", name, event)
     return true
 end
 

@@ -6,6 +6,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -20,10 +21,11 @@ local _personality = { PERSONALITY.AGGRESSION }
 local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
 local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
-    CONSEQUENCE.ALPHAKILL_TARGETED, "consequence_alphakill_targeted_rush", PRE_RELEASE_GULAG.ALPHAKILL_TARGETED)
+    CONSEQUENCE.ALPHAKILL_TARGETED, ACTION.ALPHAKILL_TARGETED, "consequence_alphakill_targeted_rush", PRE_RELEASE_GULAG.ALPHAKILL_TARGETED)
 
 local _on_arrive = ap_ext_common.make_on_arrive({
     consequence_key = CONSEQUENCE.ALPHAKILL_TARGETED,
+    action_key = ACTION.ALPHAKILL_TARGETED,
     rush_cfg_key = "consequence_alphakill_targeted_rush",
     gulag_value = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
     max_chases_cfg_key = "consequence_alphakill_targeted_max_chases",
@@ -70,7 +72,7 @@ local function _handler(event_data)
         local dst_smart = nil
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if is_player_kill then
-                _move_actor_chasers(CONSEQUENCE.ALPHAKILL_TARGETED, hunters, moved)
+                _move_actor_chasers(CONSEQUENCE.ALPHAKILL_TARGETED, ACTION.ALPHAKILL_TARGETED, hunters, moved)
             else
                 dst_smart = ap_core_util.find_smart(killer_squad.position, {
                     level_id = level_id, max_distance = RANGE_SCENT,

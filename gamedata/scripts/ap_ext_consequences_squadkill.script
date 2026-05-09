@@ -5,6 +5,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -20,10 +21,11 @@ local _personality_revenge = { PERSONALITY.AGGRESSION, PERSONALITY.RELATION }
 local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
 local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
-    CONSEQUENCE.SQUADKILL_REVENGE, "consequence_squadkill_revenge_rush", PRE_RELEASE_GULAG.SQUADKILL_REVENGE)
+    CONSEQUENCE.SQUADKILL_REVENGE, ACTION.SQUADKILL_REVENGE, "consequence_squadkill_revenge_rush", PRE_RELEASE_GULAG.SQUADKILL_REVENGE)
 
 local _on_arrive_revenge = ap_ext_common.make_on_arrive({
     consequence_key = CONSEQUENCE.SQUADKILL_REVENGE,
+    action_key = ACTION.SQUADKILL_REVENGE,
     rush_cfg_key = "consequence_squadkill_revenge_rush",
     gulag_value = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
     max_chases_cfg_key = "consequence_squadkill_revenge_max_chases",
@@ -70,7 +72,7 @@ local function _handler_revenge(event_data)
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if not avengers then return { code = TRACE.NO_SQUADS } end
             if is_player_kill then
-                _move_actor_chasers(CONSEQUENCE.SQUADKILL_REVENGE, avengers, moved)
+                _move_actor_chasers(CONSEQUENCE.SQUADKILL_REVENGE, ACTION.SQUADKILL_REVENGE, avengers, moved)
             else
                 dst_smart = ap_core_util.find_smart(target_squad.position, {
                     level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,

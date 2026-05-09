@@ -7,6 +7,7 @@ local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -43,11 +44,11 @@ local function _on_arrive_infest(squad, args)
 end
 
 local CONFIGS = {
-    { event = CAUSE.AREA_CONQUER, consequence = CONSEQUENCE.AREA_CONQUER, name = "area_conquer",
+    { event = CAUSE.AREA_CONQUER, consequence = CONSEQUENCE.AREA_CONQUER, action = ACTION.AREA_CONQUER, name = "area_conquer",
         pre_release_gulag = PRE_RELEASE_GULAG.AREA_CONQUER, on_arrive = _on_arrive_conquer },
-    { event = CAUSE.AREA_SWARM, consequence = CONSEQUENCE.AREA_SWARM, name = "area_swarm",
+    { event = CAUSE.AREA_SWARM, consequence = CONSEQUENCE.AREA_SWARM, action = ACTION.AREA_SWARM, name = "area_swarm",
         pre_release_gulag = PRE_RELEASE_GULAG.AREA_SWARM, on_arrive = _on_arrive_swarm },
-    { event = CAUSE.AREA_INFEST, consequence = CONSEQUENCE.AREA_INFEST, name = "area_infest",
+    { event = CAUSE.AREA_INFEST, consequence = CONSEQUENCE.AREA_INFEST, action = ACTION.AREA_INFEST, name = "area_infest",
         pre_release_gulag = PRE_RELEASE_GULAG.AREA_INFEST, on_arrive = _on_arrive_infest },
 }
 
@@ -68,6 +69,7 @@ local function _make_handler(entry)
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     consequence = entry.consequence,
+                    action = entry.action,
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = {

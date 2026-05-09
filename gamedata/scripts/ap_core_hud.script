@@ -50,23 +50,29 @@ function register_subject_resolver(fn)
     ap_core_debug.info("[SQUAD] register_subject_resolver")
 end
 
--- Mark a squad with the action label of its current consequence. Cache hits short-circuit
--- when the squad's consequence hasn't changed since the last render. On miss, resolves squad
--- via xobject.se and delegates subject string to the registered resolver.
-local function _mark(squad_id, consequence)
+-- Mark a squad with its action and consequence. Cache hits short-circuit when neither has
+-- changed since the last render. On miss, resolves squad via xobject.se and delegates the
+-- subject string to the registered resolver. Identity-source squads (alphas with no current
+-- consequence) get the ALPHA_PROMOTE pair as a fallback.
+local function _mark(squad_id, consequence, action)
     local state = _marker_state[squad_id]
-    if state and state.consequence == consequence then return end
-    local info = ap_core_const.CONSEQUENCE_INFO[consequence]
-    local key = info and info.action_key
-    local action = key and game.translate_string(key)
-    if not action or action == key or action == "" then action = consequence end
+    if state and state.consequence == consequence and state.action == action then return end
+    local action_text = action and game.translate_string(action)
+    if not action_text or action_text == action or action_text == "" then action_text = action or consequence end
+    local consequence_text = consequence and consequence:match("^consequence:(.+)$") or ""
     local squad = xobject.se(squad_id)
     if not squad then return end
     local subject = _subject_resolver_fn(squad)
-    local label = action .. "\\n" .. "Subject: " .. (subject or "?")
+    local label = action_text
+    if consequence_text ~= "" then label = label .. "\\n[" .. consequence_text .. "]" end
+    label = label .. "\\n" .. "Subject: " .. (subject or "?")
     xpda.mark_squad(squad_id, { label = label, marker_type = ap_core_const.MARKER_ACTIVE })
-    _marker_state[squad_id] = { consequence = consequence, persistent = info and info.persistent }
-    ap_core_debug.debug("[SQUAD] mark: squad=%d consequence=%s label=%s", squad_id, consequence, label)
+    _marker_state[squad_id] = {
+        consequence = consequence,
+        action = action,
+        persistent = ap_core_const.CONSEQUENCE_PERSISTENT[consequence] == true,
+    }
+    ap_core_debug.debug("[SQUAD] mark: squad=%d consequence=%s action=%s", squad_id, tostring(consequence), tostring(action))
 end
 
 -- Inline two-loop. Scripted first; identity source fills empty slots. Scripted-wins
@@ -74,13 +80,13 @@ end
 local function _apply_markers()
     local scripted = ap_core_broker.get_scripted_squads()
     for squad_id, data in pairs(scripted) do
-        if data.consequence then _mark(squad_id, data.consequence) end
+        if data.consequence then _mark(squad_id, data.consequence, data.action) end
     end
     local identities = _identity_source_fn()
     for i = 1, #identities do
         local squad_id = identities[i]
         if not scripted[squad_id] then
-            _mark(squad_id, ap_core_const.CONSEQUENCE.ALPHA_PROMOTE)
+            _mark(squad_id, ap_core_const.CONSEQUENCE.ALPHA_PROMOTE, ap_core_const.ACTION.ALPHA_PROMOTE)
         end
     end
 end

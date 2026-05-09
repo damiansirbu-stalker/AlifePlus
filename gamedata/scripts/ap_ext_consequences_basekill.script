@@ -8,6 +8,7 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local PERSONALITY = ap_ext_const.PERSONALITY
@@ -45,7 +46,7 @@ local function _handler_support(event_data)
         local last_reason
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, smart, { consequence = CONSEQUENCE.BASEKILL_SUPPORT, rush = cfg.consequence_basekill_support_rush, pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_SUPPORT })
+                local res = ap_core_broker.script_squad(squad, smart, { consequence = CONSEQUENCE.BASEKILL_SUPPORT, action = ACTION.BASEKILL_SUPPORT, rush = cfg.consequence_basekill_support_rush, pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_SUPPORT })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
@@ -94,7 +95,7 @@ local function _handler_flee(event_data)
         local last_reason
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             for _, squad in ipairs(fleeing) do
-                local res = ap_core_broker.script_squad(squad, destination, { consequence = CONSEQUENCE.BASEKILL_FLEE, rush = cfg.consequence_basekill_flee_rush, pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_FLEE })
+                local res = ap_core_broker.script_squad(squad, destination, { consequence = CONSEQUENCE.BASEKILL_FLEE, action = ACTION.BASEKILL_FLEE, rush = cfg.consequence_basekill_flee_rush, pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_FLEE })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
             return ap_core_debug.result_squads(moved, { dst_id = destination.id, rejected = #fleeing - #moved })

@@ -16,6 +16,7 @@ ap_api.register_owner(name, fn)
 -- are excluded from AP routing. Replaces existing filter on name match.
 -- @param name      string  Owner name (e.g. "warfare")
 -- @param fn        function(squad) -> boolean
+-- @return boolean  true on success, false if args invalid
 
 ap_api.unregister_owner(name)
 -- Remove a squad ownership filter by name. No-op if not registered.
@@ -31,10 +32,11 @@ ap_api.get_owner(squad)
 
 ```lua
 ap_api.get_scripted_squads()
--- Returns a shallow copy of the AP-scripted squads table, keyed by squad id.
--- Outer table is fresh per call; entry tables are shared with broker state
--- (treat fields as read-only). Each entry carries:
---   consequence       string   identity of what the squad is doing
+-- Returns a shallow-copied snapshot of the AP-scripted squads table, keyed by squad id.
+-- Outer table and each entry are fresh per call; mutation does not affect broker state.
+-- Each entry carries:
+--   consequence       string   the squad's current consequence (e.g. CONSEQUENCE.MASSACRE_INVESTIGATE)
+--   action            string   the player-facing action (e.g. ACTION.MASSACRE_INVESTIGATE). Pass to ap_api.get_text.
 --   scripted_target   string   smart name, or "actor" for actor-pursuit
 --   target_smart_id   number   smart id (nil for actor-pursuit)
 --   tracked_at        number   game-time the script started
@@ -44,6 +46,13 @@ ap_api.get_scripted_squads()
 --   arrived           boolean  set true after arrival (optional)
 --   release_at        number   game-time of pending release (optional)
 -- @return table
+-- Prefer get_scripted_squad(id) for single-entry lookups (O(1), no allocation).
+
+ap_api.get_scripted_squad(squad_id)
+-- Returns a shallow copy of the entry for one squad id, or nil.
+-- Fresh per call; mutation does not affect broker state.
+-- @param squad_id  number
+-- @return table|nil
 
 ap_api.release_squad(squad_id)
 -- Release a squad from AP scripted control. Stops the broker's reassert loop
@@ -56,8 +65,9 @@ ap_api.script_squad(squad, smart, opts)
 -- pre-release hold, target reassertion).
 -- @param squad     userdata
 -- @param smart     userdata
--- @param opts      table { consequence, rush?, on_arrive?, on_arrive_args?, pre_release_gulag? }
---   consequence (required) - CONSEQUENCE.X identity
+-- @param opts      table { consequence, action, rush?, on_arrive?, on_arrive_args?, pre_release_gulag? }
+--   consequence (required) - CONSEQUENCE.X enum value (which consequence dispatched this squad)
+--   action      (required) - ACTION.X enum value (player-facing label; see ap_api.get_text)
 --   rush                   - run + danger anim when online
 --   on_arrive              - dispatch key, only set when a consequence with
 --                            this name registered an arrival handler
@@ -68,18 +78,21 @@ ap_api.script_squad(squad, smart, opts)
 ap_api.script_actor_target(squad, opts)
 -- Script a squad to pursue the player. No arrival detection (player moves).
 -- @param squad     userdata
--- @param opts      table|nil { consequence }
+-- @param opts      table { consequence, action }
+--   consequence (required) - CONSEQUENCE.X enum value
+--   action      (required) - ACTION.X enum value
 -- @return table { code, id, dst, dst_id }
 ```
 
 ### Display text
 
 ```lua
-ap_api.get_text(consequence)
--- Resolve a consequence key to its localized action phrase
+ap_api.get_text(action)
+-- Resolve an action enum value to its localized phrase
 -- ("Investigating a Massacre Site", "Heading to a Campfire to Rest", ...).
--- @param consequence  string   CONSEQUENCE.X enum value
--- @return string|nil           localized text, or nil for unknown / unresolved keys
+-- The action enum value is itself the localization id; get_text just translates.
+-- @param action  string   ACTION.X enum value
+-- @return string|nil      localized text, or nil for unknown / unresolved ids
 ```
 
 ### Cause and consequence registration
@@ -96,7 +109,7 @@ ap_api.register_radiant_cause(category, predicate)
 -- publishing payload, a rejection table, or nil.
 -- @param category  string  Must be one of ap_core_const.CAUSE_CATEGORY values
 -- @param predicate function(squad) -> table|nil
--- @return boolean  false if category invalid
+-- @return boolean  true if all registrations succeeded, false on category invalid or producer rejection
 
 ap_api.register_reactive_cause(callback, category, predicate)
 -- Register a reactive cause predicate for one engine callback.
@@ -104,10 +117,11 @@ ap_api.register_reactive_cause(callback, category, predicate)
 -- @param callback   string  CALLBACK enum value
 -- @param category   string  Must be one of ap_core_const.CAUSE_CATEGORY values
 -- @param predicate  function(...) -> table|nil
--- @return boolean  false if category invalid
+-- @return boolean  true on success, false on category invalid or producer rejection
 
 ap_api.register_consequence(name, opts, handler)
--- Register a consequence handler.
+-- Register a consequence handler. Strict: refuses duplicate names.
+-- Call unregister_consequence(name) first to replace.
 -- @param name     string  Consequence registration name (also the arrival dispatch key)
 -- @param opts     table { cause, condition?, on_arrive_fn? }
 --   cause         (required) - cause string the handler subscribes to
@@ -115,7 +129,13 @@ ap_api.register_consequence(name, opts, handler)
 --   on_arrive_fn  (optional) - function(squad, on_arrive_args) called when a squad
 --                              scripted by this consequence arrives at its smart
 -- @param handler  function(event_data) -> { code = RESULT.X, ... }
--- @return boolean
+-- @return boolean  true on success, false if already registered or args invalid
+
+ap_api.unregister_consequence(name)
+-- Remove a consequence handler by name. Removes from event registry, clears
+-- cause-of mapping, and unhooks any arrival handler under the same name.
+-- @param name  string  Consequence registration name
+-- @return boolean  true if removed, false if not registered
 ```
 
 ### Predicate payload contract
@@ -149,6 +169,14 @@ ap_core_const.CAUSE_CATEGORY.OPPORTUNITIES  -- triggered by environmental state 
 ```
 
 Foreign causes share AP's per-category MCM caps and stats grouping. `register_radiant_cause` and `register_reactive_cause` reject unknown categories.
+
+### Actions
+
+Each consequence handler passes both `consequence = CONSEQUENCE.X` and `action = ACTION.X` to `script_squad` / `script_actor_target`. The broker stores both on the record. `get_scripted_squads()[id].consequence` is the consequence that dispatched the squad; `get_scripted_squads()[id].action` is the player-facing label for what the squad is doing.
+
+The action enum value is itself the localization id. e.g. `ACTION.MASSACRE_INVESTIGATE = "action:massacre_investigate"`, and `gamedata/configs/text/eng/ui_st_ap_macros.xml` contains `<string id="action:massacre_investigate"><text>Investigating a Massacre Site</text></string>`. `ap_api.get_text(action)` is just `game.translate_string(action)`.
+
+For foreign mods adding new consequences: define your own action enum value (e.g. `"action:my_mod_ambush_setup"`), add a matching `<string id="action:my_mod_ambush_setup">` entry to your mod's localization XML, and pass the enum value as `action = ...` in `script_squad` opts.
 
 ---
 
@@ -192,19 +220,19 @@ Tooltip showing what AP is doing with a squad:
 ```lua
 local function ap_action_for(squad_id)
     if not ap_api then return nil end
-    local entry = ap_api.get_scripted_squads()[squad_id]
-    if not entry or not entry.consequence then return nil end
-    return ap_api.get_text(entry.consequence)
+    local entry = ap_api.get_scripted_squad(squad_id)
+    if not entry or not entry.action then return nil end
+    return ap_api.get_text(entry.action)
 end
 
 -- Call site:
-local action = ap_action_for(squad.id)
-if action then
-    tooltip = tooltip .. "\n" .. action
+local text = ap_action_for(squad.id)
+if text then
+    tooltip = tooltip .. "\n" .. text
 end
 ```
 
-Returns localized strings: "Investigating a Massacre Site", "Heading to a Campfire to Rest", etc. nil when the squad isn't currently scripted by AP. Call fresh on every render tick — entries change as squads move between consequences.
+Returns localized strings: "Investigating a Massacre Site", "Heading to a Campfire to Rest", etc. nil when the squad isn't currently scripted by AP. Call fresh on every render tick; entries change as squads move between consequences.
 
 ### Take a squad back from AP
 
@@ -217,7 +245,7 @@ end
 xsquad.acquire_squad(squad, your_smart, true)
 ```
 
-`release_squad` returns `false` if AP wasn't scripting the squad — safe to call unconditionally.
+`release_squad` returns `false` if AP wasn't scripting the squad. Safe to call unconditionally.
 
 ### Add a new cause and consequence
 
@@ -226,6 +254,7 @@ Foreign mod adds its own cause + consequence. Goes through AP's full pipeline (g
 ```lua
 local CAUSE_AMBUSH = "cause:my_mod:ambush"
 local CONSEQUENCE_AMBUSH_SETUP = "MY_MOD_AMBUSH_SETUP"
+local ACTION_AMBUSH_SETUP = "action:my_mod_ambush_setup"
 local CATEGORY = ap_core_const.CAUSE_CATEGORY.OPPORTUNITIES
 local cfg = my_mod_mcm.cfg
 
@@ -261,6 +290,7 @@ local function _handler(event_data)
     for _, squad in ipairs(squads) do
         ap_api.script_squad(squad, smart, {
             consequence       = CONSEQUENCE_AMBUSH_SETUP,
+            action            = ACTION_AMBUSH_SETUP,
             on_arrive         = CONSEQUENCE_AMBUSH_SETUP,
             on_arrive_args    = { smart_id = event_data.smart_id },
             rush              = true,
@@ -285,25 +315,25 @@ Conventions:
 - Cause strings: namespace as `"cause:<modname>:<event>"` to avoid collision with AP's standard causes
 - Consequence names: namespace similarly (`"MY_MOD_X"` or your own pattern)
 - Pass the same string for `consequence` and `on_arrive` if you want the consequence to handle its own arrivals
-- Self-gate against the per-category cause budget with `ap_core_limiter.check_cause_rate_limit` and `increment_cause_counter` — the framework does not gate this for you
+- Self-gate against the per-category cause budget with `ap_core_limiter.check_cause_rate_limit` and `increment_cause_counter`; the framework does not gate this for you
 - Predicate payload must include `squad_id` and `level_id` (AP debug log reads them)
 
 ### Resolve localized text outside the tooltip pattern
 
-For any consequence enum string you have:
+For any action enum value you have:
 
 ```lua
-local text = ap_api.get_text(ap_core_const.CONSEQUENCE.MASSACRE_INVESTIGATE)
+local text = ap_api.get_text(ap_core_const.ACTION.MASSACRE_INVESTIGATE)
 -- "Investigating a Massacre Site"
 ```
 
-Returns nil if the key isn't in `CONSEQUENCE_INFO` or localization didn't resolve. English and Russian ship with AP; locale switches automatically via `game.translate_string`.
+The action enum value is itself the localization id (e.g. `"action:massacre_investigate"`). Strings live in `gamedata/configs/text/<lang>/ui_st_ap_macros.xml`. AlifePlus includes English and Russian; locale switches via `game.translate_string`.
 
 ---
 
 ## Notes
 
-- `ap_api` is the contract. `ap_core_*` modules are internal — using them directly is possible but unsupported across versions.
+- `ap_api` is the contract. `ap_core_*` modules are internal; using them directly is possible but unsupported across versions.
 - Backward-compatibility shims for pre-`ap_api` integrations live in `ap_core_compat.script` (e.g. `ap_core_broker.get_scripted_ids` aliased, `get_record` synthesized). New integrations should not rely on them.
 - For an alternative integration that doesn't use `ap_api`, you can subscribe directly to AP's xbus events. Cause names are listed in `ap_core_const.CAUSE`. Listener-only mods (telemetry, journal, sound) typically use this path.
 

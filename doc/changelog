@@ -1,7 +1,7 @@
 next - "Maintenance"
   Summary: animated destinations, variety per personality, uniform cause cascade, business rules enforced (alignment, personality, day/night), cause-consequence separation, slumber by species, mutant area swarm, outlaw massacre loot, stash by alignment, MCM regroup, freeze fix, performance
   Gameplay:
-    Changed: every dispatched squad arrives at a smart with authored animations matching the consequence -- campfire halts at smarts with cookfire jobs, surge slumber at smarts with shelter animations, restock at smarts with trader stalls, jobs at smarts with patrol/work/sleep slots. Smarts authored without real animation jobs are filtered at the cause stage and verified again at arrival; squads never park in a destination where they would stand idle. Faction routine reads visibly different per role and time of day.
+    Changed: every dispatched squad arrives at a smart with authored animations matching the consequence: campfire halts at smarts with cookfire jobs, surge slumber at smarts with shelter animations, restock at smarts with trader stalls, jobs at smarts with patrol/work/sleep slots. Smarts authored without real animation jobs are filtered at the cause stage and verified again at arrival; squads never park in a destination where they would stand idle. Faction routine reads visibly different per role and time of day.
     Changed: alignment, personality, species, and the day/night cycle now control squad action consistently. Rule checks execute at the cause level before expensive world queries. The cause cascade reaches every applicable predicate per tick rather than terminating on the first few. Gating resides in the cause; action resides in the consequence. Each squad's identity (faction, species, active period, personality roll) determines its action. Faction and species behavior matches design intent rather than collapsing across categories.
     Changed: every cascade decision selects one specific action rather than a category. A campfire halt, a lair retreat, a stash fill, a surge-shelter slumber are independent rolls within the same drive. Variety emerges from cascade order across many small causes; handler-side filtering is no longer used.
     Added: mutant slumber differentiated by species. Cowardly mutants bed down in territory. Feral and predator species retreat to lairs. Aberrant and predator species seek surge shelters. Three distinct destinations under one drive.
@@ -9,7 +9,7 @@ next - "Maintenance"
     Changed: infestation relocated from mutant instincts to the area family. Trigger conditions unchanged. Predator and aberrant alpha squads continue to claim lair-type smarts and convert them into single-species nests via exclusive spawn replacement. Grouped with conquer and swarm under one MCM section with its own rate budget and gulag duration.
     Changed: post-conquest hold significantly reduced. Stalker conquerors and mutant swarm groups release smart terrains much sooner after arrival than the previous Area Conquer duration. Conquered territory turns over more frequently.
     Added: outlaw massacre loot. Bandits, renegades, and Greh route to massacre sites and strip corpses for weapons and gear, alongside the cowardly mutants that scavenge.
-    Changed: work-shift causes gate on the day/night cycle, lifestyle causes do not. Stalkers run day-active work (trade, money harvest/hunt, outpost watches, exploration, research) and night-dormant survival (sleep, shelter). Eat, heal, rest, and socialize are any-hour -- nothing in the simulation says a squad cannot eat at night or take a halt during the day. Mutants follow species circadian rhythms; nocturnal species invert their active period.
+    Changed: work-shift causes gate on the day/night cycle, lifestyle causes do not. Stalkers run day-active work (trade, money harvest/hunt, outpost watches, exploration, research) and night-dormant survival (sleep, shelter). Eat, heal, rest, and socialize are any-hour. Nothing in the simulation says a squad cannot eat at night or take a halt during the day. Mutants follow species circadian rhythms; nocturnal species invert their active period.
     Changed: freshly-tracked squads start at varied overdue states for their needs, instincts, and opportunities, with per-squad jitter so neighbouring squads do not spike on the same need at the same tick. Newly-encountered squads begin acting within the first per-tick budget instead of warming up over the full threshold window after a save load.
     Changed: stash work partitioned by alignment. Outlaws ambush; neutral stalkers (Loner, Clear Sky, Freedom, Mercenary) loot; principled stalkers (Duty, Military, Monolith, ISG) and Ecologists fill. Each human faction now covers exactly one stash role.
     Changed: stash ambush is presence-only. The squad arrives at the stash, the cooldown timestamp resets on arrival, and no item action runs.
@@ -23,7 +23,7 @@ next - "Maintenance"
   News & Map:
     Added: news-chance slider on the News tab (0-100, default 20). Each consequence success rolls against the slider value before feeding the news pipeline. Higher values admit more events; lower values reduce frequency. Operates in addition to the existing compose-interval and scope throttles.
     Changed: news templates are per-consequence only. Multi-event composite templates (one entry covering both halves of a paired event) retired. Each consequence rolls its own news entry independently.
-    Changed: PDA marker label reduced to two lines: action phrase and subject. Other-party identity moved into news template content.
+    Changed: PDA marker label is action phrase + consequence tag + subject. Other-party identity moved into news template content.
     Fixed: five news templates assumed the PDA speaker shared the subject's faction (e.g. "I was with the Monolith patrol..."). Reworded to a neutral witness voice; any speaker can now voice any template without identity contradiction.
   MCM:
     Changed: cause sidebar consolidated from 11 pages to 4 (Reactions, Opportunities, Needs, Instincts). One page per category instead of one per cause.
@@ -37,8 +37,9 @@ next - "Maintenance"
     Removed: drive-level enable toggles for needs and instincts. Each answer carries its own enable.
     Removed: per-cause and per-consequence personality min/max sliders. Replaced by a single global clamp applied to every personality roll.
   Compatibility:
+    Added: xchange (xlibs). Liquibase-style changeset registry. ap_core_compat registers each save-data migration with a unique id; xchange.run executes pending changesets once per save and records ids in m_data.xchange_log. Each migration runs exactly once and is skipped on subsequent loads.
     Added: save migration releases scripted squads whose on-arrive consequence no longer exists. Self-healing: zero orphans on a clean load makes the next pass a no-op.
-    Added: ap_core_compat erepb shim. Aliases ap_core_broker.get_scripted_ids to get_scripted_squads and synthesizes a minimal get_record({squad_id, ...}) returning {consequence = ...} for the warfare integrator's pre-rename call shape.
+    Added: ap_core_compat shim for Warfare A Life Overhaul. Aliases ap_core_broker.get_scripted_ids, synthesizes a minimal get_record, and rebuilds ap_core_const.CONSEQUENCE_INFO with action_key per consequence.
   Fixed:
     Fixed: mutant area swarm publishes correctly. The cause was looking up its species table by faction key; aggressive mutant squads now claim empty smarts on arrival as designed. Dead since 1.5.0.
     Fixed: scripted squads release cleanly when an authored animation precondition flips during the pre-arrival hold (surge transition, day-to-night for sleepers, zombie state, trader running out of items). The arrival check verifies live engine job allocation and re-runs during the hold rather than waiting out the full duration on a stale destination.
@@ -53,7 +54,7 @@ next - "Maintenance"
     Fixed: stash loot, ambush, and fill no longer route the squad into a hostile base. The post-stash destination smart was picked as the nearest smart to the stash with no relation filter; an enemy-faction filter now mirrors the peaceful-needs gate.
     Fixed: mutant species and faction display strings render lowercase in PDA news ("zombies" instead of "Zombies"). Capitalized common nouns mid-sentence read like UI labels; lowercase reads as prose. Issue #8.
     Fixed: zombified factions no longer trigger human-narrative news templates ("watch rotation", "laid out a rotation"). The area cause now routes humans (alignment_human, excludes zombified) and mutants (species feral/predator/aberrant, excludes zombie species) on separate paths; zombies fall through both. Issue #9 (resolved by 1d49fc7).
-    Fixed: PDA map markers no longer silently drop scripted squads whose consequence registered no arrival handler. The hud was reading the broker's internal arrival-dispatch key (on_arrive) as if it were the consequence identity; massacre investigate/scavenge/loot, basekill support/flee, harvest haunt, and wounded help/hunt squads (none of which set on_arrive) had nil identity and rendered no marker.
+    Fixed: PDA map markers no longer silently drop scripted squads whose consequence had no arrival handler. The hud read the broker's on_arrive dispatch key as consequence identity; massacre investigate/scavenge/loot, basekill support/flee, harvest haunt, and wounded help/hunt squads (none of which set on_arrive) rendered no marker.
   Performance:
     Changed: cascade buffer shuffles in place. The previous code allocated a new array per tick; the new code swaps entries in the existing buffer. Per-tick allocation eliminated for the radiant cascade.
     Changed: consumer dispatch shuffles in place. Mirrors the cascade buffer pattern on the consumer side: the per-event copy of the consequence list is gone. Per-event allocation eliminated on the dispatch path.
@@ -63,7 +64,7 @@ next - "Maintenance"
     Added: ap_core_hud.register_identity_source(fn), register_subject_resolver(fn). Ext-registered at on_game_start; core holds zero ext imports.
     Added: ap_ext_tracker.get_alpha_marker_squads() - squad ids hosting alphas, for the HUD identity source.
     Added: ap_ext_util.get_faction_display(faction), get_species_display(species). Shared HUD/news translation path.
-    Added: CAUSE_CATEGORY enum in ap_core_const (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Each cause declares its category for rate-limit grouping.
+    Added: CAUSE_CATEGORY enum in ap_core_const (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Each cause declares its category for rate-limit grouping. Foreign causes registered via ap_api.register_radiant_cause / register_reactive_cause must pick from this set.
     Added: HARVEST_CALLBACKS, WOUNDED_CALLBACKS in ap_core_const. Cause registers once per family member with the same predicate.
     Added: REACTIVE_MAX_CONSEQUENCES_PER_CAUSE in ap_core_const. Consumer-enforced cap; safety net for future families.
     Added: ap_core_debug.bracket(constant). Log-label helper from CAUSE / CONSEQUENCE / TRACE constants; renames propagate.
@@ -75,11 +76,18 @@ next - "Maintenance"
     Removed: ap_core_broker activity record API (record, get_record, get_records, clear_record, RECORD_CAPACITY). News owns its FIFO; HUD reads scripted-squad and identity registers.
     Removed: opts.cause_id and result._cause_id on cause/consequence payloads. Used only by the deleted pair pool.
     Removed: cause:squadkill payload field killer_squad. Re-resolve via xobject.se(killer_squad_id).
-    Added: ap_core_broker.script_squad / script_actor_target opts.consequence. Canonical identity field stored on _ap_scripted_squads records as data.consequence; integrators read it via get_scripted_squads()[squad_id].consequence. opts.on_arrive remains internal arrival-handler dispatch only.
+    Added: ap_core_broker.script_squad / script_actor_target opts.consequence and opts.action. consequence is which consequence dispatched the squad; action is the player-facing label (passed to ap_api.get_text). Both stored on _ap_scripted_squads records. opts.on_arrive remains internal arrival-handler dispatch.
+    Added: ACTION enum in ap_core_const, parallel to CONSEQUENCE. Values are the localization ids directly (e.g. ACTION.MASSACRE_INVESTIGATE = "action:massacre_investigate"). ap_api.get_text(action) is just game.translate_string(action).
+    Removed: CONSEQUENCE_INFO from ap_core_const. action_key and name_key fields retired; persistent flag moved to CONSEQUENCE_PERSISTENT (today: ALPHA_PROMOTE only).
     Removed: cause:alphakill payload fields name, alpha_level, kills. Resolve via xcreature.get_name and ap_ext_tracker.get_alpha_level.
     Renamed: ap_core_utils -> ap_core_util. Singular form, matching ap_ext_util.
     Renamed: payload field total_deaths / death_count -> kill_count on cause:massacre and cause:basekill.
-    Added: ap_api module. Public API facade for foreign mod integration. 12 functions covering ownership (register_owner, unregister_owner, get_owner), scripted-squad state (get_scripted_squads, release_squad, script_squad, script_actor_target), display text (get_text), and cause/consequence registration (get_cause, register_radiant_cause, register_reactive_cause, register_consequence). Backed by new ap_core_broker.unregister_owner / release_squad and ap_core_consumer.cause_of. Foreign mods integrate through ap_api; ap_core_* modules are internal and not part of the contract. See doc/integration-guide.md.
+    Added: ap_api module. Public API facade for foreign mods. Functions: register_owner / unregister_owner / get_owner, get_scripted_squads / get_scripted_squad / release_squad / script_squad / script_actor_target, get_text, get_cause / register_radiant_cause / register_reactive_cause / register_consequence / unregister_consequence. Backed by new ap_core_broker.unregister_owner / release_squad / unregister_arrival_handler and ap_core_consumer.cause_of / unregister. ap_core_* modules are internal. See doc/integration-guide.md.
+    Changed: ap_core_broker.script_squad and script_actor_target validate opts.consequence and opts.action; nil returns FAILED_ACTION/NIL_ARGS instead of producing markers with raw consequence enum literals.
+    Changed: ap_core_consumer.register is strict on duplicate names. Caller must call unregister(name) first to replace; second register call with the same name returns false with a WARN log.
+    Changed: ap_core_broker.register_owner validates name and filter type. Invalid args log ERR and return false.
+    Changed: ap_api.register_radiant_cause / register_reactive_cause propagate ap_core_producer.register's return value. Generated trace names include the predicate ref so two foreign predicates on the same category+callback log under distinct names.
+    Changed: ap_api.get_scripted_squads and get_scripted_squad copy each entry. Outer table and inner records are fresh per call; mutation does not affect broker state. Defensive copies live at the public API boundary, not in ap_core_broker.
   Internal:
     Changed: news pipeline owns its session FIFO. Activity record removed from broker. Each consequence rolls a chance to publish; on hit, the entry is appended with display strings captured at write time.
     Changed: per-cause RULES and SCAN trace lines emit one log line per attempt at DEBUG. New REASON codes (DISABLED, ON_COOLDOWN, NO_ELIGIBLE_SQUAD, WRONG_PERIOD, BUDGET_EXHAUSTED) distinguish post-filter rejects from scan-empty.
@@ -88,6 +96,7 @@ next - "Maintenance"
     Changed: HUD funnel split. Per-tick rows: causes -> publishes -> classifies -> executes. Cause-side and consequence-side blocker columns separated.
     Changed: cause-file naming follows generator shape. Singular when one cause is published (reactive), plural when many are (radiant). Consequence files always plural, one file per cause family. 15 consequence files merged to 11.
   Localization:
+    Changed: action strings moved from ui_st_ap_consequence.xml to ui_st_ap_macros.xml (EN + RU). XML ids renamed from st_ap_action_X to action:X to match the ACTION enum value. Dead st_ap_consequence_* short captions removed; ui_st_ap_consequence.xml retired.
     Added: 5 EN + 5 RU news templates for the new massacre loot consequence.
     Added: Russian MCM XML rebuilt at parity with English (605 strings).
     Added: Stalker_Boss credited as Russian translator. gwalls credited for English copyediting pass.

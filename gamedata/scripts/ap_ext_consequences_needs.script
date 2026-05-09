@@ -7,6 +7,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -54,33 +55,33 @@ local function _arrive_trade(go)
 end
 
 local CONFIGS = {
-    { consequence = CONSEQUENCE.HUNGER_CAMPFIRE,  event = CAUSE.HUNGER_CAMPFIRE,  name = "hunger_campfire",
+    { consequence = CONSEQUENCE.HUNGER_CAMPFIRE, action = ACTION.HUNGER_CAMPFIRE,  event = CAUSE.HUNGER_CAMPFIRE,  name = "hunger_campfire",
       section_key = "HUNGER",  pre_release_gulag = PRE_RELEASE_GULAG.HUNGER_CAMPFIRE },
-    { consequence = CONSEQUENCE.SLEEP_CAMPFIRE,   event = CAUSE.SLEEP_CAMPFIRE,   name = "sleep_campfire",
+    { consequence = CONSEQUENCE.SLEEP_CAMPFIRE, action = ACTION.SLEEP_CAMPFIRE,   event = CAUSE.SLEEP_CAMPFIRE,   name = "sleep_campfire",
       pre_release_gulag = PRE_RELEASE_GULAG.SLEEP_CAMPFIRE },
-    { consequence = CONSEQUENCE.REST_CAMPFIRE,    event = CAUSE.REST_CAMPFIRE,    name = "rest_campfire",
+    { consequence = CONSEQUENCE.REST_CAMPFIRE, action = ACTION.REST_CAMPFIRE,    event = CAUSE.REST_CAMPFIRE,    name = "rest_campfire",
       section_key = "REST",    pre_release_gulag = PRE_RELEASE_GULAG.REST_CAMPFIRE },
-    { consequence = CONSEQUENCE.HEAL_SHELTER,     event = CAUSE.HEAL_SHELTER,     name = "heal_shelter",
+    { consequence = CONSEQUENCE.HEAL_SHELTER, action = ACTION.HEAL_SHELTER,     event = CAUSE.HEAL_SHELTER,     name = "heal_shelter",
       section_key = "HEAL",    pre_release_gulag = PRE_RELEASE_GULAG.HEAL_SHELTER },
-    { consequence = CONSEQUENCE.SHELTER_INDOOR,   event = CAUSE.SHELTER_INDOOR,   name = "shelter_indoor",
+    { consequence = CONSEQUENCE.SHELTER_INDOOR, action = ACTION.SHELTER_INDOOR,   event = CAUSE.SHELTER_INDOOR,   name = "shelter_indoor",
       pre_release_gulag = PRE_RELEASE_GULAG.SHELTER_INDOOR },
-    { consequence = CONSEQUENCE.SHELTER_OUTDOOR,  event = CAUSE.SHELTER_OUTDOOR,  name = "shelter_outdoor",
+    { consequence = CONSEQUENCE.SHELTER_OUTDOOR, action = ACTION.SHELTER_OUTDOOR,  event = CAUSE.SHELTER_OUTDOOR,  name = "shelter_outdoor",
       pre_release_gulag = PRE_RELEASE_GULAG.SHELTER_OUTDOOR },
-    { consequence = CONSEQUENCE.SUPPLY_TRADER,    event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
+    { consequence = CONSEQUENCE.SUPPLY_TRADER, action = ACTION.SUPPLY_TRADER,    event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
       arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
-    { consequence = CONSEQUENCE.MONEY_HARVEST,    event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
+    { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,    event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
-    { consequence = CONSEQUENCE.MONEY_HUNT,       event = CAUSE.MONEY_HUNT,       name = "money_hunt",
+    { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,       event = CAUSE.MONEY_HUNT,       name = "money_hunt",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HUNT },
-    { consequence = CONSEQUENCE.JOB_OUTPOST,      event = CAUSE.JOB_OUTPOST,      name = "job_outpost",
+    { consequence = CONSEQUENCE.JOB_OUTPOST, action = ACTION.JOB_OUTPOST,      event = CAUSE.JOB_OUTPOST,      name = "job_outpost",
       section_key = "GUARD",   pre_release_gulag = PRE_RELEASE_GULAG.JOB_OUTPOST },
-    { consequence = CONSEQUENCE.JOB_EXPLORE,      event = CAUSE.JOB_EXPLORE,      name = "job_explore",
+    { consequence = CONSEQUENCE.JOB_EXPLORE, action = ACTION.JOB_EXPLORE,      event = CAUSE.JOB_EXPLORE,      name = "job_explore",
       pre_release_gulag = PRE_RELEASE_GULAG.JOB_EXPLORE },
-    { consequence = CONSEQUENCE.JOB_RESEARCH,     event = CAUSE.JOB_RESEARCH,     name = "job_research",
+    { consequence = CONSEQUENCE.JOB_RESEARCH, action = ACTION.JOB_RESEARCH,     event = CAUSE.JOB_RESEARCH,     name = "job_research",
       pre_release_gulag = PRE_RELEASE_GULAG.JOB_RESEARCH },
-    { consequence = CONSEQUENCE.SOCIAL_CAMPFIRE,  event = CAUSE.SOCIAL_CAMPFIRE,  name = "social_campfire",
+    { consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, action = ACTION.SOCIAL_CAMPFIRE,  event = CAUSE.SOCIAL_CAMPFIRE,  name = "social_campfire",
       section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_CAMPFIRE },
-    { consequence = CONSEQUENCE.SOCIAL_BASE,      event = CAUSE.SOCIAL_BASE,      name = "social_base",
+    { consequence = CONSEQUENCE.SOCIAL_BASE, action = ACTION.SOCIAL_BASE,      event = CAUSE.SOCIAL_BASE,      name = "social_base",
       section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
 }
 
@@ -142,6 +143,7 @@ local function _make_handler(entry)
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     consequence = entry.consequence,
+                    action = entry.action,
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = event_data.dto_field, name = entry.name,

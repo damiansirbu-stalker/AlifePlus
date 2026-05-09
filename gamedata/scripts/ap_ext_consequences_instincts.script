@@ -4,6 +4,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
@@ -14,19 +15,19 @@ local LOG = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
 local cfg = ap_core_mcm.cfg
 
 local CONFIGS = {
-    { consequence = CONSEQUENCE.SCATTER,        event = CAUSE.SCATTER,        name = "scatter",
+    { consequence = CONSEQUENCE.SCATTER, action = ACTION.SCATTER,        event = CAUSE.SCATTER,        name = "scatter",
       pre_release_gulag = PRE_RELEASE_GULAG.SCATTER },
-    { consequence = CONSEQUENCE.FEED,           event = CAUSE.FEED,           name = "feed",
+    { consequence = CONSEQUENCE.FEED, action = ACTION.FEED,           event = CAUSE.FEED,           name = "feed",
       pre_release_gulag = PRE_RELEASE_GULAG.FEED },
-    { consequence = CONSEQUENCE.SLUMBER_FIELD,  event = CAUSE.SLUMBER_FIELD,  name = "slumber_field",
+    { consequence = CONSEQUENCE.SLUMBER_FIELD, action = ACTION.SLUMBER_FIELD,  event = CAUSE.SLUMBER_FIELD,  name = "slumber_field",
       pre_release_gulag = PRE_RELEASE_GULAG.SLUMBER_FIELD },
-    { consequence = CONSEQUENCE.SLUMBER_LAIR,   event = CAUSE.SLUMBER_LAIR,   name = "slumber_lair",
+    { consequence = CONSEQUENCE.SLUMBER_LAIR, action = ACTION.SLUMBER_LAIR,   event = CAUSE.SLUMBER_LAIR,   name = "slumber_lair",
       pre_release_gulag = PRE_RELEASE_GULAG.SLUMBER_LAIR },
-    { consequence = CONSEQUENCE.SLUMBER_SURGE,  event = CAUSE.SLUMBER_SURGE,  name = "slumber_surge",
+    { consequence = CONSEQUENCE.SLUMBER_SURGE, action = ACTION.SLUMBER_SURGE,  event = CAUSE.SLUMBER_SURGE,  name = "slumber_surge",
       pre_release_gulag = PRE_RELEASE_GULAG.SLUMBER_SURGE },
-    { consequence = CONSEQUENCE.ROAM,           event = CAUSE.ROAM,           name = "roam",
+    { consequence = CONSEQUENCE.ROAM, action = ACTION.ROAM,           event = CAUSE.ROAM,           name = "roam",
       pre_release_gulag = PRE_RELEASE_GULAG.ROAM },
-    { consequence = CONSEQUENCE.PACK,           event = CAUSE.PACK,           name = "pack",
+    { consequence = CONSEQUENCE.PACK, action = ACTION.PACK,           event = CAUSE.PACK,           name = "pack",
       pre_release_gulag = PRE_RELEASE_GULAG.PACK },
 }
 
@@ -57,6 +58,7 @@ local function _make_handler(entry)
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     consequence = entry.consequence,
+                    action = entry.action,
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = event_data.dto_field, name = entry.name, dst_name = smart:name() },

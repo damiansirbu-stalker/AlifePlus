@@ -10,9 +10,12 @@ local cfg = ap_core_mcm.cfg
 
 --- Dispatch chasers via engine actor targeting (no arrival detection; engine handles pursuit).
 --- Used when the chase target is the player.
-function move_actor_chasers(consequence_key, squads, moved)
+function move_actor_chasers(consequence_key, action_key, squads, moved)
     for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser, { consequence = consequence_key })
+        local res = ap_core_broker.script_actor_target(chaser, {
+            consequence = consequence_key,
+            action = action_key,
+        })
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
@@ -20,13 +23,15 @@ end
 --- Build a closure that scripts chasers to a known smart and registers recursive on_arrive.
 --- Used for the initial dispatch when the target is a non-player squad.
 --- @param consequence_key string CONSEQUENCE.X (also the on_arrive key for recursion)
+--- @param action_key string ACTION.X (player-facing action enum)
 --- @param rush_cfg_key string MCM cfg key name for rush slider
 --- @param gulag_value number PRE_RELEASE_GULAG.X seconds
-function make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value)
+function make_move_smart_chasers(consequence_key, action_key, rush_cfg_key, gulag_value)
     return function(squads, smart, target_squad_id, moved)
         for _, chaser in ipairs(squads) do
             local res = ap_core_broker.script_squad(chaser, smart, {
                 consequence = consequence_key,
+                action = action_key,
                 rush = cfg[rush_cfg_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id },
@@ -39,9 +44,10 @@ end
 
 --- Build the recursive on_arrive closure for a chase. Re-finds the target's current smart on
 --- each arrival and re-routes the chaser, until max_chases is reached.
---- @param opts table { consequence_key, rush_cfg_key, gulag_value, max_chases_cfg_key, max_distance }
+--- @param opts table { consequence_key, action_key, rush_cfg_key, gulag_value, max_chases_cfg_key, max_distance }
 function make_on_arrive(opts)
     local consequence_key = opts.consequence_key
+    local action_key = opts.action_key
     local rush_cfg_key = opts.rush_cfg_key
     local gulag_value = opts.gulag_value
     local max_chases_cfg_key = opts.max_chases_cfg_key
@@ -70,6 +76,7 @@ function make_on_arrive(opts)
             end
             local res = ap_core_broker.script_squad(squad, smart, {
                 consequence = consequence_key,
+                action = action_key,
                 rush = cfg[rush_cfg_key],
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },

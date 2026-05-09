@@ -6,6 +6,7 @@ local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
+local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
@@ -115,17 +116,17 @@ local function _arrive_fill(squad, args)
 end
 
 local CONFIGS = {
-    { consequence = CONSEQUENCE.STASH_LOOT,   event = CAUSE.STASH_LOOT,
+    { consequence = CONSEQUENCE.STASH_LOOT, action = ACTION.STASH_LOOT,   event = CAUSE.STASH_LOOT,
       name = "stash_loot",
       enabled_key = "consequence_stash_loot_enabled",
       on_arrive_fn = _arrive_loot,
       pre_release_gulag = PRE_RELEASE_GULAG.STASH_LOOT },
-    { consequence = CONSEQUENCE.STASH_AMBUSH, event = CAUSE.STASH_AMBUSH,
+    { consequence = CONSEQUENCE.STASH_AMBUSH, action = ACTION.STASH_AMBUSH, event = CAUSE.STASH_AMBUSH,
       name = "stash_ambush",
       enabled_key = "consequence_stash_ambush_enabled",
       on_arrive_fn = _arrive_ambush,
       pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH },
-    { consequence = CONSEQUENCE.STASH_FILL,   event = CAUSE.STASH_FILL,
+    { consequence = CONSEQUENCE.STASH_FILL, action = ACTION.STASH_FILL,   event = CAUSE.STASH_FILL,
       name = "stash_fill",
       enabled_key = "consequence_stash_fill_enabled",
       on_arrive_fn = _arrive_fill,
@@ -148,6 +149,7 @@ local function _make_handler(entry)
             ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
                 res = ap_core_broker.script_squad(squad, smart, {
                     consequence = entry.consequence,
+                    action = entry.action,
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
                     on_arrive_args = { stash_id = event_data.stash_id, dto_field = event_data.dto_field },
