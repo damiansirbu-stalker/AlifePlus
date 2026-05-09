@@ -4,31 +4,29 @@ local xobject, xsquad = xobject, xsquad
 local CALLBACK = ap_core_const.CALLBACK
 
 local _to_remove = {}
+local _pending_release = {}
 
-local function _release_squad(squad_id)
+-- Queue a squad id for engine-side release at on_game_load.
+-- load_state runs before objects().load() (alife_storage_manager.cpp:141), so
+-- xobject.se returns nil and xsquad.release_squad would no-op. Drained post-STATE_Read.
+local function _queue_release(squad_id)
     if type(squad_id) ~= "number" then return end
-    local squad = xobject.se(squad_id)
-    if not squad then return end
-    xsquad.release_squad(squad)
+    _pending_release[#_pending_release + 1] = squad_id
 end
 
---- v1.2 -> v1.3: release orphaned squads from old save keys
---- Old ap_scripted_squads entries reference squads with engine-side scripted_target still set.
---- Without AP tracking, those squads stay permanently pinned to their destination.
---- Covers both pre-branch (ap_alife_tracker.scripted_squads) and mid-branch (ap_squad.ap_scripted_squads).
+--- v1.2 -> v1.3: queue orphan release for squads in old save keys
 local function _v12_to_v13_release_orphaned_squads(m_data)
     local squads = m_data.ap_squad and m_data.ap_squad.ap_scripted_squads
-    if squads and type(squads) == "table" then
-        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    if type(squads) == "table" then
+        for squad_id in pairs(squads) do _queue_release(squad_id) end
     end
     squads = m_data.ap_alife_tracker and m_data.ap_alife_tracker.scripted_squads
-    if squads and type(squads) == "table" then
-        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    if type(squads) == "table" then
+        for squad_id in pairs(squads) do _queue_release(squad_id) end
     end
 end
 
---- v1.2 -> v1.3: delete deprecated save keys (released 1.2.3)
---- Old keys cleared, new modules repopulate from scratch
+--- v1.2 -> v1.3: delete deprecated save keys
 local function _v12_to_v13_delete_old_save_keys(m_data)
     m_data.ap_squad = nil
     m_data.ap_alife_tracker = nil
@@ -36,9 +34,7 @@ local function _v12_to_v13_delete_old_save_keys(m_data)
     m_data.ap_conquest = nil
 end
 
---- v1.2 -> v1.3: reset smart mutator save data (conquest_seq -> game_sec migration)
---- Old format used integer sequence for conquered_at. New format uses game_sec.
---- Detects old format by presence of conquest_seq key. Runs once per save.
+--- v1.2 -> v1.3: drop old smart_mutator format (conquest_seq -> game_sec)
 local function _v12_to_v13_reset_smart_mutator(m_data)
     local saved = m_data.ap_ext_smart_mutator
     if not saved then return end
@@ -46,47 +42,41 @@ local function _v12_to_v13_reset_smart_mutator(m_data)
     m_data.ap_ext_smart_mutator = nil
 end
 
---- v1.3 -> v1.3.5: clear old elite data (renamed to alpha, stalker elites dropped)
---- Old elites key deleted, tracker repopulates as alphas from scratch.
+--- v1.3 -> v1.3.5: clear old elites key (renamed to alphas)
 local function _v13_to_v135_clear_elite_data(m_data)
     local tracker = m_data.ap_ext_tracker
     if not tracker then return end
     if tracker.elites then tracker.elites = nil end
 end
 
---- v1.3 -> v1.3.5: release squads saved with old post_arrived_wait field (renamed to pre_release_gulag)
---- Old entries lack pre_release_gulag, causing nil arithmetic crash. Release and drop.
+--- v1.3 -> v1.3.5: queue orphan release for entries missing pre_release_gulag (avoids nil arithmetic)
 local function _v13_to_v135_release_old_scripted_squads(m_data)
     local saved = m_data.ap_core_squad or m_data.ap_core_broker
     if not saved then return end
     local squads = saved.ap_scripted_squads
-    if not squads or type(squads) ~= "table" then return end
+    if type(squads) ~= "table" then return end
     for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, data in pairs(squads) do
         if not data.pre_release_gulag then
-            _release_squad(squad_id)
+            _queue_release(squad_id)
             _to_remove[#_to_remove + 1] = squad_id
         end
     end
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
---- v1.3.5 -> v1.4: delete old ap_core_squad save key (renamed to ap_core_broker)
---- Release orphaned squads, delete key. Broker repopulates from scratch.
+--- v1.3.5 -> v1.4: queue orphan release for old ap_core_squad key, then drop the key
 local function _v135_to_v14_cleanup_squad_key(m_data)
     local old = m_data.ap_core_squad
     if not old then return end
     local squads = old.ap_scripted_squads
-    if squads and type(squads) == "table" then
-        for squad_id in pairs(squads) do _release_squad(squad_id) end
+    if type(squads) == "table" then
+        for squad_id in pairs(squads) do _queue_release(squad_id) end
     end
     m_data.ap_core_squad = nil
 end
 
---- v1.5 -> v1.5.5: release scripted squads whose on_arrive references a consequence no longer
---- registered (n136 INFEST extracted to AREA family renamed consequence:instincts_infest
---- to consequence:area_infest; future renames self-heal too). Detects orphans against the
---- live ap_core_const.CONSEQUENCE set; valid in-flight squads survive untouched.
+--- v1.5 -> v1.5.5: queue orphan release for entries whose on_arrive references an unknown consequence
 local function _v15_to_v155_release_orphan_arrivals(m_data)
     local broker = m_data.ap_core_broker
     if type(broker) ~= "table" then return end
@@ -97,7 +87,7 @@ local function _v15_to_v155_release_orphan_arrivals(m_data)
     for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, data in pairs(squads) do
         if data and data.on_arrive and not known[data.on_arrive] then
-            _release_squad(squad_id)
+            _queue_release(squad_id)
             _to_remove[#_to_remove + 1] = squad_id
         end
     end
@@ -112,23 +102,33 @@ xchange.register("ap_v13_to_v135_release_old_scripted_squads", _v13_to_v135_rele
 xchange.register("ap_v135_to_v14_cleanup_squad_key",         _v135_to_v14_cleanup_squad_key)
 xchange.register("ap_v15_to_v155_release_orphan_arrivals",   _v15_to_v155_release_orphan_arrivals)
 
---- Run all registered changesets on load_state.
---- Alphabetical load order (ap_core_compat < ap_core_broker < ap_ext_tracker)
---- ensures this runs before any module reads m_data.
+--- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
     if not m_data then return end
     xchange.run(m_data)
 end
 
+--- Drain queued orphan releases. on_game_load fires post-STATE_Read so server entities exist.
+local function _on_game_load()
+    if #_pending_release == 0 then return end
+    local count = 0
+    for i = 1, #_pending_release do
+        local squad = xobject.se(_pending_release[i])
+        if squad then
+            xsquad.release_squad(squad)
+            count = count + 1
+        end
+        _pending_release[i] = nil
+    end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[COMPAT] release_orphaned: released=%d", count)
+    end
+end
+
 --- Warfare A Life Overhaul (erepb GAMMA fork) compat: preserve old call shapes.
---- Covers exactly the AP surface that mod reads:
 ---   ap_core_broker.get_scripted_ids()[id]                 -> aliased to get_scripted_squads
----   ap_core_broker.get_record({squad_id, assigned=true})  -> synthesized minimal record
+---   ap_core_broker.get_record({squad_id})                 -> synthesized minimal record
 ---   ap_core_const.CONSEQUENCE_INFO[c].action_key          -> rebuilt from CONSEQUENCE+ACTION
----   ap_core_broker.register_owner("warfare", fn)          -> still public
---- Warfare reads info.action_key and passes it to game.translate_string for tooltip text.
---- ACTION enum values are themselves localization ids (action:<k>), so the indirection
---- still resolves against ui_st_ap_consequence.xml.
 local function _wire_warfare_compat_shim()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
@@ -148,6 +148,7 @@ end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
 
     ap_core_broker.register_owner("warfare", function(squad)
         return squad.registered_with_warfare == true

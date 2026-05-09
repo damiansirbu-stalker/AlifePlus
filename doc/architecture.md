@@ -274,9 +274,11 @@ Fires after STATE_Read rebuilds all server entities from the save file. At this 
 
 Engine load sequence:
 
-1. load_state - save data read (m_data available). Entities do NOT exist yet.
+1. load_state - save data read (m_data available). Entities do NOT exist yet. `alife_object(id)` returns nil; `level.get_start_time` AVs.
 2. STATE_Read - engine deserializes server entities, rebuilds smart terrain config from LTX.
 3. on_game_load - entities exist; mutations safe to apply.
+
+Migrations that need to clear engine state (e.g. `scripted_target` on orphan squads) must split into a phase A queue at load_state and a phase B drain at on_game_load. See `doc/standards/code-standards.md` Save Data Migrations for the pattern; `ap_core_compat.script` and `ap_ext_smart_mutator.script` are the reference implementations.
 
 ---
 
