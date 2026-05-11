@@ -1,6 +1,7 @@
 --- ap_core_compat: Save data migrations and proxy registrations for external mods
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
 local xobject, xsquad = xobject, xsquad
+local game_translate_string = game.translate_string
 local CALLBACK = ap_core_const.CALLBACK
 
 local _to_remove = {}
@@ -125,25 +126,55 @@ local function _on_game_load()
     end
 end
 
---- Warfare A Life Overhaul (erepb GAMMA fork) compat: preserve old call shapes.
----   ap_core_broker.get_scripted_ids()[id]                 -> aliased to get_scripted_squads
----   ap_core_broker.get_record({squad_id})                 -> synthesized minimal record
----   ap_core_const.CONSEQUENCE_INFO[c].action_key          -> rebuilt from CONSEQUENCE+ACTION
+-- Translate a translation key, returning "" on miss / nil. Used by the legacy
+-- record-field shim so erepb's tooltip code reads pre-translated display strings.
+local function _legacy_xlate(key)
+    if not key then return "" end
+    local v = game_translate_string(key)
+    if not v or v == key or v == "" then return "" end
+    return v
+end
+
+-- Add legacy field aliases on a record entry. Idempotent: once `consequence` is set,
+-- subsequent calls early-return. Mutates the live entry (broker returns by reference);
+-- legacy fields persist across save/load and across repeat reads, which is harmless.
+local function _add_legacy_record_fields(entry)
+    if not entry or entry.consequence then return entry end
+    entry.consequence           = entry.consequence_key
+    entry.other_faction_display = _legacy_xlate(entry.other_faction_key)
+    entry.other_species_display = _legacy_xlate(entry.other_species_key)
+    return entry
+end
+
+--- Warfare A Life Overhaul (erepb GAMMA fork) compat: preserve old call shapes
+--- for warfare_alifeplus.script (erepb 1.5.3, commit 6c095fe). Three read paths:
+---   ap_core_broker.get_scripted_ids()[id]                  -> aliased to get_scripted_squads
+---   record.consequence / record.other_*_display            -> synthesized on get_record / get_records
+---   ap_core_const.CONSEQUENCE_INFO[c].action_key           -> rebuilt from CONSEQUENCE + ACTION enums
+--- Drop entirely once erepb migrates to ap_api (consequence_key, other_*_key + ap_api.get_text,
+--- record.action_key direct). Tracked in todo-alifeplus-next n430.
 local function _wire_warfare_compat_shim()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
-
-    function ap_core_broker.get_record(query)
-        if type(query) ~= "table" or type(query.squad_id) ~= "number" then return nil end
-        local entry = ap_core_broker.get_scripted_squads()[query.squad_id]
-        if not entry then return nil end
-        return { consequence = entry.consequence }
-    end
 
     local info = {}
     for k, consequence in pairs(ap_core_const.CONSEQUENCE) do
         info[consequence] = { action_key = ap_core_const.ACTION[k] }
     end
     ap_core_const.CONSEQUENCE_INFO = info
+
+    -- Boot-time capture of originals. Assumes no module reassigns ap_core_broker.get_record /
+    -- get_records after compat init; a later replacement would be bypassed by the wrap chain.
+    -- Holds today (no AP or foreign mod touches them). Shim retires with n430.
+    local _orig_get_record  = ap_core_broker.get_record
+    local _orig_get_records = ap_core_broker.get_records
+    ap_core_broker.get_record = function(opts)
+        return _add_legacy_record_fields(_orig_get_record(opts))
+    end
+    ap_core_broker.get_records = function(opts)
+        local list = _orig_get_records(opts)
+        for i = 1, #list do _add_legacy_record_fields(list[i]) end
+        return list
+    end
 end
 
 function on_game_start()
