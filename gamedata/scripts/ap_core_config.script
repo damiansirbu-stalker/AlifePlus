@@ -1,0 +1,82 @@
+--- ap_core_config: LTX-backed config loader for cross-map transit destinations.
+--- Loads `ap_transit.ltx` at on_game_start, resolves level names to engine ids via xlevel,
+--- exposes per-(family, faction) level lists to causes.
+
+local string_gmatch = string.gmatch
+local pairs, type, ini_file = pairs, type, ini_file
+local LOG = ap_core_debug.bracket("CONFIG")
+
+local _transit_levels = {}
+
+--- Read a flat key=value section from an ini.
+--- No pcall around ini ops: `ini_file(path)` returns an empty CInifile when the file is missing
+--- (Xr_ini.cpp:211 - FS.r_open returns NULL, constructor silently returns). All reads are gated
+--- by section_exist + bounded index, which the engine contract guarantees won't throw.
+local function _load_section_kv(path, section)
+    local ini = ini_file(path)
+    local result = {}
+    if not ini:section_exist(section) then
+        ap_core_debug.warn(LOG .. " section missing: %s :: %s", path, section)
+        return result
+    end
+    local count = ini:line_count(section)
+    for i = 0, count - 1 do
+        local ok, key, value = ini:r_line(section, i, "", "")
+        if ok and key ~= "" then result[key] = value end
+    end
+    return result
+end
+
+--- Split "a, b, c" into { "a", "b", "c" }, trimming whitespace.
+local function _parse_csv(s)
+    local out = {}
+    if type(s) ~= "string" then return out end
+    for token in string_gmatch(s, "[^,%s]+") do out[#out + 1] = token end
+    return out
+end
+
+--- Resolve level names to engine level_ids; drop unknown (with warning).
+local function _resolve_level_ids(names, family, faction)
+    local ids = {}
+    for i = 1, #names do
+        local lid = xlevel.get_level_id_by_name(names[i])
+        if lid then
+            ids[#ids + 1] = lid
+        else
+            ap_core_debug.warn(LOG .. " unknown level %q in transit/%s/%s", names[i], family, faction)
+        end
+    end
+    return ids
+end
+
+local function _load_transit_family(family)
+    local section = "ap_transit_" .. family
+    local raw = _load_section_kv("ap_transit.ltx", section)
+    local by_faction = {}
+    for faction, csv in pairs(raw) do
+        by_faction[faction] = _resolve_level_ids(_parse_csv(csv), family, faction)
+    end
+    return by_faction
+end
+
+--- Get array of level_ids valid for cross-map transit for (family, faction).
+--- @param family string e.g. "social_base"
+--- @param faction string Squad player_id
+--- @return table Array of level_id (empty if family/faction not configured)
+function get_transit_levels(family, faction)
+    local fam = _transit_levels[family]
+    if not fam then return {} end
+    return fam[faction] or {}
+end
+
+local function _log_family(family, by_faction)
+    for faction, ids in pairs(by_faction) do
+        ap_core_debug.debug(LOG .. " loaded transit/%s/%s: %d levels", family, faction, #ids)
+    end
+end
+
+function on_game_start()
+    _transit_levels = { social_base = _load_transit_family("social_base") }
+    if not ap_core_debug.enabled() then return end
+    for family, by_faction in pairs(_transit_levels) do _log_family(family, by_faction) end
+end

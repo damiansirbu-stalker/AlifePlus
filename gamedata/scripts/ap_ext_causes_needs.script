@@ -1,7 +1,7 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
-local table_sort = table.sort
+local table_sort, math_random = table.sort, math.random
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
@@ -95,7 +95,24 @@ local function _find_overdue_needs(dto, now, identity)
     return out
 end
 
+-- Filter transit candidate levels: drop origin and destinations already over-balance-cap.
+local function _eligible_transit_levels(family, faction, origin_level_id)
+    local candidates = ap_core_config.get_transit_levels(family, faction)
+    local out = {}
+    local cap = cfg.transit_balance_cap
+    for i = 1, #candidates do
+        local cand = candidates[i]
+        local skip = cand == origin_level_id
+            or ap_core_broker.transit_balance(cand, faction) - 1 < -cap
+        if not skip then out[#out + 1] = cand end
+    end
+    return out
+end
+
 -- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
+-- Cross-map branch: picks destination level from LTX faction list via ap_core_config, filtered
+-- by transit balance (avoid over-drain at origin and over-fill at destination). Same find_smart
+-- runs on the picked level after.
 local function _try_cause(trace, squad, level_id, entry)
     if not cfg["cause_" .. entry.name .. "_enabled"] then
         return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
@@ -110,9 +127,19 @@ local function _try_cause(trace, squad, level_id, entry)
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
     local filter = _build_filter(entry, squad.player_id)
-    local smart = ap_core_util.find_smart_observed(trace, squad.position, {
-        level_id = level_id, filter = filter, max_distance = RANGE_RADIO,
-    })
+    local opts = { filter = filter }
+    if entry.transit then
+        if ap_core_broker.transit_balance(level_id, squad.player_id) + 1 > cfg.transit_balance_cap then
+            return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+        end
+        local eligible = _eligible_transit_levels(entry.family, squad.player_id, level_id)
+        if #eligible == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        opts.level_id = eligible[math_random(#eligible)]
+    else
+        opts.level_id = level_id
+        opts.max_distance = RANGE_RADIO
+    end
+    local smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     ap_core_limiter.increment_cause_counter(SCAN_KEY)
     return { code = RESULT.SUCCESS, smart = smart }
@@ -254,6 +281,10 @@ function on_game_start()
         { cause = CAUSE.SOCIAL_BASE,      name = "social_base",      need = "social",
           filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
+        { cause = CAUSE.SOCIAL_BASE_TRANSIT, name = "social_base_transit", need = "social",
+          filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
+          personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY },
+          transit = true, family = "social_base" },
     }
 
     local radiant = ap_core_const.RADIANT_CALLBACKS

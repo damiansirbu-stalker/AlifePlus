@@ -1,16 +1,27 @@
 next
-  Summary: activity record is the single substrate; capture moved to ap_core_broker; mutant tables dropped; warfare shim widened
+  Summary: activity record is the single substrate; capture moved to ap_core_broker; mutant tables dropped; warfare shim widened; cross-map social_base_transit
+  Gameplay:
+    Added: Social Base Transit. Principled stalker squads walk cross-map to a faction base on another level when no same-level base satisfies the same-level Social Base cause. Per-faction destination levels read from gamedata/configs/ap_transit.ltx.
+    Added: Transit balance limiter. Per-(level, faction) outflow/inflow counter with 3-game-day window blocks repeated drain of one level and over-fill at another. Persisted across saves.
   News:
     Changed: News composer reads the broker activity record. Standalone ledger retired.
     Changed: PDA marker shows action, consequence, subject (and other if any), target smart with level, and dispatch time. Mutant subjects render as species only.
     Removed: News Chance slider. Compose interval and scope filter remain.
+  MCM:
+    Added: Causes > Needs > Social Base Transit toggle.
+    Added: Consequences > Social Base > Social Base Transit toggle, rush, arrive action.
+    Added: Framework > Transit balance cap (1-10) and Transit balance window (1-7 game-days).
   Modder API:
     Added: ap_api.add_record - publish to the activity record.
     Added: ap_api.get_record / get_records - read activity records.
     Changed: Activity record fields are localization keys; translate via ap_api.get_text at render.
+  X-Ray & xlibs:
+    Added: xlevel.get_level_id_by_name. Lazy name to level_id map from SIMBOARD.smarts_by_names.
+    Added: xttltable TTL counter :export / :import for save/load round-trip.
   Localization:
     Changed: Species display rows moved to ui_st_ap_macros.xml with st_ap_macros_species_* ids. EN + RU.
     Removed: Six st_ap_news_mutant_* bucket rows. EN + RU.
+    Added: 10 EN + 10 RU MCM strings for Social Base Transit and Transit balance.
 
 
 1.5.5 - "Maintenance"

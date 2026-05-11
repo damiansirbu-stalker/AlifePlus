@@ -79,6 +79,7 @@ defaults = {
     cause_job_research_enabled = true,
     cause_social_campfire_enabled = true,
     cause_social_base_enabled = true,
+    cause_social_base_transit_enabled = true,
 
     -- Cause: Instincts (5 drives, slumber multi-answer)
     cause_scatter_enabled = true,
@@ -283,6 +284,15 @@ defaults = {
     consequence_social_base_enabled = true,
     consequence_social_base_rush = false,
     consequence_social_base_arrive_action_enabled = true,
+
+    -- Consequence: Social Base Transit (cross-map sibling)
+    consequence_social_base_transit_enabled = true,
+    consequence_social_base_transit_rush = false,
+    consequence_social_base_transit_arrive_action_enabled = true,
+
+    -- Cross-map transit balancer (per-(level, faction) outflow/inflow counter, 3-game-day TTL)
+    transit_balance_cap = 3,
+    transit_balance_window_sec = 259200,
 
     -- Area conquest (additive shared spawn)
     area_conquest_mutate_smart = true,
@@ -501,6 +511,12 @@ local _key_to_tab = {
     consequence_social_base_enabled = "consequences/social_base",
     consequence_social_base_rush = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
+    transit_balance_cap = "framework",
+    transit_balance_window_sec = "framework",
+    cause_social_base_transit_enabled = "causes/needs",
+    consequence_social_base_transit_enabled = "consequences/social_base",
+    consequence_social_base_transit_rush = "consequences/social_base",
+    consequence_social_base_transit_arrive_action_enabled = "consequences/social_base",
     btn_reset_all = "framework",
 }
 
@@ -579,6 +595,9 @@ function on_mcm_load()
                     _track("consequence_max_events", 1, 100, 1),
                     _track("global_consequence_max_events", 1, 20, 1),
                     _check("allow_external_ownership"),
+                    { id = "div_transit", type = "line" },
+                    _track("transit_balance_cap", 1, 10, 1),
+                    _track("transit_balance_window_sec", 86400, 604800, 3600),
                     { id = "div_reset", type = "line" },
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
@@ -752,6 +771,9 @@ function on_mcm_load()
                             { id = "div_social_base", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_social_base_tag"),
                             _check("cause_social_base_enabled"),
+                            { id = "div_social_base_transit", type = "line" },
+                            _tag("ui_mcm_ap_causes_needs_social_base_transit_tag"),
+                            _check("cause_social_base_transit_enabled"),
                             { id = "div_drives", type = "line" },
                             _track("cause_hunger_threshold", 0.1, 48, 0.1),
                             { id = "div_sleep_threshold", type = "line" },
@@ -1110,6 +1132,11 @@ function on_mcm_load()
                             _check("consequence_social_base_enabled"),
                             _check("consequence_social_base_rush"),
                             _check("consequence_social_base_arrive_action_enabled"),
+                            { id = "div_social_base_transit", type = "line" },
+                            _tag_plain("ui_mcm_ap_consequences_social_base_transit_tag"),
+                            _check("consequence_social_base_transit_enabled"),
+                            _check("consequence_social_base_transit_rush"),
+                            _check("consequence_social_base_transit_arrive_action_enabled"),
                         },
                     },
                     {
