@@ -37,15 +37,27 @@ local _alignment_conquer_mutant = xtable.merge(
 local _personality_conquer = { PERSONALITY.TERRITORY, PERSONALITY.AGGRESSION }
 local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
 
-local function _is_wild_smart(smart)
-    return not xsmart.is_base(smart) and not xsmart.has_stalker_jobs(smart, xsmart.JOB_TYPE_TRADER)
-end
+local _is_wild_smart = ap_ext_util.is_wild_smart
 
+-- Human-only. No accepts_mutant; engine's has_jobs_for self-rejects mismatched stalker
+-- communities on arrival (release_no_jobs). xsmart.has_jobs_for cite: stalker job assignment
+-- requires smart.props[community] to be set; mismatch yields nil job, has_jobs_for false.
 local function _build_conquer_filter()
     return function(smart)
         if not xsmart.is_smart_empty(smart) then return false end
         if not _is_wild_smart(smart) then return false end
         return true
+    end
+end
+
+-- Mutant variant of conquer. Needs upfront accepts_mutant because mob_home stubs are
+-- oversupplied for mutants (gulag_general.script:1018-1022) so has_jobs_for rarely rejects.
+-- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
+local function _make_swarm_filter(player_id)
+    return function(smart)
+        if not xsmart.is_smart_empty(smart) then return false end
+        if not _is_wild_smart(smart) then return false end
+        return xsmart.accepts_mutant(smart, player_id)
     end
 end
 
@@ -134,7 +146,7 @@ local function _eligible_swarm(trace, squad, species, now, level_id)
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
-        { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
+        { level_id = level_id, filter = _make_swarm_filter(squad.player_id), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     ap_core_limiter.increment_cause_counter(SCAN_KEY)
     return {
@@ -162,7 +174,7 @@ local function _eligible_infest(trace, squad, species, now, level_id)
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
     if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
-    if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
+    if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
     if not base_filter then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     local filter = function(smart)
