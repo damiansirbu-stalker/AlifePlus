@@ -63,6 +63,7 @@ CONSEQUENCE = CAUSE + VERB
 | MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
 | MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
+| MCM mutator setting | `mutator_{name}_{setting}` | `mutator_alpha_hit_power_dealt_enabled`, `mutator_area_conquest_spawn_num`, `mutator_rank_hit_power_taken_mult` |
 | Script file (cause, single) | `ap_ext_cause_{family}.script`; generator publishes exactly one cause | `ap_ext_cause_massacre.script`, `ap_ext_cause_alpha.script` |
 | Script file (cause, multi) | `ap_ext_causes_{family}.script`; generator publishes multiple causes | `ap_ext_causes_area.script`, `ap_ext_causes_stash.script`, `ap_ext_causes_needs.script`, `ap_ext_causes_instincts.script` |
 | Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (14 handlers) |
@@ -363,7 +364,9 @@ Never put underscore-joined programmer identifiers (`area_conquer`, `stash_loot`
 
 ### Section layout
 
-Family with multiple specific causes (area, stash, needs, instincts): slide banner at the top (no umbrella tag), then for each specific cause: a self-contained sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, MVT/Hull threshold slider, any branch-only sliders), separated by line dividers.
+Family with multiple specific causes (area, stash, needs, instincts): slide banner at the top (no umbrella tag), then for each specific cause: a self-contained sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, any branch-only sliders), separated by line dividers.
+
+Drive-grouped families (needs, instincts): threshold slider is per-drive, while enable toggles are per-answer (a drive may have multiple answers, e.g. slumber has slumber_field/slumber_lair/slumber_surge). Threshold sliders are rendered together at the end of the page after a `div_drives` divider, one per drive. Caller-facing label on each threshold tells the user which drive it affects.
 
 Family with a single cause (alpha, alphakill, massacre, squadkill, basekill, wounded, harvest): just one tag, no sub-divisions.
 
