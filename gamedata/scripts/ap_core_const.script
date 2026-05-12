@@ -183,8 +183,8 @@ MARKER_LINGER_SEC = 60
 
 --- Cause event names. Specific causes are what predicates publish and consequences subscribe to.
 --- Reactive (one cause per callback): ALPHA, ALPHAKILL, MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST.
---- Radiant (one umbrella file -> N specific causes via predicate-side picker): NEEDS family (9), INSTINCTS family (5),
---- STASH family (3), AREA family (2: conquer + infest). Each radiant umbrella publishes only its specific per-action
+--- Radiant (one umbrella file -> N specific causes via predicate-side picker): NEEDS family, INSTINCTS family,
+--- STASH family, AREA family. Each radiant umbrella publishes only its specific per-action
 --- causes; the umbrella name itself is never published or subscribed to as an event.
 CAUSE = {
     ALPHA = "cause:alpha",
@@ -222,8 +222,7 @@ CAUSE = {
     STASH_LOOT   = "cause:stash_loot",
     STASH_AMBUSH = "cause:stash_ambush",
     STASH_FILL   = "cause:stash_fill",
-    -- AREA family (radiant MVT timestamps + priority-gate picker per alignment;
-    -- n103/n105 will add ABANDON/DEFECT siblings)
+    -- AREA family (radiant MVT timestamps + priority-gate picker per alignment)
     AREA_CONQUER = "cause:area_conquer",
     AREA_SWARM   = "cause:area_swarm",
     AREA_INFEST  = "cause:area_infest",
@@ -250,6 +249,7 @@ REASON = {
     BELOW_THRESHOLD   = "below_threshold",
     NO_BRANCH         = "no_branch",
     BUDGET_EXHAUSTED  = "budget_exhausted",
+    MAX_INFEST_PER_LEVEL = "max_infest_per_level",
     SQUAD_ALIVE       = "squad_alive",
     NO_PROMOTION      = "no_promotion",
     LOW_KILLS         = "low_kills",
