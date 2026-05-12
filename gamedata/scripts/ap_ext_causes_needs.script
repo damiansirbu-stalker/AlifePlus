@@ -82,7 +82,7 @@ local function _find_overdue_needs(dto, now, identity)
             goto continue
         end
 
-        local elapsed = now - dto[need.field]
+        local elapsed = now - (dto[need.field] or 0)
         local threshold = cfg[need.threshold_key] * HOURS_TO_SECONDS
         if elapsed <= threshold then goto continue end
         local ratio = elapsed / threshold
