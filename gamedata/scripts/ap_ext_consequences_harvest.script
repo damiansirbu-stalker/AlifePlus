@@ -14,6 +14,8 @@ local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
 
+local LOG_INIT = ap_core_debug.bracket(CAUSE.HARVEST)
+
 local cfg = ap_core_mcm.cfg
 
 local _alignment_rob = ap_ext_const.alignment_outlaw
@@ -46,6 +48,15 @@ local function _handler_rob(event_data)
         local position, level_id = event_data.position, event_data.level_id
         if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
+        local target_squad, target_community
+        if taker_is_player then
+            target_community = get_actor_true_community()
+        else
+            target_squad = xobject.se(taker_squad_id)
+            if not target_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_TARGET_SQUAD } end
+            target_community = target_squad.player_id
+        end
+
         local chasers = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_rob,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
@@ -56,17 +67,12 @@ local function _handler_rob(event_data)
 
         local robbers = {}
         for _, squad in ipairs(chasers) do
-            if ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB }) then
+            if game_relations.is_factions_enemies(squad.player_id, target_community)
+                and ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB }) then
                 robbers[#robbers + 1] = squad
             end
         end
-        if #robbers == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
-
-        local target_squad
-        if not taker_is_player then
-            target_squad = xobject.se(taker_squad_id)
-            if not target_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_TARGET_SQUAD } end
-        end
+        if #robbers == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ELIGIBLE_SQUAD } end
 
         local moved = {}
         local dst_id = 0
@@ -160,5 +166,5 @@ function on_game_start()
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_haunt_enabled end,
     }, _handler_haunt)
-    ap_core_debug.info("[CONSEQUENCE.HARVEST] Initialized (harvest_rob, harvest_haunt)")
+    ap_core_debug.info(LOG_INIT .. " Initialized (harvest_rob, harvest_haunt)")
 end

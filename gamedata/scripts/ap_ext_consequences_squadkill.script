@@ -11,6 +11,8 @@ local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local TRACE = ap_core_const.TRACE
 
+local LOG_INIT = ap_core_debug.bracket(CONSEQUENCE.SQUADKILL_REVENGE)
+
 local cfg = ap_core_mcm.cfg
 
 local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
@@ -50,6 +52,10 @@ local function _handler_revenge(event_data)
         if is_player_kill and not game_relations.is_factions_enemies(victim_faction, get_actor_true_community()) then
             return { code = RESULT.FAILED_RULES, reason = REASON.FRIENDLY_FACTION }
         end
+        if not is_player_kill and event_data.killer_faction
+            and not game_relations.is_factions_enemies(victim_faction, event_data.killer_faction) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.FRIENDLY_FACTION }
+        end
 
         local avengers = ap_core_util.find_squads_observed(trace, position, {
             factions = { [victim_faction] = true },
@@ -69,7 +75,6 @@ local function _handler_revenge(event_data)
         local dst_id = 0
         local dst_smart = nil
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            if not avengers then return { code = TRACE.NO_SQUADS } end
             if is_player_kill then
                 _move_actor_chasers(avengers, moved)
             else
@@ -105,5 +110,5 @@ function on_game_start()
         condition = function() return cfg.consequence_squadkill_revenge_enabled end,
         on_arrive = _on_arrive_revenge,
     }, _handler_revenge)
-    ap_core_debug.info("[CONSEQUENCE.SQUADKILL] Initialized: 1 consequence (revenge)")
+    ap_core_debug.info(LOG_INIT .. " Initialized: 1 consequence (revenge)")
 end
