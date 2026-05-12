@@ -52,6 +52,10 @@ function trace()
     return xtrace.new()
 end
 
+-- Cached op_name -> bracket label. op_name values are constants (CAUSE.X, PHASE.X),
+-- so the cache is bounded by the constant set; transform is pure.
+local _label_cache = {}
+
 local function _serialize_scalars(result)
     if type(result) ~= "table" then return "" end
     local parts = {}
@@ -77,7 +81,11 @@ function observe(tr, op_name, fn, ...)
     local code = result == nil and "nil" or (type(result) == "table" and result.code or "ok")
     local reason = type(result) == "table" and result.reason
     local detail = _serialize_scalars(result)
-    local op_label = op_name:upper():gsub(":", ".")
+    local op_label = _label_cache[op_name]
+    if not op_label then
+        op_label = op_name:upper():gsub(":", ".")
+        _label_cache[op_name] = op_label
+    end
     log.debug("[%s] [tid=%d path=%s] %s%s%s [%.2fms]", op_label, tr.id, tr.path, code, reason and ":"..reason or "", detail, tmr:get_ms())
     tr:pop(seg)
     return result
