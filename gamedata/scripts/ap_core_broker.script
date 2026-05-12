@@ -625,9 +625,9 @@ function on_game_start()
     _record_assigned = {}
 
     _transit_outflow = xttltable.create_ttl_counter({
-        ttl = cfg.transit_balance_window_sec, clock = xtime.game_sec })
+        ttl = cfg.transit_balance_window_hours * 3600, clock = xtime.game_sec })
     _transit_inflow  = xttltable.create_ttl_counter({
-        ttl = cfg.transit_balance_window_sec, clock = xtime.game_sec })
+        ttl = cfg.transit_balance_window_hours * 3600, clock = xtime.game_sec })
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

@@ -292,7 +292,7 @@ defaults = {
 
     -- Cross-map transit balancer (per-(level, faction) outflow/inflow counter, 3-game-day TTL)
     transit_balance_cap = 3,
-    transit_balance_window_sec = 259200,
+    transit_balance_window_hours = 72,
 
     -- Area conquest (additive shared spawn)
     area_conquest_mutate_smart = true,
@@ -512,7 +512,7 @@ local _key_to_tab = {
     consequence_social_base_rush = "consequences/social_base",
     consequence_social_base_arrive_action_enabled = "consequences/social_base",
     transit_balance_cap = "framework",
-    transit_balance_window_sec = "framework",
+    transit_balance_window_hours = "framework",
     cause_social_base_transit_enabled = "causes/needs",
     consequence_social_base_transit_enabled = "consequences/social_base",
     consequence_social_base_transit_rush = "consequences/social_base",
@@ -597,7 +597,7 @@ function on_mcm_load()
                     _check("allow_external_ownership"),
                     { id = "div_transit", type = "line" },
                     _track("transit_balance_cap", 1, 10, 1),
-                    _track("transit_balance_window_sec", 86400, 604800, 3600),
+                    _track("transit_balance_window_hours", 1, 168, 1),
                     { id = "div_reset", type = "line" },
                     { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
                     { id = "div_version", type = "line" },
