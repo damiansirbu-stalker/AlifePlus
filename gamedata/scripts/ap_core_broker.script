@@ -79,6 +79,7 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
         return nil
     end
     opts = opts or {}
+    local t0 = ap_core_debug.enabled() and os.clock() or nil
     local subject_squad_id = subject_squad.id
     local other = opts.other_squad
     local s_fac, s_name, s_spec = _capture_side(subject_squad)
@@ -108,11 +109,12 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
     }
     _ap_record:set(_record_seq, entry)
     _record_assigned[subject_squad_id] = entry
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] add_record: squad=%d cause=%s consequence=%s seq=%d s_fac=%s s_spec=%s s_name=%s o_fac=%s o_spec=%s o_name=%s",
+    if t0 then
+        ap_core_debug.debug("[SQUAD] add_record: squad=%d cause=%s consequence=%s seq=%d s_fac=%s s_spec=%s s_name=%s o_fac=%s o_spec=%s o_name=%s [%.2fms]",
             subject_squad_id, cause_key, consequence_key, _record_seq,
             tostring(s_fac), tostring(s_spec), tostring(s_name),
-            tostring(o_fac), tostring(o_spec), tostring(o_name))
+            tostring(o_fac), tostring(o_spec), tostring(o_name),
+            (os.clock() - t0) * 1000)
     end
     return _record_seq
 end
