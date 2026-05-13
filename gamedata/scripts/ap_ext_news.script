@@ -121,7 +121,7 @@ end
 -- Substitute slot table into template. Unknown #key# tokens are kept as-is
 -- (Lua gsub: a nil return leaves the match unchanged).
 local function _substitute(template, slots)
-    return (string_gsub(template, "#(%w+)#", function(key) return slots[key] end))
+    return (string_gsub(template, "#([%w_]+)#", function(key) return slots[key] end))
 end
 
 -- Slot placeholder -> slot name. Variant rejected if it references a placeholder whose slot is empty.
