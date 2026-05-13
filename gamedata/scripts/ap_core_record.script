@@ -1,0 +1,235 @@
+--- ap_core_record: Activity record (FIFO of dispatched consequences with denormalized display facts)
+--- Substrate for HUD markers, ap_ext_news compose, and external integrators via ap_api.
+--- 256-slot FIFO keyed by monotonic cons_id; _record_assigned indexes the live entry per squad.
+local pairs, type = pairs, type
+local tostring, math_floor, string_format = tostring, math.floor, string.format
+local RegisterScriptCallback = RegisterScriptCallback
+
+local CALLBACK = ap_core_const.CALLBACK
+
+local SPECIES_KEY_PREFIX = "st_ap_macros_species_"
+local RECORD_CAPACITY = 256
+
+local _ap_record = nil
+local _record_seq = 0
+local _record_assigned = {}
+
+-- Capture in-game clock at write so the HUD marker can show when the dispatch started.
+-- Returns "HH:MM" string or nil if game time is unavailable (early init / between levels).
+local function _capture_clock()
+    local h, m = xtime.hms()
+    if not h then return nil end
+    return string_format("%02d:%02d", h, m)
+end
+
+-- Capture one side's display keys from the live squad. Mutant squads carry a species key,
+-- stalker (and zombified-stalker) squads carry a community-string faction key. Either or
+-- both nil for a nil squad. Engine reads only; no domain tables.
+local function _capture_side(squad)
+    if not squad then return nil, nil, nil end
+    local species = xcreature.get_mutant_species(squad)
+    if species then
+        return nil, xsquad.get_commander_name(squad), SPECIES_KEY_PREFIX .. species
+    end
+    return squad.player_id, xsquad.get_commander_name(squad), nil
+end
+
+--- Append one activity record for a squad dispatch. Captures display keys from the squad
+--- userdata so consumers can render even after the squad despawns. Marks the previous
+--- assigned entry for the same squad as unassigned and indexes this one.
+--- @safety SAFE - nil-guarded; engine reads only on live squads
+--- @cost O(1) | ~3 luabind per side (player_id, mutant_species, commander_name)
+--- @param subject_squad userdata Subject squad server object
+--- @param cause_key string CAUSE.X enum value (also a localization id)
+--- @param consequence_key string CONSEQUENCE.X enum value (also a localization id)
+--- @param opts table|nil { action_key, cause_id, other_squad, smart, level_id }
+---   action_key  - ACTION.X enum value (player-facing label, localization id)
+---   other_squad - optional second-party squad userdata
+---   smart       - destination smart server object (id stored)
+---   level_id    - level the event happened on
+---   cause_id    - optional correlator for sibling consequences
+--- @return number|nil cons_id Monotonic id, or nil if args invalid
+function add_record(subject_squad, cause_key, consequence_key, opts)
+    if not subject_squad or not subject_squad.id then
+        ap_core_debug.warn("[RECORD] add_record: invalid subject_squad")
+        return nil
+    end
+    if not cause_key or not consequence_key then
+        ap_core_debug.warn("[RECORD] add_record: missing cause_key=%s consequence_key=%s", tostring(cause_key), tostring(consequence_key))
+        return nil
+    end
+    opts = opts or {}
+    local enabled = ap_core_debug.enabled()
+    local subject_squad_id = subject_squad.id
+    local other = opts.other_squad
+    local tmr_s = xprofiler.new_if(enabled):start()
+    local s_fac, s_name, s_spec = _capture_side(subject_squad)
+    tmr_s:stop()
+    local tmr_o = xprofiler.new_if(enabled):start()
+    local o_fac, o_name, o_spec = _capture_side(other)
+    tmr_o:stop()
+    local prev = _record_assigned[subject_squad_id]
+    if prev then prev.assigned = false end
+    _record_seq = _record_seq + 1
+    local entry = {
+        cons_id             = _record_seq,
+        squad_id            = subject_squad_id,
+        cause_key           = cause_key,
+        consequence_key     = consequence_key,
+        action_key          = opts.action_key,
+        assigned            = true,
+        cause_id            = opts.cause_id,
+        other_squad_id      = other and other.id or nil,
+        smart_id            = opts.smart and opts.smart.id or nil,
+        level_id            = opts.level_id,
+        game_hours          = math_floor(xtime.game_sec() / 3600),
+        started_clock       = _capture_clock(),
+        subject_faction_key = s_fac,
+        subject_name        = s_name,
+        subject_species_key = s_spec,
+        other_faction_key   = o_fac,
+        other_name          = o_name,
+        other_species_key   = o_spec,
+    }
+    _ap_record:set(_record_seq, entry)
+    _record_assigned[subject_squad_id] = entry
+    if enabled then
+        ap_core_debug.debug("[RECORD] add_record: squad=%d cause=%s consequence=%s seq=%d s_fac=%s s_spec=%s s_name=%s o_fac=%s o_spec=%s o_name=%s [s=%.2fms o=%.2fms]",
+            subject_squad_id, cause_key, consequence_key, _record_seq,
+            tostring(s_fac), tostring(s_spec), tostring(s_name),
+            tostring(o_fac), tostring(o_spec), tostring(o_name),
+            tmr_s:get_ms(), tmr_o:get_ms())
+    end
+    return _record_seq
+end
+
+--- Clear the assigned record for a squad (entity death, despawn).
+--- @safety SAFE - pure Lua table write
+--- @cost O(1) | 0 luabind
+--- @param squad_id number
+function clear_record(squad_id)
+    local entry = _record_assigned[squad_id]
+    if not entry then return end
+    entry.assigned = false
+    _record_assigned[squad_id] = nil
+end
+
+local function _match(entry, opts)
+    for k, v in pairs(opts) do
+        if entry[k] ~= v then return false end
+    end
+    return true
+end
+
+--- Get all records matching opts (AND logic on field equality).
+--- assigned=true reads the live index (O(active squads)); else full FIFO scan (O(capacity)).
+--- @param opts table|nil Filter fields. { assigned = true } reads live entries only.
+--- @return table Array of matching entries
+function get_records(opts)
+    local list = {}
+    if opts and opts.assigned then
+        for _, entry in pairs(_record_assigned) do
+            if entry.assigned and _match(entry, opts) then list[#list + 1] = entry end
+        end
+    else
+        _ap_record:each(function(entry)
+            if not opts or _match(entry, opts) then list[#list + 1] = entry end
+        end)
+    end
+    return list
+end
+
+--- Get the most-recent record matching opts (highest cons_id).
+--- O(1) fast path: { squad_id = X, assigned = true } hits the live index directly.
+--- @param opts table Filter fields (AND logic). Required.
+--- @return table|nil Most-recent matching entry or nil
+function get_record(opts)
+    if not opts then return nil end
+    if opts.squad_id and opts.assigned then
+        local entry = _record_assigned[opts.squad_id]
+        if entry and entry.assigned and _match(entry, opts) then return entry end
+        return nil
+    end
+    local best
+    local function _consider(entry)
+        if not best or (entry.cons_id and entry.cons_id > (best.cons_id or 0)) then best = entry end
+    end
+    if opts.assigned then
+        for _, entry in pairs(_record_assigned) do
+            if entry.assigned and _match(entry, opts) then _consider(entry) end
+        end
+    else
+        _ap_record:each(function(entry)
+            if _match(entry, opts) then _consider(entry) end
+        end)
+    end
+    return best
+end
+
+local function _on_record_evict(entry)
+    if entry.assigned and _record_assigned[entry.squad_id] == entry then
+        _record_assigned[entry.squad_id] = nil
+    end
+end
+
+local function _create_record_fifo()
+    return xttltable.create_fifo_cache({ capacity = RECORD_CAPACITY, on_evict = _on_record_evict })
+end
+
+-- Walk fifo into a plain array preserving insertion order. xttltable has no to_table primitive.
+local function _records_export()
+    local arr = {}
+    _ap_record:each(function(entry) arr[#arr + 1] = entry end)
+    return arr
+end
+
+local function _records_import(arr)
+    _ap_record = _create_record_fifo()
+    _record_assigned = {}
+    if type(arr) ~= "table" then return end
+    for i = 1, #arr do
+        local entry = arr[i]
+        if type(entry) == "table" and entry.cons_id and entry.squad_id then
+            _ap_record:set(entry.cons_id, entry)
+            if entry.assigned then _record_assigned[entry.squad_id] = entry end
+            if entry.cons_id > _record_seq then _record_seq = entry.cons_id end
+        end
+    end
+end
+
+local function _on_save_state(m_data)
+    m_data.ap_core_record = {
+        entries = _records_export(),
+        seq     = _record_seq,
+    }
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[RECORD] save: record=%d", _ap_record:size())
+    end
+end
+
+local function _on_load_state(m_data)
+    local saved = m_data.ap_core_record
+    if type(saved) ~= "table" then saved = {} end
+    _record_seq = saved.seq or 0
+    _records_import(saved.entries)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[RECORD] load: record=%d", _ap_record:size())
+    end
+end
+
+local function _on_server_entity_on_unregister(se_obj)
+    if not se_obj or not se_obj.id then return end
+    clear_record(se_obj.id)
+end
+
+function on_game_start()
+    _ap_record = _create_record_fifo()
+    _record_seq = 0
+    _record_assigned = {}
+
+    RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
+    RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
+
+    ap_core_debug.info("[RECORD] Initialized")
+end

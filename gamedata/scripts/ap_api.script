@@ -77,13 +77,13 @@ end
 --- General path scans matching entries and returns the one with the highest cons_id.
 --- @param opts table Filter fields. Required.
 --- @return table|nil
-function get_record(opts) return ap_core_broker.get_record(opts) end
+function get_record(opts) return ap_core_record.get_record(opts) end
 
 --- All activity records matching opts (AND logic on field equality).
 --- assigned=true reads the live index; else full FIFO scan.
 --- @param opts table|nil Filter fields.
 --- @return table Array of matching entries
-function get_records(opts) return ap_core_broker.get_records(opts) end
+function get_records(opts) return ap_core_record.get_records(opts) end
 
 --- Append an activity record after a successful script_squad / script_actor_target.
 --- Broker captures display keys from the squad userdata so reads stay valid after the squad
@@ -99,7 +99,7 @@ function get_records(opts) return ap_core_broker.get_records(opts) end
 ---   level_id    - level the event happened on
 ---   cause_id    - optional correlator for sibling consequences
 function add_record(subject_squad, cause_key, consequence_key, opts)
-    return ap_core_broker.add_record(subject_squad, cause_key, consequence_key, opts)
+    return ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts)
 end
 
 --- Release a squad from AP scripted control by id. Returns false if the squad

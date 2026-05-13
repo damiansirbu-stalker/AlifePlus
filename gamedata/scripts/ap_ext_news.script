@@ -1,5 +1,5 @@
 --- ap_ext_news: news composer + per-consequence templates in ui_st_ap_news.xml.
---- Pure consumer: reads ap_core_broker.get_records, picks an unreported entry on the actor's
+--- Pure consumer: reads ap_core_record.get_records, picks an unreported entry on the actor's
 --- level, picks a per-consequence template, substitutes slots, dispatches via
 --- dynamic_news_manager.PushToChannel. No write path.
 
@@ -159,7 +159,7 @@ end
 -- Returns array; caller picks one at random for gossip-style variety.
 local function _collect_eligible()
     local entries = {}
-    local recs = ap_core_broker.get_records()
+    local recs = ap_core_record.get_records()
     local now_gh = math_floor(xtime.game_sec() / 3600)
     local max_age = cfg.news_max_age_game_hours
     local cur_level = xlevel.get_actor_level_id()

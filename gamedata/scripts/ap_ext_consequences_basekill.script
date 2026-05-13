@@ -58,7 +58,7 @@ local function _handler_support(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_SUPPORT, {
+            ap_core_record.add_record(moved[i], CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_SUPPORT, {
                 action_key = ACTION.BASEKILL_SUPPORT,
                 other_squad = event_data.killer_squad,
                 smart = smart, level_id = level_id,
@@ -111,7 +111,7 @@ local function _handler_flee(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_FLEE, {
+            ap_core_record.add_record(moved[i], CAUSE.BASEKILL, CONSEQUENCE.BASEKILL_FLEE, {
                 action_key = ACTION.BASEKILL_FLEE,
                 other_squad = event_data.killer_squad,
                 smart = destination, level_id = level_id,

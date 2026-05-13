@@ -85,7 +85,7 @@ local function _handler(event_data)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED, {
+            ap_core_record.add_record(moved[i], CAUSE.ALPHAKILL, CONSEQUENCE.ALPHAKILL_TARGETED, {
                 action_key = ACTION.ALPHAKILL_TARGETED,
                 other_squad = killer_squad,
                 smart = dst_smart, level_id = level_id,

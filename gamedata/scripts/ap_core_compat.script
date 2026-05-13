@@ -95,6 +95,20 @@ local function _v15_to_v155_release_orphan_arrivals(m_data)
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
+--- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
+--- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
+local function _v155_to_v16_extract_record_save_key(m_data)
+    local broker = m_data.ap_core_broker
+    if type(broker) ~= "table" then return end
+    if broker.ap_record_entries == nil and broker.ap_record_seq == nil then return end
+    local record = m_data.ap_core_record
+    if type(record) ~= "table" then record = {}; m_data.ap_core_record = record end
+    if broker.ap_record_entries ~= nil then record.entries = broker.ap_record_entries end
+    if broker.ap_record_seq ~= nil then record.seq = broker.ap_record_seq end
+    broker.ap_record_entries = nil
+    broker.ap_record_seq     = nil
+end
+
 xchange.register("ap_v12_to_v13_release_orphaned_squads", _v12_to_v13_release_orphaned_squads)
 xchange.register("ap_v12_to_v13_delete_old_save_keys",    _v12_to_v13_delete_old_save_keys)
 xchange.register("ap_v12_to_v13_reset_smart_mutator",     _v12_to_v13_reset_smart_mutator)
@@ -102,6 +116,7 @@ xchange.register("ap_v13_to_v135_clear_elite_data",          _v13_to_v135_clear_
 xchange.register("ap_v13_to_v135_release_old_scripted_squads", _v13_to_v135_release_old_scripted_squads)
 xchange.register("ap_v135_to_v14_cleanup_squad_key",         _v135_to_v14_cleanup_squad_key)
 xchange.register("ap_v15_to_v155_release_orphan_arrivals",   _v15_to_v155_release_orphan_arrivals)
+xchange.register("ap_v155_to_v16_extract_record_save_key",   _v155_to_v16_extract_record_save_key)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
@@ -126,34 +141,31 @@ local function _on_game_load()
     end
 end
 
--- Translate a translation key, returning "" on miss / nil. Used by the legacy
--- record-field shim so erepb's tooltip code reads pre-translated display strings.
-local function _legacy_xlate(key)
+local function _xlate(key)
     if not key then return "" end
     local v = game_translate_string(key)
     if not v or v == key or v == "" then return "" end
     return v
 end
 
--- Add legacy field aliases on a record entry. Idempotent: once `consequence` is set,
--- subsequent calls early-return. Mutates the live entry (broker returns by reference);
--- legacy fields persist across save/load and across repeat reads, which is harmless.
-local function _add_legacy_record_fields(entry)
+-- Add deprecated field aliases on a record entry. Idempotent: once `consequence` is set,
+-- subsequent calls early-return. Mutates the live entry (entries are returned by reference);
+-- aliases persist across save/load and across repeat reads, which is harmless.
+local function _add_deprecated_record_fields(entry)
     if not entry or entry.consequence then return entry end
     entry.consequence           = entry.consequence_key
-    entry.other_faction_display = _legacy_xlate(entry.other_faction_key)
-    entry.other_species_display = _legacy_xlate(entry.other_species_key)
+    entry.other_faction_display = _xlate(entry.other_faction_key)
+    entry.other_species_display = _xlate(entry.other_species_key)
     return entry
 end
 
---- Warfare A Life Overhaul (erepb GAMMA fork) compat: preserve old call shapes
---- for warfare_alifeplus.script (erepb 1.5.3, commit 6c095fe). Three read paths:
----   ap_core_broker.get_scripted_ids()[id]                  -> aliased to get_scripted_squads
+--- Pre-ap_api surface: keep deprecated call shapes resolvable for integrators written
+--- against the older API. Three paths preserved:
+---   ap_core_broker.get_scripted_ids()[id]                  -> alias for get_scripted_squads
 ---   record.consequence / record.other_*_display            -> synthesized on get_record / get_records
 ---   ap_core_const.CONSEQUENCE_INFO[c].action_key           -> rebuilt from CONSEQUENCE + ACTION enums
---- Drop entirely once erepb migrates to ap_api (consequence_key, other_*_key + ap_api.get_text,
---- record.action_key direct). Tracked in todo-alifeplus-next n430.
-local function _wire_warfare_compat_shim()
+--- Tracked for retirement in todo-alifeplus-next n430.
+local function _wire_deprecated_surface()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
     local info = {}
@@ -162,17 +174,12 @@ local function _wire_warfare_compat_shim()
     end
     ap_core_const.CONSEQUENCE_INFO = info
 
-    -- Boot-time capture of originals. Assumes no module reassigns ap_core_broker.get_record /
-    -- get_records after compat init; a later replacement would be bypassed by the wrap chain.
-    -- Holds today (no AP or foreign mod touches them). Shim retires with n430.
-    local _orig_get_record  = ap_core_broker.get_record
-    local _orig_get_records = ap_core_broker.get_records
     ap_core_broker.get_record = function(opts)
-        return _add_legacy_record_fields(_orig_get_record(opts))
+        return _add_deprecated_record_fields(ap_api.get_record(opts))
     end
     ap_core_broker.get_records = function(opts)
-        local list = _orig_get_records(opts)
-        for i = 1, #list do _add_legacy_record_fields(list[i]) end
+        local list = ap_api.get_records(opts)
+        for i = 1, #list do _add_deprecated_record_fields(list[i]) end
         return list
     end
 end
@@ -184,6 +191,6 @@ function on_game_start()
     ap_core_broker.register_owner("warfare", function(squad)
         return squad.registered_with_warfare == true
     end)
-    _wire_warfare_compat_shim()
+    _wire_deprecated_surface()
     ap_core_debug.info("[COMPAT] Initialized")
 end

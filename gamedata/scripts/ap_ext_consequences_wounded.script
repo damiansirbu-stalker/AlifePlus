@@ -72,7 +72,7 @@ local function _handler_help(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HELP, {
+            ap_core_record.add_record(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HELP, {
                 action_key = ACTION.WOUNDED_HELP,
                 other_squad = event_data.patient_squad,
                 smart = target_smart, level_id = level_id,
@@ -122,7 +122,7 @@ local function _handler_hunt(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT, {
+            ap_core_record.add_record(moved[i], CAUSE.WOUNDED, CONSEQUENCE.WOUNDED_HUNT, {
                 action_key = ACTION.WOUNDED_HUNT,
                 other_squad = event_data.patient_squad,
                 smart = target_smart, level_id = level_id,

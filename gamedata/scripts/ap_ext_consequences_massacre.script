@@ -65,7 +65,7 @@ local function _handler_investigate(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
+            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
                 action_key = ACTION.MASSACRE_INVESTIGATE,
                 other_squad = event_data.killer_squad,
                 smart = smart, level_id = level_id,
@@ -111,7 +111,7 @@ local function _handler_scavenge(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_SCAVENGE, {
+            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_SCAVENGE, {
                 action_key = ACTION.MASSACRE_SCAVENGE,
                 other_squad = event_data.victim_squad,
                 smart = smart, level_id = level_id,
@@ -155,7 +155,7 @@ local function _handler_loot(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_LOOT, {
+            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_LOOT, {
                 action_key = ACTION.MASSACRE_LOOT,
                 other_squad = event_data.victim_squad,
                 smart = smart, level_id = level_id,

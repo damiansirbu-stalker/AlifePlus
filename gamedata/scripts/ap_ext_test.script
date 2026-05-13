@@ -107,7 +107,7 @@ function goto_need()
     local actor_community = db.actor:character_community()
     local scripted = ap_core_broker.get_scripted_squads()
     for squad_id, data in pairs(scripted) do
-        local rec = ap_core_broker.get_record({ squad_id = squad_id, assigned = true })
+        local rec = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
         local cons = rec and rec.consequence
         if not NEEDS_ARRIVE_KEYS[cons] then goto skip end
         local squad = sim:object(squad_id)
@@ -529,7 +529,7 @@ local function _news_demo_seed_record(squad, cause, consequence, other_kind)
         other_squad = _news_demo_pick_squad(other_kind)
         if other_squad and other_squad.player_id == squad.player_id then other_squad = nil end
     end
-    ap_core_broker.add_record(squad, cause, consequence, {
+    ap_core_record.add_record(squad, cause, consequence, {
         action_key  = (consequence:gsub("^consequence:", "action:")),
         other_squad = other_squad,
         smart       = smart,

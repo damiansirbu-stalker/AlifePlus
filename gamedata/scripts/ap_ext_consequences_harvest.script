@@ -93,7 +93,7 @@ local function _handler_rob(event_data)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
 
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
+            ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
                 action_key = ACTION.HARVEST_ROB,
                 other_squad = target_squad,
                 smart = dst_smart, level_id = level_id,
@@ -146,7 +146,7 @@ local function _handler_haunt(event_data)
         end)
         if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
         for i = 1, #moved do
-            ap_core_broker.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT, {
+            ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT, {
                 action_key = ACTION.HARVEST_HAUNT,
                 other_squad = event_data.taker_squad,
                 smart = target_smart, level_id = level_id,

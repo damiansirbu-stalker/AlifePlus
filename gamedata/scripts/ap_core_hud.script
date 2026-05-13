@@ -110,7 +110,7 @@ local function _mark_squad(entry)
 end
 
 local function _apply_markers()
-    local records = ap_core_broker.get_records({ assigned = true })
+    local records = ap_core_record.get_records({ assigned = true })
     for i = 1, #records do _mark_squad(records[i]) end
 end
 
@@ -118,7 +118,7 @@ end
 local function _validate_markers()
     local now = clock()
     for squad_id, state in pairs(_marker_state) do
-        local entry = ap_core_broker.get_record({ squad_id = squad_id, assigned = true })
+        local entry = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
         local se = entry and xobject.se(squad_id)
         local should_linger = not entry or not se or not se.scripted_target
         if should_linger and not state.remove_at then
