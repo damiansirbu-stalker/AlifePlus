@@ -86,8 +86,6 @@ local CONFIGS = {
       section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_CAMPFIRE },
     { consequence = CONSEQUENCE.SOCIAL_BASE, action = ACTION.SOCIAL_BASE,           event = CAUSE.SOCIAL_BASE,      name = "social_base",
       section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
-    { consequence = CONSEQUENCE.SOCIAL_BASE_TRANSIT, action = ACTION.SOCIAL_BASE_TRANSIT, event = CAUSE.SOCIAL_BASE_TRANSIT, name = "social_base_transit",
-      section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE_TRANSIT, transit = true },
 }
 
 --- Dispatch arrive action (online only): consume sections or trade exchange.
@@ -153,18 +151,11 @@ local function _make_handler(entry)
                         section_key = entry.section_key, arrive_fn = entry.arrive_fn,
                         dst_name = smart:name() },
                     pre_release_gulag = entry.pre_release_gulag,
-                    transit = entry.transit or nil,
                 })
                 return res
             end)
             if res.code ~= RESULT.SUCCESS then
                 return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
-            end
-            if entry.transit then
-                local dest_level_id = xlevel.get_level_id(smart)
-                if dest_level_id then
-                    ap_core_broker.record_transit_dispatch(event_data.level_id, dest_level_id, event_data.community)
-                end
             end
             ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
                 action_key = entry.action,

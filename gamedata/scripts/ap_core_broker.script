@@ -18,10 +18,6 @@ local cfg = ap_core_mcm.cfg
 local _ap_scripted_squads = {}
 local _arrival_handlers = {}
 
-local _transit_outflow = nil
-local _transit_inflow = nil
-
-
 local _owners = {}
 
 --- Register a squad ownership filter. On name match, replaces existing filter.
@@ -191,7 +187,6 @@ function script_squad(squad, smart, opts)
         on_arrive_args = opts.on_arrive_args,
         pre_release_gulag = opts.pre_release_gulag or ap_core_const.PRE_RELEASE_GULAG_DEFAULT,
         ttl = opts.ttl,
-        transit = opts.transit or nil,
     }
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s", squad.id, squad:section_name(), name)
@@ -236,33 +231,6 @@ end
 --- @return boolean true if released, false if not currently scripted
 function release_squad(squad_id)
     return _unscript_squad(squad_id)
-end
-
-
---- Record one cross-map dispatch event. Increments outflow counter at origin, inflow at destination,
---- both keyed by (level_id, faction). Counters are 3-game-day-TTL sliding windows; entries age out.
---- @safety SAFE - nil guards, no-op if counters not initialized
---- @cost O(1) | 1 luabind (game_sec) per counter via xtime clock injection
---- @param origin_level_id number
---- @param dest_level_id number
---- @param faction string Squad player_id
-function record_transit_dispatch(origin_level_id, dest_level_id, faction)
-    if not origin_level_id or not dest_level_id or not faction then return end
-    if not _transit_outflow or not _transit_inflow then return end
-    _transit_outflow:add(origin_level_id .. "_" .. faction)
-    _transit_inflow:add(dest_level_id .. "_" .. faction)
-end
-
---- Net cross-map balance for (level_id, faction). Positive = level is being drained;
---- negative = level is being filled. Returns 0 if counters not initialized.
---- @param level_id number
---- @param faction string Squad player_id
---- @return number Net balance (outflow - inflow) over the active TTL window
-function transit_balance(level_id, faction)
-    if not level_id or not faction then return 0 end
-    if not _transit_outflow or not _transit_inflow then return 0 end
-    local key = level_id .. "_" .. faction
-    return _transit_outflow:count(key) - _transit_inflow:count(key)
 end
 
 
@@ -395,8 +363,6 @@ end
 local function _on_save_state(m_data)
     m_data.ap_core_broker = {
         ap_scripted_squads = _ap_scripted_squads,
-        ap_transit_outflow = _transit_outflow and _transit_outflow:export() or nil,
-        ap_transit_inflow  = _transit_inflow and _transit_inflow:export() or nil,
     }
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.count(_ap_scripted_squads))
@@ -411,19 +377,12 @@ local function _on_load_state(m_data)
     for _, data in pairs(_ap_scripted_squads) do
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
-    if _transit_outflow and saved.ap_transit_outflow then _transit_outflow:import(saved.ap_transit_outflow) end
-    if _transit_inflow and saved.ap_transit_inflow then _transit_inflow:import(saved.ap_transit_inflow) end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.count(_ap_scripted_squads))
     end
 end
 
 function on_game_start()
-    _transit_outflow = xttltable.create_ttl_counter({
-        ttl = cfg.transit_balance_window_hours * 3600, clock = xtime.game_sec })
-    _transit_inflow  = xttltable.create_ttl_counter({
-        ttl = cfg.transit_balance_window_hours * 3600, clock = xtime.game_sec })
-
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
 
