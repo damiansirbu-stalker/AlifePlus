@@ -1,16 +1,16 @@
 next
-  Summary: activity record is the single substrate; capture moved to ap_core_broker; mutant tables dropped; warfare shim widened; cross-map social_base_transit
+  Summary: activity record is the single substrate; mutant tables dropped; warfare shim widened; off-map dispatch (social off-base)
   Gameplay:
-    Added: Social Base Transit. Principled stalker squads walk cross-map to a faction base on another level when no same-level base satisfies the same-level Social Base cause. Per-faction destination levels read from gamedata/configs/ap_transit.ltx.
-    Added: Transit balance limiter. Per-(level, faction) outflow/inflow counter with 3-game-day window blocks repeated drain of one level and over-fill at another. Persisted across saves.
+    Added: Social Off-base cause. Stalker squads walk to a faction base on another level when no same-level base fits.
+    Added: Off-map dispatch limiter. Per-source-level cap on outbound off-map dispatches within a rolling window.
   News:
-    Changed: News composer reads the broker activity record. Standalone ledger retired.
+    Changed: News composer reads the activity record. Standalone ledger retired.
     Changed: PDA marker shows action, consequence, subject (and other if any), target smart with level, and dispatch time. Mutant subjects render as species only.
     Removed: News Chance slider. Compose interval and scope filter remain.
   MCM:
-    Added: Causes > Needs > Social Base Transit toggle.
-    Added: Consequences > Social Base > Social Base Transit toggle, rush, arrive action.
-    Added: Framework > Transit balance cap (1-10) and Transit balance window (1-7 game-days).
+    Added: Causes > Needs > Social Off-base toggle.
+    Added: Consequences > Social Base > Social Off-base toggle, rush, arrive action.
+    Added: Framework > Off-map cap (cross-level dispatches allowed per source level per window).
     Changed: Per-consequence rate limit slider (consequence_max_events) applies mid-session.
     Renamed: Mutator cfg keys follow mutator_<name>_<setting>. Saved MCM values for the old keys revert to defaults on first load.
   Modder API:
@@ -18,14 +18,14 @@ next
     Added: ap_api.get_record / get_records - read activity records.
     Changed: Activity record fields are localization keys; translate via ap_api.get_text at render.
     Refactored: Activity record split into its own ap_core_record module. ap_api callers unaffected.
+    Refactored: PDA map markers split into ap_core_map. Statistics overlay stays in ap_core_hud.
   X-Ray & xlibs:
     Added: xlevel.get_level_id_by_name. Lazy name to level_id map from SIMBOARD.smarts_by_names.
-    Added: xttltable TTL counter :export / :import for save/load round-trip.
     Added: xttltable token bucket :set_rate(rate). Updates refill rate without rebuilding; preserves in-flight token state.
   Localization:
     Changed: Species display rows moved to ui_st_ap_macros.xml with st_ap_macros_species_* ids. EN + RU.
     Removed: Six st_ap_news_mutant_* bucket rows. EN + RU.
-    Added: 10 EN + 10 RU MCM strings for Social Base Transit and Transit balance.
+    Added: EN + RU MCM strings for Social Off-base and the off-map cap.
   Fixed:
     Fixed: Harvest Rob and Squadkill Revenge gate dispatch by hostile relation to the target's true community (disguise-aware).
     Fixed: Mutant Swarm filter checks accepts_mutant. Swarming squads no longer dispatch to smart terrains whose props reject their species.
