@@ -1,6 +1,7 @@
 --- ap_core_compat: Save data migrations and proxy registrations for external mods
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
-local xobject, xsquad = xobject, xsquad
+local xobject, xsquad, xchange = xobject, xsquad, xchange
+local ap_core_debug, ap_core_broker, ap_api = ap_core_debug, ap_core_broker, ap_api
 local game_translate_string = game.translate_string
 local CALLBACK = ap_core_const.CALLBACK
 
@@ -164,7 +165,8 @@ end
 ---   ap_core_broker.get_scripted_ids()[id]                  -> alias for get_scripted_squads
 ---   record.consequence / record.other_*_display            -> synthesized on get_record / get_records
 ---   ap_core_const.CONSEQUENCE_INFO[c].action_key           -> rebuilt from CONSEQUENCE + ACTION enums
---- Tracked for retirement in todo-alifeplus-next n430.
+--- Active consumer: Warfare-Alife-Overhaul-erepb/warfare_alifeplus.script (lines 37,48,49,60,65).
+--- Retirement blocked on Erepb updating to ap_api directly; remove this shim when that lands.
 local function _wire_deprecated_surface()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
