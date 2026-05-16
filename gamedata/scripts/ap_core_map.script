@@ -110,7 +110,7 @@ local function _mark_squad(entry)
 
     xpda.mark_squad(entry.squad_id, { label = label, marker_type = ap_core_const.MARKER_ACTIVE })
     _marker_state[entry.squad_id] = { cons_id = entry.cons_id }
-    ap_core_debug.debug("[MAP] mark: squad=%d cons=%d label=%s", entry.squad_id, entry.cons_id, label)
+    ap_core_debug.debug("[CORE.MAP] mark: squad=%d cons=%d label=%s", entry.squad_id, entry.cons_id, label)
 end
 
 local function _apply_markers()
@@ -128,12 +128,12 @@ local function _validate_markers()
         if should_linger and not state.remove_at then
             state.remove_at = now + ap_core_const.MARKER_LINGER_SEC
             local reason = (not entry) and "evicted" or (not se and "dead" or "unscripted")
-            ap_core_debug.debug("[MAP] mark_linger: squad=%d reason=%s", squad_id, reason)
+            ap_core_debug.debug("[CORE.MAP] mark_linger: squad=%d reason=%s", squad_id, reason)
         end
         if state.remove_at and now >= state.remove_at then
             xpda.unmark_squad(squad_id)
             _marker_state[squad_id] = nil
-            ap_core_debug.debug("[MAP] unmark: squad=%d", squad_id)
+            ap_core_debug.debug("[CORE.MAP] unmark: squad=%d", squad_id)
         end
     end
 end
@@ -160,6 +160,22 @@ local function _on_server_entity_on_unregister(se_obj)
     end
 end
 
+local function _on_option_change()
+    if cfg.map_markers then
+        RemoveTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS)
+        CreateTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)
+        _apply_markers()
+        ap_core_debug.debug("[CORE.MAP] marker timer armed (map_markers=true)")
+    else
+        RemoveTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS)
+        for squad_id in pairs(_marker_state) do
+            xpda.unmark_squad(squad_id)
+        end
+        _marker_state = {}
+        ap_core_debug.debug("[CORE.MAP] marker timer cleared (map_markers=false)")
+    end
+end
+
 local function _on_first_update()
     -- Engine wipes markers on level transition; clear our shadow state too.
     xpda.clear_squad_markers()
@@ -168,11 +184,12 @@ local function _on_first_update()
     if cfg.map_markers then
         RemoveTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS)
         CreateTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC, _update_markers)
-        ap_core_debug.debug("[MAP] marker timer created (map_markers=true)")
+        ap_core_debug.debug("[CORE.MAP] marker timer created (map_markers=true)")
     end
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)
 end
