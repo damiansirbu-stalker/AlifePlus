@@ -76,7 +76,7 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.SUPPLY_TRADER, action = ACTION.SUPPLY_TRADER,       event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
       arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
     { consequence = CONSEQUENCE.SUPPLY_TRADER_OFFMAP, action = ACTION.SUPPLY_TRADER_OFFMAP, event = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap",
-      arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP },
+      arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,       event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
     { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,             event = CAUSE.MONEY_HUNT,       name = "money_hunt",
@@ -86,7 +86,7 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.JOB_EXPLORE, action = ACTION.JOB_EXPLORE,           event = CAUSE.JOB_EXPLORE,      name = "job_explore",
       pre_release_gulag = PRE_RELEASE_GULAG.JOB_EXPLORE },
     { consequence = CONSEQUENCE.JOB_EXPLORE_OFFMAP, action = ACTION.JOB_EXPLORE_OFFMAP, event = CAUSE.JOB_EXPLORE_OFFMAP, name = "job_explore_offmap",
-      pre_release_gulag = PRE_RELEASE_GULAG.JOB_EXPLORE_OFFMAP },
+      pre_release_gulag = PRE_RELEASE_GULAG.JOB_EXPLORE_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.JOB_RESEARCH, action = ACTION.JOB_RESEARCH,         event = CAUSE.JOB_RESEARCH,     name = "job_research",
       pre_release_gulag = PRE_RELEASE_GULAG.JOB_RESEARCH },
     { consequence = CONSEQUENCE.SOCIAL_CAMPFIRE, action = ACTION.SOCIAL_CAMPFIRE,   event = CAUSE.SOCIAL_CAMPFIRE,  name = "social_campfire",
@@ -94,7 +94,7 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.SOCIAL_BASE, action = ACTION.SOCIAL_BASE,           event = CAUSE.SOCIAL_BASE,      name = "social_base",
       section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
     { consequence = CONSEQUENCE.SOCIAL_OFFBASE, action = ACTION.SOCIAL_OFFBASE,     event = CAUSE.SOCIAL_OFFBASE,   name = "social_offbase",
-      section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFBASE },
+      section_key = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFBASE, offmap = true },
 }
 
 --- Dispatch arrive action (online only): consume sections or trade exchange.
@@ -160,6 +160,7 @@ local function _make_handler(entry)
                         section_key = entry.section_key, arrive_fn = entry.arrive_fn,
                         dst_name = smart:name() },
                     pre_release_gulag = entry.pre_release_gulag,
+                    offmap = entry.offmap,
                 })
                 return res
             end)

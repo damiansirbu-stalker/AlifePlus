@@ -1,9 +1,9 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
-local table_sort = table.sort
-local xsmart, xtime, xlevel = xsmart, xtime, xlevel
-local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util
+local table_sort, next = table.sort, next
+local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
+local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
@@ -17,7 +17,18 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_RADIO = ap_core_const.RANGE_RADIO
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
+local OFFMAP_BASE_REACH = ap_core_const.OFFMAP_BASE_REACH
+local RANK_MASTER = ap_core_const.RANK_MASTER
 local PERSONALITY = ap_ext_const.PERSONALITY
+
+-- Vanilla Anomaly story flags consumed by _resolve_offmap_hops.
+-- Set by the engine when the player completes the corresponding quest:
+--   yan_labx16_switcher_primary_off  -> tm_yantar.ltx X-16 quest
+--   bar_deactivate_radar_done        -> tm_radar.ltx Brain Scorcher quest
+local STORY_FLAG = {
+    X16_OFF   = "yan_labx16_switcher_primary_off",
+    RADAR_OFF = "bar_deactivate_radar_done",
+}
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
 
@@ -59,6 +70,19 @@ local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and 
 local function _is_unclaimed(smart)
     local fac = xsmart.get_smart_faction(smart)
     return fac == "none"
+end
+
+-- Resolve total BFS hops for off-map adjacency search.
+-- Pre-story stalkers stay home (hops = 0 -> empty neighbor set -> off-map row never publishes).
+-- Each progression milestone (X-16 deactivated, Brain Scorcher deactivated) and master rank
+-- commander adds reach via MCM-tunable bonuses.
+-- @cost O(1) | 2 alife_info reads + commander rank (3-4 luabind)
+local function _resolve_offmap_hops(squad)
+    local hops = OFFMAP_BASE_REACH
+    if has_alife_info(STORY_FLAG.X16_OFF) then hops = hops + cfg.offmap_extra_map_x16 end
+    if has_alife_info(STORY_FLAG.RADAR_OFF) then hops = hops + cfg.offmap_extra_map_radar end
+    if xsquad.get_commander_rank(squad) >= RANK_MASTER then hops = hops + cfg.offmap_extra_map_rank end
+    return hops
 end
 
 local function _build_filter(entry, community)
@@ -116,12 +140,18 @@ local function _try_cause(trace, squad, level_id, entry)
     local filter = _build_filter(entry, squad.player_id)
     local opts = { filter = filter, level_id = level_id, max_distance = RANGE_RADIO }
     if entry.offmap then
+        if ap_core_broker.is_offmap_dispatched(squad.id) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.OFFMAP_ALREADY_DISPATCHED }
+        end
         if not ap_core_limiter.check_offmap_rate_limit(level_id, cfg.cause_max_offmap) then
             return { code = RESULT.FAILED_RULES, reason = REASON.OFFMAP_EXHAUSTED }
         end
-        local source = level_id
+        local hops = _resolve_offmap_hops(squad)
+        if hops <= 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_OFFMAP_REACH } end
+        local neighbors = xlevel.get_neighbor_levels(level_id, hops)
+        if not next(neighbors) then return { code = RESULT.FAILED_RULES, reason = REASON.NO_OFFMAP_REACH } end
         local base = opts.filter
-        opts.filter = function(s) return base(s) and xlevel.get_level_id(s) ~= source end
+        opts.filter = function(s) return base(s) and neighbors[xlevel.get_level_id(s)] end
         opts.level_id = nil
         opts.max_distance = nil
     end

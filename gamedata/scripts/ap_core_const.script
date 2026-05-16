@@ -9,6 +9,23 @@ GLOBAL_CONSEQUENCE_WINDOW_SEC = 60
 --- Mirrors framework pattern: pipeline windows are const, only caps are MCM-exposed.
 OFFMAP_WINDOW_SEC = 48 * 3600
 
+--- Offmap adjacency base reach (BFS hops). Pre-story stalkers stay home (hops = 0 -> empty
+--- neighbor set -> off-map row never publishes). Story progression + master rank add reach
+--- via MCM-tunable bonuses (offmap_extra_map_x16, _radar, _rank).
+OFFMAP_BASE_REACH = 0
+
+--- Master rank threshold (per anomaly/configs/creatures/game_relations.ltx:8 rank intervals:
+--- expert <= 17499, master >= 17500). Use >= 17499 inclusive to match the engine boundary.
+RANK_MASTER = 17499
+
+--- Off-map lifecycle timers. Scan cadence is wall clock (survives time-skip on engine tick).
+--- Return-home and despawn timers measure game-seconds against absolute xtime.game_sec()
+--- values, so they round-trip through save/load and respect time acceleration / sleep.
+OFFMAP_SCAN_SEC = 3600
+OFFMAP_RETURN_HOME_MIN_SEC = 2 * 86400
+OFFMAP_RETURN_HOME_MAX_SEC = 5 * 86400
+OFFMAP_DESPAWN_SEC = 7 * 86400
+
 --- Reactive event distributor interval (seconds, hardcoded -- per callback type)
 REACTIVE_EVENT_INTERVAL_SEC = 1
 
@@ -258,6 +275,8 @@ REASON = {
     NO_BRANCH         = "no_branch",
     BUDGET_EXHAUSTED  = "budget_exhausted",
     OFFMAP_EXHAUSTED  = "offmap_exhausted",
+    NO_OFFMAP_REACH   = "no_offmap_reach",
+    OFFMAP_ALREADY_DISPATCHED = "offmap_already_dispatched",
     MAX_INFEST_PER_LEVEL = "max_infest_per_level",
     SQUAD_ALIVE       = "squad_alive",
     NO_PROMOTION      = "no_promotion",
