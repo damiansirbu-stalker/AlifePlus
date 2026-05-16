@@ -549,7 +549,7 @@
     <text>Cause: Supply Trader Available\nDesc: Squad heads to a trader to restock.\nRules: radio range; active period; any stalker; personality(greed, relation); trader; non-hostile; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_supply_trader_offmap_tag">
-    <text>Cause: Supply Trader Off-map Available\nDesc: Squad heads to a base on another map to restock. Peer of supply_trader; discipline-weighted so high-discipline stalkers travel further.\nRules: all-level scan; excludes source level; offmap balance cap applies; any stalker; personality(greed, discipline); base; non-hostile; Hull</text>
+    <text>Cause: Supply Trader Off-map Available\nDesc: Squad heads to a base on another map to restock. Peer of supply_trader; greedy non-territorial squads travel for trade.\nRules: all-level scan; excludes source level; offmap balance cap applies; off-map travelers; personality(greed, inv_territory); base; non-hostile; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_money_harvest_tag">
     <text>Cause: Money Harvest Available\nDesc: Squad heads to an anomaly to pull artefacts.\nRules: radio range; active period; self-serving stalkers; personality(greed, perception); anomaly; non-hostile; Hull</text>
@@ -564,7 +564,7 @@
     <text>Cause: Job Explore Available\nDesc: Squad scouts an unclaimed smart.\nRules: radio range; active period; self-serving stalkers; personality(perception, territory); unclaimed; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_job_explore_offmap_tag">
-    <text>Cause: Job Explore Off-map Available\nDesc: Squad scouts an unclaimed smart on another map. Peer of job_explore; discipline-weighted so high-discipline stalkers commit to cross-map recon.\nRules: all-level scan; excludes source level; offmap balance cap applies; self-serving stalkers; personality(perception, discipline); unclaimed faction; Hull</text>
+    <text>Cause: Job Explore Off-map Available\nDesc: Squad scouts an unclaimed smart on another map. Peer of job_explore; peaceful curious factions scout neighbor maps.\nRules: all-level scan; excludes source level; offmap balance cap applies; off-map travelers; personality(perception, inv_aggression); unclaimed faction; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_job_research_tag">
     <text>Cause: Job Research Available\nDesc: Ecologist squad samples an anomaly field.\nRules: radio range; active period; ecologists; personality(perception, discipline); anomaly; non-hostile; Hull</text>
@@ -576,7 +576,7 @@
     <text>Cause: Social Base Available\nDesc: Squad returns to base for downtime.\nRules: radio range; principled stalkers; personality(relation, territory); base; non-hostile; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_social_offbase_tag">
-    <text>Cause: Social Off-base Available\nDesc: Squad visits a base on another map for company. Peer of social_base; any faction (drops principled gate) and discipline-weighted so nomadic stalkers travel for company.\nRules: all-level scan; excludes source level; offmap balance cap applies; any stalker; personality(relation, discipline); base; non-hostile; Hull</text>
+    <text>Cause: Social Off-base Available\nDesc: Squad visits a base on another map for company. Peer of social_base; peaceful sociable factions visit other camps.\nRules: all-level scan; excludes source level; offmap balance cap applies; off-map travelers; personality(relation, inv_aggression); base; non-hostile; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_hunger_threshold">
     <text>Hunger threshold</text>
@@ -721,19 +721,19 @@
     <text>Enabled</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_supply_trader_offmap_enabled_desc">
-    <text>Allow supply_trader_offmap cause to publish (peer of supply_trader; high-discipline stalkers travel cross-map).</text>
+    <text>Allow supply_trader_offmap cause to publish (peer of supply_trader; greedy non-territorial squads travel for trade).</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_job_explore_offmap_enabled">
     <text>Enabled</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_job_explore_offmap_enabled_desc">
-    <text>Allow job_explore_offmap cause to publish (peer of job_explore; high-discipline stalkers scout cross-map).</text>
+    <text>Allow job_explore_offmap cause to publish (peer of job_explore; peaceful curious factions scout neighbor maps).</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_social_offbase_enabled">
     <text>Enabled</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_social_offbase_enabled_desc">
-    <text>Allow social_offbase cause to publish (peer of social_base; any faction; high-discipline stalkers travel for company).</text>
+    <text>Allow social_offbase cause to publish (peer of social_base; peaceful sociable factions visit other camps).</text>
   </string>
   <!-- ==================== CONSEQUENCES / ALPHA PROMOTE ==================== -->
   <string id="ui_mcm_ap_consequences_alpha_promote_title">
@@ -1524,13 +1524,13 @@
     <text>Social Off-base</text>
   </string>
   <string id="ui_mcm_ap_consequences_social_offbase_tag">
-    <text>Desc: Squad visits a base on another map for downtime; any faction\nCause: Social Off-base Available</text>
+    <text>Desc: Squad visits a base on another map for downtime; off-map travelers\nCause: Social Off-base Available</text>
   </string>
   <string id="ui_mcm_ap_consequences_social_offbase_consequence_social_offbase_enabled">
     <text>Enabled</text>
   </string>
   <string id="ui_mcm_ap_consequences_social_offbase_consequence_social_offbase_enabled_desc">
-    <text>Stalkers cross to a base on another map for downtime when no on-map base is available. Fires for any faction.</text>
+    <text>Stalkers cross to a base on another map for downtime when no on-map base is available. Fires for off-map travelers (army, monolith, zombied excluded).</text>
   </string>
   <string id="ui_mcm_ap_consequences_social_offbase_consequence_social_offbase_rush">
     <text>Rush mode</text>
@@ -1703,7 +1703,7 @@
     <text>Extra maps for master-rank squad commander</text>
   </string>
   <string id="ui_mcm_ap_world_offmap_offmap_extra_map_rank_desc">
-    <text>[0-3]\nAdditional adjacency hops when the squad commander is master rank or higher (character_rank >= 17499). 0 disables this gate. Default 1.</text>
+    <text>[0-3]\nAdditional adjacency hops when the squad commander is master rank or higher (character_rank &gt;= 17499). 0 disables this gate. Default 1.</text>
   </string>
   <!-- ==================== DEVELOPMENT TAB ==================== -->
   <string id="ui_mcm_ap_development_title">
