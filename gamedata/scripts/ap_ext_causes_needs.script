@@ -1,7 +1,7 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
 
-local table_sort, next = table.sort, next
+local table_sort, next, math_random = table.sort, next, math.random
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
@@ -66,6 +66,15 @@ local NEEDS = {
 --- 14 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
 --- per-cause RULES (alignment subset, personality traits), per-cause SCAN (filter, exclude_enemy).
 local CAUSES
+
+-- In-place Fisher-Yates shuffle. Removes order bias so peer causes under the same need
+-- (on-map / off-map variants) get equal first-pick on each tick.
+local function _shuffle_causes()
+    for i = #CAUSES, 2, -1 do
+        local j = math_random(i)
+        if j ~= i then CAUSES[i], CAUSES[j] = CAUSES[j], CAUSES[i] end
+    end
+end
 
 local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
 local function _is_unclaimed(smart)
@@ -236,6 +245,8 @@ local function _on_smart(trace, squad)
 
     local overdue = _find_overdue_needs(dto, now, squad.player_id)
     if #overdue == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
+
+    _shuffle_causes()
 
     local result
     for i = 1, #overdue do

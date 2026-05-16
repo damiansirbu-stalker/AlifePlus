@@ -2,7 +2,7 @@
 --- CAUSES table holds 7 specific causes (slumber splits 3 ways by shelter type). Picker emits
 --- one specific cause per call.
 
-local table_sort, pairs = table.sort, pairs
+local table_sort, pairs, math_random = table.sort, pairs, math.random
 local xobject, xsmart, xtime, xlevel, xcreature = xobject, xsmart, xtime, xlevel, xcreature
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
@@ -56,6 +56,15 @@ local INSTINCTS = {
 --- 7 specific causes. Slumber splits 3 ways by shelter preference.
 --- Each cause carries: cause const, name, parent drive, alignment subset, personality, filter.
 local CAUSES
+
+-- In-place Fisher-Yates shuffle. Removes order bias so peer causes under the same drive
+-- (e.g. the three slumber variants) get equal first-pick on each tick.
+local function _shuffle_causes()
+    for i = #CAUSES, 2, -1 do
+        local j = math_random(i)
+        if j ~= i then CAUSES[i], CAUSES[j] = CAUSES[j], CAUSES[i] end
+    end
+end
 
 local _is_wild_smart = ap_ext_util.is_wild_smart
 
@@ -284,6 +293,8 @@ local function _on_smart(trace, squad)
 
     local overdue = _find_overdue_drives(dto, now, species)
     if #overdue == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
+
+    _shuffle_causes()
 
     local result
     for i = 1, #overdue do

@@ -1,8 +1,9 @@
 --- ap_ext_causes_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
 --- area_swarm (mutant empty smart), area_infest (mutant lair/surge). RULES and SCAN live here
---- per radiant invariants 4 + 5 + 10. Mutants try INFEST first (territorial-claim dominance),
---- fall through to SWARM. Humans only check CONQUER.
+--- per radiant invariants 4 + 5 + 10. Mutants try INFEST and SWARM in randomized order so
+--- neither has a structural first-pick advantage. Humans only check CONQUER.
 
+local math_random = math.random
 local xsquad, xsmart, xtime, xlevel, xcreature, xtable = xsquad, xsmart, xtime, xlevel, xcreature, xtable
 local ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer = ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
@@ -225,8 +226,13 @@ local function _on_smart(trace, squad)
     if _alignment_mutant[squad.player_id] then
         local species = xcreature.get_mutant_species(squad.id)
         if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
-        result = _try_eligible(trace, CAUSE.AREA_INFEST, _eligible_infest, squad, species, now, level_id)
-        if not result then result = _try_eligible(trace, CAUSE.AREA_SWARM, _eligible_swarm, squad, species, now, level_id) end
+        if math_random(2) == 1 then
+            result = _try_eligible(trace, CAUSE.AREA_INFEST, _eligible_infest, squad, species, now, level_id)
+            if not result then result = _try_eligible(trace, CAUSE.AREA_SWARM, _eligible_swarm, squad, species, now, level_id) end
+        else
+            result = _try_eligible(trace, CAUSE.AREA_SWARM, _eligible_swarm, squad, species, now, level_id)
+            if not result then result = _try_eligible(trace, CAUSE.AREA_INFEST, _eligible_infest, squad, species, now, level_id) end
+        end
     elseif _alignment_conquer_human[squad.player_id] then
         result = _try_eligible(trace, CAUSE.AREA_CONQUER, _eligible_conquer, squad, now, level_id)
     else
