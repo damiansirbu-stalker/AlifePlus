@@ -288,8 +288,9 @@ Needs
   - Job - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
   - Social - The stalker finds a campfire or safe location and shares cigarettes and drinks.
 
-  Cross-map sibling rows: Supply, Job Explore, and Social each ship a paired off-map row. The off-map row weights discipline traits, so disciplined stalkers travel cross-map for resupply, scouting, or company while territorial ones stay home.
-  Capped per source map within a sliding 48 game-hour window to keep cross-map traffic in check.
+  Cross-map sibling rows: Supply, Job Explore, and Social each ship a paired off-map row. Greedy nomads (Loners, Bandits, Mercs, Renegades) chase trade. Peaceful curious factions (Ecologists, Clear Sky) scout neighbor maps. Peaceful sociable factions (Ecologists, Freedom, Loners) visit other camps. Army, Monolith, and Zombified squads never travel off-map.
+  Reach grows with player progression. Stalkers reach the next map once Yantar X-16 is shut down, the next after the Brain Scorcher is deactivated at Radar, and master-rank squad commanders push one map further. Each step is tunable under MCM > World > Off-map.
+  Squads return home after a few in-zone days. Travellers stuck off-map are released after a week to keep level populations clean. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
 
   NPCs consume real items from their inventory on arrival.
   A guard smokes a cigarette on duty.

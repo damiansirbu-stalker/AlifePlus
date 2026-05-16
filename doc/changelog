@@ -1,20 +1,25 @@
 next
-  Summary: cross-map sibling causes for Supply / Job Explore / Social; activity record is the single substrate; mutant tables dropped; warfare shim widened
-  Gameplay:
-    Added: Off-map sibling rows for Supply, Job Explore, and Social. Each is a peer in the cascade with discipline-weighted personality, so high-discipline stalkers travel cross-map while territorial ones stay home. Supply off-map targets any base (bases reliably host traders).
-    Added: Social Off-base fires for any faction (the on-map Social Base is principled-only).
+  Summary: off-map travel system (adjacency, reach gates, return cycle, despawn safety)
+  Off-map travel:
+    Cross-map travel system. Stalker squads dispatch across the map for resupply, scouting, or company, peer to on-map dispatch in the cascade.
+    Adjacency picker. Destination scan is a BFS over the engine's A-Life level adjacency, so dispatches go to an actual neighboring map.
+    Reach gated by player progression. Yantar X-16 deactivation, Radar Brain Scorcher deactivation, and a master-rank commander each unlock one extra hop. Tunable under World > Off-map.
+    Rate limiter. Off-map dispatches are capped per source map within a sliding two-day window. Cap and window configurable under World > Off-map.
+    Return cycle. Squads return home two to five in-zone days after arrival. Home level is captured on the squad's first observation and persists across save/load. Return target is a faction base on home level, with fallback to any smart on home level.
+    Cleanup. Squads stuck off-map past seven in-zone days are released when offline. Story, task, companion, and warfare-owned squads are spared via the full protection check.
+    Re-dispatch guard. A squad on the off-map track is not dispatched off-map again until its return cycle completes.
+    Causes: Supply (any base, traders), Job Explore, Social Off-base. Greedy non-territorial squads travel for trade. Peaceful curious factions scout neighbor maps. Peaceful sociable factions visit other camps. Army, Monolith, and Zombified never travel off-map.
   News:
     Changed: News composer reads the activity record. Standalone ledger retired.
     Changed: PDA marker shows action, consequence, subject (and other if any), target smart with level, and dispatch time. Mutant subjects render as species only.
     Removed: News Chance slider. Compose interval and scope filter remain.
   MCM:
-    Added: World tab with Off-map cap. Default 2 dispatches per source map within a sliding 48 game-hour window. Persists across save/load.
-    Added: Three new consequence sub-tabs under Consequences (Social Off-base, Job Explore Off-map, Supply Trader Off-map). Each carries the usual enabled, rush, and where applicable arrive-action toggles.
-    Changed: Tab order is Framework, World, Mutators, News, Causes, Consequences, Development.
-    Changed: Reset button moved from Framework to Development.
+    Added: World tab with Off-map cap slider. Caps dispatches per source map within a sliding window.
+    Added: World > Off-map reach sliders (X-16, Brain Scorcher, master rank).
     Changed: Per-consequence rate limit slider (consequence_max_events) applies mid-session.
     Renamed: Mutator cfg keys follow mutator_<name>_<setting>. Saved MCM values for the old keys revert to defaults on first load.
   Modder API:
+    Added: ap_api.get_home_level(squad_id). Returns the squad's home level id, captured on first protection check and persisted across save/load.
     Added: ap_api.add_record - publish to the activity record.
     Added: ap_api.get_record / get_records - read activity records.
     Changed: Activity record fields are localization keys; translate via ap_api.get_text at render.
@@ -22,13 +27,14 @@ next
     Refactored: PDA map markers split into ap_core_map. Statistics overlay stays in ap_core_hud.
   X-Ray & xlibs:
     Added: xlevel.get_level_id_by_name. Lazy name to level_id map from SIMBOARD.smarts_by_names.
+    Added: xlevel.get_neighbor_levels(level_id, hops). BFS over A-Life level adjacency; powers the off-map destination scan.
+    Added: xsmart.find_first_smart(opts). Cheap first-match smart lookup with no ranking.
+    Added: xsquad.get_commander_rank(squad). Commander rank read used by off-map reach gating.
     Added: xttltable token bucket :set_rate(rate). Updates refill rate without rebuilding; preserves in-flight token state.
   Localization:
-    Added: EN + RU strings for the off-map causes, consequences, World tab, and off-map cap slider.
-    Changed: Species display rows moved to ui_st_ap_macros.xml with st_ap_macros_species_* ids. EN + RU.
-    Removed: Six st_ap_news_mutant_* bucket rows. EN + RU.
+    Added: EN + RU strings for the off-map causes, consequences, World tab, and off-map sliders.
   Fixed:
-    Fixed: Harvest Rob and Squadkill Revenge gate dispatch by hostile relation to the target's true community (disguise-aware).
+    Fixed: Harvest Rob and Squadkill Revenge dispatched friendly squads against the player and against allies. Responder is now gated by hostile relation to the target's true community (disguise-aware), and the NPC-vs-NPC branch of Squadkill Revenge gets the same check the player branch already had.
     Fixed: Mutant Swarm filter checks accepts_mutant. Swarming squads no longer dispatch to smart terrains whose props reject their species.
 
 

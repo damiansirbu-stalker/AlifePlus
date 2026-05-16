@@ -343,7 +343,7 @@ AlifePlus stacks multiple layers of safety on top of that engine capability. A p
 | Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap` (default 2), window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter.script:110-160` |
 | Source exclusion | filter rejects smarts on the squad's current level (`xlevel.get_level_id(s) ~= source`) | `ap_ext_causes_needs.script:122-126` |
 | Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`), with `has_animated_stalker_jobs` skipped because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | `ap_ext_causes_needs.script:249-291` |
-| Destination selection | adjacency-aware, scan restricted to neighbor levels via `simulation_objects.ltx target_maps` (cached at boot) | `xsmart.find_smart` |
+| Destination selection | BFS over A-Life level adjacency (`level_targets.level_links`), hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `xlevel.get_neighbor_levels`, `xsmart.find_smart` |
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch, release, and drift-repair, so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker.script` dispatch + release + scan |
 | Transit TTL | shared 7200 game-sec scripted-squad TTL recalls any squad still in transit | `ap_core_broker.script:333-337` |
 | Arrival check | shared `_try_arrival_gulag` (`xsmart.has_jobs_for`), with the binding check short-circuiting for off-level smarts so the wait runs to TTL or explicit release | `ap_core_broker.script:253-263` |
@@ -403,7 +403,25 @@ Translation keys are directly translatable via `game.translate_string`. Capture 
 
 ### Save / load
 
-_ap_scripted_squads + ap_record_entries (walked from FIFO via :each into a sequential array) + ap_record_seq persist to m_data.ap_core_broker. Engine-side scripted_target persists natively across save/load (sim_squad_scripted STATE_Write / STATE_Read). Arrival handler functions are transient - they are re-registered every load via consumer.register opts (the consumer wires on_arrive opts to broker.register_arrival_handler). On load, squads marked as arrived get release_at = 0 (immediate release on next scan); the FIFO rebuilds from the saved array via :set on each entry, and _record_assigned rebuilds from entries with assigned == true.
+_ap_scripted_squads + ap_record_entries (walked from FIFO via :each into a sequential array) + ap_record_seq persist to m_data.ap_core_broker, alongside home_levels (per-squad home-level capture) and offmap_squads (off-map registry, see Off-map track). Engine-side scripted_target persists natively across save/load (sim_squad_scripted STATE_Write / STATE_Read). Arrival handler functions are transient - they are re-registered every load via consumer.register opts (the consumer wires on_arrive opts to broker.register_arrival_handler). On load, squads marked as arrived get release_at = 0 (immediate release on next scan); the FIFO rebuilds from the saved array via :set on each entry, and _record_assigned rebuilds from entries with assigned == true.
+
+### Off-map track
+
+ap_core_broker maintains a parallel registry `_ap_offmap_squads` for squads dispatched off-map (`script_squad(squad, smart, { offmap = true })`). The registry tracks the squad from dispatch through arrival, optional return-home dispatch, and despawn safety. The off-map track runs independent of the 20s scripted-squad scan: a separate 60-min wall-clock scan (`OFFMAP_SCAN_SEC = 3600`) handles return-home and despawn decisions, and the home-level transition is event-driven via the engine `SQUAD_ON_AFTER_LEVEL_CHANGE` callback (sim_squad_scripted.script:245).
+
+Registration. `register_offmap_squad(squad_id)` writes an entry `{ home_level, dispatched_at, arrived_at, return_home_at, left_home }`. `home_level` reads the broker-private capture populated by `_capture_home_level` - a side effect of `is_protected`, so every squad observed by the cascade has a home_level by the time it reaches dispatch. `script_squad` registers the entry whenever `opts.offmap = true`.
+
+Arrival sync. `_try_arrival_gulag` (shared with on-map dispatch) stamps `arrived_at = now` and `return_home_at = now + math_random(OFFMAP_RETURN_HOME_MIN_SEC, OFFMAP_RETURN_HOME_MAX_SEC)` (2-5 game-days). Until arrival the entry has no return clock.
+
+Home-level transitions. `_on_squad_level_change(squad, from, to)` is registered on `CALLBACK.SQUAD_ON_AFTER_LEVEL_CHANGE`. On a transition leaving `entry.home_level`, the entry's `left_home` flag is set. On a transition back to `home_level` while `left_home` is set, the entry is dropped - the squad came home on its own and no longer needs tracking. Squads the engine never delivers (transit failures, ambushed in transit, etc.) keep their entry and fall to the despawn safety timer.
+
+Scan loop. `_update_offmap_squads` runs every `OFFMAP_SCAN_SEC` (60 game-min). For each entry:
+1. Return-home: if `return_home_at` is set and reached, `_pick_home_smart` picks a destination on `entry.home_level` (xsmart.find_smart preferring a faction base, fallback xsmart.find_first_smart on home_level), and `script_squad(squad, home_smart, { offmap = false })` re-scripts the squad. The entry is dropped on success; on no-smart it logs and the entry stays for the next scan.
+2. Despawn safety: if `(now - entry.dispatched_at) > OFFMAP_DESPAWN_SEC` (7 game-days) and the squad is offline, run `is_protected(squad)` first. If protected (story / task / companion / warfare-owned), skip and keep the entry. Otherwise `alife_release_id(squad_id)` and drop the entry.
+
+Save / load. `_ap_offmap_squads` persists to `m_data.ap_core_broker.offmap_squads`; `_ap_squad_home_level` persists to `m_data.ap_core_broker.home_levels`. Both rebuild from the saved tables on load. `dispatched_at` / `arrived_at` / `return_home_at` are absolute game-second stamps, so they remain correct across save/load and time-skip. `SERVER_ENTITY_ON_UNREGISTER` clears both registries when a tracked squad despawns.
+
+ap_api surface: `get_home_level(squad_id)` returns the captured home level. Broker-internal `is_offmap_dispatched(squad_id)` returns whether the squad is currently on the off-map track; the cause-side guard in `ap_ext_causes_needs.script:142-144` reads this to block re-dispatch while the return cycle is in progress.
 
 ### Protection (ap_core_broker.is_protected)
 
