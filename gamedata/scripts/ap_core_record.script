@@ -5,7 +5,6 @@ local pairs, type = pairs, type
 local tostring, math_floor, string_format = tostring, math.floor, string.format
 local RegisterScriptCallback = RegisterScriptCallback
 local xtime, xsquad, xttltable, xprofiler, xcreature = xtime, xsquad, xttltable, xprofiler, xcreature
-local ap_core_debug = ap_core_debug
 
 local CALLBACK = ap_core_const.CALLBACK
 
@@ -53,11 +52,11 @@ end
 --- @return number|nil cons_id Monotonic id, or nil if args invalid
 function add_record(subject_squad, cause_key, consequence_key, opts)
     if not subject_squad or not subject_squad.id then
-        ap_core_debug.warn("[RECORD] add_record: invalid subject_squad")
+        ap_core_debug.warn("[CORE.RECORD] add_record: invalid subject_squad")
         return nil
     end
     if not cause_key or not consequence_key then
-        ap_core_debug.warn("[RECORD] add_record: missing cause_key=%s consequence_key=%s", tostring(cause_key), tostring(consequence_key))
+        ap_core_debug.warn("[CORE.RECORD] add_record: missing cause_key=%s consequence_key=%s", tostring(cause_key), tostring(consequence_key))
         return nil
     end
     opts = opts or {}
@@ -96,7 +95,7 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
     _ap_record:set(_record_seq, entry)
     _record_assigned[subject_squad_id] = entry
     if enabled then
-        ap_core_debug.debug("[RECORD] add_record: squad=%d cause=%s consequence=%s seq=%d s_fac=%s s_spec=%s s_name=%s o_fac=%s o_spec=%s o_name=%s [s=%.2fms o=%.2fms]",
+        ap_core_debug.debug("[CORE.RECORD] add_record: squad=%d cause=%s consequence=%s seq=%d s_fac=%s s_spec=%s s_name=%s o_fac=%s o_spec=%s o_name=%s [s=%.2fms o=%.2fms]",
             subject_squad_id, cause_key, consequence_key, _record_seq,
             tostring(s_fac), tostring(s_spec), tostring(s_name),
             tostring(o_fac), tostring(o_spec), tostring(o_name),
@@ -205,7 +204,7 @@ local function _on_save_state(m_data)
         seq     = _record_seq,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[RECORD] save: record=%d", _ap_record:size())
+        ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:size())
     end
 end
 
@@ -215,7 +214,7 @@ local function _on_load_state(m_data)
     _record_seq = saved.seq or 0
     _records_import(saved.entries)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[RECORD] load: record=%d", _ap_record:size())
+        ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:size())
     end
 end
 
@@ -233,5 +232,5 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
 
-    ap_core_debug.info("[RECORD] Initialized")
+    ap_core_debug.info("[CORE.RECORD] Initialized")
 end
