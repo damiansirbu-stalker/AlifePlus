@@ -290,6 +290,69 @@ Migrations that need to clear engine state (e.g. `scripted_target` on orphan squ
 
 ---
 
+## Engine integration
+
+NPC behavior is produced by a four-layer engine chain. AP routes squads to destinations, reads the chain's output, and stays outside the chain itself.
+
+### The four layers
+
+| Layer | Subsystem | What it produces |
+|-------|-----------|------------------|
+| Content | smartcovers, patrol paths, animpoints (level .ltx) | the animation primitives a job can run |
+| Binding | gulag (smart_terrain.script + gulag_general.script) | npc_info[id].job per NPC, scored by priority + precondition |
+| Scheme | xr_logic + scheme modules (xr_walker, xr_camper, xr_sleeper, xr_animpoint, xr_smartcover, sr_*) | actions and evaluators registered on the NPC's motivation_action_manager |
+| Execution | GOAP action planner (action_planner_script.cpp) | the per-tick action selected against goal world state |
+
+### Write surface
+
+A single engine field: `squad.scripted_target` via `xsquad.acquire_squad` / `release_squad` / `reassert_target`. AP does not write to `npc_info`, `npc_by_job_section`, `job_info_by_job_type_id`, `db.storage[id].active_section` / `active_scheme` / `pstor`, `motivation_action_manager`, or any smart's `stalker_jobs` / `monster_jobs` tables. AP does not call `xr_logic.activate_by_section` or any scheme's `set_scheme` directly. AP does not push exclusive jobs.
+
+### Read surface
+
+| Source | xlibs wrapper | Reader |
+|--------|---------------|--------|
+| `smart.stalker_jobs` / `monster_jobs` | `xsmart.has_animated_stalker_jobs` | scan-time predicate per cause: reject stub-only smarts (job_type_id in {0, 1}) |
+| `smart.npc_info[id].job` | `xsmart.has_jobs_for` | arrival + mid-hold predicate: detect engine binding failure |
+| `smart.props` | `xsmart.has_faction`, `accepts_mutant` | scan-time faction gate (mirrors engine target_precondition gate 1) |
+| `SIMBOARD.smarts[id].squads` | `xsmart.has_capacity` | sim-routing intent (not physical occupancy; see SIMBOARD bookkeeping below) |
+
+Cause-side filters live in `ap_ext_causes_*.script`; each cause picks the predicate set that matches the activity (surge shelter, lair, base/unclaimed, has-anomaly, etc.).
+
+### Binding race
+
+Engine `select_npc_job` (smart_terrain.script:626-798) can fail to assign a job under two conditions:
+1. Full allocation. Every `stalker_jobs` entry is held by `npc_by_job_section` or rejected by `job_avail_to_npc`. `setup_logic` unregisters + re-registers the NPC; engine default idle pose loops.
+2. Precondition flip during the post-arrival hold. surge start/end (jobs 2/8/14/19), day↔night for sleeper (3), zombie state, `has_items_to_sell` for trader (15), `has_tech_items` for mechanic (16).
+
+AP detects both via `xsmart.has_jobs_for` and releases the squad cleanly. Mechanism in Squad Lifecycle → Scripted-squad scan steps 4 (arrival) and 6 (mid-hold). Released squads return to SIMBOARD autonomous targeting via `xsquad.release_squad` clearing `scripted_target`.
+
+### SIMBOARD bookkeeping
+
+AP-routed transitions update `SIMBOARD:assign_squad_to_smart` at dispatch, release, and on a drift-repair pass in the 20s scripted-squad scan. `SIMBOARD.smarts[id].squads` therefore reflects actual squad placement for AP-routed squads. `has_capacity`, garrison floor, and faction-quota predicates all read truth.
+
+### Off-map transit
+
+A cause can flag a destination as off-map. The flag changes selection rules and rate-limiting. The lifecycle machinery is shared with on-map dispatch.
+
+The engine handles the cross-level move through its own per-squad routing, including the offline/online transition machinery for the level swap. At the destination the gulag binds jobs identically to on-map arrivals.
+
+AlifePlus stacks multiple layers of safety on top of that engine capability. A per-source-level rate counter caps off-map dispatches over a sliding window, so no single level depopulates through repeated outflow. Source-level exclusion blocks any candidate smart on the squad's current level. Cross-level filtering runs only on the data the engine still exposes for off-actor-level smarts. A transit TTL recalls any squad the engine fails to deliver to the destination. SIMBOARD bookkeeping stays current at dispatch, release, and drift-repair, so cross-level capacity and garrison queries return accurate counts. The same arrival and mid-hold release checks that protect on-map dispatch run unchanged on off-map dispatch.
+
+| Layer | Mechanism | Site |
+|-------|-----------|------|
+| Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap` (default 2), window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter.script:110-160` |
+| Source exclusion | filter rejects smarts on the squad's current level (`xlevel.get_level_id(s) ~= source`) | `ap_ext_causes_needs.script:122-126` |
+| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`), with `has_animated_stalker_jobs` skipped because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | `ap_ext_causes_needs.script:249-291` |
+| Destination selection | adjacency-aware, scan restricted to neighbor levels via `simulation_objects.ltx target_maps` (cached at boot) | `xsmart.find_smart` |
+| SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch, release, and drift-repair, so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker.script` dispatch + release + scan |
+| Transit TTL | shared 7200 game-sec scripted-squad TTL recalls any squad still in transit | `ap_core_broker.script:333-337` |
+| Arrival check | shared `_try_arrival_gulag` (`xsmart.has_jobs_for`), with the binding check short-circuiting for off-level smarts so the wait runs to TTL or explicit release | `ap_core_broker.script:253-263` |
+| Mid-hold check | shared `_update_pre_release_gulag` (`xsmart.has_jobs_for`), short-circuits for off-actor-level smarts | `ap_core_broker.script:305-321` |
+
+Save persistence: the offmap counter exports / imports via xttltable in `ap_core_limiter` SAVE_STATE / LOAD_STATE. The 48-hour window survives save/load and time-skip (game-time clock).
+
+---
+
 ## Squad Lifecycle
 
 ap_core_broker manages the full lifecycle: scripting, arrival detection, post-arrival wait, release.

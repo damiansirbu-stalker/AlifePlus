@@ -306,7 +306,7 @@ Instincts
     The food chain runs cowardly -> feral -> predator -> aberrant, with each tier fleeing all higher tiers.
     Squads relocate to the nearest smart terrain with no higher-tier threats.
   - Feed - Mutants move to open territory during active hours, where predators and prey meet on shared hunting grounds.
-  - Sleep - Mutants return to rest locations during dormant hours: cowardly in fields, feral in lairs, predators in lairs or buildings, aberrant underground.
+  - Sleep - Mutants return to rest locations during dormant hours: cowardly in fields, feral and predator in lairs, predator and aberrant in buildings.
   - Explore - Mutants wander to a different territory or lair during active hours.
   - Socialize - Pack animals move toward smart terrains where same-faction squads are present.
 
@@ -354,9 +354,29 @@ The framework holds no scheduler. There is no clock, no polling loop, no per-fra
 - Radiant pipeline subscribes to squad-state events (squad updates, smart-terrain transitions, game-vertex changes). Each event passes a multi-gate chain (pacer, protection, ratio, budget) that admits a small handful per minute. Admitted events feed a cascade that shuffles registered radiant causes and stops on the first publish.
 - Reactive pipeline subscribes to engine events that already encode "something happened": deaths, hits, item use, anomaly contact. Each registered cause evaluates independently; a single event can publish to many consequences.
 - No base-script edits. No engine patches. Only runtime callbacks and hooks.
-- The simulation layer is the engine's own. Squads route through the simulation board; the engine's job system, action planner, and scheme bindings produce all behavior at the destination.
+- The simulation layer is the engine's own. The simulation board owns squad-to-smart routing, tracks which squads are at which smart, and fires the enter/leave callbacks other mods subscribe to. AlifePlus sets a one-shot destination override that replaces the target-picking step only, then clears on release.
 - Smart terrain mutations (territory conquest, mutant infestation) rebuild from LTX on load. A scanner re-applies them and decays expired conquests on smart-terrain events.
 - The runtime is xlibs, a reverse-engineered API wrapping the X-Ray engine source, built and validated against the C++ implementation.
+
+Animations, Gulag, GOAP.
+
+AlifePlus picks a destination smart terrain for a squad and hands the squad to the engine. From there the gulag binds each arriving NPC to a job from the smart terrain's catalog, scored by priority and precondition. Once bound, the scheme system loads the behavior module the job points to, registering its actions and evaluators on the NPC. The GOAP action planner then reads those evaluators each tick and picks the action that fits the NPC's current goal world state. AlifePlus works with that pipeline instead of replacing it.
+
+Every cause and consequence is paired with a predicate that asks the engine which smart terrains can produce the corresponding activity. The predicate reads the same job catalog the gulag reads (smartcovers, patrol paths, animpoints per smart), with the same preconditions. That covers the vanilla Anomaly configs plus whatever modpacks like GAMMA/EFP/Zona add on top.
+
+When a dispatch selects a destination, the engine routes the squad there through its normal systems. On arrival, the gulag selects the job, the scheme system resolves the behavior, and the action planner executes it. AlifePlus acts as a broker between those systems, integrating with the engine's existing decision flow.
+
+If the engine cannot bind a job to every arriving squad member, the squad is released back into autonomous A-Life routing. The same release occurs when a precondition changes after arrival and the engine retracts the assigned job.
+
+Off-map transit.
+
+Any cause can flag a destination as off-map. The flag changes which smarts qualify and applies its own rate counter. The squad's arrival, hold, and release machinery is shared with on-map dispatch.
+
+The engine carries the actual cross-level movement through its own routing slot. The gulag at the destination binds jobs the same way it does for on-map arrivals.
+
+AlifePlus adds the protection layers around that capability. A per-source-level rate counter limits off-map dispatches over a sliding game-hour window, so no single level keeps bleeding squads forever. The destination scan respects level adjacency, so cross-map dispatches stay within neighboring levels. Cross-level filtering runs only on data the engine still exposes off-level: faction ownership and smart-terrain flags. Every dispatched squad carries a transit TTL that recalls it if the engine never delivers it to the destination. The engine's squad-to-smart map stays current at dispatch and release, so cross-level capacity and garrison checks read the right counts. The arrival release fires if the destination cannot bind jobs to every member, and the mid-hold release fires if the engine retracts a job at the destination after arrival.
+
+Every off-map dispatch passes through the same broker that handles every on-map dispatch. The off-map flag affects only the selection and rate-limiting. Everything else is shared.
 
 Performance:
 
