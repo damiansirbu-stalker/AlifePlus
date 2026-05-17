@@ -299,11 +299,14 @@ local function _check_left_home(squad_id, squad, data)
 end
 
 -- True when the squad has returned to its home level after having left. Drops the entry.
+-- Releases the engine scripted_target before returning so the squad does not leak as
+-- is_scripted forever. Mirrors _check_offmap_despawn's "decide + act + return true" pattern.
 local function _check_home_returned(squad_id, squad, data)
     if not data.left_home then return false end
     local cur_level = xlevel.get_level_id(squad)
     if not cur_level or cur_level ~= data.home_level then return false end
     ap_core_debug.debug("[SQUAD.OFFMAP] home_returned: squad=%d", squad_id)
+    xsquad.release_squad(squad)
     return true
 end
 
