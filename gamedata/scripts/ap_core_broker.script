@@ -433,6 +433,11 @@ end
 function script_squad(squad, smart, opts)
     if not squad or not smart then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     opts = opts or {}
+    if opts.offmap and not _ap_squad_home_level[squad.id] then
+        ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, no home_level captured",
+            squad.id)
+        return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
+    end
     local name = smart:name()
     if not name or name == "" then
         ap_core_debug.warn("[SQUAD] script_squad: squad=%d invalid smart name", squad.id)
