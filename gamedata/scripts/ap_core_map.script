@@ -2,9 +2,10 @@
 --- Reads activity record (assigned=true), mirrors each entry as an engine map spot
 --- via xpda. Per-squad shadow state {_marker_state}; entries linger for
 --- MARKER_LINGER_SEC after the record evicts / entity dies / squad unscripts.
-local pairs, clock, RegisterScriptCallback = pairs, os.clock, RegisterScriptCallback
+local pairs, clock, tostring, RegisterScriptCallback = pairs, os.clock, tostring, RegisterScriptCallback
 local table_concat = table.concat
 local xobject, xlevel, xpda = xobject, xlevel, xpda
+local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -160,6 +161,34 @@ local function _on_server_entity_on_unregister(se_obj)
     end
 end
 
+local _teleport_label = nil
+
+local function _refresh_teleport_label()
+    _teleport_label = game.translate_string("st_ap_teleport_to_squad")
+end
+
+local function _on_map_spot_menu_add_property(ui, id, level_name, hint)
+    if not cfg.map_markers then return end
+    if not _marker_state[id] then return end
+    if not _teleport_label then _refresh_teleport_label() end
+    ui:AddItem(_teleport_label)
+end
+
+local function _on_map_spot_menu_property_clicked(ui, id, level_name, prop)
+    if not cfg.map_markers then return end
+    if not _marker_state[id] then return end
+    if not _teleport_label then _refresh_teleport_label() end
+    if prop ~= _teleport_label then return end
+    local se = xobject.se(id)
+    if not se then return end
+    if level_name == level.name() then
+        db.actor:set_actor_position(se.position)
+    elseif se.m_level_vertex_id < INVALID_LEVEL_VERTEX_ID then
+        ChangeLevel(se.position, se.m_level_vertex_id, se.m_game_vertex_id, VEC_ZERO, true)
+    end
+    ap_core_debug.debug("[CORE.MAP] teleport: squad=%d level=%s", id, tostring(level_name))
+end
+
 local function _on_option_change()
     if cfg.map_markers then
         RemoveTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS)
@@ -192,4 +221,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_server_entity_on_unregister)
     RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)
+    RegisterScriptCallback(CALLBACK.MAP_SPOT_MENU_ADD_PROPERTY, _on_map_spot_menu_add_property)
+    RegisterScriptCallback(CALLBACK.MAP_SPOT_MENU_PROPERTY_CLICKED, _on_map_spot_menu_property_clicked)
+    RegisterScriptCallback(CALLBACK.ON_LOCALIZATION_CHANGE, _refresh_teleport_label)
 end
