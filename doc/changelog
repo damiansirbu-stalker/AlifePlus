@@ -3,9 +3,9 @@ next
   Off-map travel:
     Cross-map travel system. Stalker squads dispatch across the map for resupply, scouting, or company, peer to on-map dispatch in the cascade.
     Adjacency picker. Destination scan is a BFS over the engine's A-Life level adjacency, so dispatches go to an actual neighboring map.
-    Reach gated by player progression. Yantar X-16 deactivation, Radar Brain Scorcher deactivation, and a master-rank commander each unlock one extra hop. Tunable under World > Off-map.
+    Reach gated by player progression. Every squad starts with the base reach set in MCM (default 0, matching vanilla story gating; raise via MCM for pre-story reach). Yantar X-16 deactivation, Radar Brain Scorcher deactivation, and a master-rank commander each unlock one extra hop. Tunable under World > Off-map.
     Rate limiter. Off-map dispatches are capped per source map within a sliding two-day window. Cap and window configurable under World > Off-map.
-    Return cycle. Squads return home two to five in-zone days after arrival. Home level is captured on the squad's first observation and persists across save/load. Return target is a faction base on home level, with fallback to any smart on home level.
+    Return cycle. Squads return home three in-zone days after arrival by default (MCM-tunable, World > Off-map). Home level is captured on the squad's first observation and persists across save/load. Return target is a faction base on home level, with fallback to any smart on home level.
     Cleanup. Squads stuck off-map past seven in-zone days are released when offline. Story, task, companion, and warfare-owned squads are spared via the full protection check.
     Re-dispatch guard. A squad on the off-map track is not dispatched off-map again until its return cycle completes.
     Causes: Supply (any base, traders), Job Explore, Social Off-base. Greedy non-territorial squads travel for trade. Peaceful curious factions scout neighbor maps. Peaceful sociable factions visit other camps. Army, Monolith, and Zombified never travel off-map.
@@ -16,9 +16,12 @@ next
   MCM:
     Added: World tab with Off-map cap slider. Caps dispatches per source map within a sliding window.
     Added: World > Off-map reach sliders (X-16, Brain Scorcher, master rank).
+    Added: World > Off-map lifecycle sliders. Return-home hours sets the dwell at destination before the squad is dispatched back home (default 72 = 3 game-days). Despawn safety hours caps how long a stuck off-map squad stays before being released (default 168 = 7 game-days).
+    Fixed: Off-map squad lifecycle merged into the scripted-squad lifecycle. The off-map subsystem ran as a parallel registry with its own scan and timers; the scripted-squad TTL could fire mid-transit, drop the engine script, and let a subsequent local arrival false-positive stamp as the off-map arrival, queueing a phantom return-home dispatch from a place the squad had never visited. One collection now, one 20s scan, one source of truth. Off-map dispatches have no TTL; sessions live until home arrival or the despawn safety window. Sessions survive non-offmap re-dispatches during the dwell phase, so the return-home dispatch still fires correctly.
     Changed: Per-consequence rate cap slider applies mid-session.
     Changed: Map markers MCM toggle applies mid-session. Toggling off clears all markers and stops the scan; toggling on arms the timer and applies markers from active records.
     Added: Right-click on an AlifePlus map marker offers Teleport to squad. Same level teleports in place; cross-level transitions via ChangeLevel. Gated by the Debug markers toggle (development tab); no combat or weight or bleed gates.
+    Changed: A-Life interval default raised from 5s to 10s. Lowers radiant evaluation cadence and the executed-consequence rate; tunable on the framework page.
     Renamed: Mutator cfg keys follow mutator_<name>_<setting>. Saved MCM values for the old keys revert to defaults on first load.
   Modder API:
     Added: ap_api.get_home_level(squad_id). Returns the squad's home level id, captured on first protection check and persisted across save/load.
@@ -27,6 +30,7 @@ next
     Changed: Activity record fields are localization keys; translate via ap_api.get_text at render.
     Refactored: Activity record split into its own ap_core_record module. ap_api callers unaffected.
     Refactored: PDA map markers split into ap_core_map. Statistics overlay stays in ap_core_hud.
+    Changed: Warfare integration shim widened. Erepb's Warfare-A-Life-Overhaul receives the activity record fields (subject / other community, species, name) and the consequence dispatch info via the existing compat surface.
   X-Ray & xlibs:
     Added: xlevel.get_level_id_by_name. Lazy name to level_id map from SIMBOARD.smarts_by_names.
     Added: xlevel.get_neighbor_levels(level_id, hops). BFS over A-Life level adjacency; powers the off-map destination scan.
@@ -39,6 +43,8 @@ next
     Fixed: Harvest Rob and Squadkill Revenge dispatched friendly squads against the player and against allies. Responder is now gated by hostile relation to the target's true community (disguise-aware), and the NPC-vs-NPC branch of Squadkill Revenge gets the same check the player branch already had.
     Fixed: Mutant Swarm filter checks accepts_mutant. Swarming squads no longer dispatch to smart terrains whose props reject their species.
     Fixed: Peer radiant causes (offmap vs on-map needs, slumber variants, infest vs swarm) now shuffle per squad tick so no peer has a structural first-pick advantage.
+    Fixed: Wounded, Stash, Massacre, Squadkill, and Basekill gates now check own-faction base, not any base. Wounded NPCs at enemy or neutral bases no longer silently skip the help reaction; a squad wiped at an enemy base now produces Squadkill and Massacre; Stash Ambush still suppresses only when the would-be ambusher is parked at its own base; Basekill fires only when victims fall at their own faction's base.
+    Fixed: News template slot substitution accepts underscores. Slots like #subject_faction#, #subject_name#, #other_name# rendered as literal text in dispatched news; they now resolve to the named values.
 
 
 1.5.5 - "Maintenance"
