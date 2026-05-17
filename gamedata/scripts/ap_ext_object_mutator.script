@@ -115,6 +115,7 @@ local function _rebuild_alpha_hit_power()
 end
 
 --- Inject alpha bonus loot into mutant loot table (species-specific, scaled by alpha level)
+--- One hide per alpha kill (when species has one), remaining (level - 1) picks drawn from parts with replacement
 --- @src anomaly/ui_mutant_loot.script(167,463-470)
 local function _on_monster_loot_init(victim, loot_table)
     if not victim or not loot_table then return end
@@ -125,8 +126,15 @@ local function _on_monster_loot_init(victim, loot_table)
     if not species then return end
     local pool = ALPHA_LOOT[species]
     if not pool then return end
-    for i = 1, level do
-        local section = pool[math_random(#pool)]
+    local parts = pool.parts
+    local start_i = 1
+    if pool.hide then
+        if not loot_table[pool.hide] then loot_table[pool.hide] = { count = 0 } end
+        loot_table[pool.hide].count = loot_table[pool.hide].count + 1
+        start_i = 2
+    end
+    for i = start_i, level do
+        local section = parts[math_random(#parts)]
         if not loot_table[section] then loot_table[section] = { count = 0 } end
         loot_table[section].count = loot_table[section].count + 1
     end
