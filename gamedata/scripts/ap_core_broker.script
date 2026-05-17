@@ -344,10 +344,27 @@ local function _check_offmap_despawn(squad_id, squad, data, now)
     local age = now - (data.dispatched_at or now)
     if age <= cfg.offmap_despawn_hours * 3600 then return false end
     if squad.online then return false end
-    local protected, reason = is_protected(squad)
-    if protected then
-        ap_core_debug.debug("[SQUAD.OFFMAP] despawn_skipped_protected: squad=%d reason=%s",
-            squad_id, reason or "?")
+    local owner = get_owner(squad)
+    if owner then
+        ap_core_debug.debug("[SQUAD.OFFMAP] despawn_skipped_owned: squad=%d owner=%s", squad_id, owner)
+        return true
+    end
+    local perm, perm_reason = xsquad.is_permanent_squad(squad)
+    if perm then
+        ap_core_debug.debug("[SQUAD.OFFMAP] despawn_skipped_permanent: squad=%d reason=%s",
+            squad_id, perm_reason or "?")
+        return true
+    end
+    local role, role_reason = xsquad.has_active_role(squad)
+    if role then
+        ap_core_debug.debug("[SQUAD.OFFMAP] despawn_skipped_role: squad=%d reason=%s",
+            squad_id, role_reason or "?")
+        return true
+    end
+    local task, task_reason = xsquad.is_task_target(squad)
+    if task then
+        ap_core_debug.debug("[SQUAD.OFFMAP] despawn_skipped_task: squad=%d reason=%s",
+            squad_id, task_reason or "?")
         return true
     end
     ap_core_debug.debug("[SQUAD.OFFMAP] despawn: squad=%d age=%dh", squad_id, age / 3600)
