@@ -336,18 +336,18 @@ A cause can flag a destination as off-map. The flag changes selection rules and 
 
 The engine handles the cross-level move through its own per-squad routing, including the offline/online transition machinery for the level swap. At the destination the gulag binds jobs identically to on-map arrivals.
 
-AlifePlus stacks multiple layers of safety on top of that engine capability. A per-source-level rate counter caps off-map dispatches over a sliding window, so no single level depopulates through repeated outflow. Source-level exclusion blocks any candidate smart on the squad's current level. Cross-level filtering runs only on the data the engine still exposes for off-actor-level smarts. A transit TTL recalls any squad the engine fails to deliver to the destination. SIMBOARD bookkeeping stays current at dispatch, release, and drift-repair, so cross-level capacity and garrison queries return accurate counts. The same arrival and mid-hold release checks that protect on-map dispatch run unchanged on off-map dispatch.
+AlifePlus stacks multiple layers of safety on top of that engine capability. A per-source-level rate counter caps off-map dispatches over a sliding window, so no single level depopulates through repeated outflow. Adjacency narrowing restricts candidate smarts to BFS-reachable neighbor levels, with source level excluded. Cross-level filtering runs only on the data the engine still exposes for off-actor-level smarts. A per-session despawn budget (`offmap_despawn_hours`, default 168 game-hours) cleans up any session the engine fails to complete, offline-only and respecting registered owners + permanent / active-role / task-target protections. SIMBOARD bookkeeping stays current at dispatch, release, and drift-repair, so cross-level capacity and garrison queries return accurate counts. The same arrival and mid-hold release checks that protect on-map dispatch run unchanged on off-map dispatch.
 
 | Layer | Mechanism | Site |
 |-------|-----------|------|
-| Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap` (default 2), window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter.script:110-160` |
-| Source exclusion | filter rejects smarts on the squad's current level (`xlevel.get_level_id(s) ~= source`) | `ap_ext_causes_needs.script:122-126` |
-| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`), with `has_animated_stalker_jobs` skipped because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | `ap_ext_causes_needs.script:249-291` |
-| Destination selection | BFS over A-Life level adjacency (`level_targets.level_links`), hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `xlevel.get_neighbor_levels`, `xsmart.find_smart` |
+| Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap` (default 2), window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter.script:110-135` |
+| Adjacency narrowing | filter narrows to BFS neighbor set; source level excluded by `xlevel.get_neighbor_levels` removing `source_id` from visited; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script:151-166`, `xlevel.script:273-287` |
+| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`); `has_animated_stalker_jobs` omitted because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | `ap_ext_causes_needs.script:290-334` (offmap CAUSES entries) |
+| Destination selection | `xsmart.find_smart` over the narrowed neighbor set; cross-frame distance ranking is arbitrary-but-deterministic across foreign-level candidates | `xsmart.script:296`, via `ap_core_util.find_smart_observed` at `ap_ext_causes_needs.script:167` |
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch, release, and drift-repair, so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker.script` dispatch + release + scan |
-| Transit TTL | shared 7200 game-sec scripted-squad TTL recalls any squad still in transit | `ap_core_broker.script:333-337` |
-| Arrival check | shared `_try_arrival_gulag` (`xsmart.has_jobs_for`), with the binding check short-circuiting for off-level smarts so the wait runs to TTL or explicit release | `ap_core_broker.script:253-263` |
-| Mid-hold check | shared `_update_pre_release_gulag` (`xsmart.has_jobs_for`), short-circuits for off-actor-level smarts | `ap_core_broker.script:305-321` |
+| Lifetime budget | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` fires at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker.script:346-389` |
+| Arrival check | shared `_try_arrival_gulag` (`xsmart.has_jobs_for`); binding check short-circuits for off-level smarts so the gulag hold runs to expiry | `ap_core_broker.script:538-548` |
+| Mid-hold check | shared `_update_pre_release_gulag` (`xsmart.has_jobs_for`); short-circuits for off-actor-level smarts | `ap_core_broker.script:604-627` |
 
 Save persistence: the offmap counter exports / imports via xttltable in `ap_core_limiter` SAVE_STATE / LOAD_STATE. The 48-hour window survives save/load and time-skip (game-time clock).
 
