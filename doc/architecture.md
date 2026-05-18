@@ -35,11 +35,21 @@ Built on xlibs. _ap_deps asserts xlibs presence and version on load. See convent
 
 ---
 
+## Invariants
+
+Project-wide constraints that hold across all pipelines and modules.
+
+- Core never imports ext. All ext modules reach core through registered function references at on_game_start.
+- Cross-DTO read, single-writer write. Any cause generator may read any DTO; only the owning generator writes.
+- Performance budget. Every measured flow (each bracketed `ap_core_debug.observe` label in the log: `[CONSEQUENCE_PHASE.FIND_TARGETS]`, `[CONSEQUENCE_PHASE.FIND_DESTINATION]`, `[STASH]`, ...) targets 0.1ms average per call and has a hard 4ms ceiling per call. No exceptions, including cold start, save load, and level transition. Any preload (index build, cache warm, registry walk) that would breach 4ms in a single tick must be frame-spread (xslice or equivalent), with the search path falling back to the un-indexed walk until the build completes. A flow that averages above 0.1ms, or that ever exceeds 4ms in a single call, is a regression and requires a perf task. See `doc/standards/code-standards.md` "Performance budget".
+
+---
+
 ## File layout
 
 Two layers. Core is the framework. Ext is the domain. Core never imports ext; all ext modules register with core via function references at on_game_start.
 
-### Core (13 files)
+### Core (14 files)
 
 | File | Role |
 |------|------|
@@ -47,6 +57,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
+| ap_core_cache | Per-level indexes over SIMBOARD.smarts_by_names (sync at actor_on_first_update) and treasure_manager.caches (xslice step=3, ~2s warmup). Consumers fetch via smarts_on_level(level_id) / stashes_on_level(level_id) and pass as opts.source to xsmart.find_smart / xstash.find_stashes; stashes_on_level returns nil during warmup so the consumer gates and yields no cause |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
 | ap_core_producer | Event Pipeline: radiant + reactive gate chains, cause generator cascade, xbus publish |
