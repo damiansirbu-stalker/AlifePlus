@@ -206,8 +206,8 @@ end
 -- result on SUCCESS, nil otherwise. observe() wraps _try_cause so every attempt logs.
 -- period_mismatch needs are walked only at DEBUG (see _find_overdue_needs); each cause emits
 -- a failed_rules:wrong_period observe line so dormant/active drops are no longer silent.
-local function _try_one_need_cause(trace, squad, level_id, overdue_entry, entry, need_name, budget)
-    if entry.need ~= need_name then return nil end
+local function _try_one_need_cause(trace, squad, level_id, overdue_entry, entry, budget)
+    if entry.need ~= overdue_entry.need.need then return nil end
     if overdue_entry.period_mismatch then
         ap_core_debug.observe(trace, entry.cause, function()
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD }
@@ -221,9 +221,8 @@ end
 
 --- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
 local function _try_need(trace, squad, level_id, overdue_entry, budget)
-    local need_name = overdue_entry.need.need
     for j = 1, #CAUSES do
-        local result = _try_one_need_cause(trace, squad, level_id, overdue_entry, CAUSES[j], need_name, budget)
+        local result = _try_one_need_cause(trace, squad, level_id, overdue_entry, CAUSES[j], budget)
         if result then return result end
     end
     return nil
