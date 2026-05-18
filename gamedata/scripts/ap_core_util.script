@@ -102,8 +102,8 @@ end
 --- Find nearest smart terrain matching filter criteria
 --- When opts.level_id is set, injects ap_core_cache.smarts_on_level as opts.source so xsmart iterates
 --- the per-level bucket instead of the global SIMBOARD.smarts_by_names walk. Cache returns nil before
---- actor_on_first_update has run; in that window the call falls through to the global walk (correct,
---- one-time cost on a small pool).
+--- actor_on_first_update has run; in that window the call falls through to the un-bucketed walk over
+--- ~300-500 smarts (~1-2ms), which fits the 4ms ceiling.
 --- @param pos vector Origin position
 --- @param opts table Options (forwarded to xsmart.find_smart)
 --- @return table|nil Smart server object or nil
@@ -159,8 +159,8 @@ end
 --- @return table|nil Smart server object or nil
 function find_first_smart_observed(trace, opts)
     local smart
-    local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
     ap_core_debug.observe(trace, PHASE.FIND_DESTINATION, function()
+        local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
         if source then
             local local_opts = {}
             for k, v in pairs(opts) do local_opts[k] = v end
