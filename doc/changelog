@@ -1,10 +1,9 @@
 next
-  Summary: per-level cache for level-scoped finds
-  Core:
-    Added: ap_core_cache module. Per-level indexes over SIMBOARD.smarts_by_names (sync at first update) and treasure_manager.caches (xslice step=3, ~2s warmup). Consumers fetch via smarts_on_level / stashes_on_level and pass as opts.source to xlibs finders.
+  Summary: 5-10x faster world scanning, per-generator radiant budget, tighter reactive cascade
   Performance:
-    Changed: Smart-driven causes (HEAL_SHELTER, SUPPLY_TRADER, JOB_OUTPOST, area, instincts) walk only the actor-level smarts on level-scoped scans. ap_core_util.find_smart pulls the source from ap_core_cache.smarts_on_level.
-    Changed: STASH radiant cause walks only the actor-level stashes after the bucket build completes. ap_ext_causes_stash gates on cache readiness; yields no cause during the ~2s xslice warmup, fires normally after.
+    5-10x performance improvement across world scanning: find squads, find smarts, find stashes. Eventually consistent per-level caches, refreshed through frame spreading, replace the global pool walk on every scan.
+    Radiant SCAN limiter rewritten from a single global counter to a per-cause budget that cascades. A slot is spent only when a cause actually scans the world, not on cheap rule rejections. No single cause can starve the rest of the cascade.
+    Reactive fan-out caps at 2 consequences per triggering event (was 5). The cap is on how many consequences fire from one cause, not on what each consequence does. A single squad wipe or wounded call no longer expands into a 5-way chain.
 
 1.6.0
   Summary: off-map travel, news rework, faction-relation fixes

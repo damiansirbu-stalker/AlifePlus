@@ -99,8 +99,12 @@ function result_squad(squad, extra)
     return res
 end
 
--- Deferred to first update; MCM config not loaded at on_game_start
-local function _init_log_level()
+--- Read MCM log_level and apply to the xlog logger. Idempotent; safe to call any
+--- number of times. Exposed so modules whose actor_on_first_update handler runs
+--- before this module's can ensure the level is set before they emit DEBUG/INFO.
+--- @safety SAFE - nil-guarded; falls back to "WARN" if MCM not loaded yet
+--- @cost O(1) | 1 luabind (log.set_level)
+function init_log_level()
     local level = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_level") or "WARN"
     log.set_level(level)
 end
@@ -116,11 +120,11 @@ local function _log_mcm_settings()
 end
 
 local function _on_first_update()
-    _init_log_level()
+    init_log_level()
     _log_mcm_settings()
 end
 
 function on_game_start()
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _init_log_level)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, init_log_level)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
 end

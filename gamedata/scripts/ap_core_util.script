@@ -59,13 +59,20 @@ end
 
 --- Find squads, excluding AP-scripted squads before luabind.
 --- Caller's opts table is not mutated; protection fields are merged into a fresh
---- table built via ap_core_broker.build_protection_opts.
+--- table built via ap_core_broker.build_protection_opts. When opts.level_id is set,
+--- injects ap_core_cache.squads_on_level as opts.source so xsquad iterates the per-level
+--- bucket instead of the global SIMBOARD.squads walk. Cache returns nil before
+--- actor_on_first_update has run; in that window the call falls through to the
+--- un-bucketed walk over ~700-800 squads.
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, etc.)
 --- @return table Array of squad server objects
 function find_squads(pos, opts)
     opts = ap_core_broker.build_protection_opts(opts)
     opts.exclude_ids = ap_core_broker.get_scripted_squads()
+    if opts.level_id and not opts.source then
+        opts.source = ap_core_cache.squads_on_level(opts.level_id)
+    end
     local result, skipped_protected = xsquad.find_squads(pos, opts)
     if ap_core_debug.enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)

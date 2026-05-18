@@ -1,72 +1,119 @@
---- ap_core_cache: Per-level smart and stash indexes for level-scoped finders.
---- Two buckets, both built at actor_on_first_update: _smarts_by_level via a sync walk
---- of xsmart.smart_iter (one tick); _stashes_by_level via xslice step=3 over
---- treasure_manager.caches (~2s wall clock for ~500 stashes). Consumers pass the
---- per-level table as opts.source to xsmart.find_smart and xstash.find_stashes so the
---- finders skip the global pool walk.
+--- ap_core_cache: Per-level smart, stash, and squad indexes for level-scoped finders.
+--- Three buckets, all built at actor_on_first_update via xslice (frame-spread):
+--- _smarts_by_level over SIMBOARD smarts (step=50), _stashes_by_level over
+--- treasure_manager.caches (step=3), _squads_by_level over SIMBOARD squads (step=50).
+--- Step sizes target ~0.5ms per tick (~5us per smart/squad bucketing, ~12us per stash).
+--- Per-tick cost is bounded well under the 4ms ceiling per architecture.md "Invariants".
+--- Wall-clock warmup: ~0.1-1s for smart/squad, ~2-3s for stash. Consumers pass the
+--- per-level table as opts.source to xsmart.find_smart, xstash.find_stashes, and
+--- xsquad.find_squads / find_squad so the finders skip the global pool walk.
 ---
---- No invalidation. Smarts and stashes are stationary. Both spawn from LTX with a
---- fixed m_tGraphID and never reach the synchronize_location path that mutates it
+--- Per-tick bucketing wraps in ap_core_debug.observe under OBSERVE_BUCKET_SMART /
+--- OBSERVE_BUCKET_STASH / OBSERVE_BUCKET_SQUAD; no-op when log level > DEBUG.
+---
+--- Smarts and stashes: no invalidation. Both spawn from LTX with a fixed m_tGraphID
+--- and never reach the synchronize_location path that mutates it
 --- (alife_dynamic_object.cpp:93-126), so level_id is fixed for the life of the entity.
+---
+--- Squads: incremental update. squad.m_game_vertex_id mutates when a squad crosses
+--- levels (offmap transit, engine cross-level routing). Vanilla
+--- sim_squad_scripted:update() sends squad_on_after_level_change(squad, from_name,
+--- to_name) only when cur_lvl ~= self.level_name (sim_squad_scripted.script:244-247),
+--- so a single per-event handler moves the squad between buckets. server_entity_on_register
+--- / on_unregister cover spawn / despawn. Safety net for any path that bypasses the
+--- callbacks: xsquad._squad_base_valid level gate is first (xsquad.script:325, cached
+--- xlevel.get_level_id lookup), so stale entries reject at ~0 cost.
+---
 --- Lifecycle: on_game_start fires once per session from the CALifeSimulator ctor
 --- (alife_simulator.cpp:72-75); level transitions don't destruct the simulator so
 --- module state persists. actor_on_first_update does re-fire per net_spawn
 --- (bind_stalker.script:15, 37), but the `if _xxx_by_level then return end` guard at
---- the top of each builder makes the second+ call a no-op. Real rebuild only happens
---- on new-game and load-save.
+--- the top of each builder, plus xslice.is_active, make the second+ call a no-op.
+--- Real rebuild only happens on new-game and load-save.
 ---
---- Stash warmup: the bucket grows monotonically while xslice drains. stashes_on_level
---- exposes the current state directly: nil if no stashes on that level have been bucketed
---- yet, partial otherwise, full once xslice finishes (~2s). Consumers walk whatever's there;
---- cost scales with bucket size, never the full ~500 stash pool, so the partial walk always
---- fits the 4ms ceiling.
+--- Warmup semantic per bucket. All three buckets expose partial state as it grows:
+--- *_on_level returns nil if nothing on that level has been bucketed yet, partial
+--- otherwise, full once xslice finishes. xsmart.find_smart / xstash.find_stashes /
+--- xsquad.find_squads accept opts.source = nil and fall back to the un-bucketed SIMBOARD
+--- walk via the standard `or SIMBOARD.X` pattern, so consumers stay correct during the
+--- warmup window at the cost of one slow scan until the bucket fills.
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
-local xlevel, xsmart, xobject, xslice = xlevel, xsmart, xobject, xslice
+local xlevel, xsmart, xsquad, xobject, xslice = xlevel, xsmart, xsquad, xobject, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
+local CLSID_SQUAD = clsid.online_offline_group_s
 
+local SMART_BUILD_QUEUE = "ap_core_cache_smarts"
+local SMART_BUILD_STEP = 50
 local STASH_BUILD_QUEUE = "ap_core_cache_stashes"
 local STASH_BUILD_STEP = 3
+local SQUAD_BUILD_QUEUE = "ap_core_cache_squads"
+local SQUAD_BUILD_STEP = 50
+
+local OBSERVE_BUCKET_SMART = "core.cache.bucket_smart"
+local OBSERVE_BUCKET_STASH = "core.cache.bucket_stash"
+local OBSERVE_BUCKET_SQUAD = "core.cache.bucket_squad"
 
 local _smarts_by_level = nil
 local _stashes_by_level = nil
+local _squads_by_level = nil
+local _initialized = false
 
--- Walk all registered smarts once, bucket by level_id. Sync: ~300-500 smarts in GAMMA,
--- ~3 luabind trivial per smart (m_game_vertex_id, vertex, level_id), ~1-2ms total. Fits
--- the 4ms ceiling. Vertex cache (xlevel.script:39-49) warms during the walk.
--- @cost O(n) smarts | per smart: 1 luabind trivial (m_game_vertex_id) + 0-3 luabind (xlevel.get_level_id cold)
-local function _build_smart_bucket()
-    if _smarts_by_level then return end
-    local caches = {}
-    for smart in xsmart.smart_iter() do
-        local level_id = xlevel.get_level_id(smart)
-        if not level_id then goto continue end
-        local bucket = caches[level_id]
-        if not bucket then
-            bucket = {}
-            caches[level_id] = bucket
-        end
-        bucket[smart.id] = smart
-        ::continue::
+-- Bucket one smart into _smarts_by_level. Returns true to drain (xslice survivor protocol).
+-- @cost O(1) | 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
+local function _bucket_one_smart_impl(_, smart)
+    if not smart then return true end
+    local level_id = xlevel.get_level_id(smart)
+    if not level_id then return true end
+    local bucket = _smarts_by_level[level_id]
+    if not bucket then
+        bucket = {}
+        _smarts_by_level[level_id] = bucket
     end
-    _smarts_by_level = caches
+    bucket[smart.id] = smart
+    return true
+end
+
+local function _bucket_one_smart(smart)
+    return ap_core_debug.observe(nil, OBSERVE_BUCKET_SMART, _bucket_one_smart_impl, smart)
+end
+
+local function _on_smart_build_done()
     ap_core_debug.debug("[CORE.CACHE] smart bucket built")
 end
 
+-- Snapshot smart refs into an array, start xslice. Per-tick: 50 smarts x ~5us = ~0.25ms.
+-- ~300-500 smarts -> ~6-10 ticks -> ~0.1-0.2s wall-clock at 60fps.
+-- @cost O(n) smarts for snapshot | 0 luabind; xslice ticks pay the per-smart bucketing cost
+local function _build_smart_bucket()
+    if _smarts_by_level then return end
+    if xslice.is_active(SMART_BUILD_QUEUE) then return end
+    _smarts_by_level = {}
+    local queue = {}
+    for smart in xsmart.smart_iter() do queue[#queue + 1] = smart end
+    xslice.start(SMART_BUILD_QUEUE, queue, {
+        step = SMART_BUILD_STEP,
+        func = _bucket_one_smart,
+        on_done = _on_smart_build_done,
+    })
+end
+
 --- Get the per-level smart bucket for direct iteration via xsmart.find_smart opts.source.
---- Returns nil before actor_on_first_update has fired, or when SIMBOARD was empty at build time.
+--- Returns whatever's currently bucketed for the level: nil if nothing yet, partial during
+--- xslice warmup, full after. Consumers walk what's there; cost scales with bucket size,
+--- never the full ~300-500 smart pool.
 --- @safety SAFE - pure Lua hash read, nil-guarded
 --- @cost O(1) | 0 luabind
 --- @param level_id number Engine level_id
---- @return table|nil { [smart_id] = smart, ... } or nil if bucket not built
+--- @return table|nil { [smart_id] = smart, ... } or nil if nothing bucketed for this level yet
 function smarts_on_level(level_id)
     return _smarts_by_level and _smarts_by_level[level_id]
 end
 
 -- Bucket one stash into _stashes_by_level. Returns true to drain (xslice survivor protocol).
 -- @cost O(1) | 2-4 luabind (alife_object medium + m_game_vertex_id trivial + xlevel.get_level_id 0-3)
-local function _bucket_one_stash(id)
+local function _bucket_one_stash_impl(_, id)
     local se = xobject.se(id)
     if not se then return true end
     local level_id = xlevel.get_level_id(se)
@@ -80,13 +127,17 @@ local function _bucket_one_stash(id)
     return true
 end
 
+local function _bucket_one_stash(id)
+    return ap_core_debug.observe(nil, OBSERVE_BUCKET_STASH, _bucket_one_stash_impl, id)
+end
+
 local function _on_stash_build_done()
     ap_core_debug.debug("[CORE.CACHE] stash bucket built")
 end
 
--- Snapshot treasure_manager.caches keys into an array, start xslice. Per-frame: 3 stashes x ~4 luabind
--- ~= 0.04ms, well under the 4ms ceiling. ~500 stashes -> ~167 frames -> ~2.8s wall-clock at 60fps.
--- @cost O(n) stashes for snapshot | 0 luabind (pure Lua array build); xslice ticks pay the alife_object cost
+-- Snapshot treasure_manager.caches keys into an array, start xslice. Per-tick: 3 stashes x ~12us = ~0.04ms.
+-- ~500 stashes -> ~167 ticks -> ~2.8s wall-clock at 60fps.
+-- @cost O(n) stashes for snapshot | 0 luabind; xslice ticks pay the alife_object cost
 local function _build_stash_bucket()
     if _stashes_by_level then return end
     if not treasure_manager or not treasure_manager.caches then return end
@@ -116,12 +167,134 @@ function stashes_on_level(level_id)
     return _stashes_by_level[level_id]
 end
 
+-- Bucket one squad into _squads_by_level. Returns true to drain (xslice survivor protocol).
+-- @cost O(1) | 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
+local function _bucket_one_squad_impl(_, squad)
+    if not squad then return true end
+    local level_id = xlevel.get_level_id(squad)
+    if not level_id then return true end
+    local bucket = _squads_by_level[level_id]
+    if not bucket then
+        bucket = {}
+        _squads_by_level[level_id] = bucket
+    end
+    bucket[squad.id] = true
+    return true
+end
+
+local function _bucket_one_squad(squad)
+    return ap_core_debug.observe(nil, OBSERVE_BUCKET_SQUAD, _bucket_one_squad_impl, squad)
+end
+
+local function _on_squad_build_done()
+    ap_core_debug.debug("[CORE.CACHE] squad bucket built")
+end
+
+-- Snapshot squad refs into an array, start xslice. Per-tick: 50 squads x ~5us = ~0.25ms.
+-- ~700-800 squads -> ~14-16 ticks -> ~0.25-0.3s wall-clock at 60fps.
+-- @cost O(n) squads for snapshot | 1 luabind medium per squad (sim:object via xsquad.iter_squads);
+-- xslice ticks pay the per-squad bucketing cost
+local function _build_squad_bucket()
+    if _squads_by_level then return end
+    if xslice.is_active(SQUAD_BUILD_QUEUE) then return end
+    _squads_by_level = {}
+    local queue = {}
+    for squad in xsquad.iter_squads() do queue[#queue + 1] = squad end
+    xslice.start(SQUAD_BUILD_QUEUE, queue, {
+        step = SQUAD_BUILD_STEP,
+        func = _bucket_one_squad,
+        on_done = _on_squad_build_done,
+    })
+end
+
+--- Get the per-level squad bucket for direct iteration via xsquad.find_squads opts.source.
+--- Returns nil before actor_on_first_update has fired, or when SIMBOARD was empty at build time.
+--- Bucket values are `true` markers (id-only); xsquad.find_squads resolves the server object per id.
+--- @safety SAFE - pure Lua hash read, nil-guarded
+--- @cost O(1) | 0 luabind
+--- @param level_id number Engine level_id
+--- @return table|nil { [squad_id] = true, ... } or nil if bucket not built
+function squads_on_level(level_id)
+    return _squads_by_level and _squads_by_level[level_id]
+end
+
+-- Move a squad between level buckets when sim_squad_scripted:update() detects a level cross.
+-- Falls back to a bucket scan when from_level_name resolution misses (e.g. first level after load).
+-- @cost O(1) typical | 2 luabind (xlevel.get_level_id_by_name) + 1-2 hash ops; O(levels) on fallback scan
+local function _on_squad_level_change(squad, from_level_name, to_level_name)
+    if not _squads_by_level or not squad then return end
+    local id = squad.id
+    if not id then return end
+    local to_level_id = xlevel.get_level_id_by_name(to_level_name)
+    if not to_level_id then return end
+    local from_level_id = from_level_name and xlevel.get_level_id_by_name(from_level_name)
+    if from_level_id and _squads_by_level[from_level_id] then
+        _squads_by_level[from_level_id][id] = nil
+    else
+        for _, bucket in pairs(_squads_by_level) do
+            if bucket[id] then bucket[id] = nil; break end
+        end
+    end
+    local bucket = _squads_by_level[to_level_id]
+    if not bucket then
+        bucket = {}
+        _squads_by_level[to_level_id] = bucket
+    end
+    bucket[id] = true
+end
+
+-- Add a squad to its level bucket on server-entity register (net_spawn from save load or new spawn).
+-- @cost O(1) | 2 luabind (clsid + xlevel.get_level_id cached or 0-3 cold) + 1 hash op
+local function _on_entity_register(se_obj)
+    if not _squads_by_level or not se_obj then return end
+    if se_obj:clsid() ~= CLSID_SQUAD then return end
+    local level_id = xlevel.get_level_id(se_obj)
+    if not level_id then return end
+    local bucket = _squads_by_level[level_id]
+    if not bucket then
+        bucket = {}
+        _squads_by_level[level_id] = bucket
+    end
+    bucket[se_obj.id] = true
+end
+
+-- Remove a squad from its level bucket on server-entity unregister (despawn).
+-- Falls back to a scan if get_level_id misses during destruct.
+-- @cost O(1) typical | 1 luabind (clsid) + 1 hash op; O(levels) on fallback scan
+local function _on_entity_unregister(se_obj)
+    if not _squads_by_level or not se_obj then return end
+    if se_obj:clsid() ~= CLSID_SQUAD then return end
+    local id = se_obj.id
+    if not id then return end
+    local level_id = xlevel.get_level_id(se_obj)
+    if level_id and _squads_by_level[level_id] and _squads_by_level[level_id][id] then
+        _squads_by_level[level_id][id] = nil
+        return
+    end
+    for _, bucket in pairs(_squads_by_level) do
+        if bucket[id] then bucket[id] = nil; return end
+    end
+end
+
 local function _on_actor_first_update()
+    -- Ensure log level reflects MCM before any DEBUG/INFO logs in this handler chain.
+    -- ap_core_debug._on_first_update sets it too, but file-load order makes ap_core_cache
+    -- register its first_update handler before ap_core_debug does -- so without this call,
+    -- the bucket-built DEBUG lines and the Initialized INFO line below would emit while
+    -- the logger is still at its WARN default and get dropped.
+    ap_core_debug.init_log_level()
     _build_smart_bucket()
     _build_stash_bucket()
+    _build_squad_bucket()
+    if not _initialized then
+        _initialized = true
+        ap_core_debug.info("[CORE.CACHE] Initialized")
+    end
 end
 
 function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_actor_first_update)
-    ap_core_debug.info("[CORE.CACHE] Initialized")
+    RegisterScriptCallback(CALLBACK.SQUAD_ON_AFTER_LEVEL_CHANGE, _on_squad_level_change)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_REGISTER, _on_entity_register)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
 end

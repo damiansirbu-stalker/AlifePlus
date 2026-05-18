@@ -57,7 +57,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
-| ap_core_cache | Per-level indexes over SIMBOARD.smarts_by_names (sync at actor_on_first_update) and treasure_manager.caches (xslice step=3, ~2s warmup). Consumers fetch via smarts_on_level(level_id) / stashes_on_level(level_id) and pass as opts.source to xsmart.find_smart / xstash.find_stashes; stashes_on_level returns nil during warmup so the consumer gates and yields no cause |
+| ap_core_cache | Per-level indexes over SIMBOARD.smarts_by_names (sync at actor_on_first_update), treasure_manager.caches (xslice step=3, ~2s warmup), and SIMBOARD.squads (sync at actor_on_first_update). Consumers fetch via smarts_on_level(level_id) / stashes_on_level(level_id) / squads_on_level(level_id) and pass as opts.source to xsmart.find_smart / xstash.find_stashes / xsquad.find_squads. Smarts and stashes never invalidate (LTX-baked positions). Squads update incrementally via squad_on_after_level_change (move between buckets) and server_entity_on_register / on_unregister (spawn / despawn); stale entries are a no-op cost because xsquad._squad_base_valid level gate is first |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
 | ap_core_producer | Event Pipeline: radiant + reactive gate chains, cause generator cascade, xbus publish |
@@ -99,7 +99,7 @@ X-Ray runs Lua single-threaded. There is no concurrency within one engine tick. 
 
 ```
 engine squad_on_update
-  -> producer._on_radiant (gate chain: PACER_1, is_protected, RATIO, PACER_2)
+  -> producer._on_radiant (gate chain: PACER_1, FRESH_SQUAD, is_protected, RATIO, PACER_2)
     -> EVAL cascade: shuffle generators, try each, stop on first publish
       -> cause generator returns nil -> try next
       -> cause generator returns { cause = CAUSE.X, ...payload } -> publish + break
@@ -125,13 +125,14 @@ Reactive events are world-state changes on engine callbacks (death, healing, pic
 
 squad_on_update is the only stable, uniform heartbeat covering both online and offline squads. Engine fires it from sim_squad_scripted:update() for every squad every tick. Online ~3/sec per squad, offline ~0.03/sec per squad via A-Life scheduler round-robin (~6,600 calls/min raw across ~776 squads). The gate chain reduces this to a manageable rate.
 
-Five gates (header at ap_core_producer.script:214):
+Six gates (header at ap_core_producer.script:214):
 
 1. PACER_1. Coarse rate limiter. Pure os.clock() with 100ms interval (~10 admits/sec). Runs before any squad field access. No squad.id, no luabind. Rejects ~98% at near-zero cost.
-2. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
-3. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
-4. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 5s, ~12 triggers/min). Every PACER_2 admit produces an EVAL.
-5. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
+2. FRESH_SQUAD. Per-squad first-sight set. Defers the first radiant eval per squad so the engine's bolt M_SPAWN queue can drain before downstream gates allow script_squad to pull NPCs offline. Without this gate, the demonized engine's II_BOLT bypass (Level.cpp ProcessSpawnEvents) spawns the bolt as a world orphan when the parent NPC is offline at drain time. One hash read + one boolean, ~10 admits/sec from PACER_1. Cleared on squad SERVER_ENTITY_ON_UNREGISTER so reused server ids do not carry stale state.
+3. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
+4. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
+5. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 10s, ~6 triggers/min). Every PACER_2 admit produces an EVAL.
+6. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
 
 Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment.
 
