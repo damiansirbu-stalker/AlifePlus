@@ -262,8 +262,8 @@ local function _do_engine_dispatch(trace, picked, msg)
     local dnm = dynamic_news_manager and dynamic_news_manager.get_dynamic_news
                 and dynamic_news_manager.get_dynamic_news() or nil
     local use_queued = dnm and dnm.PushToChannel
-    local eng_clock = xprofiler.new_if(ap_core_debug.enabled())
-    eng_clock:start()
+    local engine_timer = xprofiler.new_if(ap_core_debug.enabled())
+    engine_timer:start()
     if use_queued then
         dnm:PushToChannel(picked.channel, {
             Mg = msg, Se = picked.name, Ic = picked.icon,
@@ -272,12 +272,12 @@ local function _do_engine_dispatch(trace, picked, msg)
     else
         xpda.send(picked.name, msg, picked.icon)
     end
-    eng_clock:stop()
+    engine_timer:stop()
     ap_core_debug.observe(trace, OP_DISPATCH, function()
         return { code = TRACE.OK,
             path = use_queued and "queued" or "fallback",
             sender = picked.name, channel = picked.channel, msg = msg,
-            engine_ms = eng_clock:get_ms() }
+            engine_ms = engine_timer:get_ms() }
     end)
 end
 
