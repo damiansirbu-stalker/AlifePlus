@@ -4,7 +4,7 @@ local type, RegisterScriptCallback = type, RegisterScriptCallback
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
-    distributor_interval_sec = 10,
+    distributor_interval_sec = 8,
     allow_external_ownership = true,
     cause_max_reactions = 20,
     cause_max_needs = 20,
@@ -314,17 +314,23 @@ defaults = {
     consequence_supply_trader_offmap_rush = false,
     consequence_supply_trader_offmap_arrive_action_enabled = true,
 
-    -- Area conquest (additive shared spawn)
+    -- Area conquest (additive shared spawn, human factions)
     mutator_area_conquest_mutate_smart = true,
-    mutator_area_conquest_max_smarts = 50,
+    mutator_area_conquest_max_smarts = 30,
     mutator_area_conquest_spawn_num = 2,
-    mutator_area_conquest_decay_hours = 72,
+    mutator_area_conquest_decay_hours = 48,
+
+    -- Area swarm (additive shared spawn, mutant species)
+    mutator_area_swarm_mutate_smart = true,
+    mutator_area_swarm_max_smarts = 30,
+    mutator_area_swarm_spawn_num = 2,
+    mutator_area_swarm_decay_hours = 48,
 
     -- Area infest (exclusive spawn replacement)
     mutator_area_infest_mutate_smart = true,
     mutator_area_infest_max_per_level = 1,
     mutator_area_infest_spawn_num = 3,
-    mutator_area_infest_decay_hours = 0,
+    mutator_area_infest_decay_hours = 48,
 
     -- Development
     log_level = "WARN",
@@ -499,6 +505,10 @@ local _key_to_tab = {
     mutator_area_conquest_max_smarts = "mutators/conquest",
     mutator_area_conquest_spawn_num = "mutators/conquest",
     mutator_area_conquest_decay_hours = "mutators/conquest",
+    mutator_area_swarm_mutate_smart = "mutators/swarm",
+    mutator_area_swarm_max_smarts = "mutators/swarm",
+    mutator_area_swarm_spawn_num = "mutators/swarm",
+    mutator_area_swarm_decay_hours = "mutators/swarm",
     consequence_harvest_rob_enabled = "consequences/harvest_rob",
     consequence_harvest_rob_rush = "consequences/harvest_rob",
     consequence_harvest_rob_max_squads = "consequences/harvest_rob",
@@ -686,6 +696,18 @@ function on_mcm_load()
                             _track("mutator_area_conquest_max_smarts", 10, 100, 5),
                             _track("mutator_area_conquest_spawn_num", 1, 5, 1),
                             _track("mutator_area_conquest_decay_hours", 0, 168, 4),
+                        },
+                    },
+                    {
+                        id = "swarm",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_mutators_swarm_title"),
+                            _desc("ui_mcm_ap_mutators_swarm_desc"),
+                            _check("mutator_area_swarm_mutate_smart"),
+                            _track("mutator_area_swarm_max_smarts", 10, 100, 5),
+                            _track("mutator_area_swarm_spawn_num", 1, 5, 1),
+                            _track("mutator_area_swarm_decay_hours", 0, 168, 4),
                         },
                     },
                     {

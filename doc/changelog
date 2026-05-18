@@ -1,9 +1,14 @@
 next
-  Summary: 5-10x faster world scanning, per-generator radiant budget, tighter reactive cascade
+  Summary: 5-10x faster world scanning, per-generator radiant budget, tighter reactive cascade, area swarm split from conquest
   Performance:
     5-10x performance improvement across world scanning: find squads, find smarts, find stashes. Eventually consistent per-level caches, refreshed through frame spreading, replace the global pool walk on every scan.
     Radiant SCAN limiter rewritten from a single global counter to a per-cause budget that cascades. A slot is spent only when a cause actually scans the world, not on cheap rule rejections. No single cause can starve the rest of the cascade.
     Reactive fan-out caps at 2 consequences per triggering event (was 5). The cap is on how many consequences fire from one cause, not on what each consequence does. A single squad wipe or wounded call no longer expands into a 5-way chain.
+  MCM:
+    Added: Mutators > Area Swarm. Mutant occupation of empty smart terrains has its own decay, cap, and spawn count, independent of Area Conquest.
+    Changed: Area Conquest cap cut from 50 to 30. Decay cut from 72h to 48h.
+    Changed: Area Infest decay raised to 48h. Previously permanent.
+    Changed: Radiant tick default cut from 10s to 8s.
   Fixed:
     Fixed: Squadkill Revenge and Harvest Rob player chasers release when the chaser's faction becomes friendly to the player. The hostility check previously ran only at dispatch, so a chaser dispatched while the player was Loner kept following after the player joined Duty or Freedom. Per-scan revalidation releases the chaser within 20 seconds of the change.
 

@@ -266,7 +266,10 @@ Opportunities
     - Conquer - Stalker factions claim empty territory (Ecologists excluded; mutants use Swarm).
       Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active).
       Territory decays over time (MCM configurable).
-    - Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains. Parallel to Conquer; spawns share the smart with the originals.
+    - Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains.
+      Swarming adds the swarming species' spawns alongside the originals as a shared injection (both streams stay active).
+      Territory decays over time.
+      Decay, cap, and spawn count tune independently from Conquer in MCM.
     - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
       Only squads carrying an alpha can infest.
       Infestation replaces original spawns with the infesting species as an exclusive injection (originals are suppressed).

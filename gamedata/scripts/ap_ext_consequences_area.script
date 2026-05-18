@@ -1,6 +1,6 @@
 --- ap_ext_consequences_area: CONFIGS-driven AREA consequences (area_conquer, area_swarm, area_infest).
 --- All RULES + SCAN live in ap_ext_causes_area; consequences are action-only per radiant invariant 5.
---- conquer/swarm: additive shared spawn (conquer_smart). infest: exclusive spawn (infest_smart).
+--- conquer/swarm: additive shared spawn (conquer_smart / swarm_smart, independent tables). infest: exclusive spawn (infest_smart).
 
 local xobject, xtime = xobject, xtime
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
@@ -33,7 +33,7 @@ local function _on_arrive_swarm(squad, args)
     if not args then return end
     ap_core_debug.observe(nil, PHASE.ARRIVE, function(trace)
         ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
-        ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity)
+        ap_ext_smart_mutator.swarm_smart(args.target_smart_id, args.identity)
         return { code = TRACE.OK, squad = squad.id, smart = args.target_smart_id, species = args.identity }
     end)
 end

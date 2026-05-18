@@ -9,10 +9,13 @@ local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 
 local CONQUEST_KEY = "ap_conquest"
+local SWARM_KEY = "ap_swarm"
 local INFEST_KEY = "ap_infest"
 
 local _conquered_smarts = {}
 local _conquered_pending = nil
+local _swarmed_smarts = {}
+local _swarmed_pending = nil
 local _infested_smarts = {}
 local _infested_pending = nil
 
@@ -65,6 +68,51 @@ function conquer_smart(smart_id, faction)
     return true
 end
 
+local function _find_oldest_swarm()
+    local oldest_id, oldest_at = nil, math_huge
+    for id, data in pairs(_swarmed_smarts) do
+        if data.swarmed_at < oldest_at then
+            oldest_id, oldest_at = id, data.swarmed_at
+        end
+    end
+    return oldest_id
+end
+
+local function _evict_oldest_swarm()
+    local oldest_id = _find_oldest_swarm()
+    if not oldest_id then return end
+    local smart = xobject.se(oldest_id)
+    if smart then xsmart.clear_shared_spawn(smart, SWARM_KEY) end
+    _swarmed_smarts[oldest_id] = nil
+    ap_core_debug.debug("[MUTATOR.SMART] evict_oldest_swarm: smart=%d", oldest_id)
+end
+
+function swarm_smart(smart_id, species)
+    if not smart_id or not species then return false end
+    if not cfg or not cfg.mutator_area_swarm_mutate_smart then return false end
+    local smart = xobject.se(smart_id)
+    if not smart then return false end
+    local now = xtime.game_sec()
+    local existing = _swarmed_smarts[smart_id]
+    if existing and existing.faction == species then
+        existing.swarmed_at = now
+        ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s (refresh)", smart_id, species)
+        return true
+    end
+    if not existing then
+        if xtable.count(_swarmed_smarts) >= cfg.mutator_area_swarm_max_smarts then
+            _evict_oldest_swarm()
+        end
+    end
+    if not xsmart.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
+        ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s FAILED (unknown species)", smart_id, species)
+        return false
+    end
+    _swarmed_smarts[smart_id] = { faction = species, swarmed_at = now }
+    ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s", smart_id, species)
+    return true
+end
+
 local _decay_collector = {}
 
 -- Check if a single conquest entry has decayed
@@ -86,6 +134,27 @@ local function _check_conquest_respawn(smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
     xsmart.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.mutator_area_conquest_spawn_num)
+end
+
+-- Check if a single swarm entry has decayed
+-- @cost O(1) | 1 luabind (xobject.se) if decayed
+local function _check_swarm_decay(smart_id, data, now, decay_sec)
+    if decay_sec <= 0 then return false end
+    if not data.swarmed_at then return false end
+    if (now - data.swarmed_at) <= decay_sec then return false end
+    local smart = xobject.se(smart_id)
+    if smart then xsmart.clear_shared_spawn(smart, SWARM_KEY) end
+    ap_core_debug.debug("[MUTATOR.SMART] swarm_decay: smart=%d species=%s age=%dh",
+        smart_id, data.faction, math_floor((now - data.swarmed_at) / 3600))
+    return true
+end
+
+-- Re-apply swarm injection if engine wiped respawn_params
+-- @cost O(1) | 1 luabind (xobject.se)
+local function _check_swarm_respawn(smart_id, data)
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    xsmart.set_shared_spawn(smart, SWARM_KEY, data.faction, cfg.mutator_area_swarm_spawn_num)
 end
 
 -- Check if a single infest entry has decayed
@@ -131,6 +200,26 @@ local function _update_conquered(now)
     end
 end
 
+--- Update all swarmed smarts: re-apply injection, decay expired entries.
+-- @cost O(n) swarmed smarts (max mutator_area_swarm_max_smarts)
+local function _update_swarmed(now)
+    if not cfg or not cfg.mutator_area_swarm_mutate_smart then return end
+    local decay_sec = cfg.mutator_area_swarm_decay_hours * 3600
+    local count = 0
+    for smart_id, data in pairs(_swarmed_smarts) do
+        if _check_swarm_decay(smart_id, data, now, decay_sec) then
+            count = count + 1
+            _decay_collector[count] = smart_id
+        else
+            _check_swarm_respawn(smart_id, data)
+        end
+    end
+    for i = 1, count do
+        _swarmed_smarts[_decay_collector[i]] = nil
+        _decay_collector[i] = nil
+    end
+end
+
 --- Update all infested smarts: re-apply exclusive spawn + faction, decay expired entries.
 -- @cost O(n) infested smarts (max mutator_area_infest_max_per_level * ~14 levels)
 local function _update_infested(now)
@@ -154,6 +243,7 @@ end
 local function _scan()
     local now = xtime.game_sec()
     _update_conquered(now)
+    _update_swarmed(now)
     _update_infested(now)
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
 end
@@ -196,6 +286,7 @@ end
 local function _on_save_state(m_data)
     m_data.ap_ext_smart_mutator = {
         conquered_smarts = _conquered_smarts,
+        swarmed_smarts = _swarmed_smarts,
         infested_smarts = _infested_smarts,
     }
 end
@@ -206,6 +297,9 @@ local function _on_load_state(m_data)
     _conquered_smarts = {}
     local cs = saved.conquered_smarts
     _conquered_pending = (type(cs) == "table") and cs or {}
+    _swarmed_smarts = {}
+    local ss = saved.swarmed_smarts
+    _swarmed_pending = (type(ss) == "table") and ss or {}
     _infested_smarts = {}
     local is = saved.infested_smarts
     _infested_pending = (type(is) == "table") and is or {}
@@ -230,6 +324,25 @@ local function _restore_conquered(now)
     ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d", restored)
 end
 
+local function _restore_swarmed(now)
+    if not _swarmed_pending then return end
+    if not cfg or not cfg.mutator_area_swarm_mutate_smart then
+        _swarmed_pending = nil
+        ap_core_debug.info("[MUTATOR.SMART] on_game_load: swarm disabled, skipped restore")
+        return
+    end
+    local restored = 0
+    for smart_id, data in pairs(_swarmed_pending) do
+        if type(data) ~= "table" then goto continue end
+        if not data.faction then goto continue end
+        _swarmed_smarts[smart_id] = { faction = data.faction, swarmed_at = data.swarmed_at or now }
+        restored = restored + 1
+        ::continue::
+    end
+    _swarmed_pending = nil
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d", restored)
+end
+
 local function _restore_infested(now)
     if not _infested_pending then return end
     if not cfg or not cfg.mutator_area_infest_mutate_smart then
@@ -252,6 +365,7 @@ end
 local function _on_game_load()
     local now = xtime.game_sec()
     _restore_conquered(now)
+    _restore_swarmed(now)
     _restore_infested(now)
     _scan()
 end
@@ -264,11 +378,20 @@ local function _trace_spawn_deferred(squad_id, smart_id)
     local squad = xobject.se(squad_id)
     if not squad then return true end
     local prop = squad.respawn_point_prop_section
-    if prop ~= CONQUEST_KEY and prop ~= INFEST_KEY then return true end
-    local data = (prop == CONQUEST_KEY) and _conquered_smarts[smart_id] or _infested_smarts[smart_id]
+    if prop ~= CONQUEST_KEY and prop ~= SWARM_KEY and prop ~= INFEST_KEY then return true end
+    local data, tag
+    if prop == CONQUEST_KEY then
+        data = _conquered_smarts[smart_id]
+        tag = "conquest_spawn"
+    elseif prop == SWARM_KEY then
+        data = _swarmed_smarts[smart_id]
+        tag = "swarm_spawn"
+    else
+        data = _infested_smarts[smart_id]
+        tag = "infest_spawn"
+    end
     local faction = data and data.faction or "?"
     local section = squad.section_name and squad:section_name() or "?"
-    local tag = (prop == CONQUEST_KEY) and "conquest_spawn" or "infest_spawn"
     ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d faction=%s section=%s squad=%d",
         tag, smart_id, faction, section, squad_id)
     return true
@@ -287,8 +410,10 @@ end
 
 function on_game_start()
     _conquered_smarts = {}
+    _swarmed_smarts = {}
     _infested_smarts = {}
     _conquered_pending = nil
+    _swarmed_pending = nil
     _infested_pending = nil
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)

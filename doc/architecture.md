@@ -99,7 +99,7 @@ X-Ray runs Lua single-threaded. There is no concurrency within one engine tick. 
 
 ```
 engine squad_on_update
-  -> producer._on_radiant (gate chain: PACER_1, FRESH_SQUAD, is_protected, RATIO, PACER_2)
+  -> producer._on_radiant (gate chain: PACER_1, is_protected, RATIO, PACER_2)
     -> EVAL cascade: shuffle generators, try each, stop on first publish
       -> cause generator returns nil -> try next
       -> cause generator returns { cause = CAUSE.X, ...payload } -> publish + break
@@ -125,14 +125,13 @@ Reactive events are world-state changes on engine callbacks (death, healing, pic
 
 squad_on_update is the only stable, uniform heartbeat covering both online and offline squads. Engine fires it from sim_squad_scripted:update() for every squad every tick. Online ~3/sec per squad, offline ~0.03/sec per squad via A-Life scheduler round-robin (~6,600 calls/min raw across ~776 squads). The gate chain reduces this to a manageable rate.
 
-Six gates (header at ap_core_producer.script:214):
+Five gates (header at ap_core_producer.script:214):
 
 1. PACER_1. Coarse rate limiter. Pure os.clock() with 100ms interval (~10 admits/sec). Runs before any squad field access. No squad.id, no luabind. Rejects ~98% at near-zero cost.
-2. FRESH_SQUAD. Per-squad first-sight set. Defers the first radiant eval per squad so the engine's bolt M_SPAWN queue can drain before downstream gates allow script_squad to pull NPCs offline. Without this gate, the demonized engine's II_BOLT bypass (Level.cpp ProcessSpawnEvents) spawns the bolt as a world orphan when the parent NPC is offline at drain time. One hash read + one boolean, ~10 admits/sec from PACER_1. Cleared on squad SERVER_ENTITY_ON_UNREGISTER so reused server ids do not carry stale state.
-3. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
-4. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
-5. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 10s, ~6 triggers/min). Every PACER_2 admit produces an EVAL.
-6. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
+2. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
+3. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
+4. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 8s, ~7.5 triggers/min). Every PACER_2 admit produces an EVAL.
+5. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
 
 Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment.
 
@@ -219,7 +218,7 @@ ap_core_limiter holds two limiter families. Pipeline limiter throttles event flo
 | Global radiant TTL counter | TTL counter | radiant only | 5 / 60s | ap_core_limiter (check_global_consequence_rate_limit) | MCM global_consequence_max_events |
 | Offmap balance counter | TTL counter, sliding window (game-sec) | per source level_id | 2 / 48 game-hours | ap_core_limiter (check_offmap_rate_limit, increment_offmap_counter) | MCM cause_max_offmap |
 | PACER_1 | os.clock interval | global radiant | 100ms | ap_core_producer | constant |
-| PACER_2 | os.clock interval | global radiant | 5s | ap_core_producer | MCM distributor_interval_sec |
+| PACER_2 | os.clock interval | global radiant | 8s | ap_core_producer | MCM distributor_interval_sec |
 | Reactive PACER | token bucket | per callback type | 1 / sec | ap_core_producer | constant |
 | Per-squad MVT / Hull threshold | DTO last_<X>_at + arrival reset | per squad per cause | per cause | cause generator | MCM cause_<X>_threshold |
 
@@ -616,9 +615,21 @@ Revert. xsmart.clear_shared_spawn(smart, "ap_conquest") removes the entry. Smart
 
 Volatility. Engine rebuilds respawn_params from LTX on every load (STATE_Read calls read_params), so the injected entry is lost. Two-phase restore: load_state -> _conquered_pending; on_game_load applies via set_shared_spawn after entities exist. 60s periodic scanner re-applies injections as a safety net.
 
-Decay. cfg.mutator_area_conquest_decay_hours (default 72). Scanner checks xtime.game_sec() - conquered_at and calls clear_shared_spawn on expired entries. Original LTX spawns never interrupted - decay just removes the extra entry.
+Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner checks xtime.game_sec() - conquered_at and calls clear_shared_spawn on expired entries. Original LTX spawns never interrupted - decay just removes the extra entry.
 
-Eviction. FIFO at cfg.mutator_area_conquest_max_smarts (default 50). Oldest by game time evicted on cap. Same-faction re-conquest refreshes the timestamp (LRU). Different-faction overwrites without eviction.
+Eviction. FIFO at cfg.mutator_area_conquest_max_smarts (default 30). Oldest by game time evicted on cap. Same-faction re-conquest refreshes the timestamp (LRU). Different-faction overwrites without eviction.
+
+#### Swarm (shared spawn, mutants)
+
+swarm_smart(smart_id, species) calls xsmart.set_shared_spawn(smart, "ap_swarm", species, spawn_num). Same mechanism as conquest - additive shared spawn entry, no faction_controlled, no .faction field. The injected entry fires alongside the originals. Species comes from xsmart.SQUADS_BY_SPECIES (simulation_* sections).
+
+Independence from conquest. _swarmed_smarts is a separate table from _conquered_smarts. Same-smart conquest and swarm coexist as two distinct respawn_params entries (ap_conquest + ap_swarm); engine picks one eligible entry per respawn cycle. Save and load round-trip each table separately.
+
+Decay. cfg.mutator_area_swarm_decay_hours (default 48). Scanner checks xtime.game_sec() - swarmed_at and calls clear_shared_spawn on expired entries.
+
+Eviction. FIFO at cfg.mutator_area_swarm_max_smarts (default 30). Oldest by game time evicted on cap. Same-species re-swarm refreshes the timestamp. Different-species overwrites without eviction.
+
+Volatility. Same as conquest: engine rebuilds respawn_params on STATE_Read. Two-phase restore via _swarmed_pending. 60s scanner re-applies via set_shared_spawn.
 
 #### Infestation (exclusive spawn)
 
@@ -630,9 +641,9 @@ Per-level cap. can_infest_on_level(level_id) counts infested smarts with matchin
 
 Volatility. Same as conquest: engine rebuilds faction_controlled, faction, respawn_params from LTX on every load. Two-phase restore re-applies all three in _on_game_load. 60s scanner handles ongoing faction reversion for online smarts.
 
-Decay. Separate from conquest. cfg.mutator_area_infest_decay_hours (default 0 = permanent). clear_exclusive_spawn reverts faction_controlled to nil, faction to default_faction, and removes the infest entry. Original LTX spawns resume on next try_respawn.
+Decay. Separate from conquest and swarm. cfg.mutator_area_infest_decay_hours (default 48). clear_exclusive_spawn reverts faction_controlled to nil, faction to default_faction, and removes the infest entry. Original LTX spawns resume on next try_respawn. Set to 0 to disable decay (permanent infestation).
 
-Interaction with conquest. If a smart is both conquered and infested, the exclusive spawn's faction gate suppresses the conquest entry (no .faction field). Infest wins at runtime. Both data tables coexist independently - clearing infest restores conquest if it has not yet decayed.
+Interaction with conquest and swarm. If a smart is infested AND conquered or swarmed, the exclusive spawn's faction gate suppresses the shared-spawn entries (they have no .faction field). Infest wins at runtime. All three data tables coexist independently; clearing infest restores the shared-spawn entries if they have not yet decayed.
 
 ### Object Mutator (ap_ext_object_mutator)
 
