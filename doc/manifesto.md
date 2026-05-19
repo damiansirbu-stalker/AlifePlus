@@ -208,6 +208,54 @@ A slider from -10 (background only) to +10 (current level only) lets the player 
 
 ---
 
+### Cross-Map Travel
+
+Stalkers walk between maps for supply, scouting, and visits to other bases.
+
+The substrate is engine-native.
+`ALLOW_NPC_LEVEL_TRANSITION = true` in `simulation_objects.script` permits stalker cross-level targeting in vanilla.
+The offline path manager walks every squad across the game graph at `going_speed`, popping vertices as it goes (`alife_monster_detail_path_manager.cpp`).
+`squad_on_after_level_change` fires every time a squad's gvid crosses a level boundary.
+The mechanism is shipped in Anomaly, but the distance penalty in the vanilla priority function makes far-away smarts unattractive, so the simulation rarely dispatches squads off-map on its own.
+xcvb's `NPC_Rank_Based_Travelling` biases the priority function by rank tables, producing occasional cross-zone walks under vanilla simulation.
+It does not explicitly dispatch.
+
+Iassenev described the original intent as a stalker walking from one level to another, finding artefacts, returning to the dealer, trading, picking a new quest, and going out again [1].
+The walk between maps was part of the lifecycle, not a special case.
+
+AlifePlus dispatches.
+
+Off-map travel sits as a peer to on-map dispatch in the cause cascade.
+Any cause whose destination type works at level distance can publish off-map, and several already do.
+
+Reach is gated by player progression.
+A fresh game has no off-map dispatch. Stalkers stay home.
+X-16 and Brain Scorcher are the late-game story gates that block the actor's path to the deeper Zone, and they gate squad reach the same way.
+A commander who reaches master rank earns one additional hop on top of whatever the story has unlocked.
+A squad in Cordon with no story progress stays in Cordon.
+A master-rank squad after both milestones reaches the far north.
+
+Off-map dispatches are rate-limited per source level on a sliding window.
+A squad walking off-map cannot be dispatched again until the round trip completes.
+The simulation does not let off-map traffic snowball.
+
+Each session is a round trip.
+The squad walks to its destination, performs the consequence action (trading an artefact for supplies, eating from inventory, sleeping at the base, sharing drinks), holds at the destination for the configured dwell window, then walks home.
+Home is the level where the squad was first observed by the simulation.
+A squad dispatched off-map from Cordon returns to Cordon regardless of how many levels it crossed.
+
+Protection runs deeper for off-map than for on-map.
+A squad walking off-map is offline most of the trip, and the round trip spans game-hours.
+Quest givers, companions, mechanics, barmen, leaders, and story characters are excluded before the off-map row evaluates.
+Squads owned by other mods are excluded.
+Warfare A-Life Overhaul declares its own scope, and the cascade respects it.
+The safety net releases an off-map squad only when the round trip has exceeded its budget and the squad has no other claim on it.
+
+The engine ships the walk.
+AlifePlus ships the round trip the engine never connected.
+
+---
+
 ### Protection Gates
 
 Not every entity in the simulation should be a participant.
