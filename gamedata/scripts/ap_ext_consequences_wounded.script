@@ -57,6 +57,7 @@ local function _handler_help(event_data)
             level_id = level_id, max_count = cfg.consequence_wounded_help_max_squads,
             exclude_at_smart_id = target_smart.id,
             exclude_squad_id = event_data.squad_id,
+            allow_preempt = true,
         })
         if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
@@ -67,6 +68,7 @@ local function _handler_help(event_data)
                 local res = ap_core_broker.script_squad(squad, target_smart, {
                     rush = cfg.consequence_wounded_help_rush,
                     pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HELP,
+                    interruptable = false,
                 })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
@@ -98,6 +100,7 @@ local function _handler_hunt(event_data)
             level_id = level_id, max_count = cfg.consequence_wounded_hunt_max_squads,
             exclude_at_smart_id = target_smart.id,
             exclude_squad_id = event_data.squad_id,
+            allow_preempt = true,
         })
         if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         local squads = {}
@@ -117,6 +120,7 @@ local function _handler_hunt(event_data)
                 local res = ap_core_broker.script_squad(squad, target_smart, {
                     rush = cfg.consequence_wounded_hunt_rush,
                     pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HUNT,
+                    interruptable = false,
                 })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end

@@ -55,6 +55,7 @@ local function _handler(event_data)
         local candidates = ap_core_util.find_squads_observed(trace, position, {
             factions = _alignment_mutant, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_alphakill_targeted_max_squads,
+            allow_preempt = true,
         })
         if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 

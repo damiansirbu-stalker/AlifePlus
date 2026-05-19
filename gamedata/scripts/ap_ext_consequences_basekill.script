@@ -43,6 +43,7 @@ local function _handler_support(event_data)
             level_id = level_id,
             max_count = cfg.consequence_basekill_support_max_squads,
             exclude_at_smart_id = smart.id,
+            allow_preempt = true,
         })
         if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
@@ -53,6 +54,7 @@ local function _handler_support(event_data)
                 local res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg.consequence_basekill_support_rush,
                     pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_SUPPORT,
+                    interruptable = false,
                 })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end
@@ -96,6 +98,7 @@ local function _handler_flee(event_data)
             min_distance = 0, max_distance = ap_core_const.RANGE_EYE,
             level_id = level_id, max_count = cfg.consequence_basekill_flee_max_squads,
             exclude_at_smart_id = destination.id,
+            allow_preempt = true,
         })
         if #fleeing == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
 
@@ -106,6 +109,7 @@ local function _handler_flee(event_data)
                 local res = ap_core_broker.script_squad(squad, destination, {
                     rush = cfg.consequence_basekill_flee_rush,
                     pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_FLEE,
+                    interruptable = false,
                 })
                 if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
             end

@@ -1,6 +1,6 @@
 --- ap_ext_common: Shared ext-domain dispatch patterns. Today: chase pattern (recursive on_arrive).
 
-local ipairs = ipairs
+local ipairs, pairs = ipairs, pairs
 local xobject, xsmart, xlevel = xobject, xsmart, xlevel
 local ap_core_debug, ap_core_broker, ap_core_util = ap_core_debug, ap_core_broker, ap_core_util
 
@@ -14,8 +14,11 @@ local cfg = ap_core_mcm.cfg
 --- Used when the chase target is the player.
 --- @param opts table|nil Forwarded to script_actor_target (e.g. { actor_relation_check = true })
 function move_actor_chasers(squads, moved, opts)
+    local chase_opts = {}
+    if opts then for k, v in pairs(opts) do chase_opts[k] = v end end
+    chase_opts.interruptable = false
     for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser, opts)
+        local res = ap_core_broker.script_actor_target(chaser, chase_opts)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
@@ -33,6 +36,7 @@ function make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value)
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id },
                 pre_release_gulag = gulag_value,
+                interruptable = false,
             })
             if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
         end
@@ -75,6 +79,7 @@ function make_on_arrive(opts)
                 on_arrive = consequence_key,
                 on_arrive_args = { target_squad_id = target_squad_id, chase_count = chase_count },
                 pre_release_gulag = gulag_value,
+                interruptable = false,
             })
             if res.code ~= RESULT.SUCCESS then return { code = res.code, reason = res.reason } end
             return { code = TRACE.OK, id = squad.id, dst_id = smart.id, chase = chase_count }

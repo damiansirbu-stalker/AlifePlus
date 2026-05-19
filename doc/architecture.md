@@ -130,7 +130,7 @@ Five gates (header at ap_core_producer.script:214):
 1. PACER_1. Coarse rate limiter. Pure os.clock() with 100ms interval (~10 admits/sec). Runs before any squad field access. No squad.id, no luabind. Rejects ~98% at near-zero cost.
 2. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
 3. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
-4. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 8s, ~7.5 triggers/min). Every PACER_2 admit produces an EVAL.
+4. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 15s, ~4 triggers/min). Every PACER_2 admit produces an EVAL.
 5. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
 
 Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment.
@@ -218,7 +218,7 @@ ap_core_limiter holds two limiter families. Pipeline limiter throttles event flo
 | Global radiant TTL counter | TTL counter | radiant only | 5 / 60s | ap_core_limiter (check_global_consequence_rate_limit) | MCM global_consequence_max_events |
 | Offmap balance counter | TTL counter, sliding window (game-sec) | per source level_id | 2 / 48 game-hours | ap_core_limiter (check_offmap_rate_limit, increment_offmap_counter) | MCM cause_max_offmap |
 | PACER_1 | os.clock interval | global radiant | 100ms | ap_core_producer | constant |
-| PACER_2 | os.clock interval | global radiant | 8s | ap_core_producer | MCM distributor_interval_sec |
+| PACER_2 | os.clock interval | global radiant | 15s | ap_core_producer | MCM distributor_interval_sec |
 | Reactive PACER | token bucket | per callback type | 1 / sec | ap_core_producer | constant |
 | Per-squad MVT / Hull threshold | DTO last_<X>_at + arrival reset | per squad per cause | per cause | cause generator | MCM cause_<X>_threshold |
 
@@ -460,6 +460,30 @@ Delegates to xsquad.is_protected with five guard categories (ap_core_broker.scri
 
 script_squad does not check protection. It assumes upstream layers verified the squad. Direct callers outside the pipeline must check is_protected themselves.
 
+### Reactive preemption (interruptable flag)
+
+Radiant cadence accumulates AP-scripted squads. Reactive events (massacre, wounded, basekill, harvest, squadkill, alphakill) need an unscripted squad to dispatch their consequence; if the pool is exhausted by radiant scripts, reactive starves. Preemption: reactive consequences opt in to a fallback pass over AP's tracked pool, accepting squads marked interruptable.
+
+Interruptable flag. script_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
+
+- `interruptable = true`: on-map needs (14 of 17), all instincts (7), and stash_ambush. Routine maintenance trips, deferrable.
+- `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase recursion in ap_ext_common (move_actor_chasers, make_move_smart_chasers, make_on_arrive), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, job_explore_offmap, social_offbase). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches need their return-home pipeline to complete and lose it if preempted outbound.
+
+The broker default is `true` only as a safety net; no caller relies on it.
+
+Two-pass find. ap_core_util.find_squads runs the standard protection-opts pass first. If the caller passes `opts.allow_preempt = true` AND the standard pass returns zero candidates, a second pass runs with opts built via `broker.build_preempt_opts`:
+
+- `source = _ap_scripted_squads` (iterate AP's small tracked pool, not SIMBOARD or the per-level cache)
+- `exclude_scripted = false` (do not reject scripted; we want interruptable ones)
+- `exclude_filter = _preempt_filter` (rejects external owners and squads with scripted_target set but not in _ap_scripted_squads)
+- `exclude_ids` = freshly-built set of AP-scripted squad ids where `data.interruptable == false` (keeps non-interruptable AP scripts out of the iteration entirely)
+
+Interruptable AP-scripted squads pass all gates and become candidates. xsquad.find_squads still applies permanent / active_role / task_target via the boolean opts, plus distance / faction / level / exclude_at_smart_id checks. Single pass, no recursive find.
+
+Release-and-rescript. script_squad already handles "already scripted" by calling xsquad.release_squad on the existing target before acquiring the new one (`broker.script_squad:446-452`). The preempt flow piggybacks: when the reactive picker selects an interruptable scripted squad and calls script_squad, the old radiant trip is dropped and the new reactive script replaces it.
+
+Bounded by negation. Reactive does not preempt reactive (reactive scripts carry `interruptable = false`). External scripts (warfare, story, task) are not touched (rejected at gate 1 by exclude_filter). Radiant pipeline is unchanged - it still scripts squads at the same cadence; reactive gets guaranteed access via fallback rather than via radiant throttling.
+
 ### Coordination
 
 scripted_target is the squad control field. Setting it routes the squad to specific_update. AP no longer sets __lock (clears it on acquisition). scripted_target alone is sufficient; __lock was a redundant fallback guard. AP checks scripted_target at gate 2 (is_protected, via xsquad.is_scripted). Two alife mods that both check scripted_target before claiming a squad will not conflict.
@@ -500,7 +524,7 @@ Every consequence dispatch produces one record. Pacing is the compose interval +
 
 ### Drain path (compose tick)
 
-Composer tick fires on an MCM-randomized interval (defaults 30-100s via news_interval_min_sec / _max_sec, slider range 1-600). Each tick:
+Composer tick fires on an MCM-randomized interval (defaults 60-200s via news_interval_min_sec / _max_sec, slider range 1-600). Each tick:
 
 1. Read ap_core_record.get_records() (full FIFO scan), filter to unreported entries (cons_id not in _reported_cons_ids ring) on the player's current level whose age is within news_max_age_game_hours.
 2. Pick one at random (gossip, not sequential log).
