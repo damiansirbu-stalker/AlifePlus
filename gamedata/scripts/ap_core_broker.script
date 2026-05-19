@@ -323,7 +323,7 @@ end
 
 -- Set left_home flag once when squad's current level diverges from home_level.
 -- squad_on_after_level_change does not fire reliably across save/reload; we poll instead.
-local function _check_left_home(squad_id, squad, data)
+local function _mark_left_home(squad_id, squad, data)
     local cur_level = xlevel.get_level_id(squad)
     if not cur_level then return end
     if cur_level ~= data.home_level and not data.left_home then
@@ -360,6 +360,8 @@ local function _dispatch_return_home(squad_id, squad, data, now)
     local name = home_smart:name()
     if not name or name == "" then return false end
     if not xsquad.acquire_squad(squad, home_smart, false) then return false end
+    -- Clear source (foreign dwell smart) before engine bumps smart_id to home_smart.
+    SIMBOARD:assign_squad_to_smart(squad, nil)
     _ap_scripted_squads[squad_id] = {
         scripted_target   = name,
         target_smart_id   = home_smart.id,
@@ -425,11 +427,11 @@ local function _preserve_offmap_session(existing, opts)
     }
 end
 
--- Per-tick off-map state update: left_home, home_returned, return-home dispatch, despawn,
+-- Per-scan off-map state update: left_home, home_returned, return-home dispatch, despawn,
 -- diagnostics. Returns true when the caller should drop the entry. _dispatch_return_home
 -- replaces the entry, so we refetch data afterwards before the despawn/diagnostics step.
 local function _scan_offmap_entry(squad_id, squad, data, now)
-    _check_left_home(squad_id, squad, data)
+    _mark_left_home(squad_id, squad, data)
     if _check_home_returned(squad_id, squad, data) then return true end
     if data.return_home_at and now >= data.return_home_at and not data.scripted_target then
         if _dispatch_return_home(squad_id, squad, data, now) then
@@ -453,7 +455,7 @@ local function _scan_offmap_entry(squad_id, squad, data, now)
 end
 
 
---- Script squad to move to smart terrain, register for arrival detection and gulag hold
+--- Script squad to move to smart terrain, register for arrival detection and gulag
 --- Sets scripted_target via xsquad.acquire_squad, tracks in _ap_scripted_squads with arrival handler.
 --- When opts.offmap is true, also initialises an off-map session (return-home + despawn timers).
 --- An existing off-map session is preserved across non-offmap re-dispatches (local cause
@@ -488,6 +490,10 @@ function script_squad(squad, smart, opts)
     if not xsquad.acquire_squad(squad, smart, opts.rush) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id, dst = name }
     end
+    -- Clear source from SIMBOARD roster before engine specific_update bumps squad.smart_id
+    -- to the new target on next tick (sim_squad_scripted.script:288-290). Reading smart_id
+    -- after that bump would lose the true source. The nil-target form fires squad_on_leave_smart.
+    SIMBOARD:assign_squad_to_smart(squad, nil)
     local now = xtime.game_sec()
     local data = {
         scripted_target   = name,
@@ -571,22 +577,73 @@ function unregister_arrival_handler(key)
 end
 
 
--- Start the gulag hold: squad parks at the smart for pre_release_gulag seconds so the
--- engine can assign jobs. has_jobs_for check before commit so we don't hold a squad at a
--- smart whose preconditions already reject it.
-local function _try_arrival_gulag(squad_id, squad, smart, data, now)
-    if smart.online and smart.is_on_actor_level
-       and not xsmart.has_jobs_for(smart, squad) then
+-- True when the destination smart has been evaluated and has no available jobs for the
+-- squad's faction. When the smart is offline or off the actor's level, has_jobs_for
+-- cannot evaluate meaningfully and the predicate returns false (no rejection). Shared
+-- by _commit_arrival and the re-check in _update_gulag.
+local function _no_jobs_for_squad(smart, squad)
+    if not (smart.online and smart.is_on_actor_level) then return false end
+    return not xsmart.has_jobs_for(smart, squad)
+end
+
+-- Validate arrival and commit the gulag entry. Pair with the dispatch-side clear in
+-- script_squad and _dispatch_return_home: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
+-- to remove the source roster entry (before engine specific_update bumps squad.smart_id);
+-- commit fires SIMBOARD:assign_squad_to_smart(squad, smart.id) to add the destination entry.
+-- Together they keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
+local function _commit_arrival(squad_id, squad, smart, data, now)
+    if _no_jobs_for_squad(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_no_jobs: squad=%d target=%s", squad_id, data.scripted_target)
         if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
         return false
     end
     data.arrived = true
     data.release_at = now + data.pre_release_gulag
+    SIMBOARD:assign_squad_to_smart(squad, smart.id)
     return true
 end
 
-local function _update_arrival_flags(squad_id, data, now)
+-- Offmap arrival step. Returns true when the caller should bail (home arrived, session
+-- lifecycle done). Outbound arrival stamps the session and returns false so the caller
+-- proceeds. Dwell-phase local arrivals (arrived_at set, return_home_at set) fall through
+-- to the handler + gulag without re-stamping the session. On home arrival, register the
+-- home_smart on SIMBOARD roster before unscripting so the symmetric outbound/return roster
+-- semantics match (outbound registers via _commit_arrival).
+local function _handle_offmap_arrival(squad_id, squad, smart, data, now)
+    if data.arrived_at and not data.return_home_at then
+        SIMBOARD:assign_squad_to_smart(squad, smart.id)
+        ap_core_debug.debug("[SQUAD.OFFMAP] home_arrived: squad=%d", squad_id)
+        _unscript_squad(squad)
+        return true
+    end
+    if not data.arrived_at then
+        _stamp_offmap_arrival(squad_id, data, now)
+    end
+    return false
+end
+
+-- Run the on_arrive handler if registered. Returns true if the caller should proceed
+-- to commit (no handler, missing handler, or handler completed without rescripting).
+-- Returns false when the handler rescripted the squad (chase recursion via
+-- ap_ext_common.make_on_arrive); the new entry owns its own arrival lifecycle.
+local function _run_arrival_handler(squad_id, squad, data)
+    local key = data.on_arrive
+    if not key then return true end
+    local handler = _arrival_handlers[key]
+    if not handler then
+        ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
+        return true
+    end
+    ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s",
+        squad_id, key, data.scripted_target)
+    handler(squad, data.on_arrive_args)
+    return _ap_scripted_squads[squad_id] == data
+end
+
+-- Detect physical arrival; on arrival, run the offmap session step, run the on_arrive
+-- handler if any, then commit the gulag entry (which also registers the squad on the
+-- destination smart's SIMBOARD roster).
+local function _run_arrival(squad_id, data, now)
     if not data.target_smart_id then return end
     if data.arrived then return end
     local squad = xobject.se(squad_id)
@@ -603,44 +660,18 @@ local function _update_arrival_flags(squad_id, data, now)
     end
     if not xsmart.is_arrived(squad, smart) then return end
     _log_proximity("arrived", squad, smart, data)
-    if data.offmap then
-        if data.arrived_at and not data.return_home_at then
-            -- Returning phase reached home_smart: lifecycle complete.
-            ap_core_debug.debug("[SQUAD.OFFMAP] home_arrived: squad=%d", squad_id)
-            _unscript_squad(squad)
-            return
-        end
-        if not data.arrived_at then
-            -- Outbound arrival: stamp the session before running handler / gulag.
-            _stamp_offmap_arrival(squad_id, data, now)
-        end
-        -- Dwell-phase local arrival (arrived_at set, return_home_at set) falls through
-        -- to handler + gulag without re-stamping the session.
-    end
-    local key = data.on_arrive
-    if not key then
-        if _try_arrival_gulag(squad_id, squad, smart, data, now) then
-            ap_core_debug.debug("[SQUAD] gulag_started (no handler): squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
-        end
-        return
-    end
-    local handler = _arrival_handlers[key]
-    if not handler then
-        ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
-        _try_arrival_gulag(squad_id, squad, smart, data, now)
-        return
-    end
-    ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s", squad_id, key, data.scripted_target)
-    handler(squad, data.on_arrive_args)
-    -- Handler may have unscripted+rescripted this squad (chase recursion via ap_ext_common.make_on_arrive).
-    -- New entry owns its own arrival lifecycle; do not arm gulag on it from this frame.
-    if _ap_scripted_squads[squad_id] ~= data then return end
-    if _try_arrival_gulag(squad_id, squad, smart, data, now) then
-        ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds", squad_id, data.scripted_target, data.pre_release_gulag)
+    if data.offmap and _handle_offmap_arrival(squad_id, squad, smart, data, now) then return end
+    if not _run_arrival_handler(squad_id, squad, data) then return end
+    if _commit_arrival(squad_id, squad, smart, data, now) then
+        ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
+            squad_id, data.scripted_target, data.pre_release_gulag)
     end
 end
 
-local function _update_pre_release_gulag(squad_id, data, now)
+-- Update the gulag state for one scan. Two paths: (1) release_at reached -> normal
+-- release (offmap-aware); (2) mid-gulag has_jobs_for re-check via _no_jobs_for_squad ->
+-- release if the destination no longer accepts the squad.
+local function _update_gulag(squad_id, data, now)
     if not data.arrived then return end
     if now >= data.release_at then
         if data.offmap then
@@ -656,10 +687,10 @@ local function _update_pre_release_gulag(squad_id, data, now)
     end
     if not data.target_smart_id then return end
     local smart = xobject.se(data.target_smart_id)
-    if not smart or not smart.online or not smart.is_on_actor_level then return end
+    if not smart then return end
     local squad = xobject.se(squad_id)
     if not squad then return end
-    if not xsmart.has_jobs_for(smart, squad) then
+    if _no_jobs_for_squad(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_no_jobs_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
         if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
     end
@@ -714,8 +745,8 @@ local function _update_scripted_squad(squad_id)
     if xsquad.reassert_target(squad, data.scripted_target) then
         ap_core_debug.debug("[SQUAD] reassert: squad=%d target=%s was=%s", squad_id, data.scripted_target, tostring(prev_target))
     end
-    _update_arrival_flags(squad_id, data, now)
-    _update_pre_release_gulag(squad_id, data, now)
+    _run_arrival(squad_id, data, now)
+    _update_gulag(squad_id, data, now)
 end
 
 local _pending_buf = {}
