@@ -43,9 +43,9 @@ local function _handler_help(event_data)
         local faction = _get_faction(npc_id, is_player)
         if not faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
         if not ap_ext_util.check_alignment(_alignment_help, faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = faction } end
-        if not ap_ext_util.check_personality(_personality_help, faction,
-            { name = CONSEQUENCE.WOUNDED_HELP }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_help, faction)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
 
         local target_smart = ap_core_util.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_RADIO })
@@ -107,7 +107,7 @@ local function _handler_hunt(event_data)
         for _, squad in ipairs(candidates) do
             local species = xcreature.get_mutant_species(squad.id)
             if not species or not _species_hunt[species] then goto continue end
-            if not ap_ext_util.check_personality(_personality_hunt, species, { name = CONSEQUENCE.WOUNDED_HUNT }) then goto continue end
+            if not ap_ext_util.check_personality(_personality_hunt, species) then goto continue end
             squads[#squads + 1] = squad
             ::continue::
         end

@@ -140,8 +140,9 @@ local function _try_cause(trace, squad, level_id, entry, budget)
     if not ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
     end
-    if not ap_ext_util.check_personality(entry.personality, squad.player_id, { name = entry.name }) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(entry.personality, squad.player_id)
+    if not p_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -172,8 +173,9 @@ local function _try_cause(trace, squad, level_id, entry, budget)
         smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
     end
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    if not ap_ext_util.is_tactically_eligible(squad, smart) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
+    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
+    if not t_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
     end
     if entry.offmap then ap_core_limiter.increment_offmap_counter(level_id) end
     return { code = RESULT.SUCCESS, smart = smart }

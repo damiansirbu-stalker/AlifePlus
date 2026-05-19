@@ -59,15 +59,13 @@ end
 
 --- Check faction personality (probability layer, runs after alignment)
 --- Averages relevant traits for the faction, clamps to global PERSONALITY_FLOOR/CEILING, rolls.
---- INV_ traits are resolved as (1 - base_value) before averaging.
---- Logs PERSONALITY_PASSED/BLOCKED at DEBUG (zero cost above DEBUG).
+--- INV_ traits are resolved as (1 - base_value) before averaging. On reject the caller can
+--- spread avg/chance/roll into its FAILED_RULES result table; observe() auto-serializes them.
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
---- @param opts table { name } consequence name for logging
---- @return boolean true = personality roll passed
-function check_personality(traits, community, opts)
+--- @return boolean passed, number avg, number chance, number roll
+function check_personality(traits, community)
     if not traits or not community then return true end
-    opts = opts or {}
     local faction_traits = PERSONALITY[community]
     if not faction_traits then return true end
     local sum, count = 0, 0
@@ -89,33 +87,28 @@ function check_personality(traits, community, opts)
     if chance < p_min then chance = p_min end
     if chance > p_max then chance = p_max end
     local roll = math_random()
-    local passed = roll < chance
-    if passed then
-        ap_core_debug.debug("[UTIL] PERSONALITY_PASSED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", opts.name or "?", community, avg, chance, roll)
-    else
-        ap_core_debug.debug("[UTIL] PERSONALITY_BLOCKED consequence=%s community=%s avg=%.2f chance=%.2f roll=%.2f", opts.name or "?", community, avg, chance, roll)
-    end
-    return passed
+    return roll < chance, avg, chance, roll
 end
 
 --- Roll a tactical-soundness check against random; true when candidate passes
 --- Score starts at 1.0; subtracts WEIGHT_LAST_OF_FACTION when removing squad leaves its source
 --- unguarded by its faction; subtracts WEIGHT_SMART_TARGETED when another scripted squad already
---- targets the destination. Radiant only; reactive consequences bypass.
+--- targets the destination. Radiant only; reactive consequences bypass. On reject the caller
+--- can spread last_of_faction/smart_targeted/score into its FAILED_RULES result table; observe()
+--- auto-serializes them.
 --- @safety SAFE - xsmart.has_squad_of_faction + ap_core_broker.is_smart_targeted (both nil-guarded)
 --- @cost typically <5 luabind total (xsmart short-circuits; is_smart_targeted is pure Lua)
 --- @param squad se_squad Candidate squad
 --- @param smart smart_terrain Destination smart resolved by find_smart
---- @return boolean True when math_random() <= computed score
+--- @return boolean passed, boolean last_of_faction, boolean smart_targeted, number score
 function is_tactically_eligible(squad, smart)
+    local last_of_faction = squad.smart_id ~= nil
+        and not xsmart.has_squad_of_faction(squad.smart_id, squad.player_id, squad.id)
+    local smart_targeted = ap_core_broker.is_smart_targeted(smart.id, squad.id)
     local score = 1.0
-    if squad.smart_id and not xsmart.has_squad_of_faction(squad.smart_id, squad.player_id, squad.id) then
-        score = score - TACTICS_WEIGHT_LAST_OF_FACTION
-    end
-    if ap_core_broker.is_smart_targeted(smart.id, squad.id) then
-        score = score - TACTICS_WEIGHT_SMART_TARGETED
-    end
-    return math_random() <= score
+    if last_of_faction then score = score - TACTICS_WEIGHT_LAST_OF_FACTION end
+    if smart_targeted then score = score - TACTICS_WEIGHT_SMART_TARGETED end
+    return math_random() <= score, last_of_faction, smart_targeted, score
 end
 
 --- Wild smart: not a base, no trader job. AP-domain classifier shared by area/instincts

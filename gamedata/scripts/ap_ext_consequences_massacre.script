@@ -41,9 +41,9 @@ local function _handler_investigate(event_data)
         if not ap_ext_util.check_alignment(_alignment_investigate, investigate_faction) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
         end
-        if not ap_ext_util.check_personality(_personality_investigate, investigate_faction,
-            { name = CONSEQUENCE.MASSACRE_INVESTIGATE }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_investigate, investigate_faction)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
 
         local squads = ap_core_util.find_squads_observed(trace, position, {
@@ -94,7 +94,7 @@ local function _handler_scavenge(event_data)
         for _, squad in ipairs(candidates) do
             local species = xcreature.get_mutant_species(squad.id)
             if not species or not _species_scavenge[species] then goto continue end
-            if not ap_ext_util.check_personality(_personality_scavenge, species, { name = CONSEQUENCE.MASSACRE_SCAVENGE }) then goto continue end
+            if not ap_ext_util.check_personality(_personality_scavenge, species) then goto continue end
             squads[#squads + 1] = squad
             ::continue::
         end
@@ -139,7 +139,7 @@ local function _handler_loot(event_data)
         if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         local squads = {}
         for _, squad in ipairs(candidates) do
-            if ap_ext_util.check_personality(_personality_loot, squad.player_id, { name = CONSEQUENCE.MASSACRE_LOOT }) then
+            if ap_ext_util.check_personality(_personality_loot, squad.player_id) then
                 squads[#squads + 1] = squad
             end
         end

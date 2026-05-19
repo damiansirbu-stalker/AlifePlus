@@ -113,8 +113,9 @@ local function _eligible_conquer(trace, squad, now, level_id, budget)
     if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not ap_ext_util.check_personality(_personality_conquer, squad.player_id, { name = "area_conquer" }) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_conquer, squad.player_id)
+    if not p_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -123,8 +124,9 @@ local function _eligible_conquer(trace, squad, now, level_id, budget)
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    if not ap_ext_util.is_tactically_eligible(squad, smart) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
+    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
+    if not t_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
     end
     return {
         cause = CAUSE.AREA_CONQUER,
@@ -146,8 +148,9 @@ local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not ap_ext_util.check_personality(_personality_conquer, species, { name = "area_swarm" }) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_conquer, species)
+    if not p_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -156,8 +159,9 @@ local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = _make_swarm_filter(squad.player_id), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    if not ap_ext_util.is_tactically_eligible(squad, smart) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
+    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
+    if not t_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
     end
     return {
         cause = CAUSE.AREA_SWARM,
@@ -180,8 +184,9 @@ local function _eligible_infest(trace, squad, species, now, level_id, budget)
     if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    if not ap_ext_util.check_personality(_personality_infest, species, { name = "area_infest" }) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_infest, species)
+    if not p_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
     if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
     if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
@@ -198,8 +203,9 @@ local function _eligible_infest(trace, squad, species, now, level_id, budget)
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
         { level_id = level_id, filter = filter, max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    if not ap_ext_util.is_tactically_eligible(squad, smart) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
+    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
+    if not t_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
     end
     return {
         cause = CAUSE.AREA_INFEST,

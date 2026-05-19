@@ -32,9 +32,9 @@ local function _handler_support(event_data)
         local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
         if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_support, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
-        if not ap_ext_util.check_personality(_personality_support, event_data.faction,
-            { name = CONSEQUENCE.BASEKILL_SUPPORT }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_support, event_data.faction)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
 
         local squads = ap_core_util.find_squads_observed(trace, position, {
@@ -80,9 +80,9 @@ local function _handler_flee(event_data)
 
         if not smart or not factions then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
         if not ap_ext_util.check_alignment(_alignment_flee, event_data.faction) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.faction } end
-        if not ap_ext_util.check_personality(_personality_flee, event_data.faction,
-            { name = CONSEQUENCE.BASEKILL_FLEE }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_flee, event_data.faction)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
 
         local destination = ap_core_util.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })

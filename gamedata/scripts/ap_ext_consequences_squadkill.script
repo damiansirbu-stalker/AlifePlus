@@ -42,9 +42,9 @@ local function _handler_revenge(event_data)
         if not ap_ext_util.check_alignment(_alignment_revenge, event_data.victim_faction) then
             return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
         end
-        if not ap_ext_util.check_personality(_personality_revenge, event_data.victim_faction,
-            { name = CONSEQUENCE.SQUADKILL_REVENGE }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_revenge, event_data.victim_faction)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
         local killer_squad_id = event_data.killer_squad_id
         local is_player_kill = event_data.killer_id and event_data.killer_id == xconst.ACTOR_ENTITY_ID

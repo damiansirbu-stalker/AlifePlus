@@ -91,8 +91,9 @@ local function _try_picked_cause(trace, squad, level_id, opts)
     local pcfg = _personality_by_cause[cause_const]
     local dst_smart_id
     if pcfg then
-        if not ap_ext_util.check_personality(pcfg.traits, squad.player_id, { name = cause_const }) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(pcfg.traits, squad.player_id)
+        if not p_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
         end
         if opts.budget.remaining <= 0 then
             return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -102,8 +103,9 @@ local function _try_picked_cause(trace, squad, level_id, opts)
             level_id = level_id, filter = _build_dst_filter(squad.player_id),
         })
         if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-        if not ap_ext_util.is_tactically_eligible(squad, dst) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
+        local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, dst)
+        if not t_ok then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
         end
         dst_smart_id = dst.id
     end

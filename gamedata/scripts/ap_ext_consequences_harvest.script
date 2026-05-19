@@ -71,7 +71,7 @@ local function _handler_rob(event_data)
         local robbers = {}
         for _, squad in ipairs(chasers) do
             if game_relations.is_factions_enemies(squad.player_id, target_community)
-                and ap_ext_util.check_personality(_personality_rob, squad.player_id, { name = CONSEQUENCE.HARVEST_ROB }) then
+                and ap_ext_util.check_personality(_personality_rob, squad.player_id) then
                 robbers[#robbers + 1] = squad
             end
         end
@@ -133,7 +133,7 @@ local function _handler_haunt(event_data)
         for _, squad in ipairs(candidates) do
             local species = xcreature.get_mutant_species(squad.id)
             if not species or not _species_haunt[species] then goto continue end
-            if not ap_ext_util.check_personality(_personality_haunt, species, { name = CONSEQUENCE.HARVEST_HAUNT }) then goto continue end
+            if not ap_ext_util.check_personality(_personality_haunt, species) then goto continue end
             squads[#squads + 1] = squad
             ::continue::
         end
