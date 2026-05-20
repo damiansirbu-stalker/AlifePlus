@@ -86,7 +86,6 @@ Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequ
 | ap_ext_common | Shared chase pattern: move_actor_chasers / make_move_smart_chasers / make_on_arrive |
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn) |
-| ap_ext_object_mutator | Combat modifiers for alpha mutants and high-rank stalkers (hit power, panic immunity) |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
 | ap_ext_test | In-game debug commands |
 
@@ -669,14 +668,6 @@ Volatility. Same as conquest: engine rebuilds faction_controlled, faction, respa
 Decay. Separate from conquest and swarm. cfg.mutator_area_infest_decay_hours (default 48). clear_exclusive_spawn reverts faction_controlled to nil, faction to default_faction, and removes the infest entry. Original LTX spawns resume on next try_respawn. Set to 0 to disable decay (permanent infestation).
 
 Interaction with conquest and swarm. If a smart is infested AND conquered or swarmed, the exclusive spawn's faction gate suppresses the shared-spawn entries (they have no .faction field). Infest wins at runtime. All three data tables coexist independently; clearing infest restores the shared-spawn entries if they have not yet decayed.
-
-### Object Mutator (ap_ext_object_mutator)
-
-Runtime combat modifiers for alpha mutants and high-rank stalkers. Two independent systems on monster_on_before_hit and npc_on_before_hit.
-
-Alpha mutants (monster_on_before_hit). Outgoing hit power bonus and incoming hit power absorption via _mutator_alpha_hit_power_dealt[npc_id] / _mutator_alpha_hit_power_taken[npc_id] hash tables, populated at promote time. Panic immunity (set_custom_panic_threshold(0)) applied lazily on first hit. O(1) lookup, 0.5s throttle, early exit when tables empty. Alpha level: min(10, floor(kills / cause_alpha_kills_per_level)). Loot items injected via monster_on_loot_init callback with per-species bonus pools, managed in ap_ext_tracker.
-
-Stalker rank (npc_on_before_hit). Outgoing hit power bonus and incoming hit power reduction for veteran+ stalkers (rank 12000+). Linear scaling from veteran to legend. Reads engine character_rank(); never manipulates it. Asymmetric actor coverage by callback scope: the taken arm reaches actor-fired bullets (npc_on_before_hit fires when any attacker hits a stalker, actor included), but the dealt arm does NOT reach actor-victim hits (engine routes those to actor_on_before_hit, which the mutator does not subscribe to). Net effect: shooting a master/legend deals less damage to them; a master/legend shooting the actor deals vanilla damage. Wiring an `actor_on_before_hit` handler reading `shit.draftsman:character_rank()` would close the asymmetry.
 
 ---
 

@@ -53,7 +53,7 @@ Territory and population:
 
 Alpha mutants:
 - Alpha mutants emerge from combat and accumulate kills.
-- Alphas gain hit power buffs and drop valuable loot.
+- Killing an alpha draws same-species hunters.
 
 Trade and needs:
 - NPCs trade real items at traders.
@@ -100,10 +100,7 @@ Example scenario (escalation chain):
 - An artefact spawns. A stalker needs money ("needs" cause) and heads there to pick it up ("money" consequence).
 - He fights creatures on the road and they fight back.
 - A chimera accumulates kills and becomes an alpha ("alpha promote" consequence).
-- The alpha hits harder, takes less damage, and never flees.
-- The player wounds it but it keeps fighting because of panic immunity.
-- He kills it and finds valuable mutant parts and an artefact in its inventory.
-- Another chimera on the same tier senses the kill and pursues the player ("alphakill targeted" consequence).
+- The player kills it. Another chimera on the same tier senses the kill and pursues the player ("alphakill targeted" consequence).
 - An online stalker on a friendly channel reports the alpha down a few hours later as a news event on the player's PDA.
 - A surviving chimera with its pack claims a nearby smart terrain as a nest ("infest" consequence). The infestation overwrites the original spawns.
 - A bandit squad sees the ground is empty around the lair and conquers a neighboring smart ("area_conquer" consequence). Their spawns join the originals as a shared injection.
@@ -236,10 +233,7 @@ Reactions
     - Flee - Squads at the base evacuate to the nearest friendly position.
 
   Alpha
-    - Promote - Mutants accumulate kills and level up.
-      Hit power bonus and reduction scale with level.
-      Promoted alphas gain panic immunity.
-      Valuable loot is injected into the alpha's inventory on promotion.
+    - Promote - Mutants accumulate kills and level up. Promotion is the gate for AlphaKill hunters.
 
   AlphaKill
     - Targeted - Same-species mutants on the same level hunt the killer.

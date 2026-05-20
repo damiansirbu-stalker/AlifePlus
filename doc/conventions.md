@@ -63,7 +63,7 @@ CONSEQUENCE = CAUSE + VERB
 | MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
 | MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
 | MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
-| MCM mutator setting | `mutator_{name}_{setting}` | `mutator_alpha_hit_power_dealt_enabled`, `mutator_area_conquest_spawn_num`, `mutator_rank_hit_power_taken_mult` |
+| MCM mutator setting | `mutator_{name}_{setting}` | `mutator_area_conquest_spawn_num`, `mutator_area_infest_decay_hours` |
 | Script file (cause, single) | `ap_ext_cause_{family}.script`; generator publishes exactly one cause | `ap_ext_cause_massacre.script`, `ap_ext_cause_alpha.script` |
 | Script file (cause, multi) | `ap_ext_causes_{family}.script`; generator publishes multiple causes | `ap_ext_causes_area.script`, `ap_ext_causes_stash.script`, `ap_ext_causes_needs.script`, `ap_ext_causes_instincts.script` |
 | Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (14 handlers) |
@@ -230,7 +230,6 @@ Rules:
 | `PRODUCER.REACTIVE` | Producer dispatch |
 | `DISPATCH` | Event publish (ap_utils) |
 | `CONSUMER` | Cause consumer routing |
-| `MUTATOR.OBJECT` | Runtime combat modifiers (ap_object_mutator) |
 | `MUTATOR.SMART` | Territory conquest (ap_smart_mutator) |
 | `TEST` | MCM test tools (ap_test) |
 

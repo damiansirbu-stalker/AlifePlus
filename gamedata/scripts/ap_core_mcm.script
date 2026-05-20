@@ -156,20 +156,6 @@ defaults = {
     consequence_alphakill_targeted_max_squads = 3,
     consequence_alphakill_targeted_max_chases = 5,
 
-    -- Mutators: Alpha
-    mutator_alpha_hit_power_dealt_enabled = false,
-    mutator_alpha_hit_power_dealt_per_level = 0.05,
-    mutator_alpha_hit_power_taken_enabled = false,
-    mutator_alpha_hit_power_taken_per_level = 0.05,
-    mutator_alpha_panic_immunity_enabled = false,
-    mutator_alpha_loot_enabled = false,
-
-    -- Mutators: Stalker Rank (veteran+)
-    mutator_rank_hit_power_dealt_enabled = false,
-    mutator_rank_hit_power_dealt_mult = 0.15,
-    mutator_rank_hit_power_taken_enabled = false,
-    mutator_rank_hit_power_taken_mult = 0.15,
-
     -- Consequence: Massacre Scavenge
     consequence_massacre_scavenge_enabled = true,
     consequence_massacre_scavenge_rush = true,
@@ -453,20 +439,10 @@ local _key_to_tab = {
     mutator_area_infest_decay_hours = "mutators/infest",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
     consequence_alpha_promote_max_alphas = "consequences/alpha_promote",
-    mutator_alpha_loot_enabled = "consequences/alpha_promote",
     consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_rush = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_max_squads = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_max_chases = "consequences/alphakill_targeted",
-    mutator_alpha_hit_power_dealt_enabled = "mutators/alpha",
-    mutator_alpha_hit_power_dealt_per_level = "mutators/alpha",
-    mutator_alpha_hit_power_taken_enabled = "mutators/alpha",
-    mutator_alpha_hit_power_taken_per_level = "mutators/alpha",
-    mutator_alpha_panic_immunity_enabled = "mutators/alpha",
-    mutator_rank_hit_power_dealt_enabled = "mutators/rank",
-    mutator_rank_hit_power_dealt_mult = "mutators/rank",
-    mutator_rank_hit_power_taken_enabled = "mutators/rank",
-    mutator_rank_hit_power_taken_mult = "mutators/rank",
     consequence_massacre_scavenge_enabled = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_rush = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_max_squads = "consequences/massacre_scavenge",
@@ -661,31 +637,6 @@ function on_mcm_load()
             {
                 id = "mutators",
                 gr = {
-                    {
-                        id = "alpha",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_mutators_alpha_title"),
-                            _desc("ui_mcm_ap_mutators_alpha_desc"),
-                            _check("mutator_alpha_hit_power_dealt_enabled"),
-                            _track("mutator_alpha_hit_power_dealt_per_level", 0.01, 0.20, 0.01),
-                            _check("mutator_alpha_hit_power_taken_enabled"),
-                            _track("mutator_alpha_hit_power_taken_per_level", 0.01, 0.20, 0.01),
-                            _check("mutator_alpha_panic_immunity_enabled"),
-                        },
-                    },
-                    {
-                        id = "rank",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_mutators_rank_title"),
-                            _desc("ui_mcm_ap_mutators_rank_desc"),
-                            _check("mutator_rank_hit_power_dealt_enabled"),
-                            _track("mutator_rank_hit_power_dealt_mult", 0.05, 0.50, 0.05),
-                            _check("mutator_rank_hit_power_taken_enabled"),
-                            _track("mutator_rank_hit_power_taken_mult", 0.05, 0.50, 0.05),
-                        },
-                    },
                     {
                         id = "conquest",
                         sh = true,
@@ -932,7 +883,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_alpha_promote_tag"),
                             _check("consequence_alpha_promote_enabled"),
                             _track("consequence_alpha_promote_max_alphas", 0, 300, 5),
-                            _check("mutator_alpha_loot_enabled"),
                         },
                     },
                     {

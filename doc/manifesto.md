@@ -415,11 +415,11 @@ Bases were worth defending because they anchored the faction's economy and comma
 
 ### Alpha: Promote
 
-A mutant accumulates kills and levels up through 10 tiers, gaining hit power buffs, panic immunity, and valuable loot in its inventory.
+A mutant accumulates kills and levels up through 10 tiers, becoming a tracked individual that AlphaKill same-species hunters can pursue.
 
 AlifePlus fires the alpha cause when a mutant killer's projected kill count crosses a new level threshold.
 Stalkers are excluded at the cause level. The engine's native rank system already handles stalker progression (kills award `rank_kill_points`, rank interpolates dispersion).
-The promote consequence applies hit power multipliers (outgoing bonus and incoming reduction), sets panic threshold to zero so the alpha never flees, and injects loot items from tiered pools so killing an alpha is worth the risk.
+The promote consequence registers the killer in `ap_ext_tracker._ap_alphas` so the AlphaKill targeted consequence can dispatch same-species hunters when the alpha dies. The alpha state has no combat or loot effect of its own; tracking is the contribution.
 
 Monster rank in X-Ray is fixed at spawn from the `clsid` multiplier (`sim_offline_combat.script`).
 A dog that kills fifty stalkers has the same combat power as one that never fought.
