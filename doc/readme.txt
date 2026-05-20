@@ -421,6 +421,13 @@ Compatibility & Safety:
 
 ---
 
+Companion mod:
+
+AlifePlus increases NPC activity and combat across the Zone. AlifeBalance reads those death events and accelerates respawn cooldowns on the level and faction where losses happened. Heavy combat regions recover, quiet ones stay quiet.
+AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
+
+---
+
 Requirements:
 - Anomaly 1.5.3
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
