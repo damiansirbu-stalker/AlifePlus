@@ -1,5 +1,5 @@
 next
-  Summary: 5-10x faster world scanning, per-generator radiant budget, tighter reactive cascade, area swarm split from conquest, reactive preemption of radiant scripts, tactical soundness check on radiant decisions, alpha and rank mutators dropped
+  Summary: 5-10x faster world scanning, per-generator radiant budget, tighter reactive cascade, area swarm split from conquest, reactive preemption of radiant scripts, tactical soundness check on radiant decisions, alpha and rank mutators dropped, item economy rebuilt against vanilla configs
   Dispatch:
     Reactive events (massacre, wounded, base attacks, squad kills, artefact takes, alpha kills) can preempt squads walking to satisfy an on-map need, follow an instinct, or set up a stash ambush. Squads on the way to take territory, loot a stash, refill a stash, travel off-map, or complete a reactive task continue uninterrupted. External script ownership (Warfare) stays protected.
     Radiant decisions score for tactical soundness after rules and SCAN pass. A squad that would leave its source smart undefended by its faction, or that would target a smart another scripted squad is already heading to, scores low and usually gets rejected. Two static conditions: last-of-faction at source (-0.20), smart already targeted by another scripted squad (-0.20). Reactive consequences bypass; event responses are not voluntary picks.
@@ -11,11 +11,14 @@ next
     Removed: Alpha hit power bonus, alpha hit power reduction, alpha panic immunity, and alpha bonus loot. Alpha mutants now take vanilla damage, can flee from damage, and drop only their species' default loot. Alpha promotion still tracks the killer as a target for AlphaKill hunters.
     Removed: Veteran+ stalker hit power scaling (dealt and taken). Master and legend stalkers deal and absorb vanilla damage.
   Economy:
-    Trade: NPCs arriving at supply trader smarts now sell eligible items for money and buy ammo for their best weapon up to vanilla restock caps. Cost formulas read from gulag_job_trade_buy_sell.ltx, the same file vanilla axr_trade_manager reads.
-    Stash Fill: stashes filled by scripted squads now contain every eligible item the visiting squad carries, capped only by the configured items-per-stash range. Previously fill contributed at most 1 item per section type and skipped sections already present in the stash.
+    AlifePlus item handling tracks vanilla. Items in the world are neither invented nor destroyed by AP. NPCs decide what to keep, sell, deposit, or take using the same gulag_job_trade_buy_sell.ltx config slot and the same per-section thresholds that vanilla axr_trade_manager reads. AP adds an exclude layer for items GAMMA treats as core (toolkits, repair kits, drugkit, ammokit, basickit/advancedkit/expertkit) so NPCs do not handle them.
+    Trade: NPCs arriving at supply trader smarts sell eligible items for money and buy ammo for their best weapon up to vanilla restock caps. Cost formulas read from the same vanilla config the engine itself uses.
+    Stash Loot: squads looting a stash now pocket eligible contents up to vanilla keep count per section. Items above keep count, and items in the AP exclude set, are destroyed when the stash clears. Stashes containing protected items are skipped entirely as before.
+    Stash Fill: squads depositing into a stash now deposit only surplus, items above vanilla keep count per section. Squads holding just their personal needs keep what they have.
   MCM:
     Added: Mutators > Area Swarm. Mutant occupation of empty smart terrains has its own decay, cap, and spawn count, independent of Area Conquest.
     Removed: Mutators > Alpha and Mutators > Stalker Rank pages. Alpha Promote loot toggle.
+    Changed: Area mutators (Conquest, Swarm, Infest) default to disabled on new games. Existing saves keep their toggle state.
     Changed: Area Conquest cap cut from 50 to 30. Decay cut from 72h to 48h. Area Infest decay raised to 48h.
     Changed: Radiant tick default raised from 10s to 15s.
     Changed: News compose interval raised to 60-200s from 30-100s. News fires half as often.

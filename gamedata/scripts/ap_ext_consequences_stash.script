@@ -1,9 +1,8 @@
 --- ap_ext_consequences_stash: STASH family consequences (loot + ambush + fill). CONFIGS factory.
 
-local random, alife_release_id = math.random, alife_release_id
-local xobject, xtime, xstash = xobject, xtime, xstash
+local random = math.random
+local xobject, xtime, xstash, xtrade = xobject, xtime, xstash, xtrade
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
-local STASH_FILL_ELIGIBLE = ap_ext_const.ITEMS.STASH_FILL_ELIGIBLE
 
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
@@ -22,6 +21,12 @@ local LOG_FILL = ap_core_debug.bracket(CONSEQUENCE.STASH_FILL)
 
 local cfg = ap_core_mcm.cfg
 
+--- Sections AP treats as too valuable for NPC handling: toolkits, repair kits, gunsmith/outfit
+--- kits, drugkit, ammokit, basickit/advancedkit/expertkit. Vanilla [buy_sell] includes most of
+--- these at sell_mult 0.5; GAMMA treats them as core gameplay items so AP keeps them out of
+--- both directions (squad will not take them from stashes, will not deposit them into stashes).
+--- Same set drives the macro guard (skip the whole stash if any protected section is inside)
+--- and the per-section filter passed to xtrade.is_eligible.
 local LOOT_PROTECT_SET = {
     ["toolkit_1"] = true, ["toolkit_2"] = true, ["toolkit_3"] = true,
     ["toolkit_p"] = true, ["toolkit_s"] = true, ["toolkit_r5"] = true, ["toolkit_r7"] = true,
@@ -32,15 +37,53 @@ local LOOT_PROTECT_SET = {
     ["itm_basickit"] = true, ["itm_advancedkit"] = true, ["itm_expertkit"] = true,
 }
 
-local function _is_protected_stash(stash_id)
-    local items = xstash.get_stash_items(stash_id)
-    if not items then return false end
-    for i = 1, #items do
-        if LOOT_PROTECT_SET[items[i]] then return true end
+-- Active exclude set for xtrade calls; nil when MCM protect toggle is off.
+-- @complexity O(1) | cfg field read
+local function _build_exclude()
+    if cfg.consequence_stash_loot_protect_toolkits then return LOOT_PROTECT_SET end
+    return nil
+end
+
+-- True if any section in the list is in LOOT_PROTECT_SET; used as macro guard before loot.
+-- @complexity O(n) sections | n typically 5-15
+local function _has_protected(sections)
+    for i = 1, #sections do
+        if LOOT_PROTECT_SET[sections[i]] then return true end
     end
     return false
 end
 
+-- Walk squad members. Returns (member_ids list, online_members list, section_count map).
+-- member_ids covers online + offline (always available via squad_members iterator).
+-- online_members covers only those with a live game_object.
+-- counts is a {[sec]=n} map summed across online members' inventories.
+-- @complexity O(members * items_per_member) | iterate_inventory walks each online member once
+local function _scan_squad(squad)
+    local member_ids, online_members, counts = {}, {}, {}
+    if not squad.squad_members or squad:npc_count() == 0 then
+        return member_ids, online_members, counts
+    end
+    local function count_item(_, item)
+        local sec = item:section()
+        if sec then counts[sec] = (counts[sec] or 0) + 1 end
+    end
+    for member_se in squad:squad_members() do
+        member_ids[#member_ids + 1] = member_se.id
+        local member_go = xobject.go(member_se.id)
+        if member_go then
+            online_members[#online_members + 1] = member_go
+            member_go:iterate_inventory(count_item, member_go)
+        end
+    end
+    return member_ids, online_members, counts
+end
+
+--- Walk the stash sections. For each section that is eligible (in vanilla [buy_sell] and not
+--- in the AP exclude set) and below the squad's keep count, create one copy on a squad member
+--- via `xtrade.give_item` (round-robin across all members, online or offline). Then clear the
+--- stash via `xstash.loot_stash`; sections the squad did not take are destroyed. Macro guard
+--- runs first: if any section is in `LOOT_PROTECT_SET` and the MCM toggle is on, the entire
+--- stash is left alone.
 local function _arrive_loot(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
@@ -49,15 +92,40 @@ local function _arrive_loot(squad, args)
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d already looted", stash_id)
         return
     end
-    if cfg.consequence_stash_loot_protect_toolkits and _is_protected_stash(stash_id) then
+    local sections = xstash.get_stash_items(stash_id)
+    if not sections or #sections == 0 then return end
+    if cfg.consequence_stash_loot_protect_toolkits and _has_protected(sections) then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d protected", stash_id)
         return
     end
+
+    local exclude = _build_exclude()
+    local member_ids, _online, counts = _scan_squad(squad)
+    if #member_ids == 0 then
+        ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d no_members", stash_id, squad.id)
+        return
+    end
+
     ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_LOOT, function(trace)
-        local items = ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
+        local taken = 0
+        local cursor = 1
+        for i = 1, #sections do
+            local sec = sections[i]
+            if xtrade.is_eligible(sec, exclude) then
+                local keep = xtrade.keep_count(sec)
+                if keep and (counts[sec] or 0) < keep then
+                    if xtrade.give_item(member_ids[cursor], sec, exclude) then
+                        counts[sec] = (counts[sec] or 0) + 1
+                        cursor = (cursor % #member_ids) + 1
+                        taken = taken + 1
+                    end
+                end
+            end
+        end
+        ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
             return xstash.loot_stash(stash_id)
         end)
-        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = items and #items or 0 }
+        return { code = TRACE.OK, stash = stash_id, squad = squad.id, taken = taken, items = #sections }
     end)
 end
 
@@ -67,50 +135,63 @@ local function _arrive_ambush(squad, args)
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
 end
 
--- Snapshot up to max_items eligible items across the squad's online members' inventories.
--- @complexity O(members * items_per_member) | iterate_inventory walks each online member once
-local function _collect_picks(squad, max_items)
+-- Pick items to deposit: only those where squad's count exceeds keep_count, capped at max_items.
+-- Two passes: count online inventory by section, compute per-section surplus, then walk items
+-- again and pick up to surplus per section. Offline members' inventory is not visible so they
+-- do not contribute to surplus accounting.
+-- @complexity O(members * items_per_member) | iterate_inventory walks each online member twice
+local function _collect_fill_picks(squad, max_items, exclude)
     local picks = {}
-    if not squad.squad_members or squad:npc_count() == 0 then return picks end
-    local function add_pick(_owner, item)
+    local _ids, online_members, counts = _scan_squad(squad)
+    if #online_members == 0 then return picks end
+
+    local surplus = {}
+    for sec, count in pairs(counts) do
+        if xtrade.is_eligible(sec, exclude) then
+            local keep = xtrade.keep_count(sec) or 0
+            local diff = count - keep
+            if diff > 0 then surplus[sec] = diff end
+        end
+    end
+
+    local function pick_surplus(_, item)
         if #picks >= max_items then return end
         local sec = item:section()
-        if not sec or not STASH_FILL_ELIGIBLE[sec] then return end
-        picks[#picks + 1] = { id = item:id(), sec = sec }
+        if surplus[sec] and surplus[sec] > 0 then
+            picks[#picks + 1] = item
+            surplus[sec] = surplus[sec] - 1
+        end
     end
-    for member_se in squad:squad_members() do
+    for i = 1, #online_members do
         if #picks >= max_items then break end
-        local member_go = xobject.go(member_se.id)
-        if not member_go then goto next_member end
-        member_go:iterate_inventory(add_pick, member_go)
-        ::next_member::
+        online_members[i]:iterate_inventory(pick_surplus, online_members[i])
     end
     return picks
 end
 
---- Walk the arrived squad's online members' inventories, snapshot up to N items matching
---- STASH_FILL_ELIGIBLE, release the items from squad (engine deletes the server objects), and
---- append the section names to the stash cache string via `xstash.fill_stash`. Vanilla
---- `treasure_manager` materializes the items when the player opens the stash. AP never calls
---- `alife_create_item`; AP records sections that came from the squad's actual engine-spawned
---- inventory.
+--- Walk the arrived squad's online members. For each section where the squad holds more
+--- copies than the vanilla keep count, deposit the surplus into the stash via
+--- `xtrade.drop_item` + `xstash.fill_stash`. Total deposits capped by the MCM-configurable
+--- items-per-stash range. Vanilla `treasure_manager` materializes the items when the player
+--- opens the stash. AP never calls `alife_create_item`; AP records sections that came from
+--- the squad's actual engine-spawned inventory.
 local function _arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
     local stash_id = args.stash_id
 
     local max_items = random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items)
-    local picks = _collect_picks(squad, max_items)
+    local exclude = _build_exclude()
+    local picks = _collect_fill_picks(squad, max_items, exclude)
 
     if #picks == 0 then
-        ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d no_eligible_items", stash_id, squad.id)
+        ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d no_surplus", stash_id, squad.id)
         return
     end
 
     local secs = {}
     for i = 1, #picks do
-        secs[i] = picks[i].sec
-        alife_release_id(picks[i].id)
+        secs[i] = xtrade.drop_item(picks[i], exclude)
     end
 
     if not xstash.fill_stash(stash_id, secs, false) then
