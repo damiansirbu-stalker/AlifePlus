@@ -1,8 +1,10 @@
 --- ap_ext_consequences_stash: STASH family consequences (loot + ambush + fill). CONFIGS factory.
 
 local random = math.random
+local alife_release_id = alife_release_id
 local xobject, xtime, xstash = xobject, xtime, xstash
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
+local STASH_FILL_ELIGIBLE = ap_ext_const.ITEMS.STASH_FILL_ELIGIBLE
 
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
@@ -40,45 +42,6 @@ local function _is_protected_stash(stash_id)
     return false
 end
 
--- Stash fill item pool (medical, tools, artefacts). Weighted via duplicates; picks are with replacement (intentional).
-local STASH_FILL_ITEMS = {
-    -- Medical - bandages/tourniquets
-    "bandage", "bandage", "bandage",
-    "army_bandage", "army_bandage",
-    "salicidic_bandage",
-    "tourniquet", "tourniquet",
-    -- Medical - medkits
-    "medkit", "medkit", "medkit",
-    "medkit_army", "medkit_army",
-    "medkit_scientic",
-    -- Medical - drugs
-    "antirad", "antirad",
-    "drug_antidot", "drug_antidot",
-    "drug_radioprotector",
-    "drug_coagulant", "drug_coagulant",
-    "drug_psy_blockade",
-    "yadex",
-    -- Repair tools
-    "toolkit_p", "toolkit_p", "toolkit_p",
-    "toolkit_w", "toolkit_w",
-    "toolkit_a", "toolkit_a",
-    -- Artefacts - low tier (base Anomaly, src: items_artefacts.ltx)
-    "af_itcher", "af_pin", "af_cristall", "af_fireball",
-    "af_blood", "af_bracelet", "af_baloon", "af_electra_sparkler",
-    "af_sponge", "af_ring",
-    -- Artefacts - mid tier (base Anomaly)
-    "af_electra_flash", "af_medusa", "af_vyvert", "af_ameba_slime",
-}
-
---- Pick N random sections from the fill pool at arrival time.
-local function _pick_random_items(count)
-    local items = {}
-    for i = 1, count do
-        items[i] = STASH_FILL_ITEMS[random(#STASH_FILL_ITEMS)]
-    end
-    return items
-end
-
 local function _arrive_loot(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
@@ -105,16 +68,56 @@ local function _arrive_ambush(squad, args)
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
 end
 
+--- Walk the arrived squad's online members' inventories, snapshot up to N notable items the
+--- stash does NOT already hold (rule 2 via the `seen` set), release the items from squad
+--- (engine deletes the server objects), and append the section names to the stash cache string
+--- via `xstash.fill_stash`. Vanilla `treasure_manager` materializes the items when the player
+--- opens the stash. AP never calls `alife_create_item`; AP records sections that came from the
+--- squad's actual engine-spawned inventory.
 local function _arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
     local stash_id = args.stash_id
-    local items = _pick_random_items(random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items))
-    if not xstash.fill_stash(stash_id, items, false) then
-        ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d failed", stash_id, squad.id)
+
+    local max_items = random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items)
+    local existing = xstash.get_stash_items(stash_id) or {}
+    local seen = {}
+    for i = 1, #existing do seen[existing[i]] = true end
+
+    local picks = {}
+    if squad.squad_members and squad:npc_count() > 0 then
+        for member_se in squad:squad_members() do
+            if #picks >= max_items then break end
+            local member_go = xobject.go(member_se.id)
+            if member_go then
+                member_go:iterate_inventory(function(_owner, item)
+                    if #picks >= max_items then return end
+                    local sec = item:section()
+                    if not sec or seen[sec] then return end
+                    if not STASH_FILL_ELIGIBLE[sec] then return end
+                    picks[#picks + 1] = { id = item:id(), sec = sec }
+                    seen[sec] = true
+                end, member_go)
+            end
+        end
+    end
+
+    if #picks == 0 then
+        ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d no_eligible_items", stash_id, squad.id)
         return
     end
-    ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d items=%d", stash_id, squad.id, #items)
+
+    local secs = {}
+    for i = 1, #picks do
+        secs[i] = picks[i].sec
+        alife_release_id(picks[i].id)
+    end
+
+    if not xstash.fill_stash(stash_id, secs, false) then
+        ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d fill_failed", stash_id, squad.id)
+        return
+    end
+    ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d items=%d", stash_id, squad.id, #secs)
 end
 
 local CONFIGS = {

@@ -28,6 +28,8 @@ Every action has a systemic cause. The simulation runs whether you are there or 
 Structural invariants make this possible:
 - Event-driven contract: nothing runs unless the engine says something happened.
 - Physical simulation guarantee: consequences use entities already in the simulation, never spawned, teleported, or fabricated.
+- Item transfer only: items move between carriers (NPCs, stashes, traders). AlifePlus never invents items. When AP needs to materialize an item, it reads the section from a vanilla config slot the engine recognizes, never from an AP-only list.
+- No accumulation: when an item moves to a destination that already holds the same kind, the move is skipped. Stalkers and stashes do not build duplicate stacks.
 
 The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.
 

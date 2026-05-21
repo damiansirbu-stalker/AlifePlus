@@ -248,18 +248,33 @@ function on_game_start()
     SCATTER_FROM[2] = xtable.merge(alignment_mutant_aberrant)
 end
 
---- Item section lists for needs arrive_fn (GAMMA-verified)
+--- Item section lists for needs arrive_fn `_consume` (vanilla sections).
+--- HUNGER/REST/HEAL/SOCIAL/OUTPOST are the only consume needs; the visitor finds the first
+--- matching item in inventory and releases it. SUPPLY_TRADER does not appear here — that
+--- arrive path goes through `_arrive_trade` and reads vanilla's `gulag_job_trade_buy_sell.ltx`
+--- `[buy_sell]` config to know which sections are trader-tradable.
 NEEDS_SECTIONS = {
     HUNGER = { "bread", "breadold", "kolbasa", "conserva", "tushonka", "vodka", "energy_drink", "water_drink", "beer" },
     REST = { "cigarettes", "cigarettes_lucky", "cigarettes_russian", "vodka", "vodka2", "vodka_quality", "beer" },
     HEAL = { "medkit", "medkit_army", "medkit_scientic", "bandage", "stimpack", "stimpack_army", "stimpack_scientic" },
     SOCIAL = { "cigarettes", "cigarettes_lucky", "cigarettes_russian", "vodka", "vodka2", "vodka_quality", "beer" },
     OUTPOST = { "cigarettes", "cigarettes_lucky", "cigarettes_russian" },
-    TRADE_BUY = {
-        "medkit", "medkit_army", "bandage", "ammo_9x18_fmj", "ammo_9x19_fmj", "ammo_5.45x39_fmj",
-        "ammo_5.56x45_fmj", "ammo_7.62x39_fmj", "ammo_12x70_buck", "grenade_rgd5", "grenade_f1",
-        "grenade_gd-05", "ammo_9x18_ap", "ammo_9x19_ap", "ammo_5.45x39_ap", "ammo_5.56x45_ap",
-        "ammo_7.62x39_ap", "ammo_7.62x51_ap", "ammo_9x39_ap",
-    },
+}
+
+--- Section sets used by `_arrive_fill` to decide which squad-inventory items move to a stash.
+--- The items themselves come from the engine-spawned squad's inventory (vanilla loadout source);
+--- this set is purely a FILTER over what's already in their bag. AP curates the filter; AP never
+--- curates a source pool.
+ITEMS = {}
+ITEMS.STASH_FILL_ELIGIBLE = {
+    -- bandages
+    ["bandage"]=true, ["army_bandage"]=true, ["salicidic_bandage"]=true, ["tourniquet"]=true,
+    -- medkits
+    ["medkit"]=true, ["medkit_army"]=true, ["medkit_scientic"]=true,
+    -- drugs
+    ["antirad"]=true, ["drug_antidot"]=true, ["drug_radioprotector"]=true,
+    ["drug_coagulant"]=true, ["drug_psy_blockade"]=true, ["yadex"]=true,
+    -- repair toolkits
+    ["toolkit_p"]=true, ["toolkit_w"]=true, ["toolkit_a"]=true,
 }
 
