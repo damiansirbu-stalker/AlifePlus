@@ -53,15 +53,15 @@ local function _has_protected(sections)
     return false
 end
 
--- Walk squad members. Returns (member_ids list, online_members list, section_count map).
+-- Walk squad members. Returns (member_ids, counts).
 -- member_ids covers online + offline (always available via squad_members iterator).
--- online_members covers only those with a live game_object.
--- counts is a {[sec]=n} map summed across online members' inventories.
--- @complexity O(members * items_per_member) | iterate_inventory walks each online member once
+-- counts is a {[sec]=n} map summed across the subset that was online at scan time.
+-- Iterates via xobject.iterate_online_inventory so the online-only constraint is centralized.
+-- @complexity O(members * items_per_member) | iterates each online member once
 local function _scan_squad(squad)
-    local member_ids, online_members, counts = {}, {}, {}
+    local member_ids, counts = {}, {}
     if not squad.squad_members or squad:npc_count() == 0 then
-        return member_ids, online_members, counts
+        return member_ids, counts
     end
     local function count_item(_, item)
         local sec = item:section()
@@ -69,13 +69,9 @@ local function _scan_squad(squad)
     end
     for member_se in squad:squad_members() do
         member_ids[#member_ids + 1] = member_se.id
-        local member_go = xobject.go(member_se.id)
-        if member_go then
-            online_members[#online_members + 1] = member_go
-            member_go:iterate_inventory(count_item, member_go)
-        end
+        xobject.iterate_online_inventory(member_se.id, count_item)
     end
-    return member_ids, online_members, counts
+    return member_ids, counts
 end
 
 --- Walk the stash sections. For each section that is eligible (in vanilla [buy_sell] and not
@@ -100,7 +96,7 @@ local function _arrive_loot(squad, args)
     end
 
     local exclude = _build_exclude()
-    local member_ids, _online, counts = _scan_squad(squad)
+    local member_ids, counts = _scan_squad(squad)
     if #member_ids == 0 then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d no_members", stash_id, squad.id)
         return
@@ -139,13 +135,14 @@ end
 
 -- Pick items to deposit: only those where squad's count exceeds keep_count, capped at max_items.
 -- Two passes: count online inventory by section, compute per-section surplus, then walk items
--- again and pick up to surplus per section. Offline members' inventory is not visible so they
--- do not contribute to surplus accounting.
--- @complexity O(members * items_per_member) | iterate_inventory walks each online member twice
+-- again and pick up to surplus per section. Offline members are invisible via the engine API
+-- (no Lua hook for offline inventory iteration); xobject.iterate_online_inventory returns nil
+-- for them, so they silently contribute nothing on either pass.
+-- @complexity O(members * items_per_member) | online members walked twice
 local function _collect_fill_picks(squad, max_items, exclude)
     local picks = {}
-    local _ids, online_members, counts = _scan_squad(squad)
-    if #online_members == 0 then return picks end
+    local member_ids, counts = _scan_squad(squad)
+    if #member_ids == 0 then return picks end
 
     local surplus = {}
     for sec, count in pairs(counts) do
@@ -164,9 +161,9 @@ local function _collect_fill_picks(squad, max_items, exclude)
             surplus[sec] = surplus[sec] - 1
         end
     end
-    for i = 1, #online_members do
+    for i = 1, #member_ids do
         if #picks >= max_items then break end
-        online_members[i]:iterate_inventory(pick_surplus, online_members[i])
+        xobject.iterate_online_inventory(member_ids[i], pick_surplus)
     end
     return picks
 end
