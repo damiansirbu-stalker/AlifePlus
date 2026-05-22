@@ -602,7 +602,7 @@ The nine drives and what happens when they win:
 - **Heal** returns to a friendly base and uses a medkit, bandage, or stimpack.
 - **Shelter** returns to a friendly base when exposed too long.
 - **Money** searches anomaly fields for artefacts or hunts mutant lairs.
-- **Supply** visits a trader and exchanges an artefact for ammo, grenades, or medical supplies.
+- **Supply** visits a trader, sells surplus inventory at vanilla prices, and restocks ammo for the best weapon.
 - **Job** guards the base, explores the Zone, researches anomalies. Monolith and Greh worship. Military and Duty drill.
 - **Social** finds a campfire or returns to base, shares cigarettes and drinks.
 
@@ -634,6 +634,24 @@ Free items from a trader is a spawn, not a trade.
 
 > "It was planned that character behaviour would diversify due to introduction of requirements of food and sleep."
 > Dmitriy Iassenev, Game Developer (2008) [1]
+
+---
+
+### Trade
+
+The Supply consequence walks the squad to a trader smart and runs a full vanilla buy/sell cycle on arrival: sell every section in vanilla `[buy_sell]` that is not the best weapon and not slot-equipped (capped at the per-visit slider) at `floor(cost * buy_sell[4])`, then restock best-weapon ammo to vanilla `buy_sell[3]` at `floor(cost * buy_sell[5])`.
+
+X-Ray has the entire trade system written and shipped.
+`axr_trade_manager.script` (Alundaio 2013, Tronex 2019) implements the full NPC buy/sell cycle against `items\trade\gulag_job_trade_buy_sell.ltx`: per-section keep counts, restock targets, sell and buy multipliers, the exact engine cost formula `floor(cost * buy_sell[N])`.
+But `npc_trade_buy_sell` only fires when a long orchestration sequence lines up: the visitor must reach pt2 of a `_beh_trade_<i>` patrol path, must catch the `trade` signal on that exact tick, while the trader's own logic ticks see the visitor at the slot and write `seller_id` first.
+If any link drops, the function falls through to `alife_release_id` and items are deleted with no buyer.
+In vanilla Anomaly, the conditions almost never align: NPC trade is functionally dead.
+
+AlifePlus extracts the mechanics into a callable library (`xtrade` in xlibs) and drives them through radiant dispatch.
+The Supply drive picks a trader smart, the consequence walks the squad there, `xtrade.trade(visitor, trader, opts)` runs synchronously on arrival.
+Same ltx, same row schema, same cost formulas the engine reads.
+Traders are resolved by character profile name (`trader` / `barman` / `barmen`), covering all 20 vanilla trader smarts: Sidorovich at Cordon, Beard at Skadovsk, Owl at Marsh and Zaton, Ashot at Yanov, the barmen at Bar / Marsh / Yanov / Skadovsk, the faction traders, the 11 minor-base traders.
+The trade system GSC designed and Tronex finished maintaining now actually fires.
 
 ---
 
