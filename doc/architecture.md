@@ -368,6 +368,21 @@ Save persistence: the offmap counter exports / imports via xttltable in `ap_core
 
 ---
 
+## Item flow
+
+Four AP flows touch items. Each gates on a different vanilla classifier; AP holds no curated section lists.
+
+| Flow | Site | Gate | Behavior |
+|------|------|------|----------|
+| Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` | vanilla `[buy_sell]` via `xtrade.trade` | Sells eligible non-best-weapon non-equipped items at `cost * buy_sell[4]`, capped at `max_sell` per visit. Restocks best_weapon ammo to `buy_sell[3]` at `cost * buy_sell[5]`. The only money path. |
+| Stash Loot | `ap_ext_consequences_stash.script` `_arrive_loot` | `xtrade.is_eligible(sec, nil)` AND NOT `IsItem("tool" / "part" / "upgrade", sec)` | Takes up to `xtrade.keep_count(sec)` per section, round-robin across squad. Crafting workflow items stay in stash via vanilla `kind` classification. Remainder destroyed by `xstash.loot_stash`. |
+| Stash Fill | `ap_ext_consequences_stash.script` `_arrive_fill` | `xobject.in_reward_set(sec, set)` for set in `items_food / items_drink / items_health / items_bleed / items_medical / items_rad / items_ammo` | Deposits only surplus above `xtrade.keep_count(sec)`. Stateless consumables only; weapons / outfits / artefacts / grenades excluded by absence from reward sets (cache stores section names only, condition would be lost). |
+| Needs Consume | `ap_ext_consequences_needs.script` `_consume` | per-need predicate in `NEED_MATCH` | HUNGER: `IsItem("eatable", sec)`. HEAL: `items_health` or `items_bleed`. REST / SOCIAL / OUTPOST: `items_rad`. Releases first inventory match via `alife_release_id`. |
+
+The Item Transfer and Money Flow invariants above hold by construction: xlibs never invents sections off-config, and only `xtrade.sell_item` / `xtrade.buy_item` move money.
+
+---
+
 ## Squad Lifecycle
 
 ap_core_broker manages the full lifecycle: scripting, arrival detection, post-arrival wait, release.
