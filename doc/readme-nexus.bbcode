@@ -56,7 +56,7 @@ The economy follows the same logic. Real items move between real stalkers, and r
 
 [b]Trade and needs[/b]
 [list]
-[*]Stalkers visit supply traders to sell surplus inventory and restock ammo for their best weapon. Prices, sell caps, and restock targets read from the vanilla NPC-trade config.
+[*]Stalkers visit supply traders to sell surplus inventory and restock ammo for their best weapon. Prices, sell caps, and restock targets read from the engine's NPC trade config.
 [*]Squads loot stashes up to vanilla per-item keep counts. Crafting items (toolkits, repair kits, weapon parts, upgrades) stay for the player.
 [*]Squads deposit only their surplus food, drink, medical supplies, bandages, drugs, and ammo into stashes. Weapons, outfits, artefacts, grenades never enter AP-filled stashes.
 [*]Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Stalkers consume any vanilla-classified food, drink, medkit, bandage, or rad-cure from inventory.
@@ -268,7 +268,7 @@ Stalkers have human needs. Drives inspired by Maslow-Hull are scored by how long
 [*][b]Heal[/b] - The stalker finds a safe location and uses a medkit, bandage, or stimpack.
 [*][b]Shelter[/b] - The stalker finds a safe location when exposed too long.
 [*][b]Money[/b] - The stalker searches anomaly fields for artefacts or hunts mutant lairs.
-[*][b]Supply[/b] - The stalker visits a trader and trades an artefact for AP ammo, grenades, or medical supplies.
+[*][b]Supply[/b] - The stalker visits a trader, sells surplus inventory, and restocks ammo for the best weapon. Prices and restock targets come from the engine's NPC trade config.
 [*][b]Job[/b] - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
 [*][b]Social[/b] - The stalker finds a campfire or safe location and shares cigarettes and drinks.
 [/list]
@@ -279,7 +279,14 @@ Reach grows with player progression. Stalkers reach the next map once Yantar X-1
 
 Squads return home after a few in-zone days. Travellers stuck off-map are released after a week to keep level populations clean. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
 
-NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. Stalkers go to traders to swap artefacts for ammo, grenades, or medical supplies.
+NPCs consume real items from their inventory on arrival. A guard smokes a cigarette on duty. A hungry stalker eats canned goods or bread from his pack. A wounded one uses a medkit or bandage. At trader smarts, squads sell what they carry for cash and restock ammo for their best weapon. Prices come from the engine's NPC trade config.
+
+[size=2][b]Trade[/b][/size]
+Anomaly ships a full NPC buy/sell system that never fires in play. The math, configs, and scripts are there; the trigger isn't. The existing one requires a patrol-and-signal sequence that almost never lines up, so NPCs carry items they could sell, ammo they could buy, and money they could spend, and never do.
+
+AlifePlus runs the buy/sell cycle synchronously when a squad arrives at a trader smart. The squad sells what it carries and restocks ammo for its best weapon, at the prices and restock targets the engine's own config defines. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat.
+
+This closes the in-Zone economy loop. NPCs harvest at anomaly fields, kill mutants for parts, loot or fill stashes; the surplus turns into cash at the next trader visit; the cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.
 
 [size=2][b]Instincts[/b][/size]
 Mutants have instincts. Drives are scored by deprivation, the same way as stalker needs. Scatter is binary and triggered by predator proximity. The strongest unmet instinct wins. Consequences search within eye or scent range.

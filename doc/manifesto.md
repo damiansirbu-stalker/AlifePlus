@@ -639,7 +639,7 @@ Free items from a trader is a spawn, not a trade.
 
 ### Trade
 
-The Supply consequence walks the squad to a trader smart and runs a full vanilla buy/sell cycle on arrival: sell every section in vanilla `[buy_sell]` that is not the best weapon and not slot-equipped (capped at the per-visit slider) at `floor(cost * buy_sell[4])`, then restock best-weapon ammo to vanilla `buy_sell[3]` at `floor(cost * buy_sell[5])`.
+The Supply consequence walks the squad to a trader smart and runs the engine's full NPC buy/sell cycle on arrival: sell every section in `[buy_sell]` that is not the best weapon and not slot-equipped (capped at the per-visit slider) at `floor(cost * buy_sell[4])`, then restock best-weapon ammo to `buy_sell[3]` at `floor(cost * buy_sell[5])`. Cost reads `system.ltx <sec> cost`, multipliers read `gulag_job_trade_buy_sell.ltx [buy_sell]`. Both files honor whatever modpack overlays (GAMMA / EFP / Zona) put on top; xtrade does no AP arithmetic of its own.
 
 X-Ray has the entire trade system written and shipped.
 `axr_trade_manager.script` (Alundaio 2013, Tronex 2019) implements the full NPC buy/sell cycle against `items\trade\gulag_job_trade_buy_sell.ltx`: per-section keep counts, restock targets, sell and buy multipliers, the exact engine cost formula `floor(cost * buy_sell[N])`.
