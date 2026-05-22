@@ -23,6 +23,7 @@ next
     Changed: Radiant tick default raised from 10s to 15s.
     Changed: News compose interval raised to 60-200s from 30-100s. News fires half as often.
   Fixed:
+    Fixed: Supply Trader squads now sell surplus inventory and buy ammo on arrival at trader smarts. The previous trader-resolver returned nil because it matched by gulag job_type_id which finds the visitor patrol slot rather than the barman; squads arrived but no items or money moved. Resolution now matches by NPC profile name (trader, barman, barmen) and covers all 20 vanilla trader smarts (Sidorovich at Cordon, Beard at Skadovsk, Owl at Marsh and Zaton, Ashot at Yanov, barmen at Bar / Marsh / Yanov / Skadovsk, faction traders, and the 11 minor-base traders).
     Fixed: Squadkill Revenge and Harvest Rob player chasers release when the chaser's faction becomes friendly to the player. The hostility check previously ran only at dispatch, so a chaser dispatched while the player was Loner kept following after the player joined Duty or Freedom. Per-scan revalidation releases the chaser within 20 seconds of the change.
     Fixed: SIMBOARD smart terrain roster tracks AP-driven squad moves. The xsmart.has_capacity check counts AP routings. Integrator mods receive squad_on_enter_smart and squad_on_leave_smart callbacks for them.
 

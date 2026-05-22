@@ -417,10 +417,10 @@ Compatibility & Safety:
 
 ---
 
-Companion mod:
+Companion mods:
 
-AlifePlus increases NPC activity and combat across the Zone. AlifeBalance reads those death events and accelerates respawn cooldowns on the level and faction where losses happened. Heavy combat regions recover, quiet ones stay quiet.
-AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
+AlifeBalance (respawn pacing) -- https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance | https://www.nexusmods.com/stalkeranomaly/mods/110
+AlifeGuard (entity hygiene) -- https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001 | https://www.nexusmods.com/stalkeranomaly/mods/104
 
 ---
 
@@ -456,11 +456,6 @@ Presets:
 ---
 
 FAQ:
-
-How do I make events occur faster or slower?
-  Calmer world: raise A-Life Interval to 8-10, lower Consequence Budget to 1, raise Radiant Cooldown to 15-20.
-  Busier world: lower A-Life Interval to 2-3, raise Consequence Budget to 4, lower Radiant Cooldown to 5.
-  Gung-Ho: lower A-Life Interval to 1, raise Cause and Consequence Budget to max, set Radiant Cooldown to 0. Good luck!
 
 Does it conflict with the vanilla task system?
   AlifePlus validates every entity through protection gates at every pipeline layer.

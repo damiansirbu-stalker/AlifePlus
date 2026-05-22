@@ -27,14 +27,17 @@ local function _consume(go, sections)
     return nil
 end
 
---- Trade visitor inventory against trader at smart. Resolves trader via xsmart.get_npc_for_job
---- then delegates to xtrade.trade for the full vanilla sell+buy cycle (vanilla cost formulas,
---- best_weapon and slot-equipped skipped on sell, best_weapon ammo restocked to buy_sell[3]).
+--- Trade visitor inventory against trader at smart. Resolves trader via xsmart.get_trader_at_smart
+--- (profile-name match: trader / barman / barmen) then delegates to xtrade.trade for the full
+--- vanilla sell+buy cycle (vanilla cost formulas, best_weapon and slot-equipped skipped on sell,
+--- best_weapon ammo restocked to buy_sell[3]). Sell phase capped to random(min, max) items per
+--- visit so a single trade arrival does not strip the squad to keep_count in one go.
 local function _arrive_trade(visitor_go, smart_id)
     local smart_se = smart_id and xobject.se(smart_id)
-    local trader_go = smart_se and xsmart.get_npc_for_job(smart_se, xsmart.JOB_TYPE_TRADER)
+    local trader_go = smart_se and xsmart.get_trader_at_smart(smart_se)
     if not trader_go then return {}, {} end
-    local result = xtrade.trade(visitor_go, trader_go)
+    local max_sell = math.random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
+    local result = xtrade.trade(visitor_go, trader_go, { max_sell = max_sell })
     return result.sold, result.bought
 end
 

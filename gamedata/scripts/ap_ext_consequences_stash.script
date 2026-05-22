@@ -95,6 +95,14 @@ local function _arrive_loot(squad, args)
         return
     end
 
+    local cmd_id = squad:commander_id()
+    local st = cmd_id and db.storage[cmd_id]
+    if not st or st.object == nil then
+        ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d commander_offline, clearing stash", stash_id, squad.id)
+        xstash.loot_stash(stash_id)
+        return
+    end
+
     local exclude = _build_exclude()
     local member_ids, counts = _scan_squad(squad)
     if #member_ids == 0 then
@@ -178,6 +186,13 @@ local function _arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
     local stash_id = args.stash_id
+
+    local cmd_id = squad:commander_id()
+    local st = cmd_id and db.storage[cmd_id]
+    if not st or st.object == nil then
+        ap_core_debug.debug(LOG_FILL .. " arrive: stash=%d squad=%d commander_offline", stash_id, squad.id)
+        return
+    end
 
     local max_items = random(cfg.consequence_stash_fill_min_items, cfg.consequence_stash_fill_max_items)
     local exclude = _build_exclude()

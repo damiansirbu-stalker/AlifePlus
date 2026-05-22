@@ -6,9 +6,13 @@ AlifePlus is a reactive alife framework for STALKER Anomaly - a complete simulat
 
 Any alife scenario that can be described as "when X happens, do Y" can be implemented by registering a cause and a consequence. See the [integration guide](doc/integration.md) for examples, API reference, and a two-mod collaboration scenario.
 
-[ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01) | [Bugs, suggestions](https://github.com/damiansirbu-stalker/AlifePlus/issues)
+[ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01) | [Nexus](https://www.nexusmods.com/stalkeranomaly/mods/105) | [Bugs, suggestions](https://github.com/damiansirbu-stalker/AlifePlus/issues)
 
 Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.5.1](https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001), MCM
+
+Companion mods:
+- AlifeBalance ([ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance) · [Nexus](https://www.nexusmods.com/stalkeranomaly/mods/110)) — respawn pacing
+- AlifeGuard ([ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001) · [Nexus](https://www.nexusmods.com/stalkeranomaly/mods/104)) — entity hygiene
 
 ## Documentation
 
@@ -18,6 +22,10 @@ Requires: Anomaly 1.5.3, Modded exes, [xlibs 1.5.1](https://www.moddb.com/mods/s
 - [architecture.md](doc/architecture.md) - system internals: event pipeline, dispatch pipeline, protection, ownership, lifecycle
 - [integration.md](doc/integration.md) - how to build on AlifePlus: register causes/consequences, mod collaboration, API reference
 - [conventions.md](doc/conventions.md) - naming rules, result codes, MCM settings, logging format
+
+## Conflicting mods
+
+AlifePlus rides vanilla NPC behavior — looting corpses, gathering items, helping wounded, fighting. Mods that disable those behaviors leave AlifePlus with less to react to. Look for overlays of `gamedata/scripts/xr_*.script` or `gamedata/configs/ai_tweaks/*.ltx` that turn schemes off.
 
 ## License
 
