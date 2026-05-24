@@ -2,7 +2,7 @@
 
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
 local math_huge, math_floor = math.huge, math.floor
-local xobject, xsmart, xtime, xtable = xobject, xsmart, xtime, xtable
+local xobject, xsmart_spawn, xtime, xtable = xobject, xsmart_spawn, xtime, xtable
 
 local CALLBACK = ap_core_const.CALLBACK
 
@@ -37,7 +37,7 @@ local function _evict_oldest_conquest()
     local oldest_id = _find_oldest_conquest()
     if not oldest_id then return end
     local smart = xobject.se(oldest_id)
-    if smart then xsmart.clear_shared_spawn(smart, CONQUEST_KEY) end
+    if smart then xsmart_spawn.clear_shared_spawn(smart, CONQUEST_KEY) end
     _conquered_smarts[oldest_id] = nil
     ap_core_debug.debug("[MUTATOR.SMART] evict_oldest: smart=%d", oldest_id)
 end
@@ -59,7 +59,7 @@ function conquer_smart(smart_id, faction)
             _evict_oldest_conquest()
         end
     end
-    if not xsmart.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.mutator_area_conquest_spawn_num) then
+    if not xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.mutator_area_conquest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
@@ -82,7 +82,7 @@ local function _evict_oldest_swarm()
     local oldest_id = _find_oldest_swarm()
     if not oldest_id then return end
     local smart = xobject.se(oldest_id)
-    if smart then xsmart.clear_shared_spawn(smart, SWARM_KEY) end
+    if smart then xsmart_spawn.clear_shared_spawn(smart, SWARM_KEY) end
     _swarmed_smarts[oldest_id] = nil
     ap_core_debug.debug("[MUTATOR.SMART] evict_oldest_swarm: smart=%d", oldest_id)
 end
@@ -104,7 +104,7 @@ function swarm_smart(smart_id, species)
             _evict_oldest_swarm()
         end
     end
-    if not xsmart.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
+    if not xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s FAILED (unknown species)", smart_id, species)
         return false
     end
@@ -122,7 +122,7 @@ local function _check_conquest_decay(smart_id, data, now, decay_sec)
     if not data.conquered_at then return false end
     if (now - data.conquered_at) <= decay_sec then return false end
     local smart = xobject.se(smart_id)
-    if smart then xsmart.clear_shared_spawn(smart, CONQUEST_KEY) end
+    if smart then xsmart_spawn.clear_shared_spawn(smart, CONQUEST_KEY) end
     ap_core_debug.debug("[MUTATOR.SMART] conquest_decay: smart=%d faction=%s age=%dh",
         smart_id, data.faction, math_floor((now - data.conquered_at) / 3600))
     return true
@@ -133,7 +133,7 @@ end
 local function _check_conquest_respawn(smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
-    xsmart.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.mutator_area_conquest_spawn_num)
+    xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.mutator_area_conquest_spawn_num)
 end
 
 -- Check if a single swarm entry has decayed
@@ -143,7 +143,7 @@ local function _check_swarm_decay(smart_id, data, now, decay_sec)
     if not data.swarmed_at then return false end
     if (now - data.swarmed_at) <= decay_sec then return false end
     local smart = xobject.se(smart_id)
-    if smart then xsmart.clear_shared_spawn(smart, SWARM_KEY) end
+    if smart then xsmart_spawn.clear_shared_spawn(smart, SWARM_KEY) end
     ap_core_debug.debug("[MUTATOR.SMART] swarm_decay: smart=%d species=%s age=%dh",
         smart_id, data.faction, math_floor((now - data.swarmed_at) / 3600))
     return true
@@ -154,7 +154,7 @@ end
 local function _check_swarm_respawn(smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
-    xsmart.set_shared_spawn(smart, SWARM_KEY, data.faction, cfg.mutator_area_swarm_spawn_num)
+    xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, data.faction, cfg.mutator_area_swarm_spawn_num)
 end
 
 -- Check if a single infest entry has decayed
@@ -164,7 +164,7 @@ local function _check_infest_decay(smart_id, data, now, decay_sec)
     if not data.infested_at then return false end
     if (now - data.infested_at) <= decay_sec then return false end
     local smart = xobject.se(smart_id)
-    if smart then xsmart.clear_exclusive_spawn(smart, INFEST_KEY) end
+    if smart then xsmart_spawn.clear_exclusive_spawn(smart, INFEST_KEY) end
     ap_core_debug.debug("[MUTATOR.SMART] infest_decay: smart=%d faction=%s age=%dh",
         smart_id, data.faction, math_floor((now - data.infested_at) / 3600))
     return true
@@ -177,7 +177,7 @@ end
 local function _check_infest_respawn(smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
-    xsmart.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.mutator_area_infest_spawn_num)
+    xsmart_spawn.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.mutator_area_infest_spawn_num)
 end
 
 --- Update all conquered smarts: re-apply injection, decay expired entries.
@@ -274,7 +274,7 @@ function infest_smart(smart_id, faction, level_id)
     if not can_infest_on_level(level_id) then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
-    if not xsmart.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.mutator_area_infest_spawn_num) then
+    if not xsmart_spawn.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.mutator_area_infest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
