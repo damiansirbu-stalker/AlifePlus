@@ -1,21 +1,29 @@
 --- ap_ext_fx: multi-source horror aggregator
 --- Composes xpp (psy_antenna tint) + xsound (tinnitus) + ambient duck.
---- Each source: { pos, radius, max_power }. Per tick, max contribution across all sources
---- drives the rendered factor. Service module called by consequences; not a consequence itself.
+--- Each source carries a position, falloff radius, and max_power. Per tick, the maximum
+--- contribution across all registered sources drives every primitive. Service module
+--- called by consequences; not a consequence itself.
 
+local pairs, tostring, next = pairs, tostring, next
+local math_sqrt, time_global = math.sqrt, time_global
+local RegisterScriptCallback, UnregisterScriptCallback = RegisterScriptCallback, UnregisterScriptCallback
 local xpp, xsound, ap_core_debug = xpp, xsound, ap_core_debug
+
+local CALLBACK_ACTOR_ON_UPDATE = ap_core_const.CALLBACK.ACTOR_ON_UPDATE
 
 local TICK_MS       = 150
 local PP_FILE       = xpp.PPE.PSY_ANTENNA
 local PP_SMOOTHING  = 0.5
 local SND_TINN      = xsound.SND.TINNITUS
 local SND_SMOOTHING = 1.5
-local DUCK_SCALE    = 0.7   -- ambient = 1 - factor * DUCK_SCALE
+local DUCK_SCALE    = 0.7
 
-local _sources    = {}   -- id -> { pos, radius, max_power }
-local _slots      = nil  -- { pp, snd_tinn } when active
+local _sources    = {}
+local _slots      = nil
 local _registered = false
 local _last_tick  = 0
+
+local LOG_FX = ap_core_debug.bracket("FX.HORROR")
 
 local function _acquire_slots()
     if _slots then return end
@@ -38,16 +46,17 @@ local function _tick()
     local now = time_global()
     if now - _last_tick < TICK_MS then return end
     _last_tick = now
-    if not db.actor or not _slots then return end
+    local actor = db.actor
+    if not actor or not _slots then return end
 
-    local apos = db.actor:position()
+    local apos = actor:position()
     local max_factor = 0
     for _, src in pairs(_sources) do
-        local r_sq = src.radius * src.radius
-        local d_sq = apos:distance_to_sqr(src.pos)
-        if d_sq < r_sq then
-            local f = src.max_power * (1 - math.sqrt(d_sq) / src.radius)
-            if f > max_factor then max_factor = f end
+        local radius_sqr = src.radius * src.radius
+        local dist_sqr = apos:distance_to_sqr(src.pos)
+        if dist_sqr < radius_sqr then
+            local factor = src.max_power * (1 - math_sqrt(dist_sqr) / src.radius)
+            if factor > max_factor then max_factor = factor end
         end
     end
 
@@ -59,14 +68,14 @@ end
 local function _ensure_registered()
     if _registered then return end
     _last_tick = time_global()
-    RegisterScriptCallback("actor_on_update", _tick)
+    RegisterScriptCallback(CALLBACK_ACTOR_ON_UPDATE, _tick)
     _registered = true
 end
 
-local function _maybe_unregister()
+local function _try_unregister()
     if not _registered then return end
     if next(_sources) == nil then
-        UnregisterScriptCallback("actor_on_update", _tick)
+        UnregisterScriptCallback(CALLBACK_ACTOR_ON_UPDATE, _tick)
         _registered = false
         _release_slots()
     end
@@ -82,7 +91,7 @@ function add_source(id, pos, radius, max_power)
     _sources[id] = { pos = pos, radius = radius, max_power = max_power }
     _acquire_slots()
     _ensure_registered()
-    ap_core_debug.debug("[HORROR] add_source id=%s pos=(%.1f,%.1f,%.1f) r=%.1f max=%.2f",
+    ap_core_debug.debug(LOG_FX .. " add_source id=%s pos=(%.1f,%.1f,%.1f) r=%.1f max=%.2f",
         tostring(id), pos.x, pos.y, pos.z, radius, max_power)
 end
 
@@ -92,16 +101,16 @@ end
 function remove_source(id)
     if not _sources[id] then return false end
     _sources[id] = nil
-    _maybe_unregister()
-    ap_core_debug.debug("[HORROR] remove_source id=%s", tostring(id))
+    _try_unregister()
+    ap_core_debug.debug(LOG_FX .. " remove_source id=%s", tostring(id))
     return true
 end
 
 --- Clear all sources. Releases slots and unregisters tick.
 function clear()
     _sources = {}
-    _maybe_unregister()
-    ap_core_debug.debug("[HORROR] cleared")
+    _try_unregister()
+    ap_core_debug.debug(LOG_FX .. " cleared")
 end
 
 function has_source(id)
@@ -109,9 +118,9 @@ function has_source(id)
 end
 
 function source_count()
-    local n = 0
-    for _ in pairs(_sources) do n = n + 1 end
-    return n
+    local count = 0
+    for _ in pairs(_sources) do count = count + 1 end
+    return count
 end
 
 --- Reset all state on save load.
@@ -119,7 +128,7 @@ function on_game_start()
     _sources = {}
     _slots   = nil
     if _registered then
-        UnregisterScriptCallback("actor_on_update", _tick)
+        UnregisterScriptCallback(CALLBACK_ACTOR_ON_UPDATE, _tick)
         _registered = false
     end
 end
