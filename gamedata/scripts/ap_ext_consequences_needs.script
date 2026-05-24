@@ -1,5 +1,6 @@
 --- ap_ext_consequences_needs: Action-only consequences for human needs (14 entries, all 1:1 with cause).
 
+local math_random, table_concat = math.random, table.concat
 local alife_release_id, xobject, xsmart, xtime, xtrade = alife_release_id, xobject, xsmart, xtime, xtrade
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
 
@@ -58,7 +59,7 @@ local function _arrive_trade(visitor_go, smart_id)
     local smart_se = smart_id and xobject.se(smart_id)
     local trader_go = smart_se and xsmart.get_trader_at_smart(smart_se)
     if not trader_go then return {}, {} end
-    local max_sell = math.random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
+    local max_sell = math_random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
     local result = xtrade.trade(visitor_go, trader_go, { max_sell = max_sell })
     return result.sold, result.bought
 end
@@ -117,7 +118,7 @@ local function _dispatch_arrive(trace, go, args)
             local sold, bought = _arrive_trade(go, args.dst_smart_id)
             local fired = (#sold > 0) or (#bought > 0)
             return { code = fired and TRACE.OK or TRACE.NONE,
-                sold = table.concat(sold, ","), bought = table.concat(bought, ",") }
+                sold = table_concat(sold, ","), bought = table_concat(bought, ",") }
         end)
         return "trade"
     end
