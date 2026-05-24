@@ -135,7 +135,7 @@ Five gates (header at ap_core_producer.script:214):
 2. is_protected. Full eligibility check via ap_core_broker.is_protected. Runs on ~10 squads/sec from PACER_1. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
 3. RATIO. Bresenham integer admission gate. Off-map outnumber on-map ~50-100:1 per squad (online fires at frame rate, offline via scheduler round-robin). Cross-multiplication: throttled_count * |r| <= (10 - |r|) * favored_count. At default ratio 8 admits ~4 on-map per 1 off-map. squad.online (C++ m_bOnline, refreshed by check_online_status() before the callback) is the source. Separate counter pairs for radiant and reactive (_radiant_ct, _reactive_ct). Counters reset at 32768. Must run after is_protected so it only balances eligible squads.
 4. PACER_2. Budget limiter. os.clock() with cfg.distributor_interval_sec (default 15s, ~4 triggers/min). Every PACER_2 admit produces an EVAL.
-5. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 2 (`ap_core_const.script:146`); RULES rejections are free and the generator can cascade through all of its causes, but only causes that pass RULES and enter their world SCAN consume a slot. Budget is a local Lua counter, resets every `_on_smart` call.
+5. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 1 (`ap_core_const.script:147`); RULES rejections are free and the generator can cascade through all of its causes, but only the first cause that passes RULES and enters its world SCAN consumes the slot — any later cause that reaches SCAN in the same `_on_smart` call hits BUDGET_EXHAUSTED. Budget is a local Lua counter, resets every `_on_smart` call.
 
 Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment.
 
@@ -654,7 +654,7 @@ Coexistence:
 - max_population=1 mutant lair: conquest entry competes with the original mutant entry. Engine picks one eligible entry at random per respawn cycle (smart_terrain.script:1707). Sometimes a mutant spawns, sometimes the conqueror's squad.
 - max_population=3 stalker camp: the conquest entry adds one squad slot alongside existing stalker spawns. Mixed presence, not replacement.
 
-Revert. xsmart.clear_shared_spawn(smart, "ap_conquest") removes the entry. Smart returns to its original LTX-only spawn tables. faction_controlled and smart.faction were never modified.
+Revert. xsmart_spawn.clear_shared_spawn(smart, "ap_conquest") removes the entry. Smart returns to its original LTX-only spawn tables. faction_controlled and smart.faction were never modified.
 
 Volatility. Engine rebuilds respawn_params from LTX on every load (STATE_Read calls read_params), so the injected entry is lost. Two-phase restore: load_state -> _conquered_pending; on_game_load applies via set_shared_spawn after entities exist. 60s periodic scanner re-applies injections as a safety net.
 
@@ -664,7 +664,7 @@ Eviction. FIFO at cfg.mutator_area_conquest_max_smarts (default 30). Oldest by g
 
 #### Swarm (shared spawn, mutants)
 
-swarm_smart(smart_id, species) calls xsmart.set_shared_spawn(smart, "ap_swarm", species, spawn_num). Same mechanism as conquest - additive shared spawn entry, no faction_controlled, no .faction field. The injected entry fires alongside the originals. Species comes from xsmart.SQUADS_BY_SPECIES (simulation_* sections).
+swarm_smart(smart_id, species) calls xsmart_spawn.set_shared_spawn(smart, "ap_swarm", species, spawn_num). Same mechanism as conquest - additive shared spawn entry, no faction_controlled, no .faction field. The injected entry fires alongside the originals. Species comes from xsmart_spawn.SQUADS_BY_SPECIES (simulation_* sections).
 
 Independence from conquest. _swarmed_smarts is a separate table from _conquered_smarts. Same-smart conquest and swarm coexist as two distinct respawn_params entries (ap_conquest + ap_swarm); engine picks one eligible entry per respawn cycle. Save and load round-trip each table separately.
 
@@ -676,7 +676,7 @@ Volatility. Same as conquest: engine rebuilds respawn_params on STATE_Read. Two-
 
 #### Infestation (exclusive spawn)
 
-infest_smart(smart_id, faction, level_id) calls xsmart.set_exclusive_spawn(smart, "ap_infest", faction, spawn_num). Sets smart.faction_controlled to a non-nil value (activating the engine's faction gate at line 1667) and adds ONE respawn_params entry with a .faction field matching the infesting faction. LTX entries have no .faction so they fail the gate (nil == faction is false). Only the infest entry spawns. Exclusive replacement without deleting originals.
+infest_smart(smart_id, faction, level_id) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_infest", faction, spawn_num). Sets smart.faction_controlled to a non-nil value (activating the engine's faction gate at line 1667) and adds ONE respawn_params entry with a .faction field matching the infesting faction. LTX entries have no .faction so they fail the gate (nil == faction is false). Only the infest entry spawns. Exclusive replacement without deleting originals.
 
 Faction re-apply. check_smart_faction runs every tick on online smarts and counts only IsStalker NPCs - monsters invisible. When only mutants occupy an online smart, self.faction reverts to default_faction, breaking the faction gate match. 60s periodic scanner re-applies smart.faction via set_exclusive_spawn for all infested smarts.
 
@@ -701,7 +701,7 @@ Four categories, each with its own mechanic for when and how the cause fires:
 | Category | Mechanic | Cause | Consequence |
 |----------|----------|-------|-------------|
 | Reactions | engine event (death, pickup, healing) | builds payload from callback | perception scan from event position |
-| Opportunities | squad tick + look-around | find_* + state-classify + pick | act using payload |
+| Opportunities | squad tick + look-around | find_* + state-classify eligible siblings + RULES cascade | act using payload |
 | Needs | squad tick + Hull score on stalker DTO | pick strongest drive | find satisfaction location + act |
 | Instincts | squad tick + Hull score on mutant DTO | pick strongest drive | find satisfaction location + act |
 
@@ -752,7 +752,7 @@ cfg key layout:
 - cause_<answer>_enabled: per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
 - Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const (line 174-175). Applies uniformly to every personality roll.
 
-Used by ap_ext_causes_needs.script (9 drives, 14 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) do not follow this pattern - they pick one cause by inspecting world state at peek time, not by Hull score.
+Used by ap_ext_causes_needs.script (9 drives, 14 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
 
 ---
 
@@ -955,9 +955,9 @@ Five result codes: SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED. 
 1. The actor is always the ticking squad. No actor scan in radiant.
 2. Cause and consequence are 1:1 and share the noun. Multi-answer drives split into multiple causes; each cause has its own 1:1 consequence.
 3. The cause generator owns RULES (toggle, alignment, personality, threshold) and SCAN (find_smart). The consequence is action-only - resolve squad and smart from the payload, route the squad, record the event, return SUCCESS.
-4. The generator cascades internally (cause-to-cause within the generator, top-down) and externally (generator-to-generator at the producer). Hull scoring runs first for bundled generators (needs, instincts) to produce the candidate list; state-classifier generators (stash, area) skip Hull and pick directly from world peek.
+4. The generator cascades internally (cause-to-cause within the generator, top-down) and externally (generator-to-generator at the producer). Hull-scored generators (needs, instincts) order drives by Hull score and walk CAUSES under each overdue drive. State-classifier generators (stash, area) order siblings by world-state eligibility and walk them in that order. Both then cascade on RULES, first publish wins.
 5. No fallbacks inside a single cause. One SCAN with one filter. Variant outcomes are separate causes.
-6. Per-generator SCAN budget: RADIANT_MAX_SCANS_PER_GENERATOR = 2. A slot is consumed only when a cause passes RULES and reaches its world SCAN (find_smart / find_squads). RULES rejections (toggle, alignment, personality, threshold, period) are free and do not count. Budget is local to one `_on_smart` invocation and resets on the next call. Internal tuning, not MCM.
+6. Per-generator SCAN budget: RADIANT_MAX_SCANS_PER_GENERATOR = 1. A slot is consumed only when a cause passes RULES and reaches its world SCAN (find_smart / find_squads). RULES rejections (toggle, alignment, personality, threshold, period) are free and do not count. At most one SCAN reach per `_on_smart` call; any subsequent cause that reaches SCAN returns BUDGET_EXHAUSTED. Budget is local to one `_on_smart` invocation and resets on the next call. Internal tuning, not MCM.
 7. Stalker and mutant get separate causes for the same world state - needs (stalker) and instincts (mutant) are distinct families with distinct DTOs.
 8. CONFIGS factory is the default consequence file shape. _set is vestigial for radiant.
 9. on_arrive: the DTO reset is unconditional (online or offline - the abstract state advances either way). World mutation (item consume, trade, inventory operations) runs only when online.
