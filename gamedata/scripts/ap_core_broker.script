@@ -6,7 +6,7 @@
 local pairs, tostring, type = pairs, tostring, type
 local table_remove, RegisterScriptCallback = table.remove, RegisterScriptCallback
 local string_format = string.format
-local xobject, xsquad, xsmart, xtime, xtable, xlevel = xobject, xsquad, xsmart, xtime, xtable, xlevel
+local xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice = xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
@@ -244,6 +244,7 @@ local function _release_to_dwell(squad_or_id)
         xsquad.release_squad(squad)
     end
     _ap_scripted_squads[squad_id] = {
+        interruptable  = false,
         offmap         = true,
         home_level     = data.home_level,
         dispatched_at  = data.dispatched_at,
@@ -361,12 +362,13 @@ local function _dispatch_return_home(squad_id, squad, data, now)
     if not name or name == "" then return false end
     if not xsquad.acquire_squad(squad, home_smart, false) then return false end
     -- Clear source (foreign dwell smart) before engine bumps smart_id to home_smart.
-    SIMBOARD:assign_squad_to_smart(squad, nil)
+    xsmart.assign_squad_to_smart(squad, nil)
     _ap_scripted_squads[squad_id] = {
         scripted_target   = name,
         target_smart_id   = home_smart.id,
         tracked_at        = now,
         pre_release_gulag = PRE_RELEASE_GULAG_DEFAULT,
+        interruptable     = false,
         offmap            = true,
         home_level        = data.home_level,
         dispatched_at     = data.dispatched_at,
@@ -493,7 +495,7 @@ function script_squad(squad, smart, opts)
     -- Clear source from SIMBOARD roster before engine specific_update bumps squad.smart_id
     -- to the new target on next tick (sim_squad_scripted.script:288-290). Reading smart_id
     -- after that bump would lose the true source. The nil-target form fires squad_on_leave_smart.
-    SIMBOARD:assign_squad_to_smart(squad, nil)
+    xsmart.assign_squad_to_smart(squad, nil)
     local now = xtime.game_sec()
     local data = {
         scripted_target   = name,
@@ -617,7 +619,7 @@ local function _commit_arrival(squad_id, squad, smart, data, now)
     end
     data.arrived = true
     data.release_at = now + data.pre_release_gulag
-    SIMBOARD:assign_squad_to_smart(squad, smart.id)
+    xsmart.assign_squad_to_smart(squad, smart.id)
     return true
 end
 
@@ -629,7 +631,7 @@ end
 -- semantics match (outbound registers via _commit_arrival).
 local function _handle_offmap_arrival(squad_id, squad, smart, data, now)
     if data.arrived_at and not data.return_home_at then
-        SIMBOARD:assign_squad_to_smart(squad, smart.id)
+        xsmart.assign_squad_to_smart(squad, smart.id)
         ap_core_debug.debug("[SQUAD.OFFMAP] home_arrived: squad=%d", squad_id)
         _unscript_squad(squad)
         return true
@@ -660,11 +662,10 @@ end
 
 -- Detect physical arrival; on arrival, run the offmap session step, run the on_arrive
 -- handler if any, then commit the gulag entry (which also registers the squad on the
--- destination smart's SIMBOARD roster).
-local function _run_arrival(squad_id, data, now)
+-- destination smart's SIMBOARD roster). squad ref threaded from _update_scripted_squad.
+local function _run_arrival(squad_id, squad, data, now)
     if not data.target_smart_id then return end
     if data.arrived then return end
-    local squad = xobject.se(squad_id)
     if not squad or not squad.commander_id then
         ap_core_debug.debug("[SQUAD] entity_lost: squad=%d target=%s", squad_id, data.scripted_target)
         _unscript_squad(squad_id)
@@ -689,25 +690,23 @@ end
 -- Update the gulag state for one scan. Two paths: (1) release_at reached -> normal
 -- release (offmap-aware); (2) mid-gulag has_jobs_for re-check via _no_jobs_for_squad ->
 -- release if the destination no longer accepts the squad.
-local function _update_gulag(squad_id, data, now)
+local function _update_gulag(squad_id, squad, data, now)
     if not data.arrived then return end
     if now >= data.release_at then
         if data.offmap then
             ap_core_debug.debug("[SQUAD] gulag_released_to_dwell: squad=%d target=%s",
                 squad_id, tostring(data.scripted_target))
-            _release_to_dwell(squad_id)
+            _release_to_dwell(squad)
         else
             ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
                 squad_id, tostring(data.scripted_target))
-            _unscript_squad(squad_id)
+            _unscript_squad(squad)
         end
         return
     end
     if not data.target_smart_id then return end
     local smart = xobject.se(data.target_smart_id)
     if not smart then return end
-    local squad = xobject.se(squad_id)
-    if not squad then return end
     if _no_jobs_for_squad(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_no_jobs_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
         if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
@@ -740,11 +739,9 @@ local function _update_scripted_squad(squad_id)
         return
     end
     local now = xtime.game_sec()
-    if data.offmap then
-        if _scan_offmap_entry(squad_id, squad, data, now) then
-            _ap_scripted_squads[squad_id] = nil
-            return
-        end
+    if data.offmap and _scan_offmap_entry(squad_id, squad, data, now) then
+        _ap_scripted_squads[squad_id] = nil
+        return
     end
     if not data.scripted_target then return end
     -- TTL: off-map sessions own their own lifetime budget via offmap_despawn_hours;
@@ -763,41 +760,48 @@ local function _update_scripted_squad(squad_id)
     if xsquad.reassert_target(squad, data.scripted_target) then
         ap_core_debug.debug("[SQUAD] reassert: squad=%d target=%s was=%s", squad_id, data.scripted_target, tostring(prev_target))
     end
-    _run_arrival(squad_id, data, now)
-    _update_gulag(squad_id, data, now)
+    _run_arrival(squad_id, squad, data, now)
+    _update_gulag(squad_id, squad, data, now)
 end
 
-local _pending_buf = {}
+-- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
+local function _log_tracked_entry(squad_id, data, now)
+    if data.scripted_target then
+        ap_core_debug.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
+            squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
+            now - (data.tracked_at or now),
+            tostring(data.offmap or false), tostring(data.arrived or false),
+            tostring(data.interruptable or false))
+        return
+    end
+    ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_dwell home=%s arrived_age=%ds return_in=%ds left_home=%s",
+        squad_id, tostring(data.home_level or "-"),
+        data.arrived_at and (now - data.arrived_at) or -1,
+        data.return_home_at and (data.return_home_at - now) or -1,
+        tostring(data.left_home or false))
+end
 
+-- Kick an xslice session every UPDATE_SCRIPTED_SQUADS_SEC; one squad per frame caps the per-frame cost at one arrival commit.
 local function _update_scripted_squads()
     ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
-    local t0 = ap_core_debug.enabled() and os.clock() or nil
-    local now = t0 and xtime.game_sec()
-    local count = 0
+    if xslice.is_active("broker_scan") then return end
+    local debug_on = ap_core_debug.enabled()
+    local now = debug_on and xtime.game_sec()
+    local queue = {}
     for squad_id, data in pairs(_ap_scripted_squads) do
-        count = count + 1
-        _pending_buf[count] = squad_id
-        if t0 then
-            if data.scripted_target then
-                ap_core_debug.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
-                    squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
-                    now - (data.tracked_at or now),
-                    tostring(data.offmap or false), tostring(data.arrived or false),
-                    tostring(data.interruptable or false))
-            else
-                ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_dwell home=%s arrived_age=%ds return_in=%ds left_home=%s",
-                    squad_id, tostring(data.home_level or "-"),
-                    data.arrived_at and (now - data.arrived_at) or -1,
-                    data.return_home_at and (data.return_home_at - now) or -1,
-                    tostring(data.left_home or false))
-            end
-        end
+        queue[#queue + 1] = squad_id
+        if debug_on then _log_tracked_entry(squad_id, data, now) end
     end
-    for i = 1, count do
-        _update_scripted_squad(_pending_buf[i])
-        _pending_buf[i] = nil
-    end
-    if t0 then ap_core_debug.debug("[SQUAD] update_scan: tracked=%d [%.2fms]", count, (os.clock() - t0) * 1000) end
+    local count = #queue
+    if count == 0 then return end
+
+    xslice.start("broker_scan", queue, {
+        step = 1,
+        func = function(squad_id) _update_scripted_squad(squad_id); return true end,
+        on_done = function()
+            if debug_on then ap_core_debug.debug("[SQUAD] scan_cycle: tracked=%d frame-spread", count) end
+        end,
+    })
 end
 
 
