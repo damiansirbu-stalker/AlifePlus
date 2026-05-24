@@ -117,6 +117,36 @@ function find_squads_observed(trace, position, opts)
     return squads
 end
 
+--- Short-circuiting boolean any-match against the squad pool.
+--- Same protection + level-scope source layering as find_squads. No preempt — boolean answer
+--- is final. Use when the consumer is yes/no (does any X exist nearby?) and find_squads'
+--- collect-all-then-sample pattern wastes the walk.
+--- @param pos vector Origin position
+--- @param opts table|nil Caller options (factions, level_id, min/max_distance, exclude_*, match)
+--- @return boolean True if any matching squad in radius
+function has_squad(pos, opts)
+    opts = ap_core_broker.build_protection_opts(opts)
+    opts.exclude_ids = ap_core_broker.get_scripted_squads()
+    if opts.level_id and not opts.source then
+        opts.source = ap_core_cache.squads_on_level(opts.level_id)
+    end
+    return xsquad.has_squad(pos, opts)
+end
+
+--- has_squad with FIND_TARGETS observe wrapper.
+--- @param trace table Trace from event_data._trace
+--- @param position vector Origin position
+--- @param opts table Options (forwarded to ap_core_util.has_squad)
+--- @return boolean
+function has_squad_observed(trace, position, opts)
+    local found
+    ap_core_debug.observe(trace, PHASE.FIND_TARGETS, function()
+        found = has_squad(position, opts)
+        return { code = found and TRACE.OK or TRACE.EMPTY }
+    end)
+    return found
+end
+
 --- Find nearest smart terrain matching filter criteria
 --- When opts.level_id is set, injects ap_core_cache.smarts_on_level as opts.source so xsmart iterates
 --- the per-level bucket instead of the global SIMBOARD.smarts_by_names walk. Cache returns nil before
