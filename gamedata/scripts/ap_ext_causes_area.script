@@ -48,7 +48,7 @@ local _is_wild_smart = ap_ext_util.is_wild_smart
 -- requires smart.props[community] to be set; mismatch yields nil job, has_jobs_for false.
 local function _build_conquer_filter()
     return function(smart)
-        if not xsmart.is_smart_empty(smart) then return false end
+        if not xsmart.is_smart_empty(smart.id) then return false end
         if not _is_wild_smart(smart) then return false end
         return true
     end
@@ -59,7 +59,7 @@ end
 -- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
 local function _make_swarm_filter(player_id)
     return function(smart)
-        if not xsmart.is_smart_empty(smart) then return false end
+        if not xsmart.is_smart_empty(smart.id) then return false end
         if not _is_wild_smart(smart) then return false end
         return xsmart.accepts_faction(smart, player_id)
     end
