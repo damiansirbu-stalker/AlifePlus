@@ -167,9 +167,9 @@ local function _on_smart(trace, squad)
     local result
     for i = 1, #branches do
         if not result then
-            local r = ap_core_debug.observe(trace, branches[i], _try_picked_cause, squad, level_id,
+            local branch_res = ap_core_debug.observe(trace, branches[i], _try_picked_cause, squad, level_id,
                 { now = now, stash = stash, items_count = items_count, cause_const = branches[i], budget = budget })
-            if r and r.cause then result = r end
+            if branch_res and branch_res.cause then result = branch_res end
         end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end

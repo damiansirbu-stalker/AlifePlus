@@ -87,9 +87,6 @@ local function _handler_flee(event_data)
 
         local destination = ap_core_util.find_smart_observed(trace, smart.position, { factions = event_data.faction, level_id = level_id, exclude_id = smart.id, filter = xsmart.is_base })
         if not destination then
-            if ap_core_debug.enabled() then
-                ap_core_debug.debug("[CONSEQUENCE.BASEKILL_FLEE] no flee smart | %s", xsmart.dump_smarts(factions, level_id))
-            end
             return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART }
         end
 

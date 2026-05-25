@@ -3,7 +3,7 @@
 --- dispatches and off-map sessions; off-map sessions add phase fields (home_level,
 --- dispatched_at, arrived_at, return_home_at, left_home) on top of the shared scripted
 --- dispatch fields and run through the same 20s scan.
-local pairs, tostring, type = pairs, tostring, type
+local pairs, next, tostring, type = pairs, next, tostring, type
 local table_remove, RegisterScriptCallback = table.remove, RegisterScriptCallback
 local string_format = string.format
 local xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice = xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice
@@ -785,6 +785,7 @@ end
 local function _update_scripted_squads()
     ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
     if xslice.is_active("broker_scan") then return end
+    if not next(_ap_scripted_squads) then return end
     local debug_on = ap_core_debug.enabled()
     local now = debug_on and xtime.game_sec()
     local queue = {}
@@ -793,7 +794,6 @@ local function _update_scripted_squads()
         if debug_on then _log_tracked_entry(squad_id, data, now) end
     end
     local count = #queue
-    if count == 0 then return end
 
     xslice.start("broker_scan", queue, {
         step = 1,

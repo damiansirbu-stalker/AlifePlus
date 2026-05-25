@@ -6,7 +6,7 @@ local math_floor, math_huge = math.floor, math.huge
 local string_format, time_global = string.format, time_global
 local character_community, IsStalker, IsMonster = character_community, IsStalker, IsMonster
 local UnregisterScriptCallback, RegisterScriptCallback = UnregisterScriptCallback, RegisterScriptCallback
-local xobject, xsquad, xmath, xactor, xcreature, xlevel = xobject, xsquad, xmath, xactor, xcreature, xlevel
+local xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata = xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm
 local ap_core_const, ap_ext_const, ap_ext_tracker = ap_core_const, ap_ext_const, ap_ext_tracker
 
@@ -219,6 +219,107 @@ function kit_consumables()
     local spawned, skipped = _spawn_kit_items(KIT_CONSUMABLES_ITEMS, "kit_consumables")
     _tip(string_format("Kit consumables: %d items, %d skipped", spawned, skipped))
     ap_core_debug.debug("[TEST] kit_consumables OK spawned=%d skipped=%d", spawned, skipped)
+end
+
+local NPC_GIFT_ITEMS = {
+    -- meds (heal_shelter consume + trade sell)
+    { sec = "bandage",            count = 10 },
+    { sec = "medkit",             count = 5 },
+    { sec = "medkit_army",        count = 5 },
+    -- mutant parts (harvest cause + trade sell)
+    { sec = "meat_flesh_b",       count = 3 },
+    { sec = "meat_boar_b",        count = 3 },
+    { sec = "meat_dog_b",         count = 4 },
+    -- weapon + ammo (best_weapon ammo buy phase of trade + combat use)
+    { sec = "wpn_mossberg590",    count = 1 },
+    { sec = "ammo_12x70_buck",    count = 90 },
+}
+
+local GIFT_NPCS_QUEUE = "ap_test_gift_npcs"
+local GIFT_NPCS_STEP  = 3
+local _gift_npcs_state = nil
+
+local function _gift_one_npc(npc_id)
+    local items = _gift_npcs_state.items
+    for i = 1, #items do
+        local item = items[i]
+        for _ = 1, item.count do
+            xobject.create_item(item.sec, npc_id)
+        end
+        _gift_npcs_state.items_spawned = _gift_npcs_state.items_spawned + item.count
+    end
+    _gift_npcs_state.npcs_done = _gift_npcs_state.npcs_done + 1
+end
+
+--- Fill every online stalker NPC on the actor's level with a playtest inventory kit.
+--- Primes item flows: bandages + medkits exercise heal_shelter `_consume`, mutant parts
+--- and ammo exercise supply_trader sell phase + harvest cause, the mossberg + ammo make
+--- the best_weapon detection non-trivial for the buy phase.
+--- Frame-spread via xslice (step=3 NPCs/frame) so a fully-populated level does not stall
+--- a frame. Re-press to cancel an in-flight queue.
+--- @export console
+function gift_npcs()
+    ap_core_debug.debug("[TEST] gift_npcs pressed")
+    if xslice.is_active(GIFT_NPCS_QUEUE) then
+        xslice.cancel(GIFT_NPCS_QUEUE, true)
+        _gift_npcs_state = nil
+        _tip("Gift NPCs: cancelled")
+        ap_core_debug.debug("[TEST] gift_npcs cancelled")
+        return
+    end
+
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local actor_se = alife():actor()
+    if not actor_se then return _tip("No actor entity") end
+    local actor_level = xlevel.get_level_id(actor_se)
+    local actor_id = actor:id()
+
+    local valid_items, missing = {}, {}
+    for i = 1, #NPC_GIFT_ITEMS do
+        local item = NPC_GIFT_ITEMS[i]
+        if ini_sys:section_exist(item.sec) then
+            valid_items[#valid_items + 1] = item
+        else
+            missing[#missing + 1] = item.sec
+        end
+    end
+    if #missing > 0 then
+        ap_core_debug.debug("[TEST] gift_npcs missing sections: %s", table.concat(missing, ","))
+    end
+    if #valid_items == 0 then return _tip("Gift NPCs: no valid item sections") end
+
+    local candidates = {}
+    for npc_id in pairs(db.storage) do
+        if npc_id == actor_id then goto skip end
+        local obj = xobject.go(npc_id)
+        if not obj then goto skip end
+        if not obj:alive() then goto skip end
+        if not IsStalker(obj) then goto skip end
+        local se = xobject.se(npc_id)
+        if not se then goto skip end
+        if xlevel.get_level_id(se) ~= actor_level then goto skip end
+        if xdata.unscriptable_npcs[se:section_name()] then goto skip end
+        candidates[#candidates + 1] = npc_id
+        ::skip::
+    end
+    if #candidates == 0 then return _tip("No online stalker NPCs on this level") end
+
+    _gift_npcs_state = { npcs_done = 0, items_spawned = 0, total = #candidates, items = valid_items }
+    ap_core_debug.debug("[TEST] gift_npcs start npcs=%d valid_secs=%d missing=%d step=%d",
+        #candidates, #valid_items, #missing, GIFT_NPCS_STEP)
+
+    xslice.start(GIFT_NPCS_QUEUE, candidates, {
+        step = GIFT_NPCS_STEP,
+        func = function(npc_id) _gift_one_npc(npc_id) return true end,
+        on_done = function()
+            local state = _gift_npcs_state
+            _tip(string_format("Gift NPCs: %d NPCs / %d items", state.npcs_done, state.items_spawned))
+            ap_core_debug.debug("[TEST] gift_npcs OK npcs=%d items=%d", state.npcs_done, state.items_spawned)
+            _gift_npcs_state = nil
+        end,
+    })
+    _tip(string_format("Gift NPCs: queued %d NPCs (%d/frame)", #candidates, GIFT_NPCS_STEP))
 end
 
 local _test_marker_ids = {}

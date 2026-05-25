@@ -4,8 +4,13 @@
 local pairs, type, tostring, table_sort, table_concat = pairs, type, tostring, table.sort, table.concat
 local RegisterScriptCallback = RegisterScriptCallback
 local xtrace, xlog, xprofiler = xtrace, xlog, xprofiler
+local xsmart, xsquad, xlevel = xsmart, xsquad, xlevel
 local CALLBACK = ap_core_const.CALLBACK
 local TRACE = ap_core_const.TRACE
+
+local DIAG_INTERVAL_SEC = 60
+local DIAG_TIMER_EV = "ap_diag"
+local DIAG_TIMER_ID = "dump"
 
 local _null_trace = xtrace.new_if(false)
 
@@ -119,6 +124,23 @@ local function _log_mcm_settings()
     log.debug("[MCM] %s", table_concat(parts, " "))
 end
 
+-- Periodic [CORE.DIAG] dump of smarts (filtered to actor level) and squads.
+-- Gated by enabled(); xsmart.dump_smarts and xsquad.dump_squads use cached role lookups.
+-- @cost O(smarts+squads) per fire (60s) | per smart: 1 heavy + role walk; per squad: 4-5 luabind + cached role
+local function _diag_dump()
+    if not enabled() then return end
+    local sim = alife()
+    local actor_se = sim and sim:actor()
+    local level_id = actor_se and xlevel.get_level_id(actor_se) or nil
+    log.debug("[CORE.DIAG] %s", xsmart.dump_smarts(level_id))
+    log.debug("[CORE.DIAG] %s", xsquad.dump_squads(level_id))
+end
+
+local function _on_diag_timer()
+    _diag_dump()
+    ResetTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC)
+end
+
 local function _on_first_update()
     init_log_level()
     _log_mcm_settings()
@@ -127,4 +149,5 @@ end
 function on_game_start()
     RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, init_log_level)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
+    CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _on_diag_timer)
 end
