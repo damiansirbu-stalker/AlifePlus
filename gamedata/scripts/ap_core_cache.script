@@ -39,7 +39,9 @@
 --- warmup window at the cost of one slow scan until the bucket fills.
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
-local xlevel, xsmart, xsquad, xobject, xslice = xlevel, xsmart, xsquad, xobject, xslice
+local xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice =
+    xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice
+local IsStalker = IsStalker
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
@@ -50,14 +52,18 @@ local STASH_BUILD_QUEUE = "ap_core_cache_stashes"
 local STASH_BUILD_STEP = 3
 local SQUAD_BUILD_QUEUE = "ap_core_cache_squads"
 local SQUAD_BUILD_STEP = 50
+local STANDALONE_BUILD_QUEUE = "ap_core_cache_standalones"
+local STANDALONE_BUILD_STEP = 50
 
 local OBSERVE_BUCKET_SMART = "core.cache.bucket_smart"
 local OBSERVE_BUCKET_STASH = "core.cache.bucket_stash"
 local OBSERVE_BUCKET_SQUAD = "core.cache.bucket_squad"
+local OBSERVE_BUCKET_STANDALONE = "core.cache.bucket_standalone"
 
 local _smarts_by_level = nil
 local _stashes_by_level = nil
 local _squads_by_level = nil
+local _standalone_role_npcs = nil
 local _initialized = false
 
 -- Bucket one smart into _smarts_by_level. Returns true to drain (xslice survivor protocol).
@@ -243,11 +249,129 @@ local function _on_squad_level_change(squad, from_level_name, to_level_name)
     bucket[id] = true
 end
 
--- Add a squad to its level bucket on server-entity register (net_spawn from save load or new spawn).
--- @cost O(1) | 2 luabind (clsid + xlevel.get_level_id cached or 0-3 cold) + 1 hash op
-local function _on_entity_register(se_obj)
-    if not _squads_by_level or not se_obj then return end
-    if se_obj:clsid() ~= CLSID_SQUAD then return end
+-- Map a stalker section to its standalone service role, or nil if not curated.
+-- @cost O(1) | 3 hash lookups in xdata buckets
+local function _resolve_role(section)
+    if xdata.traders[section]   then return "trader"   end
+    if xdata.medics[section]    then return "medic"    end
+    if xdata.mechanics[section] then return "mechanic" end
+    return nil
+end
+
+-- Resolve nearest smart on the entity's level; insert (smart_id, role, npc_id) into the index.
+-- @cost O(1) for non-curated sections (3 hash misses + early return); for curated hits,
+--       1 luabind heavy (xlevel.get_level_id cold) + xsmart.find_smart O(n) smarts on level.
+local function _index_standalone(se)
+    if not se then return end
+    local section = se:section_name()
+    if not section then return end
+    local role = _resolve_role(section)
+    if not role then return end
+    local level_id = xlevel.get_level_id(se)
+    if not level_id then return end
+    local smart = xsmart.find_smart(se.position, { level_id = level_id })
+    if not smart then return end
+    local by_role = _standalone_role_npcs[smart.id]
+    if not by_role then
+        by_role = {}
+        _standalone_role_npcs[smart.id] = by_role
+    end
+    local by_id = by_role[role]
+    if not by_id then
+        by_id = {}
+        by_role[role] = by_id
+    end
+    by_id[se.id] = true
+end
+
+-- Sweep one smart's role buckets for npc_id; remove on match. Returns true if removed.
+local function _drop_from_role_buckets(by_role, npc_id)
+    for _, by_id in pairs(by_role) do
+        if by_id[npc_id] then
+            by_id[npc_id] = nil
+            return true
+        end
+    end
+    return false
+end
+
+-- Remove a standalone NPC's id from whichever smart/role bucket holds it.
+-- @cost O(smarts * roles) ~150 hash ops worst case; rare event (NPC death/despawn)
+local function _unindex_standalone(npc_id)
+    if not _standalone_role_npcs or not npc_id then return end
+    for _, by_role in pairs(_standalone_role_npcs) do
+        if _drop_from_role_buckets(by_role, npc_id) then return end
+    end
+end
+
+local function _bucket_one_stalker_impl(_, se)
+    _index_standalone(se)
+    return true
+end
+
+local function _bucket_one_stalker(se)
+    return ap_core_debug.observe(nil, OBSERVE_BUCKET_STANDALONE, _bucket_one_stalker_impl, se)
+end
+
+local function _on_standalone_build_done()
+    ap_core_debug.debug("[CORE.CACHE] standalone role bucket built")
+end
+
+-- Snapshot all alife stalkers via xcreature.query, start xslice. Per-tick: 50 stalkers
+-- x ~5us = ~0.25ms. ~1500-3000 alife stalkers -> ~30-60 ticks -> ~0.5-1s wall-clock.
+-- Per-stalker handler is dominated by the section lookup for non-matches (cheap) and
+-- the find_smart call for matches (~30-60 of them).
+-- @cost O(n) stalkers for snapshot | 1 luabind per stalker (iterate_objects); xslice
+-- ticks pay the per-stalker section lookup + find_smart on match.
+local function _build_standalone_role_bucket()
+    if _standalone_role_npcs then return end
+    if xslice.is_active(STANDALONE_BUILD_QUEUE) then return end
+    _standalone_role_npcs = {}
+    local queue = xcreature.query():stalkers():collect()
+    xslice.start(STANDALONE_BUILD_QUEUE, queue, {
+        step = STANDALONE_BUILD_STEP,
+        func = _bucket_one_stalker,
+        on_done = _on_standalone_build_done,
+    })
+end
+
+--- Get the standalone service NPC id-set for (smart_id, role).
+--- Returns nil before actor_on_first_update has fired, when no role bucket exists for
+--- the smart, or when no curated standalone matches. Bucket populates incrementally
+--- during xslice warmup; consumers walk what's there.
+--- @safety SAFE - pure Lua hash read, nil-guarded
+--- @cost O(1) | 0 luabind
+--- @param smart_id number Smart terrain server id
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return table|nil { [npc_id] = true, ... } or nil
+function standalone_role_at_smart(smart_id, role)
+    if not _standalone_role_npcs then return nil end
+    local by_role = _standalone_role_npcs[smart_id]
+    if not by_role then return nil end
+    return by_role[role]
+end
+
+--- Get the first online live game_object for any standalone NPC of (smart_id, role).
+--- Walks standalone_role_at_smart's id-set, returns the first xobject.go(id) that is
+--- alive. Online-only resolution; offline NPCs return nil from xobject.go.
+--- @safety SAFE - delegates to standalone_role_at_smart + xobject.go, all nil-guarded
+--- @cost O(k) ids per (smart_id, role) ~1-3 typical | per id: 1 medium (xobject.go) + 1 trivial (alive)
+--- @param smart_id number Smart terrain server id
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return game_object|nil Online live NPC of this role at this smart, or nil
+function first_online_role_npc_at_smart(smart_id, role)
+    local by_id = standalone_role_at_smart(smart_id, role)
+    if not by_id then return nil end
+    for npc_id in pairs(by_id) do
+        local go = xobject.go(npc_id)
+        if go and go:alive() then return go end
+    end
+    return nil
+end
+
+-- Add squad to its level bucket; lazily allocs the bucket on first squad of the level.
+local function _register_squad(se_obj)
+    if not _squads_by_level then return end
     local level_id = xlevel.get_level_id(se_obj)
     if not level_id then return end
     local bucket = _squads_by_level[level_id]
@@ -258,12 +382,9 @@ local function _on_entity_register(se_obj)
     bucket[se_obj.id] = true
 end
 
--- Remove a squad from its level bucket on server-entity unregister (despawn).
--- Falls back to a scan if get_level_id misses during destruct.
--- @cost O(1) typical | 1 luabind (clsid) + 1 hash op; O(levels) on fallback scan
-local function _on_entity_unregister(se_obj)
-    if not _squads_by_level or not se_obj then return end
-    if se_obj:clsid() ~= CLSID_SQUAD then return end
+-- Remove squad from its level bucket. Falls back to scan if get_level_id misses on destruct.
+local function _unregister_squad(se_obj)
+    if not _squads_by_level then return end
     local id = se_obj.id
     if not id then return end
     local level_id = xlevel.get_level_id(se_obj)
@@ -273,6 +394,30 @@ local function _on_entity_unregister(se_obj)
     end
     for _, bucket in pairs(_squads_by_level) do
         if bucket[id] then bucket[id] = nil; return end
+    end
+end
+
+-- Dispatch entity register to the per-type bucket handler.
+-- @cost O(1) | 2 luabind (clsid + xlevel.get_level_id cached or 0-3 cold) + 1 hash op
+local function _on_entity_register(se_obj)
+    if not se_obj then return end
+    local cls = se_obj:clsid()
+    if cls == CLSID_SQUAD then
+        _register_squad(se_obj)
+    elseif IsStalker(nil, cls) and _standalone_role_npcs then
+        _index_standalone(se_obj)
+    end
+end
+
+-- Dispatch entity unregister to the per-type bucket handler.
+-- @cost O(1) typical | 1 luabind (clsid) + 1 hash op; O(levels) on squad fallback scan
+local function _on_entity_unregister(se_obj)
+    if not se_obj then return end
+    local cls = se_obj:clsid()
+    if cls == CLSID_SQUAD then
+        _unregister_squad(se_obj)
+    elseif IsStalker(nil, cls) then
+        _unindex_standalone(se_obj.id)
     end
 end
 
@@ -286,6 +431,7 @@ local function _on_actor_first_update()
     _build_smart_bucket()
     _build_stash_bucket()
     _build_squad_bucket()
+    _build_standalone_role_bucket()
     if not _initialized then
         _initialized = true
         ap_core_debug.info("[CORE.CACHE] Initialized")
