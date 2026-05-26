@@ -64,7 +64,10 @@ local function _arrive_trade(visitor_go, smart_id)
     local smart_se = smart_id and xobject.se(smart_id)
     if not smart_se then return {}, {} end
     local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
-    if not trader_go then return {}, {} end
+    if not trader_go then
+        ap_core_debug.debug("[CONSEQUENCES.NEEDS] _arrive_trade no service NPC online at smart=%d", smart_id)
+        return {}, {}
+    end
     local max_sell = math_random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
     local result = xtrade.trade(visitor_go, trader_go, { max_sell = max_sell })
     return result.sold, result.bought
@@ -103,8 +106,6 @@ local CONFIGS = {
       need = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_CAMPFIRE },
     { consequence = CONSEQUENCE.SOCIAL_BASE, action = ACTION.SOCIAL_BASE,           event = CAUSE.SOCIAL_BASE,      name = "social_base",
       need = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
-    { consequence = CONSEQUENCE.SOCIAL_OFFBASE, action = ACTION.SOCIAL_OFFBASE,     event = CAUSE.SOCIAL_OFFBASE,   name = "social_offbase",
-      need = "SOCIAL",  pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFBASE, offmap = true },
 }
 
 --- Dispatch arrive action (online only): consume sections or trade exchange.

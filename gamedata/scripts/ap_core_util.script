@@ -223,33 +223,24 @@ function find_first_smart_observed(trace, opts)
     return smart
 end
 
-local _DYN_GET = {
-    trader   = function(s) return xsmart.get_trader_at_smart(s)   end,
-    medic    = function(s) return xsmart.get_medic_at_smart(s)    end,
-    mechanic = function(s) return xsmart.get_mechanic_at_smart(s) end,
-}
-
---- Resolve a service NPC at a smart by role. Static cache first (covers curated NPCs in
---- xdata.npc_roles like Sidorovich), dynamic walk fallback (catches addon NPCs not in xdata).
---- Single entry point: consumers do not OR cache + dynamic at each call site.
+--- Resolve a service NPC at a smart by role via the standalone cache (curated NPCs in
+--- xdata.npc_roles only). Returns nil for addon NPCs not in xdata.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return game_object|nil Online live NPC of this role at this smart, or nil
 local function _get_role_at_smart(smart, role)
     if not smart then return nil end
     return ap_core_cache.first_online_role_npc_at_smart(smart.id, role)
-        or (_DYN_GET[role] and _DYN_GET[role](smart))
 end
 
---- Boolean predicate. Cache fast-path on id existence, falls back to dynamic walk.
+--- Boolean predicate on cache presence.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return boolean
 local function _has_role_at_smart(smart, role)
     if not smart then return false end
     local ids = ap_core_cache.standalone_role_at_smart(smart.id, role)
-    if ids and next(ids) then return true end
-    return _DYN_GET[role] and _DYN_GET[role](smart) ~= nil
+    return ids ~= nil and next(ids) ~= nil
 end
 
 local SERVICE_ROLES = { "trader", "medic", "mechanic" }

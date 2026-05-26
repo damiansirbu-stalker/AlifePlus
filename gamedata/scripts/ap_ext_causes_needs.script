@@ -97,7 +97,10 @@ end
 local function _build_filter(entry, community)
     return function(smart)
         if entry.filter and not entry.filter(smart) then return false end
-        if entry.exclude_enemy and community and xsmart.is_smart_hostile_to(smart, community) then return false end
+        if entry.exclude_enemy and community and xsmart.is_smart_hostile_to(smart, community) then
+            ap_core_debug.debug("[CAUSES.NEEDS] hostility filter rejected smart=%d cause=%s community=%s", smart.id, entry.name, community)
+            return false
+        end
         return true
     end
 end
@@ -293,10 +296,11 @@ function on_game_start()
           personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
         -- Cross-map peer row. INV_TERRITORY pairs with GREED so greedy non-territorial squads
         -- (Loners, Bandits, Mercs, Renegades) travel for trade. Alignment excludes garrisoned
-        -- factions (army, monolith) and zombied. Prop-only filter (is_base) works cross-level
-        -- since stalker_jobs is nil for off-actor-level smarts (smart_terrain.script:462 early-exit).
+        -- factions (army, monolith) and zombied. has_service_npc_at_smart works cross-level:
+        -- it reads ap_core_cache.standalone_role_at_smart, an id-set keyed by smart_id and
+        -- populated from CSE positions at warmup, no online dependency.
         { cause = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap", need = "supply",
-          filter = xsmart.is_base,            alignment = _alignment_offmap, exclude_enemy = true,
+          filter = ap_core_util.has_service_npc_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.INV_TERRITORY }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
           filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_stalker_jobs(s) end,
@@ -333,13 +337,6 @@ function on_game_start()
         { cause = CAUSE.SOCIAL_BASE,      name = "social_base",      need = "social",
           filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
-        -- Cross-map peer row. INV_AGGRESSION pairs with RELATION so peaceful sociable factions
-        -- (Ecologists, Clear Sky, Freedom, Loners) visit other bases for company; aggressive
-        -- factions stay home. Alignment widens to the off-map traveler set; the on-map
-        -- SOCIAL_BASE stays principled-only.
-        { cause = CAUSE.SOCIAL_OFFBASE,   name = "social_offbase",   need = "social",
-          filter = xsmart.is_base,            alignment = _alignment_offmap, exclude_enemy = true,
-          personality = { PERSONALITY.RELATION, PERSONALITY.INV_AGGRESSION }, offmap = true },
     }
 
     local radiant = ap_core_const.RADIANT_CALLBACKS

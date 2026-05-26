@@ -274,7 +274,10 @@ local function _index_standalone(se)
     local level_id = xlevel.get_level_id(se)
     if not level_id then return end
     local smart = xsmart.find_smart(se.position, { level_id = level_id })
-    if not smart then return end
+    if not smart then
+        ap_core_debug.debug("[CORE.CACHE] _index_standalone find_smart nil section=%s level_id=%s id=%d", section, tostring(level_id), se.id)
+        return
+    end
     local by_role = _standalone_role_npcs[smart.id]
     if not by_role then
         by_role = {}
