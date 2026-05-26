@@ -147,16 +147,23 @@ assigned (bool, true = live), game_hours  -- hour-of-write
 
 ## Take a squad back from AP
 
-When your mod needs a specific squad immediately:
+When your mod needs a specific squad immediately, even mid-dispatch:
 
 ```lua
-if ap_api and ap_api.release_squad and ap_api.release_squad(squad.id) then
-    -- AP was scripting it; broker's reassert loop is now stopped.
+if ap_api and ap_api.release_squad then
+    ap_api.release_squad(squad.id)
 end
-xsquad.acquire_squad(squad, your_smart, true)
+-- assign your own order here, however your mod normally does it
 ```
 
-*release_squad* returns *false* if AP wasn't scripting the squad. Safe to call unconditionally.
+*release_squad* does the full unhook:
+
+- Removes the squad from AP's tracking table; the reassert loop stops.
+- Clears the engine fields *scripted_target*, *__lock*, *rush_to_target*.
+
+After it returns, the squad is back under SIMBOARD's autonomous targeting and your mod can assign whatever order it likes. No dependency on xlibs or any AP-side helper.
+
+Returns *false* if AP wasn't scripting the squad. Safe to call unconditionally.
 
 ---
 
