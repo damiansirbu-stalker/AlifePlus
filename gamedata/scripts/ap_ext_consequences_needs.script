@@ -1,9 +1,9 @@
 --- ap_ext_consequences_needs: Action-only consequences for human needs (14 entries, all 1:1 with cause).
 
 local math_random, table_concat = math.random, table.concat
-local alife_release_id, xobject, xsmart, xtime, xtrade = alife_release_id, xobject, xsmart, xtime, xtrade
-local ap_core_cache, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
-    ap_core_cache, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
+local alife_release_id, xobject, xtime, xtrade = alife_release_id, xobject, xtime, xtrade
+local ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
+    ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
@@ -51,10 +51,11 @@ local function _consume(npc_id, need)
     return consumed
 end
 
---- Trade visitor inventory against trader at smart. Resolves trader via xsmart.get_trader_at_smart
---- (npc_info walk: smart-bound traders like Loris / Petrenko) then falls back to
---- ap_core_cache.first_online_role_npc_at_smart for standalone traders (Sidorovich, Nimble,
---- Owl, Ashot, Trapper et al. -- not in any smart's npc_info, indexed by nearest-smart).
+--- Trade visitor inventory against any service NPC at smart. Resolves via
+--- ap_core_util.get_service_npc_at_smart (priority trader -> medic -> mechanic), which
+--- consults the standalone cache first (curated NPCs: Sidorovich, Owl, Sakharov, Trapper,
+--- et al.) then falls back to the dynamic npc_info walk (smart-bound service NPCs: Loris,
+--- Petrenko, faction trader stalkers, doctors, technicians).
 --- Delegates to xtrade.trade for the full vanilla sell+buy cycle (vanilla cost formulas,
 --- best_weapon and slot-equipped skipped on sell, best_weapon ammo restocked to buy_sell[3]).
 --- Sell phase capped to random(min, max) items per visit so a single trade arrival does not
@@ -62,8 +63,7 @@ end
 local function _arrive_trade(visitor_go, smart_id)
     local smart_se = smart_id and xobject.se(smart_id)
     if not smart_se then return {}, {} end
-    local trader_go = xsmart.get_trader_at_smart(smart_se)
-        or ap_core_cache.first_online_role_npc_at_smart(smart_id, "trader")
+    local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
     if not trader_go then return {}, {} end
     local max_sell = math_random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
     local result = xtrade.trade(visitor_go, trader_go, { max_sell = max_sell })

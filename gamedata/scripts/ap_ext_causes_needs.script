@@ -3,8 +3,8 @@
 
 local table_sort, next, math_random = table.sort, next, math.random
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
-local ap_core_cache, ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker =
-    ap_core_cache, ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
+local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker =
+    ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
@@ -97,10 +97,7 @@ end
 local function _build_filter(entry, community)
     return function(smart)
         if entry.filter and not entry.filter(smart) then return false end
-        if entry.exclude_enemy and community then
-            local fac = xsmart.get_controlling_faction(smart)
-            if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
-        end
+        if entry.exclude_enemy and community and xsmart.is_smart_hostile_to(smart, community) then return false end
         return true
     end
 end
@@ -291,8 +288,7 @@ function on_game_start()
           filter = xsmart.has_campfire,       exclude_enemy = true,
           personality = { PERSONALITY.PERCEPTION } },
         { cause = CAUSE.SUPPLY_TRADER,    name = "supply_trader",    need = "supply",
-          filter = function(s) return xsmart.has_trader_at_smart(s)
-              or ap_core_cache.standalone_role_at_smart(s.id, "trader") ~= nil end,
+          filter = ap_core_util.has_service_npc_at_smart,
           exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
         -- Cross-map peer row. INV_TERRITORY pairs with GREED so greedy non-territorial squads

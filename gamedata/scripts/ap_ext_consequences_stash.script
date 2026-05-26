@@ -2,6 +2,7 @@
 
 local pairs = pairs
 local random, alife_release_id = math.random, alife_release_id
+local table_concat = table.concat
 local xobject, xtime, xstash, xtrade = xobject, xtime, xstash, xtrade
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
 
@@ -120,6 +121,7 @@ local function _arrive_loot(squad, args)
     local max_take = random(cfg.consequence_stash_loot_min_items, cfg.consequence_stash_loot_max_items)
     ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_LOOT, function(trace)
         local taken = 0
+        local taken_secs = {}
         local cursor = 1
         for i = 1, #sections do
             if taken >= max_take then break end
@@ -131,12 +133,14 @@ local function _arrive_loot(squad, args)
             counts[sec] = (counts[sec] or 0) + 1
             cursor = (cursor % #member_ids) + 1
             taken = taken + 1
+            taken_secs[taken] = sec
             ::continue::
         end
         ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
             return xstash.loot_stash(stash_id)
         end)
-        return { code = TRACE.OK, stash = stash_id, squad = squad.id, taken = taken, items = #sections }
+        return { code = TRACE.OK, stash = stash_id, squad = squad.id, taken = taken, items = #sections,
+            looted = table_concat(taken_secs, ",") }
     end)
 end
 
@@ -224,7 +228,8 @@ local function _arrive_fill(squad, args)
             ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d fill_failed", stash_id, squad.id)
             return { code = TRACE.NONE, stash = stash_id, squad = squad.id, reason = REASON.FILL_FAILED }
         end
-        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = #secs }
+        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = #secs,
+            deposited = table_concat(secs, ",") }
     end)
 end
 

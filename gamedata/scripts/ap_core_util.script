@@ -223,5 +223,60 @@ function find_first_smart_observed(trace, opts)
     return smart
 end
 
+local _DYN_GET = {
+    trader   = function(s) return xsmart.get_trader_at_smart(s)   end,
+    medic    = function(s) return xsmart.get_medic_at_smart(s)    end,
+    mechanic = function(s) return xsmart.get_mechanic_at_smart(s) end,
+}
+
+--- Resolve a service NPC at a smart by role. Static cache first (covers curated NPCs in
+--- xdata.npc_roles like Sidorovich), dynamic walk fallback (catches addon NPCs not in xdata).
+--- Single entry point: consumers do not OR cache + dynamic at each call site.
+--- @param smart smart_terrain
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return game_object|nil Online live NPC of this role at this smart, or nil
+local function _get_role_at_smart(smart, role)
+    if not smart then return nil end
+    return ap_core_cache.first_online_role_npc_at_smart(smart.id, role)
+        or (_DYN_GET[role] and _DYN_GET[role](smart))
+end
+
+--- Boolean predicate. Cache fast-path on id existence, falls back to dynamic walk.
+--- @param smart smart_terrain
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return boolean
+local function _has_role_at_smart(smart, role)
+    if not smart then return false end
+    local ids = ap_core_cache.standalone_role_at_smart(smart.id, role)
+    if ids and next(ids) then return true end
+    return _DYN_GET[role] and _DYN_GET[role](smart) ~= nil
+end
+
+local SERVICE_ROLES = { "trader", "medic", "mechanic" }
+
+--- Any service NPC (trader / medic / mechanic) at smart. Tries roles in priority order
+--- so trader wins when multiple are present.
+--- @param smart smart_terrain
+--- @return game_object|nil
+function get_service_npc_at_smart(smart)
+    if not smart then return nil end
+    for i = 1, #SERVICE_ROLES do
+        local npc = _get_role_at_smart(smart, SERVICE_ROLES[i])
+        if npc then return npc end
+    end
+    return nil
+end
+
+--- True if any service NPC (trader / medic / mechanic) is present at smart.
+--- @param smart smart_terrain
+--- @return boolean
+function has_service_npc_at_smart(smart)
+    if not smart then return false end
+    for i = 1, #SERVICE_ROLES do
+        if _has_role_at_smart(smart, SERVICE_ROLES[i]) then return true end
+    end
+    return false
+end
+
 function on_game_start()
 end

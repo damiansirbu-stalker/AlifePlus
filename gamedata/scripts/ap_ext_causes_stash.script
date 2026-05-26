@@ -31,8 +31,7 @@ local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
 
 local function _build_dst_filter(community)
     return function(smart)
-        local fac = xsmart.get_controlling_faction(smart)
-        if fac ~= "none" and game_relations.is_factions_enemies(community, fac) then return false end
+        if xsmart.is_smart_hostile_to(smart, community) then return false end
         return true
     end
 end

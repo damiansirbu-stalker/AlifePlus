@@ -41,7 +41,7 @@
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
 local xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice =
     xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice
-local IsStalker = IsStalker
+local IsStalker, IsTrader = IsStalker, IsTrader
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
@@ -259,10 +259,14 @@ local function _resolve_role(section)
 end
 
 -- Resolve nearest smart on the entity's level; insert (smart_id, role, npc_id) into the index.
--- @cost O(1) for non-curated sections (3 hash misses + early return); for curated hits,
+-- Class-gates on Stalker / Trader before calling section_name: the warmup walks every alife
+-- entity, and section_name on a partially-constructed CSE_Abstract triggers pure virtual call.
+-- @cost O(1) for non-NPC entities (1 luabind clsid + class check, early return); for NPCs,
 --       1 luabind heavy (xlevel.get_level_id cold) + xsmart.find_smart O(n) smarts on level.
 local function _index_standalone(se)
     if not se then return end
+    local cls = se:clsid()
+    if not (IsStalker(nil, cls) or IsTrader(nil, cls)) then return end
     local section = se:section_name()
     if not section then return end
     local role = _resolve_role(section)
@@ -327,7 +331,7 @@ local function _build_standalone_role_bucket()
     if _standalone_role_npcs then return end
     if xslice.is_active(STANDALONE_BUILD_QUEUE) then return end
     _standalone_role_npcs = {}
-    local queue = xcreature.query():stalkers():collect()
+    local queue = xcreature.query():collect()
     xslice.start(STANDALONE_BUILD_QUEUE, queue, {
         step = STANDALONE_BUILD_STEP,
         func = _bucket_one_stalker,
