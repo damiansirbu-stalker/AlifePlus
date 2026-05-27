@@ -39,7 +39,6 @@
 --- warmup window at the cost of one slow scan until the bucket fills.
 
 local pairs, ipairs, tostring, RegisterScriptCallback = pairs, ipairs, tostring, RegisterScriptCallback
-local alife_object = alife_object
 local xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice =
     xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice
 local IsStalker, IsTrader = IsStalker, IsTrader
@@ -179,10 +178,10 @@ end
 -- and processing returns nil here. Holding a server-entity ref across frames hits pure-virtual
 -- on field reads when the C++ vtable is replaced mid-destruction (same root cause as the
 -- standalone-bucket fix); pcall cannot catch it per doc/library/modding/pcall-safety.md:50-57.
--- @cost O(1) | 1 alife_object + 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
+-- @cost O(1) | 1 xobject.se + 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
 local function _bucket_one_squad_impl(_, id)
     if not id then return true end
-    local squad = alife_object(id)
+    local squad = xobject.se(id)
     if not squad then return true end
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return true end
@@ -318,14 +317,14 @@ local function _unindex_standalone(npc_id)
     end
 end
 
--- Re-resolve via alife_object(id) per tick: the queue captures IDs (not refs) so an entity
--- destroyed between enumeration and processing returns nil here. Holding a CSE_Abstract ref
--- across frames hits pure-virtual on section_name when the C++ vtable is replaced mid-destruction
--- (xrCore/xrDebugNew.cpp:1045 "pure virtual function call"). pcall cannot catch this per
--- doc/library/modding/pcall-safety.md:50-57.
+-- Re-resolve via xobject.se(id) per tick (which wraps alife_object): the queue captures IDs
+-- (not refs) so an entity destroyed between enumeration and processing returns nil here.
+-- Holding a CSE_Abstract ref across frames hits pure-virtual on section_name when the C++
+-- vtable is replaced mid-destruction (xrCore/xrDebugNew.cpp:1045 "pure virtual function call").
+-- pcall cannot catch this per doc/library/modding/pcall-safety.md:50-57.
 local function _bucket_one_stalker_impl(_, id)
     if not id then return true end
-    local se = alife_object(id)
+    local se = xobject.se(id)
     if not se then return true end
     _index_standalone(se)
     return true

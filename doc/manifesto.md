@@ -606,7 +606,7 @@ The nine drives and what happens when they win:
 - **Job** guards the base, explores the Zone, researches anomalies. Monolith and Greh worship. Military and Duty drill.
 - **Social** finds a campfire or returns to base, shares cigarettes and drinks.
 
-NPCs consume inventory items on arrival: food, cigarettes, drinks, medkits, or artefacts depending on the need.
+NPCs consume inventory items on arrival, classified by vanilla rules: hunger reads engine eatable kind (`i_food` / `i_drink` / `i_mutant_cooked`); heal reads `items_health` plus `items_bleed` reward sets; rest, social, and outpost read `items_rad`. Any addon consumable with the right kind or reward set satisfies the need without per-mod overrides.
 
 X-Ray has all the building blocks but no algorithm connecting them.
 `GetSatiety()` returns hardcoded 0.5 and `ChangeSatiety()` does nothing (`base_monster.h`): hunger was planned and abandoned.
@@ -639,7 +639,7 @@ Free items from a trader is a spawn, not a trade.
 
 ### Trade
 
-The Supply consequence walks the squad to a trader smart and runs a full NPC buy/sell cycle on arrival: sell every section that is not slot-equipped, not quest / money / `[ap_buy_sell_keep]`, not ammo for the equipped pistol or rifle (capped at the per-visit RU slider) at `floor(cost * buy_sell[4])` (or `0.5` for sections not in `[buy_sell]`), then restock pistol and rifle ammo classes and every `[ap_buy_sell_keep]` non-ammo entry to `buy_sell[3]` at `floor(cost * buy_sell[5])`. Cost reads `system.ltx <sec> cost`, multipliers read `gulag_job_trade_buy_sell.ltx [buy_sell]`. Both files honor whatever modpack overlays (GAMMA / EFP / Zona) put on top.
+The Supply consequence walks the squad to a trader smart and runs a full NPC buy/sell cycle on arrival: sell every section that is not slot-equipped, not quest / money / `[ap_buy_sell_keep]`, not ammo for the equipped pistol or rifle (capped at the per-visit RU slider) at `floor(cost * buy_sell[4])` (or `0.5` for sections not in `[buy_sell]`), then restock pistol and rifle ammo classes and every `[ap_buy_sell_keep]` entry (PDAs, medkits, bandages, grenades) to `buy_sell[3]` at `floor(cost * buy_sell[5])`. Cost reads `system.ltx <sec> cost`, multipliers read `gulag_job_trade_buy_sell.ltx [buy_sell]`. Both files honor whatever modpack overlays (GAMMA / EFP / Zona) put on top.
 
 X-Ray has the entire trade system written and shipped.
 `axr_trade_manager.script` (Alundaio 2013, Tronex 2019) implements the full NPC buy/sell cycle against `items\trade\gulag_job_trade_buy_sell.ltx`: per-section keep counts, restock targets, sell and buy multipliers, the exact engine cost formula `floor(cost * buy_sell[N])`.
@@ -648,9 +648,9 @@ If any link drops, the function falls through to `alife_release_id` and items ar
 In vanilla Anomaly, the conditions almost never align: NPC trade is functionally dead.
 
 AlifePlus extracts the mechanics into a callable module (`ap_ext_trade`) and drives them through radiant dispatch.
-The Supply drive picks a trader smart, the consequence walks the squad there, `ap_ext_trade.trade(visitor, trader, opts)` runs synchronously on arrival.
+The Supply drive picks a candidate smart (one hosting a curated trader, medic, or mechanic; faction HQs without a known service NPC are excluded), the consequence walks the squad there, `ap_ext_trade.trade(visitor, trader, opts)` runs synchronously on arrival.
 Same ltx, same row schema, same cost formulas the engine reads.
-Traders are resolved by character profile name (`trader` / `barman` / `barmen`), covering all 20 vanilla trader smarts: Sidorovich at Cordon, Beard at Skadovsk, Owl at Marsh and Zaton, Ashot at Yanov, the barmen at Bar / Marsh / Yanov / Skadovsk, the faction traders, the 11 minor-base traders.
+Trade sellers are resolved by character profile name (`trader` / `barman` / `barmen`), covering all 20 vanilla trader smarts: Sidorovich at Cordon, Beard at Skadovsk, Owl at Marsh and Zaton, Ashot at Yanov, the barmen at Bar / Marsh / Yanov / Skadovsk, the faction traders, the 11 minor-base traders.
 The trade system GSC designed and Tronex finished maintaining now actually fires.
 
 ---

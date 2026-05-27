@@ -22,8 +22,7 @@
 
 local floor, pairs, tonumber = math.floor, pairs, tonumber
 local str_explode, parse_list, utils_data, IsItem = str_explode, parse_list, utils_data, IsItem
-local ini_sys, ini_file, alife_release_id = ini_sys, ini_file, alife_release_id
-local xobject = xobject
+local ini_sys, ini_file, alife_release_id, xobject = ini_sys, ini_file, alife_release_id, xobject
 
 local INI_PATH = "items\\trade\\gulag_job_trade_buy_sell.ltx"
 local BUY_SELL_SECTION = "buy_sell"
@@ -157,20 +156,6 @@ function keep_count(sec)
     return row and row[1] or nil
 end
 
---- Vanilla "restock to" count for section -- buy_sell[3].
---- Used by axr_trade_manager at script:310, 322 as the buy-loop cap (NPCs buy ammo up to this
---- count). Callers building "stock up" policies should use this number; for "minimum needed"
---- use keep_count.
---- @safety SAFE - nil for sections not in [buy_sell]
---- @cost O(1) | get_buy_sell hash lookup after first call per section
---- @src anomaly/axr_trade_manager.script(310, 322)
---- @param sec string Item section name
---- @return number|nil restock count or nil if section not in [buy_sell]
-function restock_count(sec)
-    local row = get_buy_sell(sec)
-    return row and row[3] or nil
-end
-
 --- Test whether section is eligible for AP item flow.
 --- Two conditions: section appears in vanilla [buy_sell] (the engine's tradable-items pool)
 --- AND section is not in the caller's exclude set. The exclude set is policy provided by the
@@ -253,27 +238,6 @@ end
 function give_item(npc_id, sec, exclude)
     if not is_eligible(sec, exclude) then return nil end
     return xobject.create_item(sec, npc_id)
-end
-
---- Release itm to void, no money exchanged.
---- Wraps `alife_release_id` with an `is_eligible` gate. Use for stash fill, inventory cull --
---- any flow where an item leaves the simulation without compensation, subject to vanilla
---- [buy_sell] membership and the caller's exclude policy. itm must be a game_object (online
---- owner); for offline release callers should use alife_release_id directly with the server id.
---- alife_release_id is event-queued (anomaly/_g.script:2229-2237 -> alife():release), so
---- mid-iteration calls inside iterate_inventory are safe.
---- @safety SAFE - returns nil on nil itm or section not eligible
---- @cost O(1) | 1 alife_release_id + 1 is_eligible
---- @src xray/xrGame/alife_simulator_script.cpp, anomaly/_g.script alife_release_id
---- @param itm game_object Item to release (online)
---- @param exclude table|nil
---- @return string|nil The released section or nil if not eligible
-function release_item(itm, exclude)
-    if not itm then return nil end
-    local sec = itm:section()
-    if not is_eligible(sec, exclude) then return nil end
-    alife_release_id(itm:id())
-    return sec
 end
 
 -- Top-up `sec` to row[3] via buy_item, no-op if existing >= target or money runs out.
