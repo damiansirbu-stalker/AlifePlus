@@ -1,0 +1,42 @@
+; AlifePlus overlay on top of vanilla gulag_job_trade_buy_sell.ltx.
+; Read by ap_ext_trade.get_keep_items() (allowlist) and ap_ext_trade._buy_phase()
+; (restock targets). Two changes vs vanilla:
+;   1. New `[ap_buy_sell_keep]` section: AP-namespaced allowlist of items NPCs treat as useful.
+;      Drives BOTH sell-skip (NPC keeps these) and buy-include (NPC restocks these).
+;   2. Restock flips on vanilla `[buy_sell_supplier]` / `[buy_sell_medic]` rows whose restock=0
+;      blocks the buy phase from acting on them despite their membership in the allowlist
+;      (grenades, AI medkits).
+
+[ap_buy_sell_keep]
+device_pda        = 1
+device_pda_1      = 1
+device_pda_2      = 1
+device_pda_3      = 1
+bandage           = 1
+medkit            = 1
+medkit_army       = 1
+medkit_scientic   = 1
+stimpack          = 1
+stimpack_army     = 1
+stimpack_scientic = 1
+tetanus           = 1
+yadylin           = 1
+analgetic         = 1
+medkit_ai1        = 1
+medkit_ai2        = 1
+medkit_ai3        = 1
+grenade_f1        = 1
+grenade_rgd5      = 1
+grenade_gd-05     = 1
+grenade_smoke     = 1
+
+![buy_sell_supplier]
+!grenade_f1    = 2,3,1,0.5,1
+!grenade_rgd5  = 2,3,1,0.5,1
+!grenade_gd-05 = 2,3,1,0.5,1
+!grenade_smoke = 2,3,1,0.5,1
+
+![buy_sell_medic]
+!medkit_ai1 = 1,1,1,0.5,1
+!medkit_ai2 = 1,1,1,0.5,1
+!medkit_ai3 = 1,1,1,0.5,1

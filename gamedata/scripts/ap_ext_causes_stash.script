@@ -1,7 +1,7 @@
 --- ap_ext_causes_stash: State-classifier picker. Peeks one stash in EYE range,
 --- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
 
-local xsquad, xsmart, xtime, xlevel, xstash, xtable = xsquad, xsmart, xtime, xlevel, xstash, xtable
+local xsmart, xtime, xlevel, xstash, xtable = xsmart, xtime, xlevel, xstash, xtable
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
 
@@ -25,16 +25,9 @@ local _alignment_loot = ap_ext_const.alignment_unprincipled
 local _alignment_outlaw = ap_ext_const.alignment_outlaw
 local _alignment_fill = xtable.merge(ap_ext_const.alignment_principled, { ["ecolog"] = true })
 
-local _personality_fill   = { PERSONALITY.GREED, PERSONALITY.RELATION }
+local _personality_fill   = { PERSONALITY.INV_GREED, PERSONALITY.RELATION }
 local _personality_loot   = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
 local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
-
-local function _build_dst_filter(community)
-    return function(smart)
-        if xsmart.is_smart_hostile_to(smart, community) then return false end
-        return true
-    end
-end
 
 --- Per-cause storage: opportunity DTO field, threshold cfg key.
 local KEYS_BY_CAUSE = {
@@ -105,7 +98,7 @@ local function _try_picked_cause(trace, squad, level_id, opts)
         end
         opts.budget.remaining = opts.budget.remaining - 1
         local dst = ap_core_util.find_smart_observed(trace, opts.stash.position, {
-            level_id = level_id, filter = _build_dst_filter(squad.player_id),
+            level_id = level_id, filter = function(s) return not xsmart.is_base(s) end,
         })
         if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
         local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, dst)
@@ -132,10 +125,6 @@ end
 local function _on_smart(trace, squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
-    local squad_smart = xsquad.get_squad_smart(squad)
-    if squad_smart and xsmart.is_base(squad_smart) and xsmart.get_controlling_faction(squad_smart) == squad.player_id then
-        return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE }
-    end
     if not ap_ext_util.is_active_period(squad.player_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }

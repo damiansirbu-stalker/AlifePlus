@@ -602,7 +602,7 @@ The nine drives and what happens when they win:
 - **Heal** returns to a friendly base and uses a medkit, bandage, or stimpack.
 - **Shelter** returns to a friendly base when exposed too long.
 - **Money** searches anomaly fields for artefacts or hunts mutant lairs.
-- **Supply** visits a trader, sells surplus inventory at vanilla prices, and restocks ammo for the best weapon.
+- **Supply** visits a trader, sells surplus inventory at vanilla prices, and restocks ammo for his equipped pistol and rifle.
 - **Job** guards the base, explores the Zone, researches anomalies. Monolith and Greh worship. Military and Duty drill.
 - **Social** finds a campfire or returns to base, shares cigarettes and drinks.
 
@@ -639,7 +639,7 @@ Free items from a trader is a spawn, not a trade.
 
 ### Trade
 
-The Supply consequence walks the squad to a trader smart and runs the engine's full NPC buy/sell cycle on arrival: sell every section in `[buy_sell]` that is not the best weapon and not slot-equipped (capped at the per-visit slider) at `floor(cost * buy_sell[4])`, then restock best-weapon ammo to `buy_sell[3]` at `floor(cost * buy_sell[5])`. Cost reads `system.ltx <sec> cost`, multipliers read `gulag_job_trade_buy_sell.ltx [buy_sell]`. Both files honor whatever modpack overlays (GAMMA / EFP / Zona) put on top; xtrade does no AP arithmetic of its own.
+The Supply consequence walks the squad to a trader smart and runs a full NPC buy/sell cycle on arrival: sell every section that is not slot-equipped, not quest / money / `[ap_buy_sell_keep]`, not ammo for the equipped pistol or rifle (capped at the per-visit RU slider) at `floor(cost * buy_sell[4])` (or `0.5` for sections not in `[buy_sell]`), then restock pistol and rifle ammo classes and every `[ap_buy_sell_keep]` non-ammo entry to `buy_sell[3]` at `floor(cost * buy_sell[5])`. Cost reads `system.ltx <sec> cost`, multipliers read `gulag_job_trade_buy_sell.ltx [buy_sell]`. Both files honor whatever modpack overlays (GAMMA / EFP / Zona) put on top.
 
 X-Ray has the entire trade system written and shipped.
 `axr_trade_manager.script` (Alundaio 2013, Tronex 2019) implements the full NPC buy/sell cycle against `items\trade\gulag_job_trade_buy_sell.ltx`: per-section keep counts, restock targets, sell and buy multipliers, the exact engine cost formula `floor(cost * buy_sell[N])`.
@@ -647,8 +647,8 @@ But `npc_trade_buy_sell` only fires when a long orchestration sequence lines up:
 If any link drops, the function falls through to `alife_release_id` and items are deleted with no buyer.
 In vanilla Anomaly, the conditions almost never align: NPC trade is functionally dead.
 
-AlifePlus extracts the mechanics into a callable library (`xtrade` in xlibs) and drives them through radiant dispatch.
-The Supply drive picks a trader smart, the consequence walks the squad there, `xtrade.trade(visitor, trader, opts)` runs synchronously on arrival.
+AlifePlus extracts the mechanics into a callable module (`ap_ext_trade`) and drives them through radiant dispatch.
+The Supply drive picks a trader smart, the consequence walks the squad there, `ap_ext_trade.trade(visitor, trader, opts)` runs synchronously on arrival.
 Same ltx, same row schema, same cost formulas the engine reads.
 Traders are resolved by character profile name (`trader` / `barman` / `barmen`), covering all 20 vanilla trader smarts: Sidorovich at Cordon, Beard at Skadovsk, Owl at Marsh and Zaton, Ashot at Yanov, the barmen at Bar / Marsh / Yanov / Skadovsk, the faction traders, the 11 minor-base traders.
 The trade system GSC designed and Tronex finished maintaining now actually fires.

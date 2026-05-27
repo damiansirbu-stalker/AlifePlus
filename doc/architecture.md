@@ -81,7 +81,7 @@ Multi-cause files (4): ap_ext_causes_area, ap_ext_causes_instincts, ap_ext_cause
 
 Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequences_alphakill, ap_ext_consequences_area, ap_ext_consequences_basekill, ap_ext_consequences_harvest, ap_ext_consequences_instincts, ap_ext_consequences_massacre, ap_ext_consequences_needs, ap_ext_consequences_squadkill, ap_ext_consequences_stash, ap_ext_consequences_wounded.
 
-### Ext: named modules (8 files)
+### Ext: named modules (9 files)
 
 | File | Role |
 |------|------|
@@ -90,6 +90,8 @@ Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequ
 | ap_ext_common | Shared chase pattern: move_actor_chasers / make_move_smart_chasers / make_on_arrive |
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn) |
+| ap_ext_trade | NPC supply-trader orchestration: reads vanilla `[buy_sell]` plus AP `[ap_buy_sell_keep]` overlay (`mod_gulag_job_trade_buy_sell_ap.ltx`); sells loot, restocks best-weapon ammo and keep items |
+| ap_ext_fx | Multi-source horror aggregator: composes xpp psy_antenna tint, xsound tinnitus, and level snd_volume ducking via max-across-sources factor; consumers call add_source / remove_source / clear; acquires xpp + xsound slots on first source, releases on last clear |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
 | ap_ext_test | In-game debug commands |
 
@@ -371,16 +373,16 @@ Save persistence: the offmap counter exports / imports via xttltable in `ap_core
 
 ## Item flow
 
-Four AP flows touch items. Each gates on a different vanilla classifier; AP holds no curated section lists.
+Four AP flows touch items. Each gates on a vanilla classifier; the only AP-curated list is `[ap_buy_sell_keep]` shipped via `mod_gulag_job_trade_buy_sell_ap.ltx`, an explicit allowlist of medkit / bandage / grenade sections NPCs treat as useful (drives sell-skip + buy-include in the supply trader flow).
 
 | Flow | Site | Gate | Behavior |
 |------|------|------|----------|
-| Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` | vanilla `[buy_sell]` via `xtrade.trade` | Sells eligible non-best-weapon non-equipped items at `cost * buy_sell[4]`, capped at `max_sell` per visit. Restocks best_weapon ammo to `buy_sell[3]` at `cost * buy_sell[5]`. The only money path. |
-| Stash Loot | `ap_ext_consequences_stash.script` `_arrive_loot` | `xtrade.is_eligible(sec, nil)` AND NOT `IsItem("tool" / "part" / "upgrade", sec)` | Takes up to `xtrade.keep_count(sec)` per section, round-robin across squad. Crafting workflow items stay in stash via vanilla `kind` classification. Remainder destroyed by `xstash.loot_stash`. |
-| Stash Fill | `ap_ext_consequences_stash.script` `_arrive_fill` | `xobject.in_reward_set(sec, set)` for set in `items_food / items_drink / items_health / items_bleed / items_medical / items_rad / items_ammo` | Deposits only surplus above `xtrade.keep_count(sec)`. Stateless consumables only; weapons / outfits / artefacts / grenades excluded by absence from reward sets (cache stores section names only, condition would be lost). |
+| Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` | vanilla `[buy_sell]` + `[ap_buy_sell_keep]` via `ap_ext_trade.trade` | Sells every section that is not slot-equipped, not quest / money, not in `[ap_buy_sell_keep]`, not ammo matching the equipped pistol or rifle at `cost * buy_sell[4]` (or `0.5` for sections without a `[buy_sell]` row); revenue capped at `consequence_supply_trader_sell_money_cap` RU per visit. Restocks pistol and rifle ammo classes plus every `[ap_buy_sell_keep]` non-ammo entry to `buy_sell[3]` at `cost * buy_sell[5]`. The only money path. |
+| Stash Loot | `ap_ext_consequences_stash.script` `_arrive_loot` | `ap_ext_trade.is_eligible(sec, nil)` AND NOT `IsItem("tool" / "part" / "upgrade", sec)` | Takes up to `ap_ext_trade.keep_count(sec)` per section, round-robin across squad. Crafting workflow items stay in stash via vanilla `kind` classification. Remainder destroyed by `xstash.loot_stash`. |
+| Stash Fill | `ap_ext_consequences_stash.script` `_arrive_fill` | `xobject.in_reward_set(sec, set)` for set in `items_food / items_drink / items_health / items_bleed / items_medical / items_rad / items_ammo` | Deposits only surplus above `ap_ext_trade.keep_count(sec)`. Stateless consumables only; weapons / outfits / artefacts / grenades excluded by absence from reward sets (cache stores section names only, condition would be lost). |
 | Needs Consume | `ap_ext_consequences_needs.script` `_consume` | per-need predicate in `NEED_MATCH` | HUNGER: `IsItem("eatable", sec)`. HEAL: `items_health` or `items_bleed`. REST / SOCIAL / OUTPOST: `items_rad`. Releases first inventory match via `alife_release_id`. |
 
-The Item Transfer and Money Flow invariants above hold by construction: xlibs never invents sections off-config, and only `xtrade.sell_item` / `xtrade.buy_item` move money.
+The Item Transfer and Money Flow invariants above hold by construction: AP never invents sections off-config, and only `ap_ext_trade.sell_item` / `ap_ext_trade.buy_item` move money.
 
 ---
 

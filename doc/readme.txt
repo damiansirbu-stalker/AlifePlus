@@ -58,7 +58,7 @@ Alpha mutants:
 - Killing an alpha draws same-species hunters.
 
 Trade and needs:
-- Stalkers visit supply traders to sell surplus inventory and restock ammo for their best weapon. Prices, sell caps, and restock targets read from the engine's NPC trade config.
+- Stalkers visit supply traders to sell surplus inventory and restock ammo for their equipped pistol and rifle. Prices, sell caps, and restock targets read from the engine's NPC trade config.
 - Squads loot stashes up to vanilla per-item keep counts. Crafting items (toolkits, repair kits, weapon parts, upgrades) stay for the player.
 - Squads deposit only their surplus food, drink, medical supplies, bandages, drugs, and ammo into stashes. Weapons, outfits, artefacts, grenades never enter AP-filled stashes.
 - Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Stalkers consume any vanilla-classified food, drink, medkit, bandage, or rad-cure from inventory.
@@ -285,11 +285,11 @@ Needs
   - Heal - The stalker finds a safe location and uses a medkit, bandage, or stimpack.
   - Shelter - The stalker finds a safe location when exposed too long.
   - Money - The stalker searches anomaly fields for artefacts or hunts mutant lairs.
-  - Supply - The stalker visits a trader, sells surplus inventory, and restocks ammo for the best weapon. Prices and restock targets come from the engine's NPC trade config.
+  - Supply - The stalker visits a trader, sells surplus inventory, and restocks ammo for his equipped pistol and rifle. Prices and restock targets come from the engine's NPC trade config.
   - Job - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
   - Social - The stalker finds a campfire or safe location and shares cigarettes and drinks.
 
-  Cross-map sibling rows: Supply, Job Explore, and Social each ship a paired off-map row. Greedy nomads (Loners, Bandits, Mercs, Renegades) chase trade. Peaceful curious factions (Ecologists, Clear Sky) scout neighbor maps. Peaceful sociable factions (Ecologists, Freedom, Loners) visit other camps. Army, Monolith, and Zombified squads never travel off-map.
+  Cross-map sibling rows: Supply and Job Explore each ship a paired off-map row. Greedy nomads (Loners, Bandits, Mercs, Renegades) chase trade. Peaceful curious factions (Ecologists, Clear Sky) scout neighbor maps. Army, Monolith, and Zombified squads never travel off-map.
   Reach grows with player progression. Stalkers reach the next map once Yantar X-16 is shut down, the next after the Brain Scorcher is deactivated at Radar, and master-rank squad commanders push one map further. Each step is tunable under MCM > World > Off-map.
   Squads return home after a few in-zone days. Travellers stuck off-map are released after a week to keep level populations clean. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
 
@@ -297,13 +297,17 @@ Needs
   A guard smokes a cigarette on duty.
   A hungry stalker eats canned goods or bread from his pack.
   A wounded one uses a medkit or bandage.
-  At trader smarts, squads sell what they carry for cash and restock ammo for their best weapon. Prices come from the engine's NPC trade config.
+  At trader smarts, squads sell what they carry for cash and restock ammo for their equipped pistol and rifle. Prices come from the engine's NPC trade config.
 
 Trade
 
   Anomaly ships a full NPC buy/sell system that never fires in play. The math, configs, and scripts are there; the trigger isn't. The existing one requires a patrol-and-signal sequence that almost never lines up, so NPCs carry items they could sell, ammo they could buy, and money they could spend, and never do.
 
-  AlifePlus runs the buy/sell cycle synchronously when a squad arrives at a trader smart. The squad sells what it carries and restocks ammo for its best weapon, at the prices and restock targets the engine's own config defines. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat.
+  AlifePlus runs the buy/sell cycle synchronously when a squad arrives at a trader smart. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat.
+
+  Sell phase. The stalker walks his inventory and asks for each item: keep, or sell? He keeps equipped items (whatever sits in his slots, knife to backpack), quest items, money; medkits, bandages, and grenades (the keep list); ammo that matches his equipped pistol or rifle. Everything else gets sold at the engine's sell price, including spare guns he is not carrying in a slot.
+
+  Buy phase. The stalker has two shopping lists. First, ammo classes for his equipped pistol and rifle, topped up to the vanilla restock target. Second, medkits, bandages, and grenades from the keep list, the same items he refused to sell. Items he won't part with are items he restocks when low.
 
   This closes the in-Zone economy loop. NPCs harvest at anomaly fields, kill mutants for parts, loot or fill stashes; the surplus turns into cash at the next trader visit; the cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.
 

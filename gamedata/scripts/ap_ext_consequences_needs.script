@@ -1,9 +1,10 @@
 --- ap_ext_consequences_needs: Action-only consequences for human needs (14 entries, all 1:1 with cause).
 
-local math_random, table_concat = math.random, table.concat
-local alife_release_id, xobject, xtime, xtrade = alife_release_id, xobject, xtime, xtrade
+local table_concat = table.concat
+local alife_release_id, xobject, xtime = alife_release_id, xobject, xtime
 local ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
     ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
+local ap_ext_trade = ap_ext_trade
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
@@ -51,25 +52,17 @@ local function _consume(npc_id, need)
     return consumed
 end
 
---- Trade visitor inventory against any service NPC at smart. Resolves via
---- ap_core_util.get_service_npc_at_smart (priority trader -> medic -> mechanic), which
---- consults the standalone cache first (curated NPCs: Sidorovich, Owl, Sakharov, Trapper,
---- et al.) then falls back to the dynamic npc_info walk (smart-bound service NPCs: Loris,
---- Petrenko, faction trader stalkers, doctors, technicians).
---- Delegates to xtrade.trade for the full vanilla sell+buy cycle (vanilla cost formulas,
---- best_weapon and slot-equipped skipped on sell, best_weapon ammo restocked to buy_sell[3]).
---- Sell phase capped to random(min, max) items per visit so a single trade arrival does not
---- strip the squad to keep_count in one go.
-local function _arrive_trade(visitor_go, smart_id)
+--- Trade visitor inventory against any service NPC at smart.
+--- Delegates to ap_ext_trade.trade with a money-revenue cap (sell phase stops once sale earnings hit cfg.consequence_supply_trader_sell_money_cap RU).
+local function _arrive_trade(visitor_go, smart_id, log_prefix)
     local smart_se = smart_id and xobject.se(smart_id)
     if not smart_se then return {}, {} end
     local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
     if not trader_go then
-        ap_core_debug.debug("[CONSEQUENCES.NEEDS] _arrive_trade no service NPC online at smart=%d", smart_id)
+        ap_core_debug.debug(log_prefix .. " _arrive_trade no service NPC online at smart=%d", smart_id)
         return {}, {}
     end
-    local max_sell = math_random(cfg.consequence_supply_trader_min_items, cfg.consequence_supply_trader_max_items)
-    local result = xtrade.trade(visitor_go, trader_go, { max_sell = max_sell })
+    local result = ap_ext_trade.trade(visitor_go, trader_go, { max_sell_money = cfg.consequence_supply_trader_sell_money_cap })
     return result.sold, result.bought
 end
 
@@ -122,7 +115,7 @@ local function _dispatch_arrive(trace, go, args)
     end
     if args.arrive_fn == "trade" then
         ap_core_debug.observe(trace, PHASE.ARRIVE, function()
-            local sold, bought = _arrive_trade(go, args.dst_smart_id)
+            local sold, bought = _arrive_trade(go, args.dst_smart_id, args.log_prefix)
             local fired = (#sold > 0) or (#bought > 0)
             return { code = fired and TRACE.OK or TRACE.NONE,
                 sold = table_concat(sold, ","), bought = table_concat(bought, ",") }
@@ -170,7 +163,8 @@ local function _make_handler(entry)
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = event_data.dto_field, name = entry.name,
                         need = entry.need, arrive_fn = entry.arrive_fn,
-                        dst_name = smart:name(), dst_smart_id = smart.id },
+                        dst_name = smart:name(), dst_smart_id = smart.id,
+                        log_prefix = entry.log_prefix },
                     pre_release_gulag = entry.pre_release_gulag,
                     offmap = entry.offmap,
                     interruptable = not entry.offmap,
@@ -190,6 +184,9 @@ local function _make_handler(entry)
 end
 
 function on_game_start()
+    for i = 1, #CONFIGS do
+        CONFIGS[i].log_prefix = ap_core_debug.bracket(CONFIGS[i].consequence)
+    end
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
         local enabled_key = "consequence_" .. entry.name .. "_enabled"

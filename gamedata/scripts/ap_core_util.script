@@ -1,6 +1,6 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
-local xbus, xsquad, xsmart, xconst = xbus, xsquad, xsmart, xconst
+local xbus, xsquad, xsmart, xobject, xconst = xbus, xsquad, xsmart, xobject, xconst
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
@@ -267,6 +267,61 @@ function has_service_npc_at_smart(smart)
         if _has_role_at_smart(smart, SERVICE_ROLES[i]) then return true end
     end
     return false
+end
+
+--- Resolve faction of a standalone NPC id via xsmart.get_npc_effective_faction.
+--- @cost O(1) | 1 luabind (xobject.se) + up to 3 luabind via xsmart.get_npc_effective_faction
+local function _faction_of_npc_id(npc_id)
+    local se = xobject.se(npc_id)
+    if not se then return nil end
+    return xsmart.get_npc_effective_faction(se)
+end
+
+--- Walk one role-bucket for enemy of community. Returns (enemy_found, resolved_count).
+--- @cost O(k) NPCs in bucket | up to 4 luabind per NPC
+local function _role_bucket_has_enemy(by_id, community)
+    if not by_id then return false, 0 end
+    local resolved = 0
+    for npc_id in pairs(by_id) do
+        local fac = _faction_of_npc_id(npc_id)
+        if not fac then goto continue end
+        resolved = resolved + 1
+        if game_relations.is_factions_enemies(community, fac) then return true, resolved end
+        ::continue::
+    end
+    return false, resolved
+end
+
+--- Walk standalone service-NPC buckets for enemy. Combines per-role results; short-circuits on first enemy.
+--- @cost O(roles * k) ~3-9 NPCs typical | 4 luabind per NPC
+local function _check_standalone_enemy(smart_id, community)
+    local total_resolved = 0
+    local enemy_found = false
+    for i = 1, #SERVICE_ROLES do
+        if enemy_found then break end
+        local by_id = ap_core_cache.standalone_role_at_smart(smart_id, SERVICE_ROLES[i])
+        local enemy, resolved = _role_bucket_has_enemy(by_id, community)
+        total_resolved = total_resolved + resolved
+        enemy_found = enemy
+    end
+    return enemy_found, total_resolved
+end
+
+--- Test if a smart is hostile to a community using both online npc_info walk and offline service-NPC cache.
+--- Defensive default: when no signal is resolvable (smart offline AND no curated service NPCs at smart), returns true so callers do not route into unknowable destinations.
+--- @safety SAFE - nil-guarded; xsmart and cache calls all defensive
+--- @cost O(npc_info_sample + standalone_roles) | 1 xsmart call + walk of curated service NPCs (typically 0-9)
+--- @param smart smart_terrain
+--- @param community string Squad community asking the question
+--- @return boolean true if hostile or unknowable (defensive)
+function is_smart_hostile_to(smart, community)
+    if not smart or not community then return true end
+    local online = xsmart.is_smart_hostile_to(smart, community)
+    if online == true then return true end
+    local enemy, resolved = _check_standalone_enemy(smart.id, community)
+    if enemy then return true end
+    if online == false or resolved > 0 then return false end
+    return true
 end
 
 function on_game_start()

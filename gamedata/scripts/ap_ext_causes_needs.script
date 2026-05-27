@@ -97,8 +97,8 @@ end
 local function _build_filter(entry, community)
     return function(smart)
         if entry.filter and not entry.filter(smart) then return false end
-        if entry.exclude_enemy and community and xsmart.is_smart_hostile_to(smart, community) then
-            ap_core_debug.debug("[CAUSES.NEEDS] hostility filter rejected smart=%d cause=%s community=%s", smart.id, entry.name, community)
+        if entry.exclude_enemy and community and ap_core_util.is_smart_hostile_to(smart, community) then
+            ap_core_debug.debug(entry.log_prefix .. " hostility filter rejected smart=%d community=%s", smart.id, community)
             return false
         end
         return true
@@ -338,6 +338,10 @@ function on_game_start()
           filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
     }
+
+    for i = 1, #CAUSES do
+        CAUSES[i].log_prefix = ap_core_debug.bracket(CAUSES[i].cause)
+    end
 
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do

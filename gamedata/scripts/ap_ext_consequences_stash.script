@@ -3,8 +3,9 @@
 local pairs = pairs
 local random, alife_release_id = math.random, alife_release_id
 local table_concat = table.concat
-local xobject, xtime, xstash, xtrade = xobject, xtime, xstash, xtrade
+local xobject, xtime, xstash = xobject, xtime, xstash
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
+local ap_ext_trade = ap_ext_trade
 
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
@@ -54,11 +55,11 @@ local _loot_eligible_cache = {}
 -- True if sec is in vanilla [buy_sell] and not a crafting workflow item (tool / kit / part /
 -- upgrade by vanilla _g.script:Parse_ITM kind classification). Crafting items stay in player
 -- stashes; NPCs leave them alone via engine-side classifiers, not an AP section list.
--- @complexity O(1) cached | first probe: 1 xtrade.is_eligible + 3 IsItem; cached: 1 hash lookup
+-- @complexity O(1) cached | first probe: 1 ap_ext_trade.is_eligible + 3 IsItem; cached: 1 hash lookup
 local function _is_loot_eligible(sec)
     local cached = _loot_eligible_cache[sec]
     if cached ~= nil then return cached end
-    local v = xtrade.is_eligible(sec, nil)
+    local v = ap_ext_trade.is_eligible(sec, nil)
         and not IsItem("tool", sec)
         and not IsItem("part", sec)
         and not IsItem("upgrade", sec)
@@ -88,7 +89,7 @@ end
 
 --- Walk the stash sections. For each section the squad finds loot-eligible (vanilla [buy_sell]
 --- membership minus crafting workflow items via `_is_loot_eligible`) and below the squad's
---- per-section vanilla keep count, create one copy on a squad member via `xtrade.give_item`
+--- per-section vanilla keep count, create one copy on a squad member via `ap_ext_trade.give_item`
 --- (round-robin). Then clear the stash via `xstash.loot_stash`; sections the squad did not
 --- take are destroyed. Crafting items (tools, kits, weapon parts, upgrades) are filtered by
 --- vanilla `_g.script:Parse_ITM` kind classification, not by an AP-curated section list, so
@@ -127,9 +128,9 @@ local function _arrive_loot(squad, args)
             if taken >= max_take then break end
             local sec = sections[i]
             if not _is_loot_eligible(sec) then goto continue end
-            local keep = xtrade.keep_count(sec)
+            local keep = ap_ext_trade.keep_count(sec)
             if not keep or (counts[sec] or 0) >= keep then goto continue end
-            if not xtrade.give_item(member_ids[cursor], sec, nil) then goto continue end
+            if not ap_ext_trade.give_item(member_ids[cursor], sec, nil) then goto continue end
             counts[sec] = (counts[sec] or 0) + 1
             cursor = (cursor % #member_ids) + 1
             taken = taken + 1
@@ -163,7 +164,7 @@ local function _collect_fill_picks(squad, max_items)
     local surplus = {}
     for sec, count in pairs(counts) do
         if not _is_fill_eligible(sec) then goto continue end
-        local keep = xtrade.keep_count(sec) or 0
+        local keep = ap_ext_trade.keep_count(sec) or 0
         local diff = count - keep
         if diff > 0 then surplus[sec] = diff end
         ::continue::
