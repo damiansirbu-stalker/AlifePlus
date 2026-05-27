@@ -1,8 +1,8 @@
 --- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, infestation, decay)
 
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
-local math_huge, math_floor = math.huge, math.floor
-local xobject, xsmart_spawn, xtime, xtable = xobject, xsmart_spawn, xtime, xtable
+local math_floor = math.floor
+local xobject, xsmart_spawn, xtime = xobject, xsmart_spawn, xtime
 
 local CALLBACK = ap_core_const.CALLBACK
 
@@ -23,27 +23,21 @@ local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
-local function _find_oldest_conquest()
-    local oldest_id, oldest_at = nil, math_huge
-    for id, data in pairs(_conquered_smarts) do
-        if data.conquered_at < oldest_at then
-            oldest_id, oldest_at = id, data.conquered_at
+--- Check if per-level conquest cap allows more conquests
+function can_conquest_on_level(level_id)
+    if not level_id then return false end
+    local count = 0
+    for _, data in pairs(_conquered_smarts) do
+        if data.level_id == level_id then
+            count = count + 1
+            if count >= cfg.mutator_area_conquest_max_per_level then return false end
         end
     end
-    return oldest_id
+    return true
 end
 
-local function _evict_oldest_conquest()
-    local oldest_id = _find_oldest_conquest()
-    if not oldest_id then return end
-    local smart = xobject.se(oldest_id)
-    if smart then xsmart_spawn.clear_shared_spawn(smart, CONQUEST_KEY) end
-    _conquered_smarts[oldest_id] = nil
-    ap_core_debug.debug("[MUTATOR.SMART] evict_oldest: smart=%d", oldest_id)
-end
-
-function conquer_smart(smart_id, faction)
-    if not smart_id or not faction then return false end
+function conquer_smart(smart_id, faction, level_id)
+    if not smart_id or not faction or not level_id then return false end
     if not cfg or not cfg.mutator_area_conquest_mutate_smart then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
@@ -54,41 +48,31 @@ function conquer_smart(smart_id, faction)
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
         return true
     end
-    if not existing then
-        if xtable.count(_conquered_smarts) >= cfg.mutator_area_conquest_max_smarts then
-            _evict_oldest_conquest()
-        end
-    end
+    if not existing and not can_conquest_on_level(level_id) then return false end
     if not xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.mutator_area_conquest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
-    _conquered_smarts[smart_id] = { faction = faction, conquered_at = now }
-    ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s", smart_id, faction)
+    _conquered_smarts[smart_id] = { faction = faction, level_id = level_id, conquered_at = now }
+    ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s level=%d", smart_id, faction, level_id)
     return true
 end
 
-local function _find_oldest_swarm()
-    local oldest_id, oldest_at = nil, math_huge
-    for id, data in pairs(_swarmed_smarts) do
-        if data.swarmed_at < oldest_at then
-            oldest_id, oldest_at = id, data.swarmed_at
+--- Check if per-level swarm cap allows more swarms
+function can_swarm_on_level(level_id)
+    if not level_id then return false end
+    local count = 0
+    for _, data in pairs(_swarmed_smarts) do
+        if data.level_id == level_id then
+            count = count + 1
+            if count >= cfg.mutator_area_swarm_max_per_level then return false end
         end
     end
-    return oldest_id
+    return true
 end
 
-local function _evict_oldest_swarm()
-    local oldest_id = _find_oldest_swarm()
-    if not oldest_id then return end
-    local smart = xobject.se(oldest_id)
-    if smart then xsmart_spawn.clear_shared_spawn(smart, SWARM_KEY) end
-    _swarmed_smarts[oldest_id] = nil
-    ap_core_debug.debug("[MUTATOR.SMART] evict_oldest_swarm: smart=%d", oldest_id)
-end
-
-function swarm_smart(smart_id, species)
-    if not smart_id or not species then return false end
+function swarm_smart(smart_id, species, level_id)
+    if not smart_id or not species or not level_id then return false end
     if not cfg or not cfg.mutator_area_swarm_mutate_smart then return false end
     local smart = xobject.se(smart_id)
     if not smart then return false end
@@ -99,17 +83,13 @@ function swarm_smart(smart_id, species)
         ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s (refresh)", smart_id, species)
         return true
     end
-    if not existing then
-        if xtable.count(_swarmed_smarts) >= cfg.mutator_area_swarm_max_smarts then
-            _evict_oldest_swarm()
-        end
-    end
+    if not existing and not can_swarm_on_level(level_id) then return false end
     if not xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s FAILED (unknown species)", smart_id, species)
         return false
     end
-    _swarmed_smarts[smart_id] = { faction = species, swarmed_at = now }
-    ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s", smart_id, species)
+    _swarmed_smarts[smart_id] = { faction = species, level_id = level_id, swarmed_at = now }
+    ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s level=%d", smart_id, species, level_id)
     return true
 end
 
@@ -181,7 +161,7 @@ local function _check_infest_respawn(smart_id, data)
 end
 
 --- Update all conquered smarts: re-apply injection, decay expired entries.
--- @cost O(n) conquered smarts (max mutator_area_conquest_max_smarts)
+-- @cost O(n) conquered smarts (max mutator_area_conquest_max_per_level * ~14 levels)
 local function _update_conquered(now)
     if not cfg or not cfg.mutator_area_conquest_mutate_smart then return end
     local decay_sec = cfg.mutator_area_conquest_decay_hours * 3600
@@ -201,7 +181,7 @@ local function _update_conquered(now)
 end
 
 --- Update all swarmed smarts: re-apply injection, decay expired entries.
--- @cost O(n) swarmed smarts (max mutator_area_swarm_max_smarts)
+-- @cost O(n) swarmed smarts (max mutator_area_swarm_max_per_level * ~14 levels)
 local function _update_swarmed(now)
     if not cfg or not cfg.mutator_area_swarm_mutate_smart then return end
     local decay_sec = cfg.mutator_area_swarm_decay_hours * 3600
@@ -315,8 +295,8 @@ local function _restore_conquered(now)
     local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
         if type(data) ~= "table" then goto continue end
-        if not data.faction then goto continue end
-        _conquered_smarts[smart_id] = { faction = data.faction, conquered_at = data.conquered_at or now }
+        if not data.faction or not data.level_id then goto continue end
+        _conquered_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, conquered_at = data.conquered_at or now }
         restored = restored + 1
         ::continue::
     end
@@ -334,8 +314,8 @@ local function _restore_swarmed(now)
     local restored = 0
     for smart_id, data in pairs(_swarmed_pending) do
         if type(data) ~= "table" then goto continue end
-        if not data.faction then goto continue end
-        _swarmed_smarts[smart_id] = { faction = data.faction, swarmed_at = data.swarmed_at or now }
+        if not data.faction or not data.level_id then goto continue end
+        _swarmed_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, swarmed_at = data.swarmed_at or now }
         restored = restored + 1
         ::continue::
     end

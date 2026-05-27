@@ -1,10 +1,11 @@
-next
-  Summary: new supply trader system built on vanilla item rules with player/NPC parity; stash and consume rebuilt against vanilla classifiers; supply and job need weights raised so trade and outpost outrank campfire/shelter; reactive preemption of radiant scripts; tactical soundness check on radiant decisions; 5-10x faster world scanning; per-generator radiant SCAN budget; reactive cascade capped at 2 consequences per event; Area Swarm split from Conquest; alpha and stalker rank damage scaling dropped.
+1.7.0
+  Summary: stalker trade economy with player parity, world scan performance, stash and consume rebuild, reactive preemption, radiant tactical scoring, per-generator SCAN budget, Area Swarm split, area mutators on by default with per-level caps, damage mutators removed
   Trade:
     NPCs that arrive at a supply trader smart sell loot for money and buy ammo for their equipped pistol and rifle, plus PDAs, medkits, bandages, and grenades from a curated keep list. One economy for the player and NPCs; modpack items work automatically. Built on Alundaio and Tronex's offline-trade work.
     Destination filter: only smarts hosting a curated trader, medic, or mechanic count. Off-map Supply Trader trips no longer cross maps to faction HQs without a known trader.
-    Sells: every section not slot-equipped (slots 1-12), not quest, not money, not on the keep list, not ammo matching the equipped pistol or rifle. Price = vanilla cost * buy_sell[4] (or 0.5 for sections without a [buy_sell] row). Revenue capped per visit by consequence_supply_trader_sell_money_cap (MCM, default 5000 RU).
-    Buys: ammo for the equipped pistol and rifle, plus every entry on the keep list (PDAs, medkits, bandages, grenades), topped up to vanilla buy_sell[3] at cost * buy_sell[5]. Stops when the NPC runs out of money. The AP overlay flips vanilla restock=0 to restock=1 for grenades and AI medkits so the buy loop can act on them.
+    Sells: anything not equipped, not quest, not money, not on the keep list, not ammo for the equipped pistol or rifle. Vanilla prices, default half-cost for unclassified items.
+    Buys: pistol and rifle ammo, plus the keep list (PDAs, medkits, bandages). Grenades restricted to F1 and RGD5, veteran rank or higher only, at 2x price.
+    Cash cap: after sell and buy, any cash above the cap (MCM, default 5000 RU) goes back to the trader. NPCs never leave a supply visit with more than the cap.
     Hostility: faction squads route around enemy bases on routine trips. The smart hostility scan reads curated NPC faction overrides (Petrenko at the Dolg base, Sakharov at Yantar, Ashot at Yanov, the Freedom leader at Army Warehouses, and the rest), so bases identified by their named trader or leader correctly turn away enemies.
   Item economy:
     Stash Loot: squads skip the entire stash if any crafting workflow item is present (tools, kits, weapon parts, upgrades by vanilla kind classification) -- the stash stays untouched for the player. MCM-gated (Consequences > Stash Loot > Skip stashes with crafting items, default on). Otherwise the squad takes only items on the AP keep list (PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades), capped per section by vanilla keep count, and clears the rest. Same keep list Stash Fill and the trader buy phase use; one allowlist drives all three flows. Addon-added crafting items are protected automatically by the engine kind classifier.
@@ -23,11 +24,11 @@ next
   Combat:
     Object mutators removed. Alpha mutants and veteran+ stalkers now take vanilla damage and drop vanilla loot. Specifically dropped: alpha hit power dealt/taken bonus, alpha panic immunity, alpha bonus loot table, veteran+ stalker hit power dealt/taken multiplier (NPC-vs-NPC). Alpha promotion is unchanged -- alphas still register with the tracker so AlphaKill same-species hunters dispatch on the kill.
   MCM:
-    Added: Mutators > Area Swarm page. Consequences > Stash Loot min/max items sliders. Consequences > Stash Loot "Skip stashes with crafting items" toggle (default on). Consequences > Supply Trader sell-money cap slider (0-50000 RU, default 5000 per visit).
+    Added: Mutators > Area Swarm page. Consequences > Stash Loot min/max items sliders. Consequences > Stash Loot "Skip stashes with crafting items" toggle (default on). Consequences > Supply Trader NPC cash cap slider (0-50000 RU, default 5000 — caps post-trade NPC cash).
     Removed: Mutators > Alpha and Stalker Rank pages. Alpha Promote loot toggle. Social Off-base (cause + consequence). Stash Loot protect-toolkits toggle (vanilla kind classification protects them unconditionally now).
     Renamed: "active period" / "dormant period" relabeled "day" / "night" across cause descriptions.
-    Changed: Area mutators (Conquest, Swarm, Infest) default off on new games (existing saves keep state). Area Conquest cap 50 -> 30, decay 72h -> 48h. Area Infest decay 0 -> 48h.
-    Changed: Radiant tick 10s -> 15s. News compose interval 30-100s -> 60-200s (news fires half as often).
+    Changed: Area mutators (Conquest, Swarm, Infest) on by default. Per-level cap unified at 3 across all three (was global FIFO 30 for Conquest/Swarm, per-level 1 for Infest). Decay 48h. Upgrade clears any previously persisted conquered/swarmed/infested smarts once (xchange migration), spawns revert to vanilla LTX until repopulated by live dispatch.
+    Changed: Radiant tick 10s -> 20s. News compose interval 30-100s -> 60-200s (news fires half as often).
   Fixed:
     Hostility revalidates per scan during long-running dispatches, not just at start. Squadkill Revenge and Harvest Rob actor chasers release within 20s if the chaser's faction becomes friendly to the player mid-pursuit (previously the chaser kept following across a Loner -> Duty / Freedom switch).
     SIMBOARD smart terrain roster tracks AP-driven squad moves. xsmart.has_capacity counts AP routings; integrator mods receive squad_on_enter_smart and squad_on_leave_smart callbacks.

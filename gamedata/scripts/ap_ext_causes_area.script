@@ -117,6 +117,7 @@ local function _eligible_conquer(trace, squad, now, level_id, budget)
     if not p_ok then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
+    if not ap_ext_smart_mutator.can_conquest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_CONQUEST_PER_LEVEL } end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
@@ -152,6 +153,7 @@ local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     if not p_ok then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
+    if not ap_ext_smart_mutator.can_swarm_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_SWARM_PER_LEVEL } end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end

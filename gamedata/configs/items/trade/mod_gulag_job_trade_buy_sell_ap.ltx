@@ -1,11 +1,14 @@
 ; AlifePlus overlay on top of vanilla gulag_job_trade_buy_sell.ltx.
-; Read by ap_ext_trade.get_keep_items() (allowlist) and ap_ext_trade._buy_phase()
-; (restock targets). Two changes vs vanilla:
-;   1. New `[ap_buy_sell_keep]` section: AP-namespaced allowlist of items NPCs treat as useful.
+; Read by ap_ext_trade.get_keep_items() (allowlist), ap_ext_trade.get_rank_gated_items()
+; (veteran+ restriction), and ap_ext_trade._buy_phase() (restock targets).
+;   1. `[ap_buy_sell_keep]`: AP-namespaced allowlist of items NPCs treat as useful.
 ;      Drives BOTH sell-skip (NPC keeps these) and buy-include (NPC restocks these).
-;   2. Restock flips on vanilla `[buy_sell_supplier]` / `[buy_sell_medic]` rows whose restock=0
-;      blocks the buy phase from acting on them despite their membership in the allowlist
-;      (grenades, AI medkits).
+;   2. `[ap_buy_sell_veteran]`: subset of keep items NPCs only buy if their character rank
+;      is veteran or higher (>= RANK_VETERAN = 12000). Sell-skip protection still applies
+;      to all NPCs regardless of rank.
+;   3. Restock flips on vanilla `[buy_sell_supplier]` / `[buy_sell_medic]` rows whose
+;      restock=0 blocks the buy phase from acting on them despite their membership in
+;      the allowlist (grenades, AI medkits).
 
 [ap_buy_sell_keep]
 device_pda        = 1
@@ -27,14 +30,14 @@ medkit_ai2        = 1
 medkit_ai3        = 1
 grenade_f1        = 1
 grenade_rgd5      = 1
-grenade_gd-05     = 1
-grenade_smoke     = 1
+
+[ap_buy_sell_veteran]
+grenade_f1   = 1
+grenade_rgd5 = 1
 
 ![buy_sell_supplier]
-!grenade_f1    = 2,3,1,0.5,1
-!grenade_rgd5  = 2,3,1,0.5,1
-!grenade_gd-05 = 2,3,1,0.5,1
-!grenade_smoke = 2,3,1,0.5,1
+!grenade_f1   = 2,3,1,0.5,2
+!grenade_rgd5 = 2,3,1,0.5,2
 
 ![buy_sell_medic]
 !medkit_ai1 = 1,1,1,0.5,1

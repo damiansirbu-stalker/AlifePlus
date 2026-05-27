@@ -9,8 +9,9 @@ GLOBAL_CONSEQUENCE_WINDOW_SEC = 60
 --- Mirrors framework pattern: pipeline windows are const, only caps are MCM-exposed.
 OFFMAP_WINDOW_SEC = 48 * 3600
 
---- Master rank threshold (per anomaly/configs/creatures/game_relations.ltx:8 rank intervals:
---- expert <= 17499, master >= 17500). Use >= 17499 inclusive to match the engine boundary.
+--- Rank thresholds (per anomaly/configs/creatures/game_relations.ltx:7).
+--- Compare with `>=` against engine character_rank() to gate veteran+ or master+ behaviors.
+RANK_VETERAN = 12000
 RANK_MASTER = 17499
 
 --- Reactive event distributor interval (seconds, hardcoded -- per callback type)
@@ -271,6 +272,8 @@ REASON = {
     OFFMAP_ALREADY_DISPATCHED = "offmap_already_dispatched",
     NO_HOME_LEVEL     = "no_home_level",
     MAX_INFEST_PER_LEVEL = "max_infest_per_level",
+    MAX_CONQUEST_PER_LEVEL = "max_conquest_per_level",
+    MAX_SWARM_PER_LEVEL = "max_swarm_per_level",
     SQUAD_ALIVE       = "squad_alive",
     NO_PROMOTION      = "no_promotion",
     LOW_KILLS         = "low_kills",

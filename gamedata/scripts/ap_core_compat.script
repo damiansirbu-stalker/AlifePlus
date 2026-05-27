@@ -96,6 +96,11 @@ local function _v15_to_v155_release_orphan_arrivals(m_data)
     for i = 1, #_to_remove do squads[_to_remove[i]] = nil end
 end
 
+--- v1.6 -> v1.7: drop ap_ext_smart_mutator (level_id required on conquest+swarm; per-level cap replaces FIFO).
+local function _v16_to_v17_reset_smart_mutator(m_data)
+    m_data.ap_ext_smart_mutator = nil
+end
+
 --- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
 --- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
 local function _v155_to_v16_extract_record_save_key(m_data)
@@ -110,14 +115,15 @@ local function _v155_to_v16_extract_record_save_key(m_data)
     broker.ap_record_seq     = nil
 end
 
-xchange.register("ap_v12_to_v13_release_orphaned_squads", _v12_to_v13_release_orphaned_squads)
-xchange.register("ap_v12_to_v13_delete_old_save_keys",    _v12_to_v13_delete_old_save_keys)
-xchange.register("ap_v12_to_v13_reset_smart_mutator",     _v12_to_v13_reset_smart_mutator)
-xchange.register("ap_v13_to_v135_clear_elite_data",          _v13_to_v135_clear_elite_data)
-xchange.register("ap_v13_to_v135_release_old_scripted_squads", _v13_to_v135_release_old_scripted_squads)
-xchange.register("ap_v135_to_v14_cleanup_squad_key",         _v135_to_v14_cleanup_squad_key)
-xchange.register("ap_v15_to_v155_release_orphan_arrivals",   _v15_to_v155_release_orphan_arrivals)
-xchange.register("ap_v155_to_v16_extract_record_save_key",   _v155_to_v16_extract_record_save_key)
+xchange.register("ap_v12_to_v13_release_orphaned_squads",        _v12_to_v13_release_orphaned_squads)
+xchange.register("ap_v12_to_v13_delete_old_save_keys",           _v12_to_v13_delete_old_save_keys)
+xchange.register("ap_v12_to_v13_reset_smart_mutator",            _v12_to_v13_reset_smart_mutator)
+xchange.register("ap_v13_to_v135_clear_elite_data",              _v13_to_v135_clear_elite_data)
+xchange.register("ap_v13_to_v135_release_old_scripted_squads",   _v13_to_v135_release_old_scripted_squads)
+xchange.register("ap_v135_to_v14_cleanup_squad_key",             _v135_to_v14_cleanup_squad_key)
+xchange.register("ap_v15_to_v155_release_orphan_arrivals",       _v15_to_v155_release_orphan_arrivals)
+xchange.register("ap_v155_to_v16_extract_record_save_key",       _v155_to_v16_extract_record_save_key)
+xchange.register("ap_v16_to_v17_reset_smart_mutator",            _v16_to_v17_reset_smart_mutator)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)

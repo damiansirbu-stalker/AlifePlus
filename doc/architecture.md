@@ -377,7 +377,7 @@ Four AP flows touch items. Each gates on a vanilla classifier; the only AP-curat
 
 | Flow | Site | Gate | Behavior |
 |------|------|------|----------|
-| Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` | vanilla `[buy_sell]` + `[ap_buy_sell_keep]` via `ap_ext_trade.trade` | Sells every section that is not slot-equipped (slots 1-12), not quest / money, not in `[ap_buy_sell_keep]`, not ammo matching the equipped pistol or rifle at `cost * buy_sell[4]` (or `0.5` for sections without a `[buy_sell]` row); revenue capped at `consequence_supply_trader_sell_money_cap` RU per visit. Restocks pistol and rifle ammo classes plus every `[ap_buy_sell_keep]` entry to `buy_sell[3]` at `cost * buy_sell[5]`; stops when the NPC runs out of money. The only money path. |
+| Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` | vanilla `[buy_sell]` + `[ap_buy_sell_keep]` + `[ap_buy_sell_veteran]` via `ap_ext_trade.trade` | Three phases in order: (1) SELL every section that is not slot-equipped (slots 1-12), not quest / money, not in `[ap_buy_sell_keep]`, not ammo matching the equipped pistol or rifle at `cost * buy_sell[4]` (or `0.5` for sections without a `[buy_sell]` row). (2) BUY pistol and rifle ammo classes plus every `[ap_buy_sell_keep]` entry to `buy_sell[3]` at `cost * buy_sell[5]`; `[ap_buy_sell_veteran]` subset gated on `npc:character_rank() >= RANK_VETERAN`; stops when the NPC runs out of money. (3) CLAMP — any cash above `consequence_supply_trader_cash_cap` transferred to the seller. The only money path. |
 | Stash Loot | `ap_ext_consequences_stash.script` `_arrive_loot` | stash-wide abort if `cfg.consequence_stash_loot_skip_crafting` AND any section is `IsItem("tool" / "kit" / "part" / "upgrade", sec)`; otherwise per-section gate is `ap_ext_trade.get_keep_items()` (the `[ap_buy_sell_keep]` keep list) | If the toggle is on (default) and any crafting item is present, skip the stash entirely (player's crafting supply chain preserved). Otherwise takes up to `ap_ext_trade.keep_count(sec)` per keep-list section, round-robin across squad. Non-keep-list sections destroyed by `xstash.loot_stash`. Same keep list Stash Fill and the trader buy phase use. |
 | Stash Fill | `ap_ext_consequences_stash.script` `_arrive_fill` | `ap_ext_trade.get_keep_items()` (the `[ap_buy_sell_keep]` keep list) | Deposits only surplus above `max(ap_ext_trade.keep_count(sec), 1)` so keep-list items without a `[buy_sell]` row (AI medkits, supplier-only grenades) still hold a floor of 1. The keep list is exactly the set safe to round-trip through the section-name cache: PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades. Food / drink / artefacts / weapons / outfits all excluded by absence from the keep list. |
 | Needs Consume | `ap_ext_consequences_needs.script` `_consume` | per-need predicate in `NEED_MATCH` | HUNGER: `IsItem("eatable", sec)`. HEAL: `items_health` or `items_bleed`. REST / SOCIAL / OUTPOST: `items_rad`. Releases first inventory match via `alife_release_id`. |
@@ -663,7 +663,7 @@ Volatility. Engine rebuilds respawn_params from LTX on every load (STATE_Read ca
 
 Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner checks xtime.game_sec() - conquered_at and calls clear_shared_spawn on expired entries. Original LTX spawns never interrupted - decay just removes the extra entry.
 
-Eviction. FIFO at cfg.mutator_area_conquest_max_smarts (default 30). Oldest by game time evicted on cap. Same-faction re-conquest refreshes the timestamp (LRU). Different-faction overwrites without eviction.
+Per-level cap. can_conquest_on_level(level_id) counts conquered smarts with matching level_id. Rejects if count >= cfg.mutator_area_conquest_max_per_level (default 3, MCM 1-5). Same-faction re-conquest refreshes the timestamp without consuming a slot. Different-faction overwrite on an existing entry also bypasses the cap.
 
 #### Swarm (shared spawn, mutants)
 
@@ -673,7 +673,7 @@ Independence from conquest. _swarmed_smarts is a separate table from _conquered_
 
 Decay. cfg.mutator_area_swarm_decay_hours (default 48). Scanner checks xtime.game_sec() - swarmed_at and calls clear_shared_spawn on expired entries.
 
-Eviction. FIFO at cfg.mutator_area_swarm_max_smarts (default 30). Oldest by game time evicted on cap. Same-species re-swarm refreshes the timestamp. Different-species overwrites without eviction.
+Per-level cap. can_swarm_on_level(level_id) counts swarmed smarts with matching level_id. Rejects if count >= cfg.mutator_area_swarm_max_per_level (default 3, MCM 1-5). Same-species re-swarm refreshes the timestamp without consuming a slot. Different-species overwrite on an existing entry also bypasses the cap.
 
 Volatility. Same as conquest: engine rebuilds respawn_params on STATE_Read. Two-phase restore via _swarmed_pending. 60s scanner re-applies via set_shared_spawn.
 
@@ -683,7 +683,7 @@ infest_smart(smart_id, faction, level_id) calls xsmart_spawn.set_exclusive_spawn
 
 Faction re-apply. check_smart_faction runs every tick on online smarts and counts only IsStalker NPCs - monsters invisible. When only mutants occupy an online smart, self.faction reverts to default_faction, breaking the faction gate match. 60s periodic scanner re-applies smart.faction via set_exclusive_spawn for all infested smarts.
 
-Per-level cap. can_infest_on_level(level_id) counts infested smarts with matching level_id. Rejects if count >= cfg.mutator_area_infest_max_per_level (default 1, MCM 1-5).
+Per-level cap. can_infest_on_level(level_id) counts infested smarts with matching level_id. Rejects if count >= cfg.mutator_area_infest_max_per_level (default 3, MCM 1-5).
 
 Volatility. Same as conquest: engine rebuilds faction_controlled, faction, respawn_params from LTX on every load. Two-phase restore re-applies all three in _on_game_load. 60s scanner handles ongoing faction reversion for online smarts.
 

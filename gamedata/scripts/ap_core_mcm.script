@@ -4,7 +4,7 @@ local type, RegisterScriptCallback = type, RegisterScriptCallback
 defaults = {
     -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
     alife_ratio = 8,
-    distributor_interval_sec = 15,
+    distributor_interval_sec = 20,
     allow_external_ownership = true,
     cause_max_reactions = 20,
     cause_max_needs = 20,
@@ -263,7 +263,7 @@ defaults = {
     consequence_supply_trader_enabled = true,
     consequence_supply_trader_rush = false,
     consequence_supply_trader_arrive_action_enabled = true,
-    consequence_supply_trader_sell_money_cap = 5000,
+    consequence_supply_trader_cash_cap = 5000,
 
     -- Consequence: Job Outpost
     consequence_job_outpost_enabled = true,
@@ -298,20 +298,20 @@ defaults = {
     consequence_supply_trader_offmap_arrive_action_enabled = true,
 
     -- Area conquest (additive shared spawn, human factions)
-    mutator_area_conquest_mutate_smart = false,
-    mutator_area_conquest_max_smarts = 30,
+    mutator_area_conquest_mutate_smart = true,
+    mutator_area_conquest_max_per_level = 3,
     mutator_area_conquest_spawn_num = 2,
     mutator_area_conquest_decay_hours = 48,
 
     -- Area swarm (additive shared spawn, mutant species)
-    mutator_area_swarm_mutate_smart = false,
-    mutator_area_swarm_max_smarts = 30,
+    mutator_area_swarm_mutate_smart = true,
+    mutator_area_swarm_max_per_level = 3,
     mutator_area_swarm_spawn_num = 2,
     mutator_area_swarm_decay_hours = 48,
 
     -- Area infest (exclusive spawn replacement)
-    mutator_area_infest_mutate_smart = false,
-    mutator_area_infest_max_per_level = 1,
+    mutator_area_infest_mutate_smart = true,
+    mutator_area_infest_max_per_level = 3,
     mutator_area_infest_spawn_num = 3,
     mutator_area_infest_decay_hours = 48,
 
@@ -476,11 +476,11 @@ local _key_to_tab = {
     consequence_wounded_help_rush = "consequences/wounded_help",
     consequence_wounded_help_max_squads = "consequences/wounded_help",
     mutator_area_conquest_mutate_smart = "mutators/conquest",
-    mutator_area_conquest_max_smarts = "mutators/conquest",
+    mutator_area_conquest_max_per_level = "mutators/conquest",
     mutator_area_conquest_spawn_num = "mutators/conquest",
     mutator_area_conquest_decay_hours = "mutators/conquest",
     mutator_area_swarm_mutate_smart = "mutators/swarm",
-    mutator_area_swarm_max_smarts = "mutators/swarm",
+    mutator_area_swarm_max_per_level = "mutators/swarm",
     mutator_area_swarm_spawn_num = "mutators/swarm",
     mutator_area_swarm_decay_hours = "mutators/swarm",
     consequence_harvest_rob_enabled = "consequences/harvest_rob",
@@ -512,7 +512,7 @@ local _key_to_tab = {
     consequence_supply_trader_enabled = "consequences/supply_trader",
     consequence_supply_trader_rush = "consequences/supply_trader",
     consequence_supply_trader_arrive_action_enabled = "consequences/supply_trader",
-    consequence_supply_trader_sell_money_cap = "consequences/supply_trader",
+    consequence_supply_trader_cash_cap = "consequences/supply_trader",
     consequence_job_outpost_enabled = "consequences/job_outpost",
     consequence_job_outpost_rush = "consequences/job_outpost",
     consequence_job_outpost_arrive_action_enabled = "consequences/job_outpost",
@@ -640,7 +640,7 @@ function on_mcm_load()
                             _slide("ui_mcm_ap_mutators_conquest_title"),
                             _desc("ui_mcm_ap_mutators_conquest_desc"),
                             _check("mutator_area_conquest_mutate_smart"),
-                            _track("mutator_area_conquest_max_smarts", 10, 100, 5),
+                            _track("mutator_area_conquest_max_per_level", 1, 5, 1),
                             _track("mutator_area_conquest_spawn_num", 1, 5, 1),
                             _track("mutator_area_conquest_decay_hours", 0, 168, 4),
                         },
@@ -652,7 +652,7 @@ function on_mcm_load()
                             _slide("ui_mcm_ap_mutators_swarm_title"),
                             _desc("ui_mcm_ap_mutators_swarm_desc"),
                             _check("mutator_area_swarm_mutate_smart"),
-                            _track("mutator_area_swarm_max_smarts", 10, 100, 5),
+                            _track("mutator_area_swarm_max_per_level", 1, 5, 1),
                             _track("mutator_area_swarm_spawn_num", 1, 5, 1),
                             _track("mutator_area_swarm_decay_hours", 0, 168, 4),
                         },
@@ -1149,7 +1149,7 @@ function on_mcm_load()
                             _check("consequence_supply_trader_enabled"),
                             _check("consequence_supply_trader_rush"),
                             _check("consequence_supply_trader_arrive_action_enabled"),
-                            _track("consequence_supply_trader_sell_money_cap", 0, 50000, 500),
+                            _track("consequence_supply_trader_cash_cap", 0, 50000, 500),
                         },
                     },
                     {

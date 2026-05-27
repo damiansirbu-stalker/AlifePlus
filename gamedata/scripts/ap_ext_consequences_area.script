@@ -24,7 +24,7 @@ local function _on_arrive_conquer(squad, args)
     if not args then return end
     ap_core_debug.observe(nil, PHASE.ARRIVE, function(trace)
         ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
-        ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity)
+        ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity, args.level_id)
         return { code = TRACE.OK, squad = squad.id, smart = args.target_smart_id, identity = args.identity }
     end)
 end
@@ -33,7 +33,7 @@ local function _on_arrive_swarm(squad, args)
     if not args then return end
     ap_core_debug.observe(nil, PHASE.ARRIVE, function(trace)
         ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
-        ap_ext_smart_mutator.swarm_smart(args.target_smart_id, args.identity)
+        ap_ext_smart_mutator.swarm_smart(args.target_smart_id, args.identity, args.level_id)
         return { code = TRACE.OK, squad = squad.id, smart = args.target_smart_id, species = args.identity }
     end)
 end

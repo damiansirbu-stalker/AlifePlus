@@ -27,14 +27,17 @@ local ini_sys, ini_file, alife_release_id, xobject = ini_sys, ini_file, alife_re
 local INI_PATH = "items\\trade\\gulag_job_trade_buy_sell.ltx"
 local BUY_SELL_SECTION = "buy_sell"
 local KEEP_SECTION = "ap_buy_sell_keep"
+local VETERAN_SECTION = "ap_buy_sell_veteran"
 local DEFAULT_COST = 30
 local DEFAULT_SELL_MULT = 0.5
 local SLOT_COUNT = 12
+local RANK_VETERAN = ap_core_const.RANK_VETERAN
 
 local _ini
 local _ini_loaded = false
 local _valid_cache
 local _keep_cache
+local _veteran_cache
 local _row_cache = {}
 local _neg_row_cache = {}
 
@@ -117,6 +120,18 @@ function get_keep_items()
     if not ini then _keep_cache = {} return _keep_cache end
     _keep_cache = utils_data.collect_section(ini, KEEP_SECTION, true) or {}
     return _keep_cache
+end
+
+--- Return cached set of sections in `[ap_buy_sell_veteran]` (rank-gated subset).
+--- NPCs only buy these if character_rank() >= RANK_VETERAN. Sell-skip still uses keep set.
+--- @cost O(n) sections on first call, O(1) cached after
+--- @return table { [sec] = true, ... }
+function get_veteran_items()
+    if _veteran_cache then return _veteran_cache end
+    local ini = _get_ini()
+    if not ini then _veteran_cache = {} return _veteran_cache end
+    _veteran_cache = utils_data.collect_section(ini, VETERAN_SECTION, true) or {}
+    return _veteran_cache
 end
 
 -- Useful predicate used by both sell-skip and buy-include. Ammo path checks equipped_ammos; non-ammo checks the allowlist.
@@ -258,10 +273,12 @@ local function _restock_section(ctx, sec, existing)
     end
 end
 
--- Restock one section if in vanilla [buy_sell].
+-- Restock one section if in vanilla [buy_sell]. Rank-gated sections (`[ap_buy_sell_veteran]`)
+-- skip the buy when ctx.npc_rank < RANK_VETERAN. Sell-skip is unaffected (uses keep set only).
 -- @cost O(target - existing) | up to (target - existing) buy_item calls
 local function _try_restock(ctx, sec)
     if not ctx.valid[sec] then return end
+    if ctx.veteran_set[sec] and ctx.npc_rank < RANK_VETERAN then return end
     local existing = ctx.inventory_counts[sec] or 0
     _restock_section(ctx, sec, existing)
 end
@@ -280,20 +297,20 @@ local function _buy_phase(ctx)
 end
 
 --- Run a full sell+buy trade using vanilla `[buy_sell]` data and the AP `[ap_buy_sell_keep]` allowlist.
---- Sells everything except equipped/quest/money/keep; tops up equipped-weapon ammo and keep items to row[3]; sell capped by max_sell_money RU.
+--- Three phases in order: sell everything sellable; buy ammo + keep list; clamp NPC cash to cash_cap by transferring excess to seller.
 --- @safety SAFE - nil-guarded npc/seller/valid; engine iter is read-only during sell callback
 --- @cost O(n inventory) + O(SLOT_COUNT) + O(ammo_classes + keep_set) | SLOT_COUNT item_in_slot, rest hash lookups
 --- @src anomaly/axr_trade_manager.script(164-347)
 --- @param npc game_object Trading NPC (gains money from sales, spends money on buys)
---- @param seller game_object Trader at smart (receives sold items, receives money for buys)
---- @param opts table|nil { max_sell_money } -- cap sell revenue in RU; nil = no cap
+--- @param seller game_object Trader at smart (receives sold items, receives money for buys, receives clamp surplus)
+--- @param opts table|nil { cash_cap } -- max RU the NPC carries out of the visit; nil = no clamp
 --- @return table { sold = { sec, ... }, bought = { sec, ... } }
 function trade(npc, seller, opts)
     local sold, bought = {}, {}
     local valid = get_valid_items()
     if not valid or not npc or not seller then return { sold = sold, bought = bought } end
 
-    local max_sell_money = opts and opts.max_sell_money
+    local cash_cap = opts and opts.cash_cap
     local keep_set = get_keep_items()
 
     -- One slot walk does both jobs: collect equipped item ids (sell-side don't-sell guard) plus
@@ -314,14 +331,12 @@ function trade(npc, seller, opts)
     end
 
     local inventory_counts = {}
-    local sold_money = 0
 
     xobject.iterate_online_inventory(npc:id(), function(_, itm)
         local sec = itm:section()
         if valid[sec] then
             inventory_counts[sec] = (inventory_counts[sec] or 0) + 1
         end
-        if max_sell_money and sold_money >= max_sell_money then return end
         local item_id = itm:id()
         for j = 1, equipped_n do
             if equipped_ids[j] == item_id then return end
@@ -331,16 +346,24 @@ function trade(npc, seller, opts)
         local money = sell_item(npc, itm, seller, DEFAULT_SELL_MULT)
         if not money then return end
         sold[#sold + 1] = sec
-        sold_money = sold_money + money
         if valid[sec] then
             inventory_counts[sec] = inventory_counts[sec] - 1
         end
     end)
 
+    local veteran_set = get_veteran_items()
+    local npc_rank = IsStalker(npc) and npc:character_rank() or 0
+
     _buy_phase({
         npc = npc, seller = seller, valid = valid, bought = bought,
         equipped_ammos = equipped_ammos, inventory_counts = inventory_counts, keep_set = keep_set,
+        veteran_set = veteran_set, npc_rank = npc_rank,
     })
+
+    if cash_cap then
+        local excess = (npc:money() or 0) - cash_cap
+        if excess > 0 then npc:transfer_money(excess, seller) end
+    end
 
     return { sold = sold, bought = bought }
 end

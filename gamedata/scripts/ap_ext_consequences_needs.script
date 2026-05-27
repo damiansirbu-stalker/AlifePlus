@@ -53,7 +53,7 @@ local function _consume(npc_id, need)
 end
 
 --- Trade visitor inventory against any service NPC at smart.
---- Delegates to ap_ext_trade.trade with a money-revenue cap (sell phase stops once sale earnings hit cfg.consequence_supply_trader_sell_money_cap RU).
+--- Delegates to ap_ext_trade.trade with a per-NPC cash cap (sell phase stops once NPC total cash hits cfg.consequence_supply_trader_cash_cap RU).
 local function _arrive_trade(visitor_go, smart_id, log_prefix)
     local smart_se = smart_id and xobject.se(smart_id)
     if not smart_se then return {}, {} end
@@ -62,7 +62,7 @@ local function _arrive_trade(visitor_go, smart_id, log_prefix)
         ap_core_debug.debug(log_prefix .. " _arrive_trade no service NPC online at smart=%d", smart_id)
         return {}, {}
     end
-    local result = ap_ext_trade.trade(visitor_go, trader_go, { max_sell_money = cfg.consequence_supply_trader_sell_money_cap })
+    local result = ap_ext_trade.trade(visitor_go, trader_go, { cash_cap = cfg.consequence_supply_trader_cash_cap })
     return result.sold, result.bought
 end
 
