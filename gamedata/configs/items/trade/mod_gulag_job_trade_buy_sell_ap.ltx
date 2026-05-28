@@ -3,14 +3,17 @@
 ; (veteran+ restriction), and ap_ext_trade._buy_phase() (restock targets).
 ;   1. `[ap_buy_sell_keep]`: AP-namespaced allowlist of items NPCs treat as useful.
 ;      Drives BOTH sell-skip (NPC keeps these) and buy-include (NPC restocks these).
-;   2. `[ap_buy_sell_veteran]`: subset of keep items NPCs only buy if their character rank
-;      is veteran or higher (>= RANK_VETERAN = 12000). Sell-skip protection still applies
-;      to all NPCs regardless of rank.
+;   2. `[ap_buy_sell_veteran]`: rank-gated buy list. NPCs only buy these sections if their
+;      character rank is veteran or higher (>= RANK_VETERAN = 12000). Applies to any
+;      buy-phase section -- keep-list items (grenades) AND ammo classes inferred from the
+;      equipped pistol/rifle (premium variants: AP, EP, hot-load, hollow-point, steel-core,
+;      flechette, intermediate +damage rounds). FMJ baseline and single-tier ammo stay
+;      unlisted so all ranks restock them. Sell-skip protection is rank-independent.
 ;   3. Restock flips on vanilla `[buy_sell_supplier]` / `[buy_sell_medic]` rows whose
 ;      restock=0 blocks the buy phase from acting on them despite their membership in
 ;      the allowlist (grenades, AI medkits).
 
-[ap_buy_sell_keep]
+@[ap_buy_sell_keep]
 device_pda        = 1
 device_pda_1      = 1
 device_pda_2      = 1
@@ -31,9 +34,28 @@ medkit_ai3        = 1
 grenade_f1        = 1
 grenade_rgd5      = 1
 
-[ap_buy_sell_veteran]
-grenade_f1   = 1
-grenade_rgd5 = 1
+@[ap_buy_sell_veteran]
+grenade_f1           = 1
+grenade_rgd5         = 1
+ammo_9x18_pmm        = 1
+ammo_9x18_ap         = 1
+ammo_9x19_pbp        = 1
+ammo_9x19_ap         = 1
+ammo_5.7x28_ss190    = 1
+ammo_7.62x25_ps      = 1
+ammo_11.43x23_hydro  = 1
+ammo_5.45x39_ep      = 1
+ammo_5.45x39_ap      = 1
+ammo_5.56x45_ss190   = 1
+ammo_5.56x45_ap      = 1
+ammo_9x39_ap         = 1
+ammo_7.62x39_ap      = 1
+ammo_7.92x33_ap      = 1
+ammo_7.62x51_ap      = 1
+ammo_7.62x54_7h14    = 1
+ammo_7.62x54_ap      = 1
+ammo_12.7x55_ap      = 1
+ammo_12x76_dart      = 1
 
 ![buy_sell_supplier]
 grenade_f1   = 2,3,1,0.5,2
