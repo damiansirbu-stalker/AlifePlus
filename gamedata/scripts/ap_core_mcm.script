@@ -322,6 +322,32 @@ defaults = {
 
 }
 
+-- Stateless profile: AlifePlus dispatch and travel stay active, but every mechanic that
+-- mutates inventory, trade, or world spawn flips off. Squads still get hungry, still travel
+-- to traders / campfires / outposts, still scan for area opportunities. They just do not
+-- consume the medkit, swap inventory, or mutate the spawn table on arrival. Stash loot and
+-- fill have no separate arrive-action toggle (the whole consequence bundles dispatch and
+-- item move at ap_ext_consequences_stash.script:99,213), so the consequence-level flags go
+-- off; squads stop dispatching to stashes entirely under this profile.
+local stateless_overrides = {
+    -- Arrive-action toggles (existing per-consequence gates in ap_ext_consequences_needs.script:106)
+    consequence_hunger_campfire_arrive_action_enabled = false,
+    consequence_rest_campfire_arrive_action_enabled = false,
+    consequence_heal_shelter_arrive_action_enabled = false,
+    consequence_supply_trader_arrive_action_enabled = false,
+    consequence_supply_trader_offmap_arrive_action_enabled = false,
+    consequence_job_outpost_arrive_action_enabled = false,
+    consequence_social_campfire_arrive_action_enabled = false,
+    consequence_social_base_arrive_action_enabled = false,
+    -- Area mutator spawn toggles (the actual spawn-table mutation step)
+    mutator_area_conquest_mutate_smart = false,
+    mutator_area_swarm_mutate_smart = false,
+    mutator_area_infest_mutate_smart = false,
+    -- Stash item flows (whole consequence; no arrive-action split exists for stash)
+    consequence_stash_loot_enabled = false,
+    consequence_stash_fill_enabled = false,
+}
+
 local _key_to_tab = {
     log_level = "development",
     map_markers = "development",
@@ -532,6 +558,7 @@ local _key_to_tab = {
     consequence_supply_trader_offmap_rush = "consequences/supply_trader_offmap",
     consequence_supply_trader_offmap_arrive_action_enabled = "consequences/supply_trader_offmap",
     btn_reset_all = "development",
+    btn_reset_stateless = "development",
 }
 
 local _path_builder = function(key)
@@ -540,19 +567,39 @@ local _path_builder = function(key)
 end
 cfg, get_config, load_config = xmcm.create_config("ap", defaults, _path_builder)
 
-function btn_reset_all()
+-- functor_ui receives the UI_MCM instance as trailing arg (ui_mcm.script:1435). functor would receive nothing. MCM 1.7.2fix leaves the file-local GUI nil on fresh opens (only Open_to sets it, and Reset_last_opt skips Open_to when last_path is nil), so ui_mcm.get_gui() returns nil. functor_ui sidesteps that bug.
+-- MCM keeps file-local opt_temp (pending widget edits) at ui_mcm.script:175. Any widget the user touched before clicking the profile button is still there, and On_Accept at ui_mcm.script:2393 writes opt_temp AFTER our config writes, partially un-applying the profile. On_Discard flushes opt_temp and closes the dialog; same path the Cancel button takes. gui.owner:SetMsg is the same top-of-screen call MCM uses at ui_mcm.script:2528 for its built-in "changes done" message; works in main menu and pause menu both.
+local function _apply_profile(gui, overrides, msg)
     local config = axr_main.config
     for k, v in pairs(defaults) do
         local path = _path_builder(k)
         if path then
-            config:w_value("mcm", path, v)
+            local val = v
+            if overrides and overrides[k] ~= nil then val = overrides[k] end
+            config:w_value("mcm", path, val)
         end
     end
     config:save()
     load_config()
-    if db.actor then
-        news_manager.send_tip(db.actor, "AlifePlus: all settings restored to defaults.", nil, nil, 5000)
+    if gui then
+        if gui.owner and gui.owner.SetMsg then
+            gui.owner:SetMsg(msg, 5)
+        end
+        if gui.On_Discard then
+            gui:On_Discard()
+        end
     end
+    if db.actor then
+        news_manager.send_tip(db.actor, msg, nil, nil, 5000)
+    end
+end
+
+function btn_reset_all(gui)
+    _apply_profile(gui, nil, "AlifePlus: all settings restored to defaults.")
+end
+
+function btn_reset_stateless(gui)
+    _apply_profile(gui, stateless_overrides, "AlifePlus: stateless defaults applied.")
 end
 
 function set_version_text(_anchor, handlers)
@@ -1331,7 +1378,8 @@ function on_mcm_load()
                     }),
                     _check("map_markers"),
                     { id = "div_reset", type = "line" },
-                    { id = "btn_reset_all", type = "button", functor = { btn_reset_all } },
+                    { id = "btn_reset_all", type = "button", functor_ui = { btn_reset_all } },
+                    { id = "btn_reset_stateless", type = "button", functor_ui = { btn_reset_stateless } },
                 },
             },
         },
