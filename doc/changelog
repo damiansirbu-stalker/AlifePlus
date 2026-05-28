@@ -1,3 +1,10 @@
+next
+
+1.7.1
+  Summary: load-time fps fix for the world-scan caches
+  Fixed: Save load no longer drops to 30fps for 10+ seconds on saves with large alife populations. Per-tick observe() wrap removed from cache bucket builders; at DEBUG log level the wrap cost ~30-50us per entity, pushing 200 ops/frame during warmup over the frame budget.
+  Fixed: Standalone-NPC cache filters to Stalker-class at iterate time. Queue shrinks from the full alife pool (40k+ on heavy GAMMA saves, mostly inventory items) to the actual Stalker population. Script_Trader entities (Sidorovich and the named base traders) no longer indexed by this bucket.
+
 1.7.0
   Summary: stalker trade economy with player parity, world scan performance, stash and consume rebuild, reactive preemption, radiant tactical scoring, per-generator SCAN budget, Area Swarm split, area mutators on by default with per-level caps, damage mutators removed
   Trade:
