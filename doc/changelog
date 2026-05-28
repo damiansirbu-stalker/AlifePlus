@@ -1,4 +1,5 @@
 next
+  Fixed: Trade overlay DLTX syntax. `mod_gulag_job_trade_buy_sell_ap.ltx` used `!field = value` to override grenade restock in `[buy_sell_supplier]` and medkit_ai restock in `[buy_sell_medic]`. Per engine source (`xray-monolith/src/xrCore/Xr_ini.cpp:815`), the `!` prefix on a field name is DELETE, not override, regardless of any `= value` after it. The overrides were silently failing; restock for grenades (F1, RGD5) and AI medkits (medkit_ai1/2/3) never engaged. Rewritten to canonical syntax (plain `field = value` inside `![section]`).
 
 1.7.1
   Summary: load-time fps fix for the world-scan caches
