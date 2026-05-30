@@ -142,10 +142,11 @@ local function _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
 end
 
 --- Run a sell + buy trade between NPC and trader, per the NPC's rank-tier policy.
---- Phase 1: scan inventory, aggregate counts per category. Phase 2: walk policy entries in
---- declaration order (= BUY priority) and fill any whose count < min, ammo via tier-aware
---- per-slot section pick, consumables via cheapest-first walk over the category set.
---- Phase 3: SELL pass — iterate inventory, drop anything whose category count > max.
+--- Phase 1: scan inventory, aggregate counts per category. Phase 2: SELL pass — iterate
+--- inventory, drop anything whose category count > max; transfer to seller, credit NPC.
+--- Phase 3: walk policy entries in declaration order (= BUY priority) and fill any whose
+--- count < min using post-sell counts + cash; ammo via tier-aware per-slot section pick,
+--- consumables via cheapest-first walk over the category set.
 --- Phase 4: profit_max cap — transfer NPC cash gained beyond profit_max back to seller.
 --- @safety SAFE - nil-guarded npc/seller; iterate_inventory tolerant of nil items
 --- @cost O(n inventory) | 2 iterate walks + buy loop per policy entry with cash check
@@ -168,12 +169,9 @@ function trade(npc, seller, _opts)
     -- Phase 1: count per category via xinventory.classify (ammo in rounds, others in items).
     local counts = xinventory.classify(npc, cat_opts)
 
-    -- Phase 2: BUY pass (priority = declaration order in LTX).
-    for _, entry in ipairs(policy.entries) do
-        _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
-    end
-
-    -- Phase 3: SELL pass via xinventory.iterate_surplus (anything above category max).
+    -- Phase 2: SELL pass via xinventory.iterate_surplus (anything above category max).
+    -- Runs before BUY so the cash gained from sales is available to fund the BUY pass,
+    -- and so counts[cat] is decremented before BUY checks `current < min`.
     xinventory.iterate_surplus(npc, cat_opts, {
         rules = policy.rules,
         counts = counts,
@@ -183,6 +181,11 @@ function trade(npc, seller, _opts)
             sold[#sold + 1] = sec
         end,
     })
+
+    -- Phase 3: BUY pass (priority = declaration order in LTX). Reads post-sell counts + cash.
+    for _, entry in ipairs(policy.entries) do
+        _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
+    end
 
     -- Phase 4: profit_max cap (net gain).
     if policy.profit_max and policy.profit_max > 0 then
