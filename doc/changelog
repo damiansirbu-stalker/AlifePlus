@@ -28,6 +28,9 @@ next
     Fixed: Reset ALL to Defaults button takes effect on the first click. Previously any slider or checkbox edited in the same MCM session would override the reset on accept.
     Added: Reset ALL to Stateless Defaults button under Development. Resets every setting to factory default then disables trade, item consumption, stash fill, stash loot, smart ownership. AlifePlus dispatch and travel still run. For installs where another mod owns those systems.
 
+  Internal (integrator-visible):
+    Changed: Trade and stash policy loaders moved to xlibs xinventory.load_policy. Same LTX shape; AlifePlus no longer ships its own parser. Mod authors building on AlifePlus can now load any {min, max}-per-category policy through xinventory.load_policy(path, sections, specials_set) and apply it via xinventory.classify + xinventory.iterate_surplus + xinventory.build_surplus_map. Shared kernel across ap_ext_trade, ap_ext_consequences_stash, and AlifeBalance ab_loot_balance.
+
 1.7.1
   Summary: load-time fps fix for the world-scan caches
   Fixed: Save load no longer drops to 30fps for 10+ seconds on saves with large alife populations. Per-tick observe() wrap removed from cache bucket builders; at DEBUG log level the wrap cost ~30-50us per entity, pushing 200 ops/frame during warmup over the frame budget.

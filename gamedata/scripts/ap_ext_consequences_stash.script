@@ -16,8 +16,7 @@
 --- is matched against `_scan_squad`'s member_opts to find an owner whose pistol or rifle takes
 --- that round. Section-only resolution (`get_section_category`) is used for non-ammo entries.
 
-local pairs, tonumber = pairs, tonumber
-local string_match, string_sub = string.match, string.sub
+local string_sub = string.sub
 local table_concat, table_sort = table.concat, table.sort
 local xobject, xtime, xstash, xinventory = xobject, xtime, xstash, xinventory
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
@@ -49,43 +48,18 @@ local DEFAULT_COST   = ap_core_const.DEFAULT_TRADE_COST
 --     extras_max = N, fill_max = N }
 local STASH_POLICY = nil
 
-local function _parse_min_max(value)
-    if not value or value == "" then return nil end
-    local min_str, max_str = string_match(value, "(%S+)%s*,%s*(%S+)")
-    if not min_str then return nil end
-    local min, max = tonumber(min_str), tonumber(max_str)
-    if not min or not max then return nil end
-    return { min = min, max = max }
-end
-
-local function _absorb_policy_line(key, value, entries, rules, totals)
-    if key == "extras_max" then
-        totals.extras_max = tonumber(value) or 0
-        return
-    end
-    if key == "fill_max" then
-        totals.fill_max = tonumber(value) or 0
-        return
-    end
-    local rule = _parse_min_max(value)
-    if not rule then return end
-    entries[#entries + 1] = { category = key, rule = rule }
-    rules[key] = rule
-end
-
+-- Load stash policy via xinventory.load_policy (shared LTX shape across trade / stash /
+-- inventory-balance). Adapts the {entries, rules, specials} block into the {entries,
+-- rules, extras_max, fill_max} shape the stash callers already use.
 local function _load_stash_policy()
-    local ini = ini_file(POLICY_PATH)
-    local entries, rules, totals = {}, {}, { extras_max = 0, fill_max = 0 }
-    if not ini:section_exist(POLICY_SECTION) then
-        STASH_POLICY = { entries = entries, rules = rules, extras_max = 0, fill_max = 0 }
-        return
-    end
-    local line_count = ini:line_count(POLICY_SECTION)
-    for i = 0, line_count - 1 do
-        local _, key, value = ini:r_line_ex(POLICY_SECTION, i, "", "")
-        if key and key ~= "" then _absorb_policy_line(key, value, entries, rules, totals) end
-    end
-    STASH_POLICY = { entries = entries, rules = rules, extras_max = totals.extras_max, fill_max = totals.fill_max }
+    local block = xinventory.load_policy(POLICY_PATH, { POLICY_SECTION },
+        { extras_max = true, fill_max = true })[POLICY_SECTION]
+    STASH_POLICY = {
+        entries    = block.entries,
+        rules      = block.rules,
+        extras_max = block.specials.extras_max or 0,
+        fill_max   = block.specials.fill_max or 0,
+    }
 end
 
 local function _stash_has_untouchable(sections)
@@ -309,12 +283,7 @@ local function _collect_fill_picks(squad, fill_max)
     local member_ids, member_opts, counts = _scan_squad(squad)
     if #member_ids == 0 then return picks end
 
-    local surplus = {}
-    for cat, count in pairs(counts) do
-        local rule = STASH_POLICY.rules[cat]
-        local diff = rule and (count - rule.max) or 0
-        if diff > 0 then surplus[cat] = diff end
-    end
+    local surplus = xinventory.build_surplus_map(counts, STASH_POLICY.rules)
 
     for i = 1, #member_ids do
         if #picks >= fill_max then break end

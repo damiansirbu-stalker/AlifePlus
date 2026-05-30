@@ -23,46 +23,24 @@ local POLICY_PATH = "alifeplus\\ap_trade_policy.ltx"
 --   { rookie = { entries, rules, profit_max }, veteran = { ... } }
 local TRADE_POLICY = nil
 
--- Parse a "min, max" CSV value into a rule table.
-local function _parse_min_max(value)
-    if not value or value == "" then return nil end
-    local min_str, max_str = string_match(value, "(%S+)%s*,%s*(%S+)")
-    if not min_str then return nil end
-    local min, max = tonumber(min_str), tonumber(max_str)
-    if not min or not max then return nil end
-    return { min = min, max = max }
-end
-
--- Single-line ingest helper. Routes profit_max to totals; rest become entries+rules pairs.
-local function _absorb_trade_line(key, value, entries, rules, totals)
-    if key == "profit_max" then
-        totals.profit_max = tonumber(value) or 0
-        return
-    end
-    local rule = _parse_min_max(value)
-    if not rule then return end
-    entries[#entries + 1] = { category = key, rule = rule }
-    rules[key] = rule
-end
-
--- Load one policy block in declaration order. profit_max pulled out as a top-level field;
--- other entries land in entries (ordered list) AND rules (hash for fast SELL lookup).
-local function _load_policy_block(ini, section)
-    local entries, rules, totals = {}, {}, { profit_max = 0 }
-    if not ini:section_exist(section) then return { entries = entries, rules = rules, profit_max = 0 } end
-    local line_count = ini:line_count(section)
-    for i = 0, line_count - 1 do
-        local _, key, value = ini:r_line_ex(section, i, "", "")
-        if key and key ~= "" then _absorb_trade_line(key, value, entries, rules, totals) end
-    end
-    return { entries = entries, rules = rules, profit_max = totals.profit_max }
-end
-
+-- Load trade policy via xinventory.load_policy (shared LTX shape across trade / stash /
+-- inventory-balance). Adapts the {entries, rules, specials} block into the {entries,
+-- rules, profit_max} shape the trade callers already use.
 local function _load_trade_policy()
-    local ini = ini_file(POLICY_PATH)
+    local blocks = xinventory.load_policy(POLICY_PATH,
+        { "ap_trade_policy_rookie", "ap_trade_policy_veteran" },
+        { profit_max = true })
     TRADE_POLICY = {
-        rookie  = _load_policy_block(ini, "ap_trade_policy_rookie"),
-        veteran = _load_policy_block(ini, "ap_trade_policy_veteran"),
+        rookie = {
+            entries    = blocks.ap_trade_policy_rookie.entries,
+            rules      = blocks.ap_trade_policy_rookie.rules,
+            profit_max = blocks.ap_trade_policy_rookie.specials.profit_max or 0,
+        },
+        veteran = {
+            entries    = blocks.ap_trade_policy_veteran.entries,
+            rules      = blocks.ap_trade_policy_veteran.rules,
+            profit_max = blocks.ap_trade_policy_veteran.specials.profit_max or 0,
+        },
     }
 end
 
@@ -187,39 +165,24 @@ function trade(npc, seller, _opts)
     local cat_opts = xinventory.get_category_opts(npc)
     local cash_before = xcreature.get_money(npc)
 
-    -- Phase 1: count per category (ammo categories in ROUNDS, others in items).
-    local counts = {}
-    xinventory.iterate_inventory(npc:id(), function(_, item)
-        local cat = xinventory.get_category(item, cat_opts)
-        if cat == "untouchable" or cat == "equipped" then return end
-        if _is_ammo_slot_category(cat) or cat == "ammo_not_equipped" then
-            counts[cat] = (counts[cat] or 0) + (xinventory.get_ammo_count(item) or 0)
-        else
-            counts[cat] = (counts[cat] or 0) + 1
-        end
-    end)
+    -- Phase 1: count per category via xinventory.classify (ammo in rounds, others in items).
+    local counts = xinventory.classify(npc, cat_opts)
 
     -- Phase 2: BUY pass (priority = declaration order in LTX).
     for _, entry in ipairs(policy.entries) do
         _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
     end
 
-    -- Phase 3: SELL pass (anything above category max).
-    xinventory.iterate_inventory(npc:id(), function(_, item)
-        local cat = xinventory.get_category(item, cat_opts)
-        if cat == "untouchable" or cat == "equipped" then return end
-        local rule = policy.rules[cat]
-        if not rule or not rule.max then return end
-        local is_ammo_cat = _is_ammo_slot_category(cat) or cat == "ammo_not_equipped"
-        local unit = is_ammo_cat and (xinventory.get_ammo_count(item) or 0) or 1
-        local count = counts[cat] or 0
-        if count - unit < rule.max then return end
-        local sec = xinventory.get_section(item)
-        xinventory.transfer_item(npc, item, seller)
-        xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))
-        counts[cat] = count - unit
-        sold[#sold + 1] = sec
-    end)
+    -- Phase 3: SELL pass via xinventory.iterate_surplus (anything above category max).
+    xinventory.iterate_surplus(npc, cat_opts, {
+        rules = policy.rules,
+        counts = counts,
+        on_surplus = function(item, _cat, sec, _unit)
+            xinventory.transfer_item(npc, item, seller)
+            xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))
+            sold[#sold + 1] = sec
+        end,
+    })
 
     -- Phase 4: profit_max cap (net gain).
     if policy.profit_max and policy.profit_max > 0 then
