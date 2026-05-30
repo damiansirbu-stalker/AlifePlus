@@ -1,5 +1,5 @@
 --- ap_ext_cause_harvest: Artefact pickup by player or NPC
-local xsquad, xlevel, xconst, xttltable = xsquad, xlevel, xconst, xttltable
+local xsquad, xlevel, xconst, xttltable, xinventory = xsquad, xlevel, xconst, xttltable, xinventory
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -27,7 +27,7 @@ local function _evaluate(_trace, item, npc)
     end
 
     local section = item:section()
-    if not IsArtefact(item) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ARTEFACT, section = section } end
+    if not xinventory.is_artefact(item) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ARTEFACT, section = section } end
 
     if _pickup_cooldown:has(section) then
         return { code = RESULT.FAILED_RULES, reason = REASON.ON_COOLDOWN, section = section }

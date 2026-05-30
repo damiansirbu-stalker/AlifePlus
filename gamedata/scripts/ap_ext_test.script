@@ -6,7 +6,7 @@ local math_floor, math_huge = math.floor, math.huge
 local string_format, time_global = string.format, time_global
 local character_community, IsStalker, IsMonster = character_community, IsStalker, IsMonster
 local UnregisterScriptCallback, RegisterScriptCallback = UnregisterScriptCallback, RegisterScriptCallback
-local xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata = xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata
+local xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata, xinventory = xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata, xinventory
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm
 local ap_core_const, ap_ext_const, ap_ext_tracker = ap_core_const, ap_ext_const, ap_ext_tracker
 
@@ -139,7 +139,7 @@ function spawn_artefact()
         return _tip("Not in game")
     end
     local sec = xmath.sample(ARTEFACTS)
-    local se = xobject.create_item(sec, actor:id())
+    local se = xinventory.create_item(sec, actor:id())
     if se then
         ap_core_debug.debug("[TEST] spawn_artefact OK sec=%s", sec)
         _tip("Spawned " .. sec)
@@ -187,7 +187,7 @@ local function _spawn_kit_items(items, label)
             goto continue
         end
         for idx = 1, item.count do
-            xobject.create_item(item.sec, id)
+            xinventory.create_item(item.sec, id)
         end
         spawned = spawned + 1
         ::continue::
@@ -202,7 +202,7 @@ function kit_equipment()
     local actor = db.actor
     if not actor then return _tip("Not in game") end
     local spawned, skipped = _spawn_kit_items(KIT_EQUIPMENT_ITEMS, "kit_equipment")
-    actor:give_money(500000)
+    xcreature.give_money(actor, 500000)
     ui_options.set("gameplay/fast_travel/state", 2)
     game_fast_travel.update_settings()
     xactor.give_info("drx_sl_brain_scorcher_switch_off")
@@ -244,7 +244,7 @@ local function _gift_one_npc(npc_id)
     for i = 1, #items do
         local item = items[i]
         for _ = 1, item.count do
-            xobject.create_item(item.sec, npc_id)
+            xinventory.create_item(item.sec, npc_id)
         end
         _gift_npcs_state.items_spawned = _gift_npcs_state.items_spawned + item.count
     end

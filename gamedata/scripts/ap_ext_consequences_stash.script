@@ -1,11 +1,11 @@
 --- ap_ext_consequences_stash: STASH family consequences (loot + ambush + fill). CONFIGS factory.
 
-local pairs, IsItem = pairs, IsItem
-local random, alife_release_id = math.random, alife_release_id
+local pairs = pairs
+local random = math.random
 local table_concat = table.concat
-local xobject, xtime, xstash = xobject, xtime, xstash
+local xobject, xtime, xstash, xinventory = xobject, xtime, xstash, xinventory
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
-local ap_ext_trade, ap_ext_tracker = ap_ext_trade, ap_ext_tracker
+local ap_ext_tracker = ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
 local RESULT = ap_core_const.RESULT
@@ -24,78 +24,64 @@ local LOG_FILL = ap_core_debug.bracket(CONSEQUENCE.STASH_FILL)
 
 local cfg = ap_core_mcm.cfg
 
---- Reward sets accepted for stash fill. Vanilla treasure_manager re-materializes stashed items
---- from section names only (no condition / ammo count / uses persisted through the cache string),
---- so fill must restrict to sections where engine-default re-spawn is acceptable. The AP keep
---- list ([ap_buy_sell_keep] in mod_gulag_job_trade_buy_sell_ap.ltx) is exactly that set: PDAs,
---- medkits, stims, bandages, drugs, AI medkits, and unprimed grenades -- items NPCs treat as
---- useful AND whose default re-spawn carries no state loss the player can exploit.
-local _fill_eligible_cache = {}
--- True if sec is in [ap_buy_sell_keep]. Per-section cache after first probe.
--- @complexity O(1) cached | first probe: 1 hash lookup against keep_set; cached: 1 hash lookup
-local function _is_fill_eligible(sec)
-    local cached = _fill_eligible_cache[sec]
-    if cached ~= nil then return cached end
-    local v = ap_ext_trade.get_keep_items()[sec] == true
-    _fill_eligible_cache[sec] = v
-    return v
-end
+--- Stash policy: per-category fill floor + loot target.
+--- Only listed categories participate. Untouchables, weapons, outfits, helmets, devices are
+--- excluded by absence -- their state-bearing fields (condition, upgrades, charge, ammo count)
+--- are lost across the vanilla `treasure_manager` cache_string round-trip; the engine re-spawns
+--- items from section names alone.
+--- fill_above  = squad deposits anything above this many of the category
+--- loot_target = squad takes from stash until it holds this many of the category
+local STASH_POLICY = {
+    medkit       = { fill_above = 3, loot_target = 3 },
+    bandage      = { fill_above = 5, loot_target = 5 },
+    antirad      = { fill_above = 3, loot_target = 3 },
+    stim         = { fill_above = 2, loot_target = 2 },
+    pill         = { fill_above = 3, loot_target = 3 },
+    food         = { fill_above = 3, loot_target = 3 },
+    drink        = { fill_above = 2, loot_target = 2 },
+    grenade_ammo = { fill_above = 2, loot_target = 2 },
+}
 
-local _loot_eligible_cache = {}
--- True if sec is on the AP keep list ([ap_buy_sell_keep]). Same allowlist Stash Fill and the
--- trader buy phase use. NPCs take only what they'd actually keep; the rest is destroyed when
--- the stash clears.
--- @complexity O(1) cached | first probe: 1 hash lookup against keep_set; cached: 1 hash lookup
-local function _is_loot_eligible(sec)
-    local cached = _loot_eligible_cache[sec]
-    if cached ~= nil then return cached end
-    local v = ap_ext_trade.get_keep_items()[sec] == true
-    _loot_eligible_cache[sec] = v
-    return v
-end
-
--- True if sec is a crafting workflow item (tool / kit / part / upgrade by vanilla
--- _g.script:Parse_ITM kind). Used to abort the whole loot when a stash contains any crafting --
--- NPCs leave such stashes alone so the player's crafting supply chain is preserved. Addon-added
--- crafting items GAMMA depends on are protected automatically by the engine kind classifier.
+-- True if any section in the stash is a crafting workflow item.
+-- Aborts loot for the whole stash (GAMMA-protected crafting chain preservation).
 local function _stash_has_crafting(sections)
     for i = 1, #sections do
-        local sec = sections[i]
-        if IsItem("tool", sec) or IsItem("kit", sec) or IsItem("part", sec) or IsItem("upgrade", sec) then
-            return true
-        end
+        if xinventory.is_crafting(sections[i]) then return true end
     end
     return false
 end
 
--- Walk squad members. Returns (member_ids, counts).
--- member_ids covers online + offline (always available via squad_members iterator).
--- counts is a {[sec]=n} map summed across the subset that was online at scan time.
--- Iterates via xobject.iterate_online_inventory so the online-only constraint is centralized.
--- @complexity O(members * items_per_member) | iterates each online member once
+-- Walk squad members. Returns (member_ids, member_opts, counts) where counts is {[category]=n}.
+-- member_ids covers online + offline via squad_members iterator (preserves round-robin shape).
+-- member_opts is populated for ONLINE members only (xobject.go is nil for offline). Categories
+-- computed via xinventory.get_category with per-member opts (equipped pre-filter respected).
+-- @cost O(members * items_per_member) | per online member: ~14 luabind trivial + 2 heavy for get_category_opts, + iterate STL m_all walk
 local function _scan_squad(squad)
-    local member_ids, counts = {}, {}
-    if not squad or not squad.squad_members then return member_ids, counts end
-    local function count_item(_, item)
-        local sec = item:section()
-        if sec then counts[sec] = (counts[sec] or 0) + 1 end
-    end
-    if squad:npc_count() == 0 then return member_ids, counts end
+    local member_ids, member_opts, counts = {}, {}, {}
+    if not squad or not squad.squad_members then return member_ids, member_opts, counts end
+    if squad:npc_count() == 0 then return member_ids, member_opts, counts end
     for member_se in squad:squad_members() do
-        member_ids[#member_ids + 1] = member_se.id
-        xobject.iterate_online_inventory(member_se.id, count_item)
+        local mid = member_se.id
+        member_ids[#member_ids + 1] = mid
+        local npc_go = xobject.go(mid)
+        if npc_go then
+            local opts = xinventory.get_category_opts(npc_go)
+            member_opts[mid] = opts
+            xinventory.iterate_inventory(mid, function(_, item)
+                local cat = xinventory.get_category(item, opts)
+                counts[cat] = (counts[cat] or 0) + 1
+            end)
+        end
     end
-    return member_ids, counts
+    return member_ids, member_opts, counts
 end
 
---- Two-stage loot. First a stash-wide gate: if any section is a crafting workflow item
---- (tool / kit / part / upgrade by vanilla `_g.script:Parse_ITM` kind), abort -- skip the stash
---- entirely so the player's crafting supply chain is preserved. Otherwise walk the sections,
---- and for each section on the AP keep list ([ap_buy_sell_keep]) where the squad holds less
---- than `keep_count`, create one copy on a member via `ap_ext_trade.give_item` (round-robin).
---- Then clear the stash via `xstash.loot_stash`; non-keep-list sections are destroyed by the
---- clear. Same keep list Stash Fill and the trader buy phase use, so what the NPC picks up
---- here is exactly what it will refuse to sell later -- on-brand for a scavenger run.
+--- Loot a stash. Two-stage: stash-wide crafting gate (skip if any tool/kit/part/upgrade),
+--- then per-section walk. For each section, resolve category via xinventory.get_section_category;
+--- if STASH_POLICY has an entry for that category AND squad holds less than loot_target,
+--- create one copy on a squad member (round-robin) via xinventory.create_item. Then clear the
+--- stash via xstash.loot_stash; sections in categories outside STASH_POLICY are destroyed by
+--- the clear (NPCs would never have used them per category policy).
 local function _arrive_loot(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
@@ -107,10 +93,7 @@ local function _arrive_loot(squad, args)
     local sections = xstash.get_stash_items(stash_id)
     if not sections or #sections == 0 then return end
 
-    -- Crafting-supply preservation (MCM-gated): if the stash holds any tool / kit / part /
-    -- upgrade, skip the whole stash. Don't take, don't clear. Squad already paid the opportunity
-    -- cooldown (reset_squad_opportunity above) so it won't immediately re-target this same stash;
-    -- it moves on to other behaviors. The player's crafting workflow stays intact.
+    -- Crafting-supply preservation (MCM-gated)
     if cfg.consequence_stash_loot_skip_crafting and _stash_has_crafting(sections) then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d crafting_present, skipping", stash_id, squad.id)
         return
@@ -124,7 +107,7 @@ local function _arrive_loot(squad, args)
         return
     end
 
-    local member_ids, counts = _scan_squad(squad)
+    local member_ids, _, counts = _scan_squad(squad)
     if #member_ids == 0 then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d no_members", stash_id, squad.id)
         return
@@ -138,11 +121,12 @@ local function _arrive_loot(squad, args)
         for i = 1, #sections do
             if taken >= max_take then break end
             local sec = sections[i]
-            if not _is_loot_eligible(sec) then goto continue end
-            local keep = ap_ext_trade.keep_count(sec)
-            if not keep or (counts[sec] or 0) >= keep then goto continue end
-            if not ap_ext_trade.give_item(member_ids[cursor], sec, nil) then goto continue end
-            counts[sec] = (counts[sec] or 0) + 1
+            local cat = xinventory.get_section_category(sec)
+            local rule = STASH_POLICY[cat]
+            if not rule then goto continue end
+            if (counts[cat] or 0) >= rule.loot_target then goto continue end
+            if not xinventory.create_item(sec, member_ids[cursor]) then goto continue end
+            counts[cat] = (counts[cat] or 0) + 1
             cursor = (cursor % #member_ids) + 1
             taken = taken + 1
             taken_secs[taken] = sec
@@ -162,54 +146,45 @@ local function _arrive_ambush(squad, args)
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
 end
 
--- Pick items to deposit: only fill-eligible sections where the squad's count exceeds vanilla
--- keep_count, capped at max_items. Two passes: count online inventory by section, compute
--- per-section surplus, then walk items again and pick up to surplus per section. Offline
--- members contribute nothing on either pass (xobject.iterate_online_inventory nil-returns).
--- @complexity O(members * items_per_member) | online members walked twice
+-- Pick items to deposit: per category in STASH_POLICY where the squad's count exceeds
+-- fill_above, walk online members and collect up to (count - fill_above) items. Capped at
+-- max_items total. Two passes: scan_squad already counted by category; walk again, pick.
+-- @cost O(members * items_per_member) | 2 luabind medium per member (iterate_inventory walked twice via _scan_squad + pick pass) + per item: ~12 hash lookups in get_category
 local function _collect_fill_picks(squad, max_items)
     local picks = {}
-    local member_ids, counts = _scan_squad(squad)
+    local member_ids, member_opts, counts = _scan_squad(squad)
     if #member_ids == 0 then return picks end
 
     local surplus = {}
-    for sec, count in pairs(counts) do
-        if not _is_fill_eligible(sec) then goto continue end
-        -- Keep at least 1 of every keep-list item (the keep list is "items NPCs want to hold").
-        -- Sections without a [buy_sell] row (AI medkits, supplier-only grenades) read keep_count
-        -- as nil; the floor stops them dumping everything they carry.
-        local keep = ap_ext_trade.keep_count(sec) or 1
-        if keep < 1 then keep = 1 end
-        local diff = count - keep
-        if diff > 0 then surplus[sec] = diff end
-        ::continue::
-    end
-
-    local function pick_surplus(_, item)
-        if #picks >= max_items then return end
-        local sec = item:section()
-        if surplus[sec] and surplus[sec] > 0 then
-            picks[#picks + 1] = item
-            surplus[sec] = surplus[sec] - 1
+    for cat, count in pairs(counts) do
+        local rule = STASH_POLICY[cat]
+        if rule then
+            local diff = count - rule.fill_above
+            if diff > 0 then surplus[cat] = diff end
         end
     end
+
     for i = 1, #member_ids do
         if #picks >= max_items then break end
-        xobject.iterate_online_inventory(member_ids[i], pick_surplus)
+        local mid = member_ids[i]
+        local opts = member_opts[mid]
+        xinventory.iterate_inventory(mid, function(_, item)
+            if #picks >= max_items then return end
+            local cat = xinventory.get_category(item, opts)
+            if surplus[cat] and surplus[cat] > 0 then
+                picks[#picks + 1] = item
+                surplus[cat] = surplus[cat] - 1
+            end
+        end)
     end
     return picks
 end
 
---- Walk the arrived squad's online members. For each section on the AP keep list
---- ([ap_buy_sell_keep]) where the squad holds more copies than the per-section keep floor,
---- deposit the surplus into the stash via `alife_release_id` + `xstash.fill_stash`. Total
---- deposits capped by the MCM-configurable items-per-stash range. Vanilla `treasure_manager`
---- materializes items at engine defaults when the player opens the stash; the cache string
---- persists section names only, so fill restricts to the keep list (PDAs, medkits, stims,
---- bandages, drugs, AI medkits, unprimed grenades) where default re-spawn is acceptable.
---- Weapons, outfits, artefacts, primed grenades, food/drink, generic ammo are filtered out
---- by `_is_fill_eligible`; their condition / charge / count state would be lost to the cache
---- or they're not on-brand for a "stalker stash" (food rots, drinks are short-term carry).
+--- Fill the stash with squad surplus. For each category in STASH_POLICY where the squad holds
+--- more than fill_above, deposit the excess via xinventory.release_item + xstash.fill_stash.
+--- Total deposits capped by the MCM items-per-stash range. Vanilla treasure_manager re-spawns
+--- items from section names alone (no condition / ammo / uses preserved), so only stateless
+--- categories appear in STASH_POLICY -- weapons / outfits / helmets / devices excluded by design.
 local function _arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
@@ -232,8 +207,8 @@ local function _arrive_fill(squad, args)
         local secs = {}
         for i = 1, #picks do
             local itm = picks[i]
-            secs[i] = itm:section()
-            alife_release_id(itm:id())
+            secs[i] = xinventory.get_section(itm)
+            xinventory.release_item(itm)
         end
 
         local ok
