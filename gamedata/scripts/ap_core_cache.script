@@ -1,11 +1,14 @@
---- ap_core_cache: Per-level smart, stash, and squad indexes for level-scoped finders.
---- Three buckets, all built at actor_on_first_update via xslice (frame-spread):
---- _smarts_by_level over SIMBOARD smarts (step=50), _stashes_by_level over
---- treasure_manager.caches (step=3), _squads_by_level over SIMBOARD squads (step=50).
+--- ap_core_cache: Per-level smart, stash, squad, and standalone-role-NPC indexes for
+--- level-scoped finders. Four buckets, all built at actor_on_first_update via xslice
+--- (frame-spread):
+---   _smarts_by_level over SIMBOARD smarts (step=50)
+---   _stashes_by_level over treasure_manager.caches (step=3)
+---   _squads_by_level over SIMBOARD squads (step=50)
+---   _standalone_role_npcs over actor-level stalker + trader CSEs (step=50) keyed by smart_id
 --- Step sizes target ~0.5ms per tick (~5us per smart/squad bucketing, ~12us per stash).
 --- Per-tick cost is bounded well under the 4ms ceiling per architecture.md "Invariants".
---- Wall-clock warmup: ~0.1-1s for smart/squad, ~2-3s for stash. Consumers pass the
---- per-level table as opts.source to xsmart.find_smart, xstash.find_stashes, and
+--- Wall-clock warmup: ~0.1-1s for smart/squad/standalone, ~2-3s for stash. Consumers pass
+--- the per-level table as opts.source to xsmart.find_smart, xstash.find_stashes, and
 --- xsquad.find_squads / find_squad so the finders skip the global pool walk.
 ---
 --- Bucket builders run uninstrumented: per-tick observe() at DEBUG adds ~30-50us per
@@ -26,27 +29,41 @@
 --- callbacks: xsquad._squad_base_valid level gate is first (xsquad.script:325, cached
 --- xlevel.get_level_id lookup), so stale entries reject at ~0 cost.
 ---
---- Lifecycle: on_game_start fires once per session from the CALifeSimulator ctor
---- (alife_simulator.cpp:72-75); level transitions don't destruct the simulator so
---- module state persists. actor_on_first_update does re-fire per net_spawn
---- (bind_stalker.script:15, 37), but the `if _xxx_by_level then return end` guard at
---- the top of each builder, plus xslice.is_active, make the second+ call a no-op.
---- Real rebuild only happens on new-game and load-save.
+--- Standalone role NPCs: full rebuild per level transition, no incremental upkeep. Scope
+--- is the actor's CURRENT level, snapshotted via alife():iterate_level_objects_of_clsid
+--- (alife_simulator_script.cpp:479-488) which C++-filters by per-level CSE registry +
+--- script clsid (script_stalker, script_trader). Mid-level death/spawn drift is tolerated:
+--- consumers walk by id and skip dead refs via xobject.go() / .alive() nil checks.
 ---
---- Warmup semantic per bucket. All three buckets expose partial state as it grows:
---- *_on_level returns nil if nothing on that level has been bucketed yet, partial
---- otherwise, full once xslice finishes. xsmart.find_smart / xstash.find_stashes /
---- xsquad.find_squads accept opts.source = nil and fall back to the un-bucketed SIMBOARD
---- walk via the standard `or SIMBOARD.X` pattern, so consumers stay correct during the
---- warmup window at the cost of one slow scan until the bucket fills.
+--- Lifecycle: every actor level transition wipes the Lua VM. Proof chain:
+--- M_CHANGE_LEVEL packet -> Level_network_messages.cpp:308-333 -> MakeReconnect
+--- (Level.cpp:949-974) -> KERNEL:disconnect/start -> game_sv_Single::Create
+--- (game_sv_single.cpp:26-36) constructs new CALifeSimulator -> alife_simulator.cpp:43-48
+--- calls restart_all -> ai().script_engine().init() -> script_engine.cpp:371-379 calls
+--- CScriptStorage::reinit(). All module locals reset. actor_on_first_update then fires
+--- per bind_stalker:net_spawn -> bCheckStart -> next update (bind_stalker.script:29-37,
+--- 207-218), at which point alife_storage_manager (alife_storage_manager.cpp:148-161)
+--- has finished its register_object + on_register loops and SIMBOARD is fully populated.
+--- Each bucket's guard (`if _xxx then return end`) plus xslice.is_active makes any
+--- re-fire within the same VM a no-op.
+---
+--- Warmup semantic per bucket. All four buckets expose partial state as they grow:
+--- *_on_level / standalone_role_at_smart return nil if nothing yet, partial otherwise,
+--- full once xslice finishes. xsmart.find_smart / xstash.find_stashes / xsquad.find_squads
+--- accept opts.source = nil and fall back to the un-bucketed SIMBOARD walk via the standard
+--- `or SIMBOARD.X` pattern; standalone_role_at_smart consumers (ap_core_util) fall back to
+--- the dynamic xsmart.has_<role>_at_smart / get_<role>_at_smart online walk. Consumers stay
+--- correct during the warmup window at the cost of one slow scan until the bucket fills.
 
 local pairs, ipairs, tostring, RegisterScriptCallback = pairs, ipairs, tostring, RegisterScriptCallback
-local xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice =
-    xcreature, xdata, xlevel, xsmart, xsquad, xobject, xslice
-local IsStalker = IsStalker
+local xdata, xlevel, xsmart, xsquad, xobject, xslice =
+    xdata, xlevel, xsmart, xsquad, xobject, xslice
+local IsStalker, IsTrader = IsStalker, IsTrader
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
+local CLSID_SCRIPT_STALKER = clsid.script_stalker
+local CLSID_SCRIPT_TRADER = clsid.script_trader
 
 local SMART_BUILD_QUEUE = "ap_core_cache_smarts"
 local SMART_BUILD_STEP = 50
@@ -54,7 +71,7 @@ local STASH_BUILD_QUEUE = "ap_core_cache_stashes"
 local STASH_BUILD_STEP = 3
 local SQUAD_BUILD_QUEUE = "ap_core_cache_squads"
 local SQUAD_BUILD_STEP = 50
-local STANDALONE_BUILD_QUEUE = "ap_core_cache_standalones"
+local STANDALONE_BUILD_QUEUE = "ap_core_cache_standalone"
 local STANDALONE_BUILD_STEP = 50
 
 local _smarts_by_level = nil
@@ -250,16 +267,17 @@ local function _resolve_role(section)
 end
 
 -- Resolve nearest smart on the entity's level; insert (smart_id, role, npc_id) into the index.
--- Class-gates on Stalker: callers (xcreature.query():stalkers() at load, _on_entity_register
--- reactive) already gate, the safety belt protects against pure-virtual on section_name if
--- a non-Stalker ever leaks through. Script_Trader (Sidorovich et al) not indexed; the supply
--- trader path covers them via the same role table when their section appears at a smart.
--- @cost O(1) for non-Stalker entities (1 luabind clsid + class check, early return); for Stalkers,
+-- Class-gates on Stalker OR Trader: caller (xslice over alife():iterate_level_objects_of_clsid
+-- with script_stalker + script_trader clsids) already filters in C++. Safety belt protects
+-- against pure-virtual on section_name if a non-matching entity ever leaks through. xdata.npc_roles
+-- maps section -> role for both pools: stalker NPCs (medics, mechanics, curated traders) and
+-- Script_Trader story NPCs (Sidorovich-class, ~10 vanilla entities Zone-wide).
+-- @cost O(1) for non-matching entities (1 luabind clsid + class check, early return); for matches,
 --       1 luabind heavy (xlevel.get_level_id cold) + xsmart.find_smart O(n) smarts on level.
 local function _index_standalone(se)
     if not se then return end
     local cls = se:clsid()
-    if not IsStalker(nil, cls) then return end
+    if not (IsStalker(nil, cls) or IsTrader(nil, cls)) then return end
     local section = se:section_name()
     if not section then return end
     local role = _resolve_role(section)
@@ -284,26 +302,6 @@ local function _index_standalone(se)
     by_id[se.id] = true
 end
 
--- Sweep one smart's role buckets for npc_id; remove on match. Returns true if removed.
-local function _drop_from_role_buckets(by_role, npc_id)
-    for _, by_id in pairs(by_role) do
-        if by_id[npc_id] then
-            by_id[npc_id] = nil
-            return true
-        end
-    end
-    return false
-end
-
--- Remove a standalone NPC's id from whichever smart/role bucket holds it.
--- @cost O(smarts * roles) ~150 hash ops worst case; rare event (NPC death/despawn)
-local function _unindex_standalone(npc_id)
-    if not _standalone_role_npcs or not npc_id then return end
-    for _, by_role in pairs(_standalone_role_npcs) do
-        if _drop_from_role_buckets(by_role, npc_id) then return end
-    end
-end
-
 -- Re-resolve via xobject.se(id) per tick (which wraps alife_object): the queue captures IDs
 -- (not refs) so an entity destroyed between enumeration and processing returns nil here.
 -- Holding a CSE_Abstract ref across frames hits pure-virtual on section_name when the C++
@@ -321,22 +319,29 @@ local function _on_standalone_build_done()
     ap_core_debug.debug("[CORE.CACHE] standalone role bucket built")
 end
 
--- Snapshot Stalker-class IDs via xcreature.query():stalkers, start xslice. The filter runs
--- inside sim:iterate_objects (one clsid luabind per entity, no per-entity table append unless
--- IsStalker passes), so the queue shrinks from the full alife pool (~40k+ on heavy GAMMA saves
--- dominated by inventory items) to the actual Stalker population (~5-8k). Per-tick: 50 stalkers
--- x ~5us = ~0.25ms. Per-stalker handler re-resolves via alife_object(id) so entities destroyed
+-- Snapshot Stalker + Trader CSE IDs on the actor's current level via the engine
+-- accessor alife():iterate_level_objects_of_clsid (alife_simulator_script.cpp:479-488).
+-- C++ filters by per-level CSE registry + script clsid; one call per clsid (script_stalker,
+-- script_trader). Per-tick handler re-resolves via alife_object(id) so entities destroyed
 -- mid-warmup return nil safely.
--- @cost O(n) alife entities for iterate (1 clsid luabind each) | O(s) stalkers queued;
--- xslice ticks pay 1 alife_object + per-stalker section lookup + find_smart on curated match.
+-- @cost O(n) actor-level CSEs per iterate call (1 C++ clsid compare each, no Lua per entity
+--       except queue append on match); O(s+t) entities queued; xslice ticks pay 1 alife_object
+--       + section lookup + find_smart on curated match.
 local function _build_standalone_role_bucket()
     if _standalone_role_npcs then return end
     if xslice.is_active(STANDALONE_BUILD_QUEUE) then return end
+    local sim = alife()
+    if not sim then return end
     _standalone_role_npcs = {}
     local queue = {}
-    for _, se in ipairs(xcreature.query():stalkers():collect()) do
+    sim:iterate_level_objects_of_clsid(CLSID_SCRIPT_STALKER, function(se)
         queue[#queue + 1] = se.id
-    end
+        return false
+    end)
+    sim:iterate_level_objects_of_clsid(CLSID_SCRIPT_TRADER, function(se)
+        queue[#queue + 1] = se.id
+        return false
+    end)
     xslice.start(STANDALONE_BUILD_QUEUE, queue, {
         step = STANDALONE_BUILD_STEP,
         func = _bucket_one_stalker,
@@ -406,27 +411,25 @@ local function _unregister_squad(se_obj)
     end
 end
 
--- Dispatch entity register to the per-type bucket handler.
--- @cost O(1) | 2 luabind (clsid + xlevel.get_level_id cached or 0-3 cold) + 1 hash op
+-- Dispatch entity register to the squad bucket handler. Standalone (stalker/trader) bucket
+-- does not subscribe: it rebuilds in full at actor_on_first_update via xslice, sees fresh
+-- state per level transition (VM reinit wipes module locals), and tolerates mid-level
+-- death/spawn drift because consumers walk by id and skip dead refs.
+-- @cost O(1) | 1 luabind (clsid)
 local function _on_entity_register(se_obj)
     if not se_obj then return end
-    local cls = se_obj:clsid()
-    if cls == CLSID_SQUAD then
+    if se_obj:clsid() == CLSID_SQUAD then
         _register_squad(se_obj)
-    elseif IsStalker(nil, cls) and _standalone_role_npcs then
-        _index_standalone(se_obj)
     end
 end
 
--- Dispatch entity unregister to the per-type bucket handler.
--- @cost O(1) typical | 1 luabind (clsid) + 1 hash op; O(levels) on squad fallback scan
+-- Dispatch entity unregister to the squad bucket handler. See _on_entity_register for why
+-- the standalone bucket does not subscribe.
+-- @cost O(1) typical | 1 luabind (clsid); O(levels) on squad fallback scan
 local function _on_entity_unregister(se_obj)
     if not se_obj then return end
-    local cls = se_obj:clsid()
-    if cls == CLSID_SQUAD then
+    if se_obj:clsid() == CLSID_SQUAD then
         _unregister_squad(se_obj)
-    elseif IsStalker(nil, cls) then
-        _unindex_standalone(se_obj.id)
     end
 end
 
