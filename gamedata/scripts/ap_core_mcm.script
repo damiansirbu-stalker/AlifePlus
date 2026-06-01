@@ -79,7 +79,7 @@ defaults = {
     cause_job_research_enabled = true,
     cause_social_campfire_enabled = true,
     cause_social_base_enabled = true,
-    cause_supply_trader_offmap_enabled = true,
+    cause_social_offmap_enabled = true,
     cause_job_explore_offmap_enabled = true,
 
     -- World: offmap balance cap (dispatches per source map per OFFMAP_WINDOW_SEC)
@@ -223,7 +223,6 @@ defaults = {
     -- Consequence: Hunger Campfire
     consequence_hunger_campfire_enabled = true,
     consequence_hunger_campfire_rush = false,
-    consequence_hunger_campfire_arrive_action_enabled = true,
 
     -- Consequence: Sleep Campfire
     consequence_sleep_campfire_enabled = true,
@@ -232,12 +231,10 @@ defaults = {
     -- Consequence: Rest Campfire
     consequence_rest_campfire_enabled = true,
     consequence_rest_campfire_rush = false,
-    consequence_rest_campfire_arrive_action_enabled = true,
 
     -- Consequence: Heal Shelter
     consequence_heal_shelter_enabled = true,
     consequence_heal_shelter_rush = false,
-    consequence_heal_shelter_arrive_action_enabled = true,
 
     -- Consequence: Shelter Indoor
     consequence_shelter_indoor_enabled = true,
@@ -263,7 +260,6 @@ defaults = {
     -- Consequence: Job Outpost
     consequence_job_outpost_enabled = true,
     consequence_job_outpost_rush = false,
-    consequence_job_outpost_arrive_action_enabled = true,
 
     -- Consequence: Job Explore
     consequence_job_explore_enabled = true,
@@ -276,21 +272,18 @@ defaults = {
     -- Consequence: Social Campfire
     consequence_social_campfire_enabled = true,
     consequence_social_campfire_rush = false,
-    consequence_social_campfire_arrive_action_enabled = true,
 
     -- Consequence: Social Base
     consequence_social_base_enabled = true,
     consequence_social_base_rush = false,
-    consequence_social_base_arrive_action_enabled = true,
+
+    -- Consequence: Social Offmap (cross-map sibling of social_base)
+    consequence_social_offmap_enabled = true,
+    consequence_social_offmap_rush = false,
 
     -- Consequence: Job Explore Offmap (cross-map sibling of job_explore)
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
-
-    -- Consequence: Supply Trader Offmap (cross-map sibling of supply_trader)
-    consequence_supply_trader_offmap_enabled = true,
-    consequence_supply_trader_offmap_rush = false,
-    consequence_supply_trader_offmap_arrive_action_enabled = true,
 
     -- Area conquest (additive shared spawn, human factions)
     mutator_area_conquest_mutate_smart = true,
@@ -325,15 +318,8 @@ defaults = {
 -- item move at ap_ext_consequences_stash.script:99,213), so the consequence-level flags go
 -- off; squads stop dispatching to stashes entirely under this profile.
 local stateless_overrides = {
-    -- Arrive-action toggles (existing per-consequence gates in ap_ext_consequences_needs.script:106)
-    consequence_hunger_campfire_arrive_action_enabled = false,
-    consequence_rest_campfire_arrive_action_enabled = false,
-    consequence_heal_shelter_arrive_action_enabled = false,
+    -- Arrive-action toggles (trade-only; gated in ap_ext_consequences_needs.script:_make_on_arrive)
     consequence_supply_trader_arrive_action_enabled = false,
-    consequence_supply_trader_offmap_arrive_action_enabled = false,
-    consequence_job_outpost_arrive_action_enabled = false,
-    consequence_social_campfire_arrive_action_enabled = false,
-    consequence_social_base_arrive_action_enabled = false,
     -- Area mutator spawn toggles (the actual spawn-table mutation step)
     mutator_area_conquest_mutate_smart = false,
     mutator_area_swarm_mutate_smart = false,
@@ -403,7 +389,7 @@ local _key_to_tab = {
     cause_job_research_enabled = "causes/needs",
     cause_social_campfire_enabled = "causes/needs",
     cause_social_base_enabled = "causes/needs",
-    cause_supply_trader_offmap_enabled = "causes/needs",
+    cause_social_offmap_enabled = "causes/needs",
     cause_job_explore_offmap_enabled = "causes/needs",
     cause_max_offmap = "world/offmap",
     offmap_base_hops = "world/offmap",
@@ -509,15 +495,12 @@ local _key_to_tab = {
     consequence_harvest_haunt_max_squads = "consequences/harvest_haunt",
     consequence_hunger_campfire_enabled = "consequences/hunger_campfire",
     consequence_hunger_campfire_rush = "consequences/hunger_campfire",
-    consequence_hunger_campfire_arrive_action_enabled = "consequences/hunger_campfire",
     consequence_sleep_campfire_enabled = "consequences/sleep_campfire",
     consequence_sleep_campfire_rush = "consequences/sleep_campfire",
     consequence_rest_campfire_enabled = "consequences/rest_campfire",
     consequence_rest_campfire_rush = "consequences/rest_campfire",
-    consequence_rest_campfire_arrive_action_enabled = "consequences/rest_campfire",
     consequence_heal_shelter_enabled = "consequences/heal_shelter",
     consequence_heal_shelter_rush = "consequences/heal_shelter",
-    consequence_heal_shelter_arrive_action_enabled = "consequences/heal_shelter",
     consequence_shelter_indoor_enabled = "consequences/shelter_indoor",
     consequence_shelter_indoor_rush = "consequences/shelter_indoor",
     consequence_shelter_outdoor_enabled = "consequences/shelter_outdoor",
@@ -531,22 +514,18 @@ local _key_to_tab = {
     consequence_supply_trader_arrive_action_enabled = "consequences/supply_trader",
     consequence_job_outpost_enabled = "consequences/job_outpost",
     consequence_job_outpost_rush = "consequences/job_outpost",
-    consequence_job_outpost_arrive_action_enabled = "consequences/job_outpost",
     consequence_job_explore_enabled = "consequences/job_explore",
     consequence_job_explore_rush = "consequences/job_explore",
     consequence_job_research_enabled = "consequences/job_research",
     consequence_job_research_rush = "consequences/job_research",
     consequence_social_campfire_enabled = "consequences/social_campfire",
     consequence_social_campfire_rush = "consequences/social_campfire",
-    consequence_social_campfire_arrive_action_enabled = "consequences/social_campfire",
     consequence_social_base_enabled = "consequences/social_base",
     consequence_social_base_rush = "consequences/social_base",
-    consequence_social_base_arrive_action_enabled = "consequences/social_base",
+    consequence_social_offmap_enabled = "consequences/social_offmap",
+    consequence_social_offmap_rush = "consequences/social_offmap",
     consequence_job_explore_offmap_enabled = "consequences/job_explore_offmap",
     consequence_job_explore_offmap_rush = "consequences/job_explore_offmap",
-    consequence_supply_trader_offmap_enabled = "consequences/supply_trader_offmap",
-    consequence_supply_trader_offmap_rush = "consequences/supply_trader_offmap",
-    consequence_supply_trader_offmap_arrive_action_enabled = "consequences/supply_trader_offmap",
     btn_reset_all = "development",
     btn_reset_stateless = "development",
 }
@@ -861,9 +840,6 @@ function on_mcm_load()
                             { id = "div_supply_trader", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_supply_trader_tag"),
                             _check("cause_supply_trader_enabled"),
-                            { id = "div_supply_trader_offmap", type = "line" },
-                            _tag("ui_mcm_ap_causes_needs_supply_trader_offmap_tag"),
-                            _check("cause_supply_trader_offmap_enabled"),
                             { id = "div_money_harvest", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_money_harvest_tag"),
                             _check("cause_money_harvest_enabled"),
@@ -888,6 +864,9 @@ function on_mcm_load()
                             { id = "div_social_base", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_social_base_tag"),
                             _check("cause_social_base_enabled"),
+                            { id = "div_social_offmap", type = "line" },
+                            _tag("ui_mcm_ap_causes_needs_social_offmap_tag"),
+                            _check("cause_social_offmap_enabled"),
                             { id = "div_drives", type = "line" },
                             _track("cause_hunger_threshold", 0.1, 48, 0.1),
                             { id = "div_sleep_threshold", type = "line" },
@@ -1106,7 +1085,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_hunger_campfire_tag"),
                             _check("consequence_hunger_campfire_enabled"),
                             _check("consequence_hunger_campfire_rush"),
-                            _check("consequence_hunger_campfire_arrive_action_enabled"),
                         },
                     },
                     {
@@ -1127,7 +1105,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_rest_campfire_tag"),
                             _check("consequence_rest_campfire_enabled"),
                             _check("consequence_rest_campfire_rush"),
-                            _check("consequence_rest_campfire_arrive_action_enabled"),
                         },
                     },
                     {
@@ -1138,7 +1115,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_heal_shelter_tag"),
                             _check("consequence_heal_shelter_enabled"),
                             _check("consequence_heal_shelter_rush"),
-                            _check("consequence_heal_shelter_arrive_action_enabled"),
                         },
                     },
                     {
@@ -1193,17 +1169,6 @@ function on_mcm_load()
                         },
                     },
                     {
-                        id = "supply_trader_offmap",
-                        sh = true,
-                        gr = {
-                            _slide("ui_mcm_ap_consequences_supply_trader_offmap_title"),
-                            _tag("ui_mcm_ap_consequences_supply_trader_offmap_tag"),
-                            _check("consequence_supply_trader_offmap_enabled"),
-                            _check("consequence_supply_trader_offmap_rush"),
-                            _check("consequence_supply_trader_offmap_arrive_action_enabled"),
-                        },
-                    },
-                    {
                         id = "job_outpost",
                         sh = true,
                         gr = {
@@ -1211,7 +1176,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_job_outpost_tag"),
                             _check("consequence_job_outpost_enabled"),
                             _check("consequence_job_outpost_rush"),
-                            _check("consequence_job_outpost_arrive_action_enabled"),
                         },
                     },
                     {
@@ -1252,7 +1216,6 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_social_campfire_tag"),
                             _check("consequence_social_campfire_enabled"),
                             _check("consequence_social_campfire_rush"),
-                            _check("consequence_social_campfire_arrive_action_enabled"),
                         },
                     },
                     {
@@ -1263,7 +1226,16 @@ function on_mcm_load()
                             _tag("ui_mcm_ap_consequences_social_base_tag"),
                             _check("consequence_social_base_enabled"),
                             _check("consequence_social_base_rush"),
-                            _check("consequence_social_base_arrive_action_enabled"),
+                        },
+                    },
+                    {
+                        id = "social_offmap",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_social_offmap_title"),
+                            _tag("ui_mcm_ap_consequences_social_offmap_tag"),
+                            _check("consequence_social_offmap_enabled"),
+                            _check("consequence_social_offmap_rush"),
                         },
                     },
                     {

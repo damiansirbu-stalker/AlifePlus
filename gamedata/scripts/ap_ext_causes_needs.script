@@ -1,5 +1,5 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
---- CAUSES table holds 14 specific causes (answers). Picker emits one specific cause per call.
+--- CAUSES table holds 16 specific causes (answers). Picker emits one specific cause per call.
 
 local table_sort, next, math_random = table.sort, next, math.random
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
@@ -62,7 +62,7 @@ local NEEDS = {
       threshold_key = "cause_social_threshold" },
 }
 
---- 14 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
+--- 16 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
 --- per-cause RULES (alignment subset, personality traits), per-cause SCAN (filter, exclude_enemy).
 local CAUSES
 
@@ -76,9 +76,14 @@ local function _shuffle_causes()
 end
 
 local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
+
+-- SIMBOARD-based: smart is unclaimed when no squad of any kind is currently stationed there.
+-- Drops the old smart.faction / LTX-declared-factions / warfare-owning-faction reads in favour
+-- of physical-presence truth via xsmart.iter_stationed_squads (cross-level safe, offline safe).
 local function _is_unclaimed(smart)
-    if xsmart.get_controlling_faction(smart) ~= "none" then return false end
-    return not next(xsmart.get_declared_factions(smart))
+    if not smart then return false end
+    for _ in xsmart.iter_stationed_squads(smart.id) do return false end
+    return true
 end
 
 -- Resolve total BFS hops for off-map adjacency search.
@@ -97,7 +102,7 @@ end
 local function _build_filter(entry, community)
     return function(smart)
         if entry.filter and not entry.filter(smart) then return false end
-        if entry.exclude_enemy and community and ap_core_util.is_smart_hostile_to(smart, community) then
+        if entry.exclude_enemy and community and xsmart.has_enemy_squad(smart.id, community) then
             ap_core_debug.debug(entry.log_prefix .. " hostility filter rejected smart=%d community=%s", smart.id, community)
             return false
         end
@@ -294,14 +299,6 @@ function on_game_start()
           filter = ap_core_util.has_service_npc_at_smart,
           exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
-        -- Cross-map peer row. INV_TERRITORY pairs with GREED so greedy non-territorial squads
-        -- (Loners, Bandits, Mercs, Renegades) travel for trade. Alignment excludes garrisoned
-        -- factions (army, monolith) and zombied. has_service_npc_at_smart works cross-level:
-        -- it reads ap_core_cache.standalone_role_at_smart, an id-set keyed by smart_id and
-        -- populated from CSE positions at warmup, no online dependency.
-        { cause = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap", need = "supply",
-          filter = ap_core_util.has_service_npc_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
-          personality = { PERSONALITY.GREED, PERSONALITY.INV_TERRITORY }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
           filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_stalker_jobs(s) end,
           alignment = _alignment_selfserving, exclude_enemy = true,
@@ -337,6 +334,15 @@ function on_game_start()
         { cause = CAUSE.SOCIAL_BASE,      name = "social_base",      need = "social",
           filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
+        -- Cross-map peer row. INV_AGGRESSION pairs with RELATION so peaceful sociable factions
+        -- (Ecologists, Clear Sky, Freedom, Loners) visit other bases for company; aggressive
+        -- factions stay home. Alignment widens to the off-map traveler set; the on-map
+        -- SOCIAL_BASE stays principled-only. Filter is prop-only xsmart.is_base (no
+        -- has_animated_stalker_jobs) because stalker_jobs is nil for off-actor-level smarts
+        -- (smart_terrain.script:462).
+        { cause = CAUSE.SOCIAL_OFFMAP,    name = "social_offmap",    need = "social",
+          filter = xsmart.is_base,            alignment = _alignment_offmap, exclude_enemy = true,
+          personality = { PERSONALITY.RELATION, PERSONALITY.INV_AGGRESSION }, offmap = true },
     }
 
     for i = 1, #CAUSES do

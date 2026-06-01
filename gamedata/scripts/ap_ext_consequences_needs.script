@@ -1,4 +1,5 @@
---- ap_ext_consequences_needs: Action-only consequences for human needs (14 entries, all 1:1 with cause).
+--- ap_ext_consequences_needs: 16 need consequences, 1:1 with cause. supply_trader declares an
+--- arrive_action (trade exchange). The other 15 just reset the DTO timestamp on arrival.
 ---
 --- Per n477: item consumption on arrival is dropped (the old CONSUME_POLICY / _consume flow).
 --- Need satisfaction is now the arrival itself (DTO timestamp reset). Engine-side medic behavior
@@ -24,19 +25,24 @@ local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
 
 local cfg = ap_core_mcm.cfg
 
---- Trade visitor inventory against any service NPC at smart.
+--- Trade arrival action: trade visitor inventory with any service NPC at the destination smart.
 --- Delegates to ap_ext_trade.trade; trade flow now uses per-rank LTX policy (incl. profit_max
---- cap) rather than the old MCM cash_cap.
-local function _arrive_trade(visitor_go, smart_id, log_prefix)
-    local smart_se = smart_id and xobject.se(smart_id)
-    if not smart_se then return {}, {} end
-    local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
-    if not trader_go then
-        ap_core_debug.debug(log_prefix .. " _arrive_trade no service NPC online at smart=%d", smart_id)
-        return {}, {}
-    end
-    local result = ap_ext_trade.trade(visitor_go, trader_go)
-    return result.sold, result.bought
+--- cap) rather than the old MCM cash_cap. Wraps observe so the trade is one PHASE.ARRIVE entry.
+local function _arrive_action_trade(trace, visitor_go, args)
+    ap_core_debug.observe(trace, PHASE.ARRIVE, function()
+        local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
+        if not smart_se then return { code = TRACE.NONE, reason = "no_smart" } end
+        local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
+        if not trader_go then
+            ap_core_debug.debug(args.log_prefix .. " arrive trade: no service NPC online at smart=%d", args.dst_smart_id)
+            return { code = TRACE.NONE, reason = "no_trader" }
+        end
+        local result = ap_ext_trade.trade(visitor_go, trader_go)
+        local sold, bought = result.sold, result.bought
+        local fired = (#sold > 0) or (#bought > 0)
+        return { code = fired and TRACE.OK or TRACE.NONE,
+            sold = table_concat(sold, ","), bought = table_concat(bought, ",") }
+    end)
 end
 
 local CONFIGS = {
@@ -53,9 +59,7 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.SHELTER_OUTDOOR, action = ACTION.SHELTER_OUTDOOR,   event = CAUSE.SHELTER_OUTDOOR,  name = "shelter_outdoor",
       pre_release_gulag = PRE_RELEASE_GULAG.SHELTER_OUTDOOR },
     { consequence = CONSEQUENCE.SUPPLY_TRADER, action = ACTION.SUPPLY_TRADER,       event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
-      arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
-    { consequence = CONSEQUENCE.SUPPLY_TRADER_OFFMAP, action = ACTION.SUPPLY_TRADER_OFFMAP, event = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap",
-      arrive_fn = "trade",     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
+      arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
     { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,       event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
     { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,             event = CAUSE.MONEY_HUNT,       name = "money_hunt",
@@ -72,41 +76,28 @@ local CONFIGS = {
       pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_CAMPFIRE },
     { consequence = CONSEQUENCE.SOCIAL_BASE, action = ACTION.SOCIAL_BASE,           event = CAUSE.SOCIAL_BASE,      name = "social_base",
       pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_BASE },
+    { consequence = CONSEQUENCE.SOCIAL_OFFMAP, action = ACTION.SOCIAL_OFFMAP,       event = CAUSE.SOCIAL_OFFMAP,    name = "social_offmap",
+      pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFMAP, offmap = true },
 }
 
---- Dispatch arrive action (online only): trade exchange or passive.
-local function _dispatch_arrive(trace, go, args)
-    if cfg["consequence_" .. args.name .. "_arrive_action_enabled"] == false then
-        return "disabled"
-    end
-    if args.arrive_fn == "trade" then
-        ap_core_debug.observe(trace, PHASE.ARRIVE, function()
-            local sold, bought = _arrive_trade(go, args.dst_smart_id, args.log_prefix)
-            local fired = (#sold > 0) or (#bought > 0)
-            return { code = fired and TRACE.OK or TRACE.NONE,
-                sold = table_concat(sold, ","), bought = table_concat(bought, ",") }
+--- Reset need timestamp on arrival; run the entry's arrive_action if it has one.
+--- Per-entry closure: the entry binds at registration time so the action ref doesn't need to
+--- live in on_arrive_args (which is save-serialized).
+local function _make_on_arrive(entry)
+    return function(squad, args)
+        if not args or not args.dto_field then return end
+        ap_core_debug.observe(nil, PHASE.COMPLETE_NEEDS, function(trace)
+            ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.game_sec())
+            if entry.arrive_action
+                and cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] ~= false then
+                local st = db.storage[squad:commander_id()]
+                if st and st.object then
+                    entry.arrive_action(trace, st.object, args)
+                end
+            end
+            return { code = TRACE.OK, squad = squad.id, need = entry.name, dst = args.dst_name }
         end)
-        return "trade"
     end
-    return "passive"
-end
-
---- Reset need timestamp and run arrive action on arrival at destination
-local function _on_arrive(squad, args)
-    if not args or not args.dto_field then return end
-    ap_core_debug.observe(nil, PHASE.COMPLETE_NEEDS, function(trace)
-        local now = xtime.game_sec()
-        ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, now)
-        local cmd_id = squad:commander_id()
-        local st = db.storage[cmd_id]
-        local online = st and st.object ~= nil
-        local action = "offline"
-        if online then
-            action = _dispatch_arrive(trace, st.object, args)
-        end
-        return { code = TRACE.OK, squad = squad.id, need = args.name,
-            dst = args.dst_name, online = online, action = action }
-    end)
 end
 
 local function _make_condition(enabled_key)
@@ -127,8 +118,7 @@ local function _make_handler(entry)
                 res = ap_core_broker.script_squad(squad, smart, {
                     rush = cfg["consequence_" .. entry.name .. "_rush"],
                     on_arrive = entry.consequence,
-                    on_arrive_args = { dto_field = event_data.dto_field, name = entry.name,
-                        arrive_fn = entry.arrive_fn,
+                    on_arrive_args = { dto_field = event_data.dto_field,
                         dst_name = smart:name(), dst_smart_id = smart.id,
                         log_prefix = entry.log_prefix },
                     pre_release_gulag = entry.pre_release_gulag,
@@ -159,7 +149,7 @@ function on_game_start()
         ap_core_consumer.register(entry.consequence, {
             event = entry.event,
             condition = _make_condition(enabled_key),
-            on_arrive = _on_arrive,
+            on_arrive = _make_on_arrive(entry),
         }, _make_handler(entry))
     end
     ap_core_debug.info(LOG_INIT .. " Initialized: %d consequences", #CONFIGS)

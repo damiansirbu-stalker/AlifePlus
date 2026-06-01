@@ -182,9 +182,6 @@
   <string id="ui_mcm_menu_supply_trader">
     <text>Supply\nTrader</text>
   </string>
-  <string id="ui_mcm_menu_supply_trader_offmap">
-    <text>Supply Trader\nOff-map</text>
-  </string>
   <string id="ui_mcm_menu_job_outpost">
     <text>Job\nOutpost</text>
   </string>
@@ -202,6 +199,9 @@
   </string>
   <string id="ui_mcm_menu_social_base">
     <text>Social\nBase</text>
+  </string>
+  <string id="ui_mcm_menu_social_offmap">
+    <text>Social\nOff-map</text>
   </string>
   <!-- ==================== FRAMEWORK TAB ==================== -->
   <string id="ui_mcm_ap_framework_title">
@@ -542,9 +542,6 @@
   <string id="ui_mcm_ap_causes_needs_supply_trader_tag">
     <text>Cause: Supply Trader Available\nDesc: Squad heads to a smart hosting a curated trader, medic, or mechanic to restock.\nRules: radio range; day; any stalker; personality(greed, relation); service NPC at smart; non-hostile; tactics; Hull</text>
   </string>
-  <string id="ui_mcm_ap_causes_needs_supply_trader_offmap_tag">
-    <text>Cause: Supply Trader Off-map Available\nDesc: Squad heads to a smart on another map hosting a curated trader, medic, or mechanic. Peer of supply_trader; greedy non-territorial squads travel for trade.\nRules: all-level scan; excludes source level; offmap balance cap applies; off-map travelers; personality(greed, inv_territory); service NPC at smart; non-hostile; tactics; Hull</text>
-  </string>
   <string id="ui_mcm_ap_causes_needs_money_harvest_tag">
     <text>Cause: Money Harvest Available\nDesc: Squad heads to an anomaly to pull artefacts.\nRules: radio range; day; self-serving stalkers; personality(greed, perception); anomaly; non-hostile; tactics; Hull</text>
   </string>
@@ -568,6 +565,9 @@
   </string>
   <string id="ui_mcm_ap_causes_needs_social_base_tag">
     <text>Cause: Social Base Available\nDesc: Squad returns to base for downtime.\nRules: radio range; principled stalkers; personality(relation, territory); base; non-hostile; tactics; Hull</text>
+  </string>
+  <string id="ui_mcm_ap_causes_needs_social_offmap_tag">
+    <text>Cause: Social Off-map Available\nDesc: Squad visits a base on another map for company. Peer of social_base; peaceful sociable factions visit other camps.\nRules: all-level scan; excludes source level; offmap balance cap applies; off-map travelers; personality(relation, inv_aggression); base; non-hostile; tactics; Hull</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_hunger_threshold">
     <text>Hunger threshold</text>
@@ -708,11 +708,11 @@
   <string id="ui_mcm_ap_causes_needs_cause_social_base_enabled_desc">
     <text>Allow social_base cause to publish.</text>
   </string>
-  <string id="ui_mcm_ap_causes_needs_cause_supply_trader_offmap_enabled">
+  <string id="ui_mcm_ap_causes_needs_cause_social_offmap_enabled">
     <text>Enabled</text>
   </string>
-  <string id="ui_mcm_ap_causes_needs_cause_supply_trader_offmap_enabled_desc">
-    <text>Allow supply_trader_offmap cause to publish (peer of supply_trader; greedy non-territorial squads travel for trade).</text>
+  <string id="ui_mcm_ap_causes_needs_cause_social_offmap_enabled_desc">
+    <text>Allow social_offmap cause to publish (peer of social_base; peaceful sociable factions visit other camps).</text>
   </string>
   <string id="ui_mcm_ap_causes_needs_cause_job_explore_offmap_enabled">
     <text>Enabled</text>
@@ -1152,12 +1152,6 @@
   <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
   </string>
-  <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_hunger_campfire_consequence_hunger_campfire_arrive_action_enabled_desc">
-    <text>On arrival, NPC eats food from inventory: bread, sausage, canned goods, vodka, beer. Item is removed.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / SLEEP CAMPFIRE ==================== -->
   <string id="ui_mcm_ap_consequences_sleep_campfire_title">
     <text>Sleep Campfire</text>
@@ -1196,12 +1190,6 @@
   <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
   </string>
-  <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_rest_campfire_consequence_rest_campfire_arrive_action_enabled_desc">
-    <text>On arrival, NPC smokes a cigarette or drinks vodka/beer from inventory. Item is removed.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / HEAL SHELTER ==================== -->
   <string id="ui_mcm_ap_consequences_heal_shelter_title">
     <text>Heal Shelter</text>
@@ -1220,12 +1208,6 @@
   </string>
   <string id="ui_mcm_ap_consequences_heal_shelter_consequence_heal_shelter_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_heal_shelter_consequence_heal_shelter_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_heal_shelter_consequence_heal_shelter_arrive_action_enabled_desc">
-    <text>On arrival, NPC uses a medkit, bandage, or stimpack from inventory. Item is removed.</text>
   </string>
   <!-- ==================== CONSEQUENCES / SHELTER ==================== -->
   <string id="ui_mcm_ap_consequences_shelter_indoor_title">
@@ -1328,31 +1310,6 @@
   <string id="ui_mcm_ap_consequences_supply_trader_consequence_supply_trader_arrive_action_enabled_desc">
     <text>Sell phase drops anything whose category count exceeds the policy max. Equipped items, quest items, and money are never touched. Buy phase fills any category whose count falls below the min, ammo per equipped slot and tier, consumables cheapest-first. Veterans add premium ammo and grenades. profit_max caps net cash gain per event.</text>
   </string>
-  <!-- ==================== CONSEQUENCES / SUPPLY TRADER OFF-MAP ==================== -->
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_title">
-    <text>Supply Trader Off-map</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_tag">
-    <text>Desc: Squad heads to a base on another map to restock\nCause: Supply Trader Off-map Available</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_enabled">
-    <text>Enabled</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_enabled_desc">
-    <text>Stalkers cross to a base on another map to restock when no on-map trader is available.</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_rush">
-    <text>Rush mode</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_rush_desc">
-    <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_supply_trader_offmap_consequence_supply_trader_offmap_arrive_action_enabled_desc">
-    <text>Sell phase drops anything whose category count exceeds the policy max. Equipped items, quest items, and money are never touched. Buy phase fills any category whose count falls below the min, ammo per equipped slot and tier, consumables cheapest-first. Veterans add premium ammo and grenades. profit_max caps net cash gain per event.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / JOB OUTPOST ==================== -->
   <string id="ui_mcm_ap_consequences_job_outpost_title">
     <text>Job Outpost</text>
@@ -1371,12 +1328,6 @@
   </string>
   <string id="ui_mcm_ap_consequences_job_outpost_consequence_job_outpost_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_job_outpost_consequence_job_outpost_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_job_outpost_consequence_job_outpost_arrive_action_enabled_desc">
-    <text>On arrival, NPC smokes a cigarette from inventory while on guard duty. Item is removed.</text>
   </string>
   <!-- ==================== CONSEQUENCES / JOB EXPLORE ==================== -->
   <string id="ui_mcm_ap_consequences_job_explore_title">
@@ -1455,12 +1406,6 @@
   <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
   </string>
-  <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_arrive_action_enabled">
-    <text>Arrive action</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_social_campfire_consequence_social_campfire_arrive_action_enabled_desc">
-    <text>On arrival, NPC shares a cigarette or drink from inventory at the campfire. Item is removed.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / SOCIAL BASE ==================== -->
   <string id="ui_mcm_ap_consequences_social_base_title">
     <text>Social Base</text>
@@ -1480,11 +1425,24 @@
   <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_rush_desc">
     <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
   </string>
-  <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_arrive_action_enabled">
-    <text>Arrive action</text>
+  <!-- ==================== CONSEQUENCES / SOCIAL OFF-MAP ==================== -->
+  <string id="ui_mcm_ap_consequences_social_offmap_title">
+    <text>Social Off-map</text>
   </string>
-  <string id="ui_mcm_ap_consequences_social_base_consequence_social_base_arrive_action_enabled_desc">
-    <text>On arrival, NPC shares a cigarette or drink from inventory at base. Item is removed.</text>
+  <string id="ui_mcm_ap_consequences_social_offmap_tag">
+    <text>Desc: Squad heads to a base on another map for downtime; off-map travelers\nCause: Social Off-map Available</text>
+  </string>
+  <string id="ui_mcm_ap_consequences_social_offmap_consequence_social_offmap_enabled">
+    <text>Enabled</text>
+  </string>
+  <string id="ui_mcm_ap_consequences_social_offmap_consequence_social_offmap_enabled_desc">
+    <text>Stalkers cross to a base on another map for downtime when no on-map base is available. Fires for off-map travelers (army, monolith, zombied excluded).</text>
+  </string>
+  <string id="ui_mcm_ap_consequences_social_offmap_consequence_social_offmap_rush">
+    <text>Rush mode</text>
+  </string>
+  <string id="ui_mcm_ap_consequences_social_offmap_consequence_social_offmap_rush_desc">
+    <text>Scripted squads move at maximum speed. Disable for slower, more realistic movement.</text>
   </string>
   <!-- ==================== MUTATORS / AREA CONQUEST ==================== -->
   <string id="ui_mcm_ap_mutators_conquest_title">
