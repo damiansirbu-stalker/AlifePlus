@@ -14,6 +14,8 @@ next
 
   Needs:
     Removed: Item consumption on arrival at need-satisfying smarts. NPCs reaching a campfire no longer destroy a food item. NPCs reaching a shelter no longer release a medkit or bandage. NPCs reaching an outpost no longer release antirad. The arrival itself satisfies the need. Engine-side medic behavior (medkit, bandage, stim usage in combat) is independent and unchanged.
+    Added: Social Off-map cause and consequence. Peaceful sociable factions (Ecologists, Clear Sky, Freedom, Loners) walk to a base on another map for downtime when the social drive overdues and no on-map base passes the destination filter. Peer of Social Base with a wider faction set (off-map traveler alignment) and personality(relation, inv_aggression) instead of (relation, territory). 5 PDA news templates cover the visit.
+    Removed: Supply Trader Off-map cause and consequence. Cross-map trade trips no longer fire. On-map Supply Trader unchanged; squads needing supplies travel only to traders on the actor's current level.
 
   Stash:
     Added: Stash policy lives in ap_stash_policy.ltx, parallel to ap_trade_policy.ltx. Single uniform block with per-category min, max plus extras_max (top-N by cost picked after the category pass) and fill_max (per-event deposit cap). DLTX-overridable. Replaces the hardcoded STASH_POLICY table.
@@ -26,8 +28,14 @@ next
     Removed: Consequences > Supply Trader > NPC cash cap slider. Numbers live in ap_trade_policy.ltx now as profit_max per rank.
     Removed: Consequences > Stash Loot min / max items sliders. Numbers live in ap_stash_policy.ltx now (per-category min, max plus extras_max).
     Removed: Consequences > Stash Fill min / max items sliders. Numbers live in ap_stash_policy.ltx now (per-category min, max plus fill_max).
+    Removed: Arrive action toggle on Hunger Campfire, Rest Campfire, Heal Shelter, Job Outpost, Social Campfire, Social Base. The matching item consumption was already dropped (eat / smoke / drink / heal on arrival); the toggle row remained and described behavior that no longer happened. Supply Trader keeps its Arrive action toggle since the trade exchange still runs.
+    Added: Causes > Needs > Social Off-map toggle. Causes > Needs > Supply Trader Off-map toggle removed.
+    Added: Consequences > Social Off-map page (Enabled, Rush mode). Consequences > Supply Trader Off-map page removed.
     Fixed: Reset ALL to Defaults button takes effect on the first click. Previously any slider or checkbox edited in the same MCM session would override the reset on accept.
     Added: Reset ALL to Stateless Defaults button under Development. Resets every setting to factory default then disables trade, item consumption, stash fill, stash loot, smart ownership. AlifePlus dispatch and travel still run. For installs where another mod owns those systems.
+
+  Performance:
+    Changed: Standalone-NPC cache (curated traders, medics, mechanics indexed by smart) rebuilds at actor first update on each level transition, scoped to the actor's current level. Engine accessor alife():iterate_level_objects_of_clsid filters the actor-level CSE registry by clsid in C++; xslice spreads bucket fill across frames at 50 entities per tick. Previously the cache filled incrementally from the entity-register hook walking every CSE on every save load (an xslice path was wired but a guard at module load always exited early, leaving the register hook as the sole populator). Smaller queue (actor-level NPCs only, not the cross-level pool), no per-entity register or unregister maintenance on this bucket, fresh rebuild every level transition.
 
   Compatibility:
     Added: NPC trade SELL and stash fill skip three more untouchable categories via the centralized xlibs xinventory.get_category filter: items with a runtime story_id (vanilla release_npc_inventory.script:81 "extra protection"), items the actor gave to a companion (axr_companions.is_assigned_item), and player-strapped weapons (se_load_var "strapped_item"). Player gifts and modifications survive routine NPC economic activity instead of being sold off or deposited into stashes.
