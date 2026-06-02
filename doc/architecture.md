@@ -489,7 +489,7 @@ Radiant cadence accumulates AP-scripted squads. Reactive events (massacre, wound
 
 Interruptable flag. script_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
 
-- `interruptable = true`: on-map needs (14 of 17), all instincts (7), and stash_ambush. Routine maintenance trips, deferrable.
+- `interruptable = true`: on-map needs (14 of 16), all instincts (7), and stash_ambush. Routine maintenance trips, deferrable.
 - `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase recursion in ap_ext_common (move_actor_chasers, make_move_smart_chasers, make_on_arrive), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 2 off-map needs (social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches need their return-home pipeline to complete and lose it if preempted outbound.
 
 The broker default is `true` only as a safety net; no caller relies on it.
@@ -756,7 +756,7 @@ cfg key layout:
 - cause_<answer>_enabled: per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
 - Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const (line 174-175). Applies uniformly to every personality roll.
 
-Used by ap_ext_causes_needs.script (9 drives, 14 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
+Used by ap_ext_causes_needs.script (9 drives, 16 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
 
 ---
 

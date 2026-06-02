@@ -66,7 +66,7 @@ CONSEQUENCE = CAUSE + VERB
 | MCM mutator setting | `mutator_{name}_{setting}` | `mutator_area_conquest_spawn_num`, `mutator_area_infest_decay_hours` |
 | Script file (cause, single) | `ap_ext_cause_{family}.script`; generator publishes exactly one cause | `ap_ext_cause_massacre.script`, `ap_ext_cause_alpha.script` |
 | Script file (cause, multi) | `ap_ext_causes_{family}.script`; generator publishes multiple causes | `ap_ext_causes_area.script`, `ap_ext_causes_stash.script`, `ap_ext_causes_needs.script`, `ap_ext_causes_instincts.script` |
-| Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (14 handlers) |
+| Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (16 handlers) |
 | Community list | `community_{role}` | `community_stalker`, `community_predator` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
@@ -103,7 +103,7 @@ When to use: a drive that has multiple alternative satisfactions (mutant slumber
 
 When NOT to use: state classifiers where the picker selects exactly one branch by inspecting world state (stash empty/full/trap pattern). Those use a state-by-state KEYS_BY_CAUSE picker, not Hull cascade.
 
-Used by: `ap_ext_causes_needs.script` (9 drives, 14 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
+Used by: `ap_ext_causes_needs.script` (9 drives, 16 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
 
 ---
 
