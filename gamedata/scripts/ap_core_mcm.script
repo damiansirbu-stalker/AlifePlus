@@ -80,6 +80,7 @@ defaults = {
     cause_social_campfire_enabled = true,
     cause_social_base_enabled = true,
     cause_social_offmap_enabled = true,
+    cause_supply_trader_offmap_enabled = true,
     cause_job_explore_offmap_enabled = true,
 
     -- World: offmap balance cap (dispatches per source map per OFFMAP_WINDOW_SEC)
@@ -281,6 +282,11 @@ defaults = {
     consequence_social_offmap_enabled = true,
     consequence_social_offmap_rush = false,
 
+    -- Consequence: Supply Trader Offmap (cross-map sibling of supply_trader)
+    consequence_supply_trader_offmap_enabled = true,
+    consequence_supply_trader_offmap_rush = false,
+    consequence_supply_trader_offmap_arrive_action_enabled = true,
+
     -- Consequence: Job Explore Offmap (cross-map sibling of job_explore)
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
@@ -320,6 +326,7 @@ defaults = {
 local stateless_overrides = {
     -- Arrive-action toggles (trade-only; gated in ap_ext_consequences_needs.script:_make_on_arrive)
     consequence_supply_trader_arrive_action_enabled = false,
+    consequence_supply_trader_offmap_arrive_action_enabled = false,
     -- Area mutator spawn toggles (the actual spawn-table mutation step)
     mutator_area_conquest_mutate_smart = false,
     mutator_area_swarm_mutate_smart = false,
@@ -390,6 +397,7 @@ local _key_to_tab = {
     cause_social_campfire_enabled = "causes/needs",
     cause_social_base_enabled = "causes/needs",
     cause_social_offmap_enabled = "causes/needs",
+    cause_supply_trader_offmap_enabled = "causes/needs",
     cause_job_explore_offmap_enabled = "causes/needs",
     cause_max_offmap = "world/offmap",
     offmap_base_hops = "world/offmap",
@@ -524,6 +532,9 @@ local _key_to_tab = {
     consequence_social_base_rush = "consequences/social_base",
     consequence_social_offmap_enabled = "consequences/social_offmap",
     consequence_social_offmap_rush = "consequences/social_offmap",
+    consequence_supply_trader_offmap_enabled = "consequences/supply_trader_offmap",
+    consequence_supply_trader_offmap_rush = "consequences/supply_trader_offmap",
+    consequence_supply_trader_offmap_arrive_action_enabled = "consequences/supply_trader_offmap",
     consequence_job_explore_offmap_enabled = "consequences/job_explore_offmap",
     consequence_job_explore_offmap_rush = "consequences/job_explore_offmap",
     btn_reset_all = "development",
@@ -840,6 +851,9 @@ function on_mcm_load()
                             { id = "div_supply_trader", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_supply_trader_tag"),
                             _check("cause_supply_trader_enabled"),
+                            { id = "div_supply_trader_offmap", type = "line" },
+                            _tag("ui_mcm_ap_causes_needs_supply_trader_offmap_tag"),
+                            _check("cause_supply_trader_offmap_enabled"),
                             { id = "div_money_harvest", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_money_harvest_tag"),
                             _check("cause_money_harvest_enabled"),
@@ -1166,6 +1180,17 @@ function on_mcm_load()
                             _check("consequence_supply_trader_enabled"),
                             _check("consequence_supply_trader_rush"),
                             _check("consequence_supply_trader_arrive_action_enabled"),
+                        },
+                    },
+                    {
+                        id = "supply_trader_offmap",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_supply_trader_offmap_title"),
+                            _tag("ui_mcm_ap_consequences_supply_trader_offmap_tag"),
+                            _check("consequence_supply_trader_offmap_enabled"),
+                            _check("consequence_supply_trader_offmap_rush"),
+                            _check("consequence_supply_trader_offmap_arrive_action_enabled"),
                         },
                     },
                     {

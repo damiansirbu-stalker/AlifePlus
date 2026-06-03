@@ -1,5 +1,5 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
---- CAUSES table holds 16 specific causes (answers). Picker emits one specific cause per call.
+--- CAUSES table holds 17 specific causes (answers). Picker emits one specific cause per call.
 
 local table_sort, next, math_random = table.sort, next, math.random
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
@@ -62,7 +62,7 @@ local NEEDS = {
       threshold_key = "cause_social_threshold" },
 }
 
---- 16 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
+--- 17 specific causes. Each carries: cause const, short name (cfg key suffix), parent need,
 --- per-cause RULES (alignment subset, personality traits), per-cause SCAN (filter, exclude_enemy).
 local CAUSES
 
@@ -299,6 +299,16 @@ function on_game_start()
           filter = ap_core_util.has_service_npc_at_smart,
           exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
+        -- Cross-map peer row. INV_AGGRESSION pairs with GREED so peaceful greedy factions
+        -- (Ecologists, Clear Sky, Loners, Freedom) travel to other-map traders; aggressive
+        -- factions stay home. Alignment widens to the off-map traveler set; the on-map
+        -- SUPPLY_TRADER stays alignment_human. Filter is the same prop-only
+        -- has_service_npc_at_smart used on-map; it is cross-level safe via ap_core_cache's
+        -- standalone-role index (id-sets keyed by smart_id, populated from CSE positions at
+        -- warmup, no online dependency).
+        { cause = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap", need = "supply",
+          filter = ap_core_util.has_service_npc_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
+          personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
           filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_stalker_jobs(s) end,
           alignment = _alignment_selfserving, exclude_enemy = true,

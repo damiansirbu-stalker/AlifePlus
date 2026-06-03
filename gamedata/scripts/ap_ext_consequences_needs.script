@@ -1,5 +1,6 @@
---- ap_ext_consequences_needs: 16 need consequences, 1:1 with cause. supply_trader declares an
---- arrive_action (trade exchange). The other 15 just reset the DTO timestamp on arrival.
+--- ap_ext_consequences_needs: 17 need consequences, 1:1 with cause. supply_trader and
+--- supply_trader_offmap declare an arrive_action (trade exchange). The other 15 just reset
+--- the DTO timestamp on arrival.
 ---
 --- Per n477: item consumption on arrival is dropped (the old CONSUME_POLICY / _consume flow).
 --- Need satisfaction is now the arrival itself (DTO timestamp reset). Engine-side medic behavior
@@ -60,6 +61,8 @@ local CONFIGS = {
       pre_release_gulag = PRE_RELEASE_GULAG.SHELTER_OUTDOOR },
     { consequence = CONSEQUENCE.SUPPLY_TRADER, action = ACTION.SUPPLY_TRADER,       event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
       arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
+    { consequence = CONSEQUENCE.SUPPLY_TRADER_OFFMAP, action = ACTION.SUPPLY_TRADER_OFFMAP, event = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap",
+      arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,       event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
     { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,             event = CAUSE.MONEY_HUNT,       name = "money_hunt",
