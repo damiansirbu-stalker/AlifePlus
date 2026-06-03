@@ -1,14 +1,10 @@
 1.7.6
-  Summary: Broken-class squad warnings on the four SIMBOARD bookkeeping callsites
+  Summary: offmap class guard, MCM reset fix, save self-heal, reset warning
 
-  Compatibility
-    - Offmap dispatch, return-home dispatch, arrival commit, and home arrival no longer crash
-      when a squad lacks the sim_squad_scripted class binding (Lua method assign_smart missing).
-      Vanilla sim_board.script:264 calls squad:assign_smart without a nil-check; mod stacks
-      that spawn alife groups outside the standard Lua class registration produced such squads,
-      crashing the engine when AlifePlus touched them. AlifePlus now skips the SIMBOARD
-      bookkeeping call and logs the squad id, section, and faction at warn level so the mod
-      creating the broken squad can be identified.
+  - Offmap dispatch no longer crashes when a squad's class binding is broken.
+  - Reset ALL to Defaults, Reset ALL to Stateless Defaults no longer crash on click on certain exes
+  - Saves carrying stale offmap tracking from prior versions self-heal on load.
+  - Added warning above reset buttons to save or discard pending MCM changes first.
 
 1.7.5
   Summary: Trade rework, Social Off-map, item-keeping arrivals, MCM stateless reset, supply routing fix, runtime untouchables
