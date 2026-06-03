@@ -1,3 +1,15 @@
+1.7.6
+  Summary: Broken-class squad warnings on the four SIMBOARD bookkeeping callsites
+
+  Compatibility
+    - Offmap dispatch, return-home dispatch, arrival commit, and home arrival no longer crash
+      when a squad lacks the sim_squad_scripted class binding (Lua method assign_smart missing).
+      Vanilla sim_board.script:264 calls squad:assign_smart without a nil-check; mod stacks
+      that spawn alife groups outside the standard Lua class registration produced such squads,
+      crashing the engine when AlifePlus touched them. AlifePlus now skips the SIMBOARD
+      bookkeeping call and logs the squad id, section, and faction at warn level so the mod
+      creating the broken squad can be identified.
+
 1.7.5
   Summary: Trade rework, Social Off-map, item-keeping arrivals, MCM stateless reset, supply routing fix, runtime untouchables
 

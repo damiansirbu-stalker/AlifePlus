@@ -15,7 +15,16 @@
 --- AlifePlus ---
   luacheck... OK
   selene... OK
-  contract... OK
+  contract... 24 pts (S)
+    [alifeplus-no-pcall] MOD-HIGH (1x16=16)
+        gamedata\scripts\ap_core_broker.script:121: pcall in AP code; AP delegates pcall-worthy ops to xlibs
+    [complexity-function-high] LUA-MED (1x5=5)
+        gamedata\scripts\ap_core_broker.script:490: Function script_squad() effective CC 15 > 14 (raw=17, guards=2)
+    [alao-uncached-global] LUA-LOW (2x1=2)
+        gamedata\scripts\ap_core_broker.script:0: 'pcall' in _broken_squad_diag; cache as local
+        gamedata\scripts\ap_core_broker.script:0: 'pcall' in _safe; cache as local
+    [standards-pcall-without-safety] LUA-LOW (1x1=1)
+        gamedata\scripts\ap_core_broker.script:121: Function _safe uses pcall without @safety annotation
   load... OK
 
 --- AlifeTactics ---
@@ -55,4 +64,4 @@
   load... OK
 
 ========================================
-PASS - Grade: S+
+Grade: S - Score: 24
