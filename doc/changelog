@@ -1,116 +1,42 @@
 1.7.5
-  Summary: Trade rework, Social Off-map peer, off-map personality fix, no-item arrivals, MCM stateless reset, supply routing fix
+  Summary: Trade rework, Social Off-map, item-keeping arrivals, MCM stateless reset, supply routing fix, runtime untouchables
 
-  Trade:
-    Changed: NPC rank now drives loadout.
-             Rookies (rank below 12000) carry FMJ ball ammo, medkits (1 to 3), bandages (1 to 3).
-             Veterans (rank 12000 and above) carry premium ammo across 18 cartridges (AP, EP, PBP, hot-load, hollow-point, steel-core, flechette), F1 and RGD5 grenades, plus deeper consumable bands (medkits 2 to 3, bandages 2 to 5, stims up to 2).
-             A bullet that kills the player from a veteran NPC now carries a real k_ap coefficient.
-             Same rank gates apply to NPC-vs-NPC firefights.
-    Changed: profit_max caps net cash gain per trade event (1500 RU rookie, 5000 RU veteran).
-             Veterans can walk out with up to 5000 RU but never clean out the trader.
-             Excess cash returns to the trader so the till stays in business.
-    Changed: NPCs reliably fill their slots.
-             Cheapest-first consumable buy means a limited-cash NPC walks out with a 2500 RU medkit rather than rolling 27782 RU medkit_ai3 and returning empty.
-             Bandage and medkit floors guarantee bleeding-stop and heal capability per rank.
-             Ammo tier buy falls through to the next-cheapest section on per-section unaffordable or create failure.
-    Changed: Policy is category-based, not section-by-section.
-             ap_trade_policy.ltx lists categories (medkit, bandage, ammo_slot_3_t1) with min, max bands.
-             A medkit entry covers every medkit variant the engine knows.
-             Addon items inherit the category their engine cost field places them in.
-             DLTX overrides target the file directly.
-    Changed: SELL runs before BUY.
-             NPCs convert spares to cash first, then buy with the post-sell pool.
-             Squads with high-value spares now restock more rows per visit instead of walking in cash-poor and out half-empty.
-    Removed: The MCM NPC cash cap slider (replaced by per-rank profit_max).
-    Removed: The [ap_buy_sell_keep] allowlist (replaced by per-category bands).
-    Fixed: Ammo-slot tier parser uses a regex match for the tier number (the prior last-char slice broke at tier counts above 9).
+  Trade
+    - NPCs visit trader smarts on arrival, sell surplus, and restock ammo, grenades, consumables per rank.
+      Policy in ap_trade_policy.ltx (DLTX): category bands per rank, built on Alundaio's buy/sell core.
+      Addon items inherit their category automatically (medkit_ai3, AP rounds, GAMMA ammo all just work).
+      Equipped pistols and rifles drive k_ap-sorted ammo tier picks at runtime.
+    - Rookies now carry basics, veterans now carry premium ammo (real k_ap), grenades, larger stocks.
+    - Per-rank profit cap (1500/5000 RU) and SELL-before-BUY order so sales fund restocks.
 
-  Needs:
-    Removed: Item destruction on arrival at need-satisfying smarts.
-             NPCs reaching a campfire no longer destroy food, smoke, or vodka to "satisfy hunger".
-             NPCs reaching a shelter no longer release a medkit or bandage.
-             NPCs reaching an outpost no longer release antirad.
-             The arrival itself satisfies the need.
-             Food, medkits, and other items the NPC bought stay in inventory and feed back into the trade loop.
-             Engine-side combat behavior (medkit, bandage, stim usage in firefights) is independent and unchanged.
-    Added: Social Off-map cause and consequence.
-           Peaceful sociable factions (Ecologists, Clear Sky, Freedom, Loners) walk to a base on another map for downtime.
-           Players see cross-faction visits.
-           Ecologists at the Cordon farm, Loners and Clear Sky at Yantar.
-           The trip fires when the social drive overdues and no on-map base passes the filter.
-           Alignment is the off-map traveler set, personality(relation, inv_aggression).
-           5 PDA news templates cover the visit.
-    Changed: Supply Trader Off-map personality swapped INV_TERRITORY to INV_AGGRESSION.
-             Peaceful greedy factions (Ecologists, Clear Sky, Loners, Freedom) now cross maps for trade.
-             Bandits, renegades, and other outlaws no longer travel cross-map.
-             Outlaw squads now stay in their territory and let the peaceful side make the trade runs.
+  Needs
+    - NPC arrivals at campfires, shelters, outposts no longer consume carried items.
+    - Social Off-map cause now fires: peaceful sociable factions travel cross-map for downtime visits.
+      Ecologists, Loners, Clear Sky now appear at off-map bases like Cordon farm and Yantar.
+      Includes 5 EN + 5 RU PDA news templates for cross-faction visits.
+    - Supply Trader off-map now peaceful greedy factions only (outlaws stay in their territory).
 
-  Stash:
-    Added: Stash policy lives in ap_stash_policy.ltx (DLTX-overridable, parallel to ap_trade_policy.ltx).
-           One block holds per-category min, max plus extras_max (top-N by cost after the category pass) and fill_max (per-event deposit cap).
-    Removed: The hardcoded STASH_POLICY table.
-    Added: Untouchable preservation skips stashes containing any quest, anim, or blacklisted section.
-           Player gifts and quest items survive squad stash visits.
-    Added: Extras pass picks the top-N highest-cost stash sections after the category pass (N from extras_max).
-           Squads grab valuable items the category policy did not specifically request.
-    Fixed: Squads now match stash ammo to a squad member whose equipped pistol or rifle takes the round.
-           Stash ammo no longer rejected as ammo_not_equipped on every section.
-           Ammo policy rows actually fire.
-    Changed: Loot clears the stash at the end of the pass when not skipped.
-             Sections the squad did not take are destroyed by the clear.
+  Stash
+    - Stash policy now lives in ap_stash_policy.ltx (DLTX): per-category bands, extras, fill specials.
+      Ammo loot matches per squad member: each round goes to the member whose pistol or rifle takes it.
+      Extras pass after the category sweep picks the top-N by cost (squads grab valuables policy missed).
+      Whole stash skipped if any quest item is present (untouchable preservation).
 
-  MCM:
-    Added: Development > Reset ALL to Stateless Defaults button.
-           Restores factory state then disables trade, item consumption, stash fill, stash loot, and smart ownership.
-           AlifePlus dispatch and travel keep running.
-           For installs where another mod (GAMMA, modpack) owns those systems.
-    Added: Causes > Needs > Social Off-map toggle.
-    Added: Consequences > Social Off-map page (Enabled, Rush mode).
-    Removed: Consequences > Supply Trader > NPC cash cap slider (now in ap_trade_policy.ltx).
-    Removed: Consequences > Stash Loot min and max items sliders (now in ap_stash_policy.ltx).
-    Removed: Consequences > Stash Fill min and max items sliders (now in ap_stash_policy.ltx).
-    Removed: Arrive action toggles on Hunger Campfire, Rest Campfire, Heal Shelter, Job Outpost, Social Campfire, Social Base.
-             The matching item consumption was already gone. The toggle had no effect.
-    Fixed: Reset ALL to Defaults button takes effect on the first click.
-           Previously any slider or checkbox edited in the same MCM session would override the reset on accept.
+  Supply routing
+    - Supply traffic now reaches every curated trader, medic, mechanic across the entire Zone.
+      Added 22 mechanics + 4 quest NPCs as supply destinations, plus a Loris faction fix.
 
-  Supply routing:
-    Fixed: Stalker supply trips reach every curated trader, medic, and mechanic in the Zone.
-           Cordon: 2 of 8 curated NPCs cached before, all 5 cacheable bind to their owning smart now.
-           Squads route to Loris at the northern farm, the military trader at the south camp, and the Cordon mechanics, not just Sidorovich.
-           Same effect on every level: more squad traffic at every commerce point.
-    Added: Mechanics serve as supply destinations.
-           22 vanilla mechanics carry dm_init_trader and sell ammo and weapon parts via the standard trade UI.
-           The bar mechanic, army mechanics, Yantar techs, Jupiter techs now see squad traffic.
-    Added: Quest NPCs that wire dm_init_trader serve as supply destinations.
-           Yantar cook, Kruglov (Yantar scientist), Jupiter nuclear physicist (sells artifact-upgrade components), Pripyat Yar (medic and trader).
-    Changed: Cache binding cascade prefers engine truth over geometry.
-             Stage 1 reads smart.npc_info (engine online roster).
-             Stage 2 reads the smart.ini [exclusive] reverse map (offline-authoritative).
-             Stage 3 falls back to find_smart-by-centroid (geometric last resort).
-             Loris at the northern farm now binds correctly even when the actor is at the southern military camp.
-    Changed: Service-NPC resolver order switched to dynamic-first, cache-fallback.
-             Engine roster wins when the smart is online, cache fills gaps for offline smarts.
-    Added: Cross-level standalone-NPC cache resolves standalone_role_at_smart for smarts on neighbor levels.
+  MCM
+    - Added Reset ALL to Stateless Defaults button + Causes/Consequences Social Off-map pages.
+    - Removed cash cap, stash loot/fill sliders, and Arrive action toggles (sliders to LTX, toggles no-op).
+    - Fixed Reset ALL to Defaults to apply on first click.
 
-  Performance:
-    Changed: Standalone-NPC cache populator runs through xslice frame-spread at 50 entities per tick.
-             Warmup is 1 to 3 seconds typical, up to 13 seconds on the heaviest GAMMA saves.
-             Per-tick cost stays under the 4ms ceiling during warmup so no save-load stutter.
+  Performance
+    - xlibs index + frame-spread optimizations now cover same-level creatures, chests, smarts.
 
-  Compatibility:
-    Added: NPC trade SELL and stash fill skip three more untouchable categories.
-           Items carrying a runtime story_id (vanilla quest-script convention) survive NPC economic activity.
-           Items the actor gave to a companion survive (axr_companions.is_assigned_item).
-           Player-strapped weapons survive (se_load_var "strapped_item").
-           Player gifts and modifications no longer end up sold off or deposited in stashes.
-
-  Internal (integrator-visible):
-    Changed: Trade and stash policy loaders moved to xlibs xinventory.load_policy.
-    Removed: AlifePlus per-mod LTX policy parsers.
-    Added: Mod authors load any min/max-per-category policy via xinventory.load_policy(path, sections, specials_set).
-    Added: Shared kernel across ap_ext_trade, ap_ext_consequences_stash, and AlifeBalance ab_inventory_balance.
+  Compatibility
+    - Quest items (story_id), companion gifts, player-strapped weapons now survive NPC trade and stash deposits.
+    - xlibs 1.7.5 dependency (delivers xinventory category model, runtime untouchables, xdata trader audit).
 
 1.7.1
   Summary: load-time fps fix for the world-scan caches
