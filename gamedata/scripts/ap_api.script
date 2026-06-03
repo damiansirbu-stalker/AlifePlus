@@ -106,13 +106,6 @@ end
 --- @return boolean
 function release_squad(squad_id) return ap_core_broker.release_squad(squad_id) end
 
---- Resolve the level where the squad was first observed by AP (its "home").
---- AP captures this once on the squad's first producer evaluation; persists across save/load.
---- Returns nil when the squad has never reached the producer (transient / mid-transition).
---- @param squad_id number
---- @return number|nil Level id
-function get_home_level(squad_id) return ap_core_broker.get_home_level(squad_id) end
-
 --- Script a squad to a smart terrain with full AP lifecycle (PDA marker, TTL,
 --- release-hold, target reassertion). Marker rendering and player-facing labelling come
 --- from the activity record; integrators should call ap_api.add_record after

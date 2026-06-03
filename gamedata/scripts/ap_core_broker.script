@@ -114,21 +114,6 @@ function build_protection_opts(caller_opts)
     return out
 end
 
--- Defensive diag string for squads with a broken Lua class binding (assign_smart missing).
--- Other methods may also be missing on the same squad, so every Lua method call is pcalled.
--- Field reads (player_id, online, smart_id) cannot error in Lua; missing fields return nil.
-local function _broken_squad_diag(squad, squad_id)
-    local function _safe(fn) local ok, v = pcall(fn); return ok and tostring(v or "?") or "?" end
-    return string_format("squad=%d section=%s name=%s faction=%s level=%s online=%s smart_id=%s",
-        squad_id,
-        _safe(function() return squad:section_name() end),
-        _safe(function() return squad:name() end),
-        tostring(squad.player_id),
-        _safe(function() return xlevel.get_level_id(squad) end),
-        tostring(squad.online),
-        tostring(squad.smart_id))
-end
-
 -- exclude_filter for the preempt-fallback pass. Rejects external owners and squads
 -- with scripted_target set but not tracked by AP (externally scripted by other mods).
 -- AP-scripted-and-interruptable pass through; non-interruptable AP-scripted are kept
@@ -164,44 +149,25 @@ function build_preempt_opts(caller_opts)
     return out
 end
 
--- Capture home_level on first observation. Side effect of is_protected: every squad
--- the producer evaluates passes here, so this is the earliest broker-side touchpoint.
--- Re-tries until xlevel.get_level_id returns non-nil (nil during transitions).
--- @cost O(1) | 0 luabind cached, 2 luabind trivial on miss (vertex + level_id)
-local function _capture_home_level(squad)
-    local id = squad.id
-    if _ap_squad_home_level[id] ~= nil then return end
-    local lid = xlevel.get_level_id(squad)
-    if not lid then return end
-    _ap_squad_home_level[id] = lid
-end
-
 --- Check all squad protection guards via xsquad.is_protected
 --- Delegates to xsquad.is_protected with ownership, scripted, permanent, active_role, task_target checks.
---- Side effect: captures squad's home_level on first observation (substrate for get_home_level).
---- @safety SAFE - delegates to xsquad.is_protected, nil-guarded
+--- Non-squad early-return: engine recycles freed server-entity ids, so a saved squad_id
+--- may resolve to a different engine class (script_zone etc) after the original was
+--- released. Treat as protected so the cascade skips; the load-state sweep evicts the
+--- stale tracking entry.
+--- @safety SAFE - delegates to xsquad.is_protected, nil-guarded, class-guarded
 --- @cost O(1) cached | 0 luabind (cache hit) or 4-5 luabind medium (miss: alife_object, clsid, community)
 --- @param squad se_squad Squad server object
 --- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
 function is_protected(squad)
     if not squad then return false, nil, nil, nil end
-    _capture_home_level(squad)
+    if not xsquad.is_squad(squad) then return true, REASON.NOT_A_SQUAD, nil, nil end
     if not _protection_opts then
         _protection_opts = {}
         for k, v in pairs(_PROTECTION_FIELDS) do _protection_opts[k] = v end
         _protection_opts.exclude_filter = get_owner
     end
     return xsquad.is_protected(squad, _protection_opts)
-end
-
---- Get the level_id where the squad was first observed by AP
---- Captured once per squad in is_protected (first producer evaluation). Persists across save/load.
---- @safety SAFE - returns nil if squad never observed (transient: squad too new, or all observations during transition)
---- @cost O(1) | 0 luabind (pure Lua hash lookup)
---- @param squad_id number Squad id
---- @return number|nil Level id captured at first observation, or nil if not yet captured
-function get_home_level(squad_id)
-    return _ap_squad_home_level[squad_id]
 end
 
 --- Check if a squad currently has an active off-map session.
@@ -315,7 +281,7 @@ end
 
 -- Populate off-map session fields on a fresh scripted entry. Called from script_squad
 -- when opts.offmap is true. home_level reads the broker-private capture populated by
--- is_protected (every squad observed by the cascade has it by dispatch time).
+-- script_squad's inline xlevel.get_level_id call earlier in the same call frame.
 local function _init_offmap_session(data, squad_id, now)
     data.offmap         = true
     data.home_level     = _ap_squad_home_level[squad_id]
@@ -377,10 +343,7 @@ local function _dispatch_return_home(squad_id, squad, data, now)
     if not name or name == "" then return false end
     if not xsquad.acquire_squad(squad, home_smart, false) then return false end
     -- Clear source (foreign dwell smart) before engine bumps smart_id to home_smart.
-    if not xsmart.assign_squad_to_smart(squad, nil) then
-        ap_core_debug.warn("[SQUAD.OFFMAP] return_home_detach_skipped_no_assign_smart: %s",
-            _broken_squad_diag(squad, squad_id))
-    end
+    xsmart.assign_squad_to_smart(squad, nil)
     _ap_scripted_squads[squad_id] = {
         scripted_target   = name,
         target_smart_id   = home_smart.id,
@@ -489,11 +452,23 @@ end
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function script_squad(squad, smart, opts)
     if not squad or not smart then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
+    if not xsquad.is_squad(squad) then
+        ap_core_debug.warn("[SQUAD] script_squad: refused, not a sim_squad_scripted instance id=%s",
+            tostring(squad.id))
+        return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
+    end
     opts = opts or {}
     if opts.offmap and not _ap_squad_home_level[squad.id] then
-        ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, no home_level captured",
-            squad.id)
-        return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
+        -- Single-shot capture at dispatch time. xlevel.get_level_id returns nil during
+        -- level transitions; refuse this dispatch if so. The producer re-publishes the
+        -- cause on the next budget tick when the squad has settled.
+        local lid = xlevel.get_level_id(squad)
+        if not lid then
+            ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, get_level_id nil",
+                squad.id)
+            return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
+        end
+        _ap_squad_home_level[squad.id] = lid
     end
     local name = smart:name()
     if not name or name == "" then
@@ -513,10 +488,7 @@ function script_squad(squad, smart, opts)
     -- Clear source from SIMBOARD roster before engine specific_update bumps squad.smart_id
     -- to the new target on next tick (sim_squad_scripted.script:288-290). Reading smart_id
     -- after that bump would lose the true source. The nil-target form fires squad_on_leave_smart.
-    if not xsmart.assign_squad_to_smart(squad, nil) then
-        ap_core_debug.warn("[SQUAD] script_squad_detach_skipped_no_assign_smart: %s",
-            _broken_squad_diag(squad, squad.id))
-    end
+    xsmart.assign_squad_to_smart(squad, nil)
     local now = xtime.game_sec()
     local data = {
         scripted_target   = name,
@@ -640,10 +612,7 @@ local function _commit_arrival(squad_id, squad, smart, data, now)
     end
     data.arrived = true
     data.release_at = now + data.pre_release_gulag
-    if not xsmart.assign_squad_to_smart(squad, smart.id) then
-        ap_core_debug.warn("[SQUAD] commit_arrival_attach_skipped_no_assign_smart: %s",
-            _broken_squad_diag(squad, squad_id))
-    end
+    xsmart.assign_squad_to_smart(squad, smart.id)
     return true
 end
 
@@ -655,10 +624,7 @@ end
 -- semantics match (outbound registers via _commit_arrival).
 local function _handle_offmap_arrival(squad_id, squad, smart, data, now)
     if data.arrived_at and not data.return_home_at then
-        if not xsmart.assign_squad_to_smart(squad, smart.id) then
-            ap_core_debug.warn("[SQUAD.OFFMAP] home_arrived_attach_skipped_no_assign_smart: %s",
-                _broken_squad_diag(squad, squad_id))
-        end
+        xsmart.assign_squad_to_smart(squad, smart.id)
         ap_core_debug.debug("[SQUAD.OFFMAP] home_arrived: squad=%d", squad_id)
         _unscript_squad(squad)
         return true
@@ -760,8 +726,10 @@ local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
     local squad = xobject.se(squad_id)
-    if not squad then
-        ap_core_debug.debug("[SQUAD] entity_gone: squad=%d target=%s", squad_id, tostring(data.scripted_target))
+    if not xsquad.is_squad(squad) then
+        ap_core_debug.debug("[SQUAD] scan_drop: squad=%d target=%s reason=%s",
+            squad_id, tostring(data.scripted_target),
+            not squad and "entity_gone" or "not_a_squad")
         _ap_scripted_squads[squad_id] = nil
         return
     end
@@ -843,6 +811,24 @@ local function _on_save_state(m_data)
     end
 end
 
+-- Sweep tracking dicts: drop entries whose server entity is gone or is not a squad.
+-- Engine recycles freed server-entity ids; a saved squad id may resolve to a different
+-- engine class (script_zone, item) after the original squad was released. Without this,
+-- the next save would re-emit the stale ids permanently and the scan would touch the
+-- recycled object on every tick.
+local function _sweep_recycled_ids(dict)
+    local to_drop = {}
+    for id in pairs(dict) do
+        local se = xobject.se(id)
+        if not se or not xsquad.is_squad(se) then to_drop[#to_drop + 1] = id end
+    end
+    for _, id in ipairs(to_drop) do dict[id] = nil end
+    return #to_drop
+end
+
+-- load_state fires BEFORE engine restores server entities (alife_storage_manager.cpp:131-141).
+-- alife_object(id) returns nil for every saved id at this point, so only do m_data table
+-- restoration here. Defer alife-querying work (the sweep) to on_game_load.
 local function _on_load_state(m_data)
     local saved = m_data.ap_core_broker
     if type(saved) ~= "table" then saved = {} end
@@ -856,6 +842,17 @@ local function _on_load_state(m_data)
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] load: scripted=%d home_levels=%d",
             xtable.count(_ap_scripted_squads), xtable.count(_ap_squad_home_level))
+    end
+end
+
+-- on_game_load fires from bind_stalker.net_spawn after server entities are registered.
+-- This is the safe point for alife_object queries against the just-restored save state.
+local function _on_game_load()
+    local dropped_scripted = _sweep_recycled_ids(_ap_scripted_squads)
+    local dropped_home_levels = _sweep_recycled_ids(_ap_squad_home_level)
+    if dropped_scripted > 0 or dropped_home_levels > 0 then
+        ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d home_levels=%d",
+            dropped_scripted, dropped_home_levels)
     end
 end
 
@@ -879,6 +876,7 @@ end
 function on_game_start()
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
 
     CreateTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC, _update_scripted_squads)
