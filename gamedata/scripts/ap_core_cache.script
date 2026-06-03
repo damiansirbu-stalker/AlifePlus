@@ -57,13 +57,17 @@
 --- the dynamic xsmart.has_<role>_at_smart / get_<role>_at_smart online walk. Consumers stay
 --- correct during the warmup window at the cost of one slow scan until the bucket fills.
 
-local pairs, ipairs, tostring, RegisterScriptCallback = pairs, ipairs, tostring, RegisterScriptCallback
+local pairs, tostring, RegisterScriptCallback = pairs, tostring, RegisterScriptCallback
 local xdata, xlevel, xsmart, xsquad, xobject, xslice =
     xdata, xlevel, xsmart, xsquad, xobject, xslice
 local IsStalker, IsTrader = IsStalker, IsTrader
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
+
+-- smart.ini section name where gulag_general.script:1358-1364 reads exclusive job
+-- assignments. Used by _read_exclusive_section to build the section->smart_id reverse map.
+local EXCLUSIVE_SECTION = "exclusive"
 
 local SMART_BUILD_QUEUE = "ap_core_cache_smarts"
 local SMART_BUILD_STEP = 50
@@ -277,39 +281,77 @@ local function _resolve_roles(section)
     return roles
 end
 
+-- Read one smart's [exclusive] section and merge its NPC sections into _exclusive_owner.
+-- @cost O(e) | e ~ 0-10 exclusive entries; 1 section_exist + 1 line_count + e * r_line.
+local function _read_exclusive_section(smart)
+    local ini = smart.ini
+    if not ini or not ini:section_exist(EXCLUSIVE_SECTION) then return end
+    local line_count = ini:line_count(EXCLUSIVE_SECTION)
+    for i = 0, line_count - 1 do
+        local _, key = ini:r_line(EXCLUSIVE_SECTION, i, "", "")
+        if key and key ~= "" then _exclusive_owner[key] = smart.id end
+    end
+end
+
 -- Build the section->smart_id reverse map from every smart's [exclusive] section in its
 -- loaded smart.ini. Mirrors how gulag_general.script:1358-1364 reads exclusive job assignments.
 -- Each [exclusive] line is "<npc_section> = <logic_ltx_path>"; we map npc_section -> smart.id
 -- so offline exclusive NPCs can resolve their owning smart authoritatively without relying
 -- on smart.npc_info (online-only) or find_smart-by-centroid (geometric approximation).
 -- @cost O(s * e) one-time | s ~ 500 smarts, e ~ 0-10 exclusive entries per smart.
---       Per smart: 1 section_exist + 1 line_count + e * r_line. Sub-millisecond total.
 local function _build_exclusive_owner_map()
     if _exclusive_owner then return end
     _exclusive_owner = {}
-    if not SIMBOARD or not SIMBOARD.smarts_by_names then return end
-    for _, smart in pairs(SIMBOARD.smarts_by_names) do
-        local ini = smart.ini
-        if ini and ini:section_exist("exclusive") then
-            local n = ini:line_count("exclusive")
-            for i = 0, n - 1 do
-                local _, key = ini:r_line("exclusive", i, "", "")
-                if key and key ~= "" then _exclusive_owner[key] = smart.id end
-            end
-        end
+    local smarts = xsmart.smarts_by_names()
+    if not smarts then return end
+    for _, smart in pairs(smarts) do
+        _read_exclusive_section(smart)
     end
+end
+
+-- Stage 1 of the smart-binding cascade: engine online roster. Walks
+-- smart.npc_info[se.id] across every smart. Returns smart_id when the NPC's gulag logic
+-- has placed it; nil otherwise.
+local function _bind_via_npc_info(se_id)
+    local smarts = xsmart.smarts_by_names()
+    if not smarts then return nil end
+    for _, smart in pairs(smarts) do
+        if smart.npc_info and smart.npc_info[se_id] then return smart.id end
+    end
+    return nil
+end
+
+-- Stage 3 of the smart-binding cascade: geometric last-resort by smart centroid on the
+-- entity's level. Logs at debug level when all three stages of the resolver have failed
+-- so the section + level_id show up in one place.
+local function _bind_via_centroid(se, section)
+    local level_id = xlevel.get_level_id(se)
+    if not level_id then return nil end
+    local smart = xsmart.find_smart(se.position, { level_id = level_id })
+    if smart then return smart.id end
+    ap_core_debug.debug("[CORE.CACHE] _index_standalone no smart resolved section=%s id=%d level_id=%s", section, se.id, tostring(level_id))
+    return nil
+end
+
+-- Resolve owning smart_id via the three-stage cascade, most-authoritative first:
+--   (1) smart.npc_info hash walk: engine online roster
+--   (2) _exclusive_owner reverse map: offline-authoritative reverse index of smart.ini [exclusive]
+--   (3) xsmart.find_smart by centroid: geometric last-resort approximation
+-- Returns nil when no stage resolves.
+-- @cost typical O(s_level) hash walk + O(1) fallbacks; s_level ~ smarts on entity level
+local function _resolve_owning_smart_id(se, section)
+    return _bind_via_npc_info(se.id)
+        or (_exclusive_owner and _exclusive_owner[section])
+        or _bind_via_centroid(se, section)
 end
 
 -- Class-gates Stalker OR Trader, looks up curated roles via xdata.npc_roles, resolves the
 -- owning smart, and inserts the NPC into EVERY applicable role bucket (multi-role NPCs are
 -- in trader AND mechanic / medic AND trader / etc as their curation declares). Class check
 -- is the safety belt against pure-virtual on section_name for non-matching entities. Smart
--- binding cascade, most-authoritative first:
---   1. smart.npc_info[se.id]   - engine roster, populated when NPC's gulag logic is online
---   2. _exclusive_owner[section] - smart.ini [exclusive] section reverse map (offline-authoritative)
---   3. xsmart.find_smart(se.position) - nearest by centroid, last-resort approximation
--- xdata.npc_roles maps section -> roles for both pools: stalker NPCs (medics, mechanics,
--- curated traders) and Script_Trader story NPCs (Sidorovich-class).
+-- binding via _resolve_owning_smart_id (3-stage cascade above). xdata.npc_roles maps section
+-- -> roles for both pools: stalker NPCs (medics, mechanics, curated traders) and
+-- Script_Trader story NPCs (Sidorovich-class).
 -- @cost O(1) for non-matching entities. For matches: smart.npc_info hash walk (~ smarts on
 --       level), or _exclusive_owner hash lookup (~0), or find_smart, plus one bucket insert
 --       per role (typically 1-2).
@@ -321,29 +363,8 @@ local function _index_standalone(se)
     if not section then return end
     local roles = _resolve_roles(section)
     if not roles then return end
-    -- (1) engine smart binding (online-authoritative)
-    local owning_smart_id
-    for _, smart in pairs(SIMBOARD and SIMBOARD.smarts_by_names or {}) do
-        if smart.npc_info and smart.npc_info[se.id] then
-            owning_smart_id = smart.id
-            break
-        end
-    end
-    -- (2) exclusive-section reverse map (offline-authoritative)
-    if not owning_smart_id then
-        owning_smart_id = _exclusive_owner and _exclusive_owner[section] or nil
-    end
-    -- (3) find_smart-by-centroid (geometric approximation, last resort)
-    if not owning_smart_id then
-        local level_id = xlevel.get_level_id(se)
-        if not level_id then return end
-        local smart = xsmart.find_smart(se.position, { level_id = level_id })
-        if not smart then
-            ap_core_debug.debug("[CORE.CACHE] _index_standalone no smart resolved section=%s id=%d level_id=%s", section, se.id, tostring(level_id))
-            return
-        end
-        owning_smart_id = smart.id
-    end
+    local owning_smart_id = _resolve_owning_smart_id(se, section)
+    if not owning_smart_id then return end
     local by_role = _standalone_role_npcs[owning_smart_id]
     if not by_role then
         by_role = {}

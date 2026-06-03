@@ -31,11 +31,11 @@ local cfg = ap_core_mcm.cfg
 local function _arrive_action_trade(trace, visitor_go, args)
     ap_core_debug.observe(trace, PHASE.ARRIVE, function()
         local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
-        if not smart_se then return { code = TRACE.NONE, reason = "no_smart" } end
+        if not smart_se then return { code = TRACE.NONE, reason = REASON.NO_SMART } end
         local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
         if not trader_go then
             ap_core_debug.debug(args.log_prefix .. " arrive trade: no service NPC online at smart=%d", args.dst_smart_id)
-            return { code = TRACE.NONE, reason = "no_trader" }
+            return { code = TRACE.NONE, reason = REASON.NO_TRADER }
         end
         local result = ap_ext_trade.trade(visitor_go, trader_go)
         local sold, bought = result.sold, result.bought
@@ -80,6 +80,19 @@ local CONFIGS = {
       pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFMAP, offmap = true },
 }
 
+-- Invoke entry.arrive_action on the commander, gated by MCM enabled flag and commander
+-- liveness. Returns the skip reason string if the action did not run (caller logs it),
+-- or nil on success. Split out so _make_on_arrive stays at depth 2.
+local function _invoke_arrive_action(entry, trace, squad, args)
+    if cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] == false then
+        return "arrive_action_disabled"
+    end
+    local st = db.storage[squad:commander_id()]
+    if not (st and st.object) then return "commander_offline" end
+    entry.arrive_action(trace, st.object, args)
+    return nil
+end
+
 --- Reset need timestamp on arrival; run the entry's arrive_action if it has one.
 --- Per-entry closure: the entry binds at registration time so the action ref doesn't need to
 --- live in on_arrive_args (which is save-serialized).
@@ -90,16 +103,7 @@ local function _make_on_arrive(entry)
             ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.game_sec())
             local skip
             if entry.arrive_action then
-                if cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] == false then
-                    skip = "arrive_action_disabled"
-                else
-                    local st = db.storage[squad:commander_id()]
-                    if st and st.object then
-                        entry.arrive_action(trace, st.object, args)
-                    else
-                        skip = "commander_offline"
-                    end
-                end
+                skip = _invoke_arrive_action(entry, trace, squad, args)
             end
             return { code = TRACE.OK, squad = squad.id, need = entry.name, dst = args.dst_name, skip = skip }
         end)
