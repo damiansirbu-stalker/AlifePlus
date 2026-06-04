@@ -377,7 +377,7 @@ AlifeGuard (очистка сущностей): https://www.moddb.com/mods/stalk
 
 Требования:
 - Anomaly 1.5.3
-- Моддированные exe Demonized (последние), main или MT
+- themrdemonized modded exes 2026.6.1+ (https://github.com/themrdemonized/xray-monolith)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 

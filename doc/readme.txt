@@ -381,7 +381,7 @@ AlifeGuard (entity hygiene): https://www.moddb.com/mods/stalker-anomaly/addons/a
 
 Requirements:
 - Anomaly 1.5.3
-- Demonized modded exes (latest), main or MT
+- themrdemonized modded exes 2026.6.1+ (https://github.com/themrdemonized/xray-monolith)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
