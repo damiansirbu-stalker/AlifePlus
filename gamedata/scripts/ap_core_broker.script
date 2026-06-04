@@ -26,6 +26,10 @@ local _ap_scripted_squads = {}
 local _ap_squad_home_level = {}
 local _arrival_handlers = {}
 
+-- Module-level reusable scratch table for _sweep_recycled_ids; cleared on each call to
+-- avoid per-call allocation. Demonized pattern (mod-evaluation.md S-tier convention).
+local _to_drop = {}
+
 local _owners = {}
 
 --- Register a squad ownership filter. On name match, replaces existing filter.
@@ -438,6 +442,31 @@ local function _scan_offmap_entry(squad_id, squad, data, now)
 end
 
 
+-- Capture squad's home level on first off-map dispatch. xlevel.get_level_id returns nil
+-- during level transitions; signal refusal so the caller can re-publish the cause on the
+-- next budget tick when the squad has settled.
+-- @cost O(1) | 1 luabind (xlevel.get_level_id) on first offmap capture, 0 thereafter
+local function _capture_home_level(squad, opts)
+    if not opts.offmap then return true end
+    if _ap_squad_home_level[squad.id] then return true end
+    local lid = xlevel.get_level_id(squad)
+    if not lid then return false end
+    _ap_squad_home_level[squad.id] = lid
+    return true
+end
+
+-- Merge per-call session state into the new scripted_squad data entry. Off-map dispatches
+-- get a fresh session; non-offmap re-dispatches inherit preserved session fields (so a
+-- return-home dispatch still fires when a local cause picks up the squad during dwell).
+-- @cost O(1) typical | O(preserved) on re-dispatch (small constant)
+local function _finalize_data(data, squad_id, opts, preserved, now)
+    if opts.offmap then
+        _init_offmap_session(data, squad_id, now)
+    elseif preserved then
+        for k, v in pairs(preserved) do data[k] = v end
+    end
+end
+
 --- Script squad to move to smart terrain, register for arrival detection and gulag
 --- Sets scripted_target via xsquad.acquire_squad, tracks in _ap_scripted_squads with arrival handler.
 --- When opts.offmap is true, also initialises an off-map session (return-home + despawn timers).
@@ -458,17 +487,10 @@ function script_squad(squad, smart, opts)
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
     opts = opts or {}
-    if opts.offmap and not _ap_squad_home_level[squad.id] then
-        -- Single-shot capture at dispatch time. xlevel.get_level_id returns nil during
-        -- level transitions; refuse this dispatch if so. The producer re-publishes the
-        -- cause on the next budget tick when the squad has settled.
-        local lid = xlevel.get_level_id(squad)
-        if not lid then
-            ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, get_level_id nil",
-                squad.id)
-            return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
-        end
-        _ap_squad_home_level[squad.id] = lid
+    if not _capture_home_level(squad, opts) then
+        ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, get_level_id nil",
+            squad.id)
+        return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
     end
     local name = smart:name()
     if not name or name == "" then
@@ -500,11 +522,7 @@ function script_squad(squad, smart, opts)
         ttl               = opts.ttl,
         interruptable     = opts.interruptable ~= false,
     }
-    if opts.offmap then
-        _init_offmap_session(data, squad.id, now)
-    elseif preserved then
-        for k, v in pairs(preserved) do data[k] = v end
-    end
+    _finalize_data(data, squad.id, opts, preserved, now)
     _ap_scripted_squads[squad.id] = data
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s offmap=%s",
@@ -817,13 +835,17 @@ end
 -- the next save would re-emit the stale ids permanently and the scan would touch the
 -- recycled object on every tick.
 local function _sweep_recycled_ids(dict)
-    local to_drop = {}
+    local count = 0
+    for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
     for id in pairs(dict) do
         local se = xobject.se(id)
-        if not se or not xsquad.is_squad(se) then to_drop[#to_drop + 1] = id end
+        if not se or not xsquad.is_squad(se) then
+            count = count + 1
+            _to_drop[count] = id
+        end
     end
-    for _, id in ipairs(to_drop) do dict[id] = nil end
-    return #to_drop
+    for i = 1, count do dict[_to_drop[i]] = nil end
+    return count
 end
 
 -- load_state fires BEFORE engine restores server entities (alife_storage_manager.cpp:131-141).
