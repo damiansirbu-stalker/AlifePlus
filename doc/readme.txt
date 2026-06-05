@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.7.6 (xlibs 1.7.6)
+- Version: 1.7.6 (xlibs 1.7.6, demonized 20260601)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -372,16 +372,17 @@ Compatibility & Safety:
 
 ---
 
-Companion mods:
-
-AlifeBalance (respawn pacing): https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance | https://www.nexusmods.com/stalkeranomaly/mods/110
-AlifeGuard (entity hygiene): https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001 | https://www.nexusmods.com/stalkeranomaly/mods/104
+Alife Collection:
+AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
+AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
+AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
+AlifeTactics: TBD
 
 ---
 
 Requirements:
 - Anomaly 1.5.3
-- themrdemonized modded exes 2026.6.1+ (https://github.com/themrdemonized/xray-monolith)
+- demonized 20260601+ (https://github.com/themrdemonized/xray-monolith)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 

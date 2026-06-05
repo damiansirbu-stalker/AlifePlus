@@ -1,5 +1,5 @@
 AlifePlus: эмерджентная A-Life для STALKER Anomaly, автор Damian
-- Версия: 1.7.6 (xlibs 1.7.6)
+- Версия: 1.7.6 (xlibs 1.7.6, demonized 20260601)
 - Манифест: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Руководство по интеграции: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Журнал изменений: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -368,16 +368,17 @@ C++ согласованность с движком. xlibs собран про�
 
 ---
 
-Моды-компаньоны:
-
-AlifeBalance (темп респавна): https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance | https://www.nexusmods.com/stalkeranomaly/mods/110
-AlifeGuard (очистка сущностей): https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001 | https://www.nexusmods.com/stalkeranomaly/mods/104
+Коллекция Alife:
+AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
+AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
+AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
+AlifeTactics: TBD
 
 ---
 
 Требования:
 - Anomaly 1.5.3
-- themrdemonized modded exes 2026.6.1+ (https://github.com/themrdemonized/xray-monolith)
+- demonized 20260601+ (https://github.com/themrdemonized/xray-monolith)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
