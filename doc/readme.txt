@@ -6,6 +6,12 @@ AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 - Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
 - Bugs, suggestions: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
+Alife Collection:
+AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
+AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
+AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
+AlifeTactics: TBD
+
 ! Please use the RESET button in MCM when updating to a new version !
 
 You are not special.
@@ -369,14 +375,6 @@ Compatibility & Safety:
 - AlifePlus does not need third-party "bridge" or "synergy" patches.
 - Unauthorized patches that claim compatibility are not endorsed and will cause instability and save corruption.
 - See integration.md on the project site for API reference and examples.
-
----
-
-Alife Collection:
-AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
-AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
-AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
-AlifeTactics: TBD
 
 ---
 
