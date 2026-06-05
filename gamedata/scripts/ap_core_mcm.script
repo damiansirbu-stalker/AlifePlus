@@ -570,6 +570,8 @@ local function _apply_profile(gui, overrides, msg)
     end
     config:save()
     load_config()
+    -- Without this, consumer-local caches stay stale until the next on_option_change.
+    SendScriptCallback(ap_core_const.CALLBACK.MCM_OPTION_RESTORE_DEFAULT)
     if gui then
         if gui.owner and gui.owner.SetMsg then
             gui.owner:SetMsg(msg, 5)
