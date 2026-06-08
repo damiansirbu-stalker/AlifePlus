@@ -1,17 +1,19 @@
 --- _ap_deps: AlifePlus dependency gate and version metadata
 
-local assert, tostring = assert, tostring
+local assert, tostring, type = assert, tostring, type
 
 local MOD_NAME = "AlifePlus"
 local _VERSION = "1.7.6"
 local XLIBS_MIN_VERSION = "1.7.6"
 local XLIBS_URL = "https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001"
 
--- Demonized minimum build in YYYYMMDD format. Source: themrdemonized/xray-monolith
--- tag 2026.6.1. get_modded_exes_version() returns int years*10000 + months*100 + days
+-- Modded-exes minimum build in YYYYMMDD format. 20250908 = AOEngine v0.55 baseline
+-- (binary build date 2025-09-08; equivalent demonized release is tag 2025.9.10).
+-- get_modded_exes_version() returns __DATE__ parsed as years*10000 + months*100 + days
 -- (engine src: script_ini_file_script.cpp:95-125).
-local DEMONIZED_MIN_VERSION = 20260601
+local DEMONIZED_MIN_VERSION = 20250908
 local DEMONIZED_URL = "https://github.com/themrdemonized/xray-monolith"
+local AOENGINE_URL  = "https://github.com/Mirrowel/AOEngine-Assets"
 
 --- @return string Version string
 function get_version()
@@ -39,22 +41,31 @@ function on_game_start()
         "! " .. XLIBS_URL .. "\n"
     )
 
-    assert(get_modded_exes_version,
-        "\n\n! [" .. MOD_NAME .. "] demonized not detected.\n"..
-        "! " .. MOD_NAME .. " requires demonized.\n"..
-        "! Install: " .. DEMONIZED_URL .. "\n"
+    local has_aoe       = type(get_aoe_version)         == "function"
+    local has_demonized = type(get_modded_exes_version) == "function"
+
+    assert(has_aoe or has_demonized,
+        "\n\n! [" .. MOD_NAME .. "] modded exes not detected.\n"..
+        "! " .. MOD_NAME .. " requires themrdemonized modded exes or AOEngine.\n"..
+        "! demonized: " .. DEMONIZED_URL .. "\n"..
+        "! AOEngine:  " .. AOENGINE_URL .. "\n"
     )
 
-    local demonized_build = get_modded_exes_version()
-    assert(demonized_build >= DEMONIZED_MIN_VERSION,
-        "\n\n! [" .. MOD_NAME .. "] demonized build " .. tostring(demonized_build) ..
-        " is older than required.\n"..
-        "! " .. MOD_NAME .. " requires demonized build " ..
-        tostring(DEMONIZED_MIN_VERSION) .. " or later.\n"..
-        "! Update: " .. DEMONIZED_URL .. "\n"
-    )
+    local demonized_build = has_demonized and get_modded_exes_version() or nil
+    if has_demonized and not has_aoe then
+        assert(demonized_build >= DEMONIZED_MIN_VERSION,
+            "\n\n! [" .. MOD_NAME .. "] demonized build " .. tostring(demonized_build) ..
+            " is older than required.\n"..
+            "! " .. MOD_NAME .. " requires demonized build " ..
+            tostring(DEMONIZED_MIN_VERSION) .. " or later.\n"..
+            "! Update: " .. DEMONIZED_URL .. "\n"
+        )
+    end
 
+    local engine_tag = has_aoe
+        and ("AOEngine " .. tostring(get_aoe_version()))
+        or  ("demonized " .. tostring(demonized_build))
     xlog.get_logger(MOD_NAME, { outfile = MOD_NAME:lower() .. ".log" })
-        .info("%s v%s (xlibs v%s, demonized %d)",
-            MOD_NAME, _VERSION, xlibs.get_version(), demonized_build)
+        .info("%s v%s (xlibs v%s, %s)",
+            MOD_NAME, _VERSION, xlibs.get_version(), engine_tag)
 end

@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.7.6 (xlibs 1.7.6, demonized 20260601)
+- Version: 1.7.6 (xlibs 1.7.6, demonized 20250908, AOEngine v0.55)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -363,7 +363,7 @@ Zero-overhead profiling. xprofiler and xtrace collapse to pre-allocated NOOP sin
 ---
 
 Compatibility & Safety:
-- AlifePlus requires the latest Demonized or Demonized MT modded exes. Vanilla Anomaly and AOEngine are not supported.
+- AlifePlus requires modded exes: themrdemonized (main or MT) 20250908+, or AOEngine v0.55+. Vanilla Anomaly is not supported.
 - AlifePlus is built and tested with GAMMA, and also tested with Zona and EFP.
 - The mod has no base script edits and no engine patches.
 - Squads are extended, not hijacked: AlifePlus uses the engine's job system without overwriting engine variables.
@@ -380,7 +380,7 @@ Compatibility & Safety:
 
 Requirements:
 - Anomaly 1.5.3
-- demonized 20260601+ (https://github.com/themrdemonized/xray-monolith)
+- demonized 20250908+ (https://github.com/themrdemonized/xray-monolith) OR AOEngine v0.55+ (https://github.com/Mirrowel/AOEngine-Assets)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
@@ -415,7 +415,7 @@ Presets:
 FAQ:
 
 Do I need modded exes?
-  Yes. AlifePlus requires the latest Demonized or Demonized MT modded exes. Vanilla Anomaly does not expose the APIs the framework relies on.
+  Yes. AlifePlus requires modded exes: themrdemonized (main or MT) 20250908+, or AOEngine v0.55+. Vanilla Anomaly does not expose the APIs the framework relies on.
 
 Does it work with other A-Life mods?
   AlifePlus has no known incompatibilities with warfare or AI addons.
