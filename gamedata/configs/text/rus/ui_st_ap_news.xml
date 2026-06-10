@@ -2,16 +2,50 @@
 <string_table>
   <!-- ==== mutant engine faction display plurals (capitalized for mid-sentence consistency) ==== -->
   <!-- ==== #subject_species# / #other_species# plurals (capitalized) ==== -->
-  <!-- ========================================================================= -->
-  <!-- PER-CONSEQUENCE TEMPLATES                                                  -->
-  <!-- 5 variants per consequence on speaker-rotation discipline:                 -->
-  <!--   V1 hearsay  - "Heard X" (short)                                          -->
-  <!--   V2 witness  - "Saw X" (medium)                                           -->
-  <!--   V3 survivor - "I was with..." / "I crossed..." (long)                    -->
-  <!--   V4 tracker  - "Tracks at X show..." / "Looks like..." (medium)           -->
-  <!--   V5 named    - uses #subject_name# (short) | mutant pools: direct factual -->
-  <!-- Every variant carries an explicit consequence tell.                        -->
-  <!-- See doc/standards/writing-standards.md "Generative templates" section.     -->
+  <!-- =========================================================================
+ PER-CONSEQUENCE TEMPLATES
+
+ Id pattern: st_ap_news_tpl_[consequence]_NNN where NNN runs 001..020.
+ The loader (ap_ext_news.script _load_pool) walks NNN starting at 001
+ and stops at the first missing id, so numbers MUST be contiguous - a
+ gap truncates the pool. Cap is MAX_TEMPLATE_VARIANTS in
+ ap_ext_news.script.
+
+ Selection: the code picks ONE variant per event by uniform random from
+ the pool (after dropping any variant whose referenced slot is empty,
+ e.g. #subject_name# unavailable). The _001/_002/... suffix is only a
+ loader index - the code never inspects it to choose.
+
+ The 5 slots below are a writing guideline for variety, so the rotation
+ doesn't sound repetitive. Authors should make each line distinct:
+   _001 hearsay  - `Heard X` (short)
+   _002 witness  - `Saw X` (medium)
+   _003 survivor - `I was with...` / `I crossed...` (long)
+   _004 tracker  - `Tracks at X show...` / `Looks like...` (medium)
+   _005 named    - uses #subject_name# (short) | mutant pools: direct
+ Any line can use any voice - the loader doesn't care, but variety helps
+ the player's ear.
+
+ Available placeholders (substituted at compose time):
+   #subject_faction# - focal actor's faction (Loners, Bandit, ...)
+   #subject_name#    - focal actor's named designation, when present
+   #subject_species# - focal mutant species (flesh, snork, ...)
+   #other_faction#   - second-party faction (two-party only)
+   #other_name#      - second-party named designation, when present
+   #other_species#   - second-party mutant species
+   #location#        - smart terrain display name; falls back to level
+   #level#           - level name (Garbage, Cordon, ...)
+   #ago#             - `recently` or `N hours ago`
+ Which placeholders are populated depends on the consequence kind. The
+ comment above each pool spells out the roles (e.g. TWO-PARTY: subject =
+ recovery crew, other = killer). A variant referencing an empty slot is
+ dropped pre-pick. Unknown tokens (e.g. #dragons#) are left as literal
+ text - typos surface in the news feed rather than crashing.
+
+ Hard requirement: every variant must carry the consequence tell - the
+ gameplay fact (recovery, scavenge, loot, revenge, support, flee, ...)
+ must be derivable from the line alone.
+ =========================================================================-->
   <!--                                                                            -->
   <!-- LOCATION GRAMMAR: prepositions normalized on `у #location#` (genitive).    -->
   <!-- Universally safe across smart names: у Кордона, у Свалки, у Радара,       -->
