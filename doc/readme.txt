@@ -422,9 +422,9 @@ Does it work with other A-Life mods?
   It will conflict behavior-wise with mods that script squads heavily.
 
 Do I need offline combat enabled?
-  AlifePlus does not require or prefer online simulation.
-  It works with all offline settings, including fully disabled.
-  Offline combat produces fewer combat events, but the system generates other events regardless, so A-Life activity continues.
+  No. The engine setting (alife/general/offline_combat: full / on_smarts_only / off; default full) is independent of AlifePlus, which generates its events either way.
+  Leave it at the default (full): that is what drives offscreen faction attrition, which most modpacks rely on. Off only freezes that attrition and neither helps nor hurts the framework.
+  Reducing or disabling it produces fewer combat events, but the system keeps generating other events, so A-Life activity continues.
 
 ---
 
