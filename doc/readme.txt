@@ -19,6 +19,9 @@ You are not special.
 AlifePlus is a reactive A-Life framework for STALKER Anomaly.
 It extends A-Life with event-driven emergent behavior, built on GSC's original AI design.
 It intercepts engine events, classifies them into causes, and dispatches consequences that extend the simulation.
+The X-Ray engine exposes the primitives for emergent behavior: a callback for every world event, a graph the simulation walks, a server object per entity.
+Stock Anomaly spends them on a random movement generator: the weights sit on the smart terrains, identical for every squad, so no squad decides for itself.
+AlifePlus spends the same primitives but adds events, world state, and per-squad business logic grounded in GSC's design: alignment, personality, Hull drives, marginal value theorem.
 Behaviors chain. One consequence becomes the cause of the next.
 Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs.
 Everything that happens to the player happens to NPCs and mutants alike.

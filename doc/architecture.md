@@ -17,6 +17,38 @@ Part of a three-mod alife family: **AlifePlus** extends A-Life with new behavior
 
 ---
 
+## Decision model
+
+AlifePlus extends A-Life on the input side and replaces it on the output side. It consumes the same world the vanilla simulation runs on (engine callbacks, smart props, squad rosters) but writes a different kind of decision into it.
+
+### The control field
+
+Every squad runs `sim_squad_scripted:update` every tick, and one branch decides everything (`sim_squad_scripted.script:233-238`):
+
+```lua
+local script_target_id = self:get_script_target()
+if (script_target_id) then self:specific_update(script_target_id)
+else self:generic_update() end
+```
+
+`get_script_target()` returns `self.scripted_target` first when it is set (`sim_squad_scripted.script:104-106`). That single field is AlifePlus's entire write surface into targeting. AP does not poll or reach into the squad; it is driven by the engine's own callback. The same `update` emits `SendScriptCallback("squad_on_update", self)` at `sim_squad_scripted.script:225`, eight lines before the fork - and the engine's A-Life scheduler is what calls `update` in the first place. AP's producer is subscribed to that heartbeat (and to the engine-native reactive callbacks: deaths, item use/take). So within one tick: the engine ticks `update` -> `update` emits `squad_on_update` -> AP's pipeline runs synchronously inside that callback, reads world state, and may call `ap_core_broker.script_squad` -> `xsquad.acquire_squad`, which sets `scripted_target` -> control returns to `update` -> the fork at `:233` reads the field AP just set. AP authors only the write-back; every input is an engine event.
+
+### Vanilla: a stateless weighted lottery
+
+`scripted_target` nil -> `generic_update` -> `SIMBOARD:get_squad_target` (`sim_board.script:379-423`): score every available target with `evaluate_prior`, keep the top 5, then roll - 50% the single highest, 50% a random one of the top 5 (`sim_board.script:418`). The score (`simulation_objects.script:252-343`) is `(base + faction props + category weights) * (1 + 1/graph_distance)` (`simulation_objects.script:177-183`). Only the distance term varies per squad; `target.props[squad.player_id]` is faction-keyed and `default_squad_behaviour` / `default_monster_behaviour` are species-keyed. Two squads of one faction at the same position score the entire board identically and differ only by the coin flip. A vanilla squad carries no internal state - it is a position plus a faction label, pulled toward smarts by an inverse-distance attraction field shared across its whole faction.
+
+### AlifePlus: a per-squad stateful command
+
+`scripted_target` set -> `specific_update` (`sim_squad_scripted.script:276-331`): the squad walks straight to the assigned smart - no `evaluate_prior`, no top-5, no roll. The destination is computed from that squad's own accumulated state: its hunger and instinct timers, opportunity windows, personality roll, and post-scan tactics, all held in DTOs keyed by `squad_id` (`ap_ext_tracker.script:167-205`). AP suppresses the lottery for that squad until the broker releases `scripted_target`, after which the squad falls back into `generic_update`.
+
+The distinction is bias versus command. Vanilla writes a bias - faction-wide props that tilt a draw each squad makes for itself. AlifePlus writes a command - a concrete target id that overrides the draw for one squad.
+
+### Granularity: squad, not NPC
+
+Both systems decide at the squad level. AlifePlus adds no per-NPC targeting; the DTOs and `scripted_target` are squad-scoped. NPC-level individuality already exists in vanilla and lives in the gulag: on arrival, `select_npc_job` (`smart_terrain.script:626-798`) assigns each member a distinct job (camper, sleeper, animpoint) by priority and exclusivity, then `setup_logic` activates its scheme and the GOAP planner. Vanilla migration, AP migration, and the gulag all converge here. AP commands where a squad goes; the gulag still owns what each NPC does there, and AP never touches it (see Engine integration -> Write surface).
+
+---
+
 ## Vocabulary
 
 - Cause: a labeled event the framework publishes. Specific name (cause:massacre, cause:hunger_campfire). Umbrella names (NEEDS, REACTIONS) are categories, never published.
