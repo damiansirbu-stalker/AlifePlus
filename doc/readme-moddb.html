@@ -56,6 +56,13 @@
 <li>Squads fill stashes with squad surplus above each category's max, capped per event. Quest items and equipped gear are never deposited.</li>
 <li>Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Arrival satisfies the need. Inventory items are not destroyed.</li>
 </ul>
+<p><b>Loot ownership</b></p>
+<p>Every kill belongs to whoever made it, the player and the stalkers alike.</p>
+<ul>
+<li>NPCs no longer strip the kills you made while you stand nearby. Walk away and scavengers may take them.</li>
+<li>Looting a body a living NPC claimed warns that stalker once, then turns him hostile to you alone, never his faction. He only reacts while near the body.</li>
+<li>These controls and the per-visit trade profit cap live under the Economy menu.</li>
+</ul>
 <p><b>Day/night cycle</b></p>
 <ul>
 <li>Stalkers work and trade by day.</li>
@@ -198,7 +205,7 @@
 <p><b>Sell phase.</b> The stalker walks his inventory and drops anything whose category count exceeds the policy max. Equipped items (whatever sits in his slots, knife to backpack), quest items, anim items, and money are never touched. Three runtime untouchables also bypass the policy: items carrying a story_id (vanilla quest-script convention), items the player gave to a companion (axr_companions), and player-strapped weapons (se_load_var). Player gifts and quest items survive trade through the categorizer itself. Everything else sells at the engine's cost field, half-price by default.</p>
 <p><b>Buy phase.</b> The stalker walks the policy in declaration order and fills any category whose count falls below the min. Ammo resolves per equipped slot, consumables per category section set.</p>
 <p><b>Rank gates.</b> Rookies buy basic ammo and a baseline of medkits and bandages. Veterans add premium ammo (AP, EP, PBP, hot-load, hollow-point, steel-core, flechette across 18 cartridges), grenades (F1, RGD5), and larger consumable bands. Veteran shots hit the player with the real k_ap of premium rounds.</p>
-<p><b>Profit cap.</b> profit_max per rank caps net cash gain per trade event (rookie 1500 RU, veteran 5000 RU). Cash above the cap goes back to the trader so the till stays in business.</p>
+<p><b>Profit cap.</b> One cap limits the net cash an NPC gains per trade event, the same value for every rank, 5000 RU by default. Cash above the cap goes back to the trader so the till stays in business.</p>
 <p><b>Sell before buy.</b> The sell phase runs before the buy phase, so cash from selling spares funds restocks. Squads with high-value spares restock more rows per visit instead of walking in cash-poor and out half-empty.</p>
 <p>This closes the in-Zone economy loop. NPCs harvest at anomaly fields, kill mutants for parts, loot or fill stashes. The surplus turns into cash at the next trader visit. The cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.</p>
 <h3>Instincts</h3>
@@ -287,7 +294,10 @@
 <li>See <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md">integration.md</a> on the project site for API reference and examples.</li>
 </ul>
 <h2>Mod compatibility</h2>
-<p><b>Superseded:</b> none. AlifePlus is a reactive layer, not a replacement for any one mod.</p>
+<p><b>Superseded:</b></p>
+<ul>
+<li>NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers both directions (your kills and theirs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.</li>
+</ul>
 <p><b>Conflicts (critical):</b></p>
 <ul>
 <li>Unauthorized "synergy" / "bridge" patches claiming to connect AlifePlus to another mod: instability, save corruption.</li>
@@ -299,6 +309,8 @@
 <li>Faction-relation mods (Dynamic Faction Relations, zone-relation tweaks): change which causes can fire. Intended.</li>
 <li>Spawn / population mods (Dynamic Mutants, ReSpawn Mutant Collection, Rebound Encounters): more entities to act on; pair with AlifeGuard.</li>
 <li>Extended sim-distance / offline mods (Living Zone, Extended Offline, ROAD alife range): enlarge the population; fight AlifeGuard more than AlifePlus.</li>
+<li>Autolooter / proximity-loot mods: their auto-transfer bypasses the loot-ownership claim when you take an NPC's kill (the warning-and-goodwill ladder never fires); reserving your own kills from NPC looters still works.</li>
+<li>Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.</li>
 </ul>
 <h2>Requirements</h2>
 <p>Anomaly 1.5.3<br /><a href="https://github.com/themrdemonized/xray-monolith">demonized</a> 20250908+ OR <a href="https://github.com/Mirrowel/AOEngine-Assets">AOEngine</a> v0.55+<br /><a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs</a><br />MCM</p>

@@ -73,8 +73,9 @@ Trade and needs:
 - Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Arrival satisfies the need. Inventory items are not destroyed.
 
 Loot ownership:
+Every kill belongs to whoever made it, the player and the stalkers alike.
 - NPCs no longer strip the kills you made while you stand nearby. Walk away and scavengers may take them.
-- Looting a body a living NPC claimed warns that stalker once, then turns him hostile to you alone, never his faction.
+- Looting a body a living NPC claimed warns that stalker once, then turns him hostile to you alone, never his faction. He only reacts while near the body.
 - These controls and the per-visit trade profit cap live under the Economy menu.
 
 Day/night cycle:
@@ -268,7 +269,7 @@ Trade
 
   Rank gates. Rookies buy basic ammo and a baseline of medkits and bandages. Veterans add premium ammo (AP, EP, PBP, hot-load, hollow-point, steel-core, flechette across 18 cartridges), grenades (F1, RGD5), and larger consumable bands. Veteran shots hit the player with the real k_ap of premium rounds.
 
-  Profit cap. profit_max per rank caps net cash gain per trade event (rookie 1500 RU, veteran 5000 RU). Cash above the cap goes back to the trader so the till stays in business.
+  Profit cap. One cap limits the net cash an NPC gains per trade event, the same value for every rank, 5000 RU by default. Cash above the cap goes back to the trader so the till stays in business.
 
   Sell before buy. The sell phase runs before the buy phase, so cash from selling spares funds restocks. Squads with high-value spares restock more rows per visit instead of walking in cash-poor and out half-empty.
 
