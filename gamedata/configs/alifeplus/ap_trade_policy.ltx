@@ -3,6 +3,12 @@
 ; Min/max counted in rounds for ammo categories (per xinventory D5), items otherwise.
 ; Sell-only categories use min=0, max=0 -- min=0 means count<0 never triggers buy.
 ; Pre-filter ("untouchable" + "equipped") bypasses policy entirely; never reached here.
+; A row keyed by an item section (e.g. grenade_smoke) is a per-section override: it counts
+; and caps that section on its own, separate from its category. min/max work the same as a
+; category row: grenade_smoke = 0, 0 keeps NPCs from buying smoke and sells off any they
+; carry (engine crash on NPC throw), while a positive min like grenade_f1 = 2, 2 makes NPCs
+; buy that exact section up to 2. Ammo sections count in rounds; item sections in items.
+; The grenade category still trades other grenades alongside any section override.
 
 [ap_trade_policy_rookie]
 ammo_slot_3_t1    = 15, 15
@@ -11,6 +17,7 @@ ammo_slot_3_t2    = 0, 0
 ammo_slot_2_t2    = 0, 0
 ammo_not_equipped = 0, 0
 grenade           = 0, 0
+grenade_smoke     = 0, 0    ; excluded: engine crash when NPCs throw smoke grenades
 grenade_ammo      = 0, 0
 medkit            = 1, 3
 bandage           = 1, 3
@@ -35,6 +42,7 @@ ammo_slot_3_t2    = 15, 15
 ammo_slot_2_t2    = 16, 16
 ammo_not_equipped = 0, 0
 grenade           = 1, 3
+grenade_smoke     = 0, 0    ; excluded: engine crash when NPCs throw smoke grenades
 grenade_ammo      = 0, 0
 medkit            = 2, 3
 bandage           = 2, 5

@@ -33,12 +33,14 @@ local function _load_trade_policy()
         { "ap_trade_policy_rookie", "ap_trade_policy_veteran" })
     TRADE_POLICY = {
         rookie = {
-            entries = blocks.ap_trade_policy_rookie.entries,
-            rules   = blocks.ap_trade_policy_rookie.rules,
+            entries       = blocks.ap_trade_policy_rookie.entries,
+            rules         = blocks.ap_trade_policy_rookie.rules,
+            section_rules = blocks.ap_trade_policy_rookie.section_rules,
         },
         veteran = {
-            entries = blocks.ap_trade_policy_veteran.entries,
-            rules   = blocks.ap_trade_policy_veteran.rules,
+            entries       = blocks.ap_trade_policy_veteran.entries,
+            rules         = blocks.ap_trade_policy_veteran.rules,
+            section_rules = blocks.ap_trade_policy_veteran.section_rules,
         },
     }
 end
@@ -85,23 +87,41 @@ local function _buy_ammo_tier(npc, seller, weapon_sec, tier_num, target_rounds, 
     return rounds_added
 end
 
+-- Buy copies of one section until count reaches target OR cash runs out OR create_item
+-- fails. Breaks (not errors) on any of those so the caller can try the next-cheapest section.
+-- Ammo sections (box_size present) buy whole boxes and count in rounds (target is rounds);
+-- everything else buys one item at a time and counts in items. This keeps the unit aligned
+-- with xinventory.classify (_unit), so a per-section ammo rule like ammo_5.45x39_ap = 60, 60
+-- fills to 60 rounds, not 60 boxes.
+local function _buy_one_section(npc, seller, sec, current, target, bought)
+    local box = xinventory.get_box_size(sec)
+    local step = box or 1
+    local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
+    while current < target do
+        if xcreature.get_money(npc) < cost then break end
+        if not xinventory.create_item(sec, npc:id(), box and { ammo = box } or nil) then break end
+        xcreature.transfer_money(npc, cost, seller)
+        current = current + step
+        bought[#bought + 1] = sec
+    end
+    return current
+end
+
 -- Buy from a consumable category cheapest-first until count >= target OR no affordable
 -- section remains. Falls through to the next-cheapest section on per-section unaffordable
 -- or create_item failure, so an expensive section never blocks NPCs that can still afford
--- a cheaper one.
-local function _buy_consumable_category(npc, seller, category, current, target, bought)
+-- a cheaper one. Any section that carries its own per-section override (e.g. grenade_smoke,
+-- grenade_f1) is excluded from the category fill: section-ruled items are governed solely by
+-- their own rows, matching how xinventory.classify keys their count under the section name.
+local function _buy_consumable_category(ctx, category, current, target)
     local sections = xinventory.get_category_sections(category)
     if #sections == 0 then return current end
     local sorted = _sorted_by_cost(sections)
+    local section_rules = ctx.section_rules
     for i = 1, #sorted do
         local sec = sorted[i]
-        local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
-        while current < target do
-            if xcreature.get_money(npc) < cost then break end
-            if not xinventory.create_item(sec, npc:id()) then break end
-            xcreature.transfer_money(npc, cost, seller)
-            current = current + 1
-            bought[#bought + 1] = sec
+        if not (section_rules and section_rules[sec]) then
+            current = _buy_one_section(ctx.npc, ctx.seller, sec, current, target, ctx.bought)
         end
         if current >= target then return current end
     end
@@ -123,20 +143,26 @@ local function _resolve_ammo_buy_context(category, cat_opts)
     return nil, nil
 end
 
--- Execute one BUY policy entry against the NPC's current counts. Ammo categories dispatch
--- through _buy_ammo_tier (per-slot tier map); consumables dispatch through cheapest-first
--- _buy_consumable_category. Updates counts[cat] in place.
-local function _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
+-- Execute one BUY policy entry against the NPC's current counts. ctx carries the buy context
+-- { npc, seller, cat_opts, counts, bought, section_rules }. The entry key is one of three
+-- kinds: an ammo-slot category (per-slot tier map via _buy_ammo_tier); an item-section
+-- override (a row keyed by a section name -> buy that exact section via _buy_one_section);
+-- or a plain category (cheapest-first over the category set via _buy_consumable_category).
+-- Updates ctx.counts[key] in place (classify keys section-ruled items under their section).
+local function _run_buy_entry(entry, ctx)
     if not (entry.rule.min and entry.rule.min > 0) then return end
-    local cat = entry.category
-    local current = counts[cat] or 0
+    local key = entry.category
+    local counts = ctx.counts
+    local current = counts[key] or 0
     if current >= entry.rule.min then return end
-    if _is_ammo_slot_category(cat) then
-        local weapon_sec, tier_num = _resolve_ammo_buy_context(cat, cat_opts)
+    if _is_ammo_slot_category(key) then
+        local weapon_sec, tier_num = _resolve_ammo_buy_context(key, ctx.cat_opts)
         if not (weapon_sec and tier_num) then return end
-        counts[cat] = current + _buy_ammo_tier(npc, seller, weapon_sec, tier_num, entry.rule.min - current, bought)
+        counts[key] = current + _buy_ammo_tier(ctx.npc, ctx.seller, weapon_sec, tier_num, entry.rule.min - current, ctx.bought)
+    elseif ctx.section_rules and ctx.section_rules[key] then
+        counts[key] = _buy_one_section(ctx.npc, ctx.seller, key, current, entry.rule.min, ctx.bought)
     else
-        counts[cat] = _buy_consumable_category(npc, seller, cat, current, entry.rule.min, bought)
+        counts[key] = _buy_consumable_category(ctx, key, current, entry.rule.min)
     end
 end
 
@@ -166,13 +192,16 @@ function trade(npc, seller, _opts)
     local cash_before = xcreature.get_money(npc)
 
     -- Phase 1: count per category via xinventory.classify (ammo in rounds, others in items).
-    local counts = xinventory.classify(npc, cat_opts)
+    -- section_rules partitions per-section overrides (grenade_smoke) into their own count key.
+    local counts = xinventory.classify(npc, cat_opts, policy.section_rules)
 
-    -- Phase 2: SELL pass via xinventory.iterate_surplus (anything above category max).
+    -- Phase 2: SELL pass via xinventory.iterate_surplus (anything above its max). A per-section
+    -- override (grenade_smoke = 0, 0) forces every smoke grenade to surplus, divesting it.
     -- Runs before BUY so the cash gained from sales is available to fund the BUY pass,
     -- and so counts[cat] is decremented before BUY checks `current < min`.
     xinventory.iterate_surplus(npc, cat_opts, {
         rules = policy.rules,
+        section_rules = policy.section_rules,
         counts = counts,
         on_surplus = function(item, _cat, sec, _unit)
             xinventory.transfer_item(npc, item, seller)
@@ -182,8 +211,12 @@ function trade(npc, seller, _opts)
     })
 
     -- Phase 3: BUY pass (priority = declaration order in LTX). Reads post-sell counts + cash.
+    local buy_ctx = {
+        npc = npc, seller = seller, cat_opts = cat_opts,
+        counts = counts, bought = bought, section_rules = policy.section_rules,
+    }
     for _, entry in ipairs(policy.entries) do
-        _run_buy_entry(entry, npc, seller, cat_opts, counts, bought)
+        _run_buy_entry(entry, buy_ctx)
     end
 
     -- Phase 4: profit cap (net gain). MCM trade_profit_max overrides the old per-tier LTX cap
