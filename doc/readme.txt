@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.7.6 (xlibs 1.7.6, demonized 20250908, AOEngine v0.55)
+- Version: 1.7.7 (xlibs 1.7.7)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -372,7 +372,9 @@ Zero-overhead profiling. xprofiler and xtrace collapse to pre-allocated NOOP sin
 ---
 
 Compatibility & Safety:
-- AlifePlus requires modded exes: themrdemonized (main or MT) 20250908+, or AOEngine v0.55+. Vanilla Anomaly is not supported.
+- Requires xlibs.
+- Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer.
+- The full feature set needs the latest demonized build. A feature that needs a newer build stays inactive on older exes.
 - AlifePlus is built and tested with GAMMA, and also tested with Zona and EFP.
 - The mod has no base script edits and no engine patches.
 - Squads are extended, not hijacked: AlifePlus uses the engine's job system without overwriting engine variables.
@@ -406,7 +408,6 @@ Mod compatibility:
 
 Requirements:
 - Anomaly 1.5.3
-- demonized 20250908+ (https://github.com/themrdemonized/xray-monolith) OR AOEngine v0.55+ (https://github.com/Mirrowel/AOEngine-Assets)
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
@@ -441,7 +442,7 @@ Presets:
 FAQ:
 
 Do I need modded exes?
-  Yes. AlifePlus requires modded exes: themrdemonized (main or MT) 20250908+, or AOEngine v0.55+. Vanilla Anomaly does not expose the APIs the framework relies on.
+  Yes. AlifePlus needs modded exes. See Compatibility for supported builds. Vanilla Anomaly does not expose the APIs the framework relies on.
 
 Does it work with other A-Life mods?
   AlifePlus has no known incompatibilities with warfare or AI addons.
@@ -478,3 +479,14 @@ Usage and License:
 - Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
 - Reproducing the implementation in other software: not allowed, even with credit.
 - Full license in LICENSE file and on GitHub.
+
+Reporting issues and suggestions
+Open a bug report or a suggestion at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose.
+Also discussed on the GAMMA, EFP, Anomaly, and Zona Discord servers.
+
+Before posting, read this readme and the MCM options.
+
+Include:
+- Exact steps to reproduce, from a new game or a named save, with expected and actual result.
+- xray.log and the mod debug log (MCM log level DEBUG), plus engine build, modlist, load order.
+- Describe the behavior. With hundreds of mods and overrides, only the log shows whether this mod was involved and what caused it.
