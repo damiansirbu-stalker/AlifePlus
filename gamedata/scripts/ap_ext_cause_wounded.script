@@ -1,5 +1,5 @@
 --- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
-local xobject, xsquad, xsmart, xlevel, xevent = xobject, xsquad, xsmart, xlevel, xevent
+local xobject, xsquad, xsmart, xlevel, xevent, xinventory = xobject, xsquad, xsmart, xlevel, xevent, xinventory
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -17,16 +17,34 @@ AddScriptCallback(CALLBACK.X_NPC_MEDKIT_USE)
 
 local cfg = ap_core_mcm.cfg
 
-local HEALING_ITEMS = {
-    bandage = true,
-    army_bandage = true,
-    salicidic_bandage = true,
-    drug_coagulant = true,
-    tourniquet = true,
-    medkit = true,
-    medkit_army = true,
-    medkit_scientic = true,
-}
+-- Heal-item detection, modpack-agnostic and symmetric with the NPC side. The NPC path fires on
+-- xr_eat_medkit.consume_medkit, i.e. whatever the engine heal scheme eats from its
+-- ai_tweaks/xr_eat_medkit.ltx [plugin] medkits=/bandages= lists (DLTX-extensible per modpack). We
+-- read that SAME source for the actor so both sides recognise identical items with zero per-modpack
+-- maintenance, and fall back to the xlibs medkit/bandage categories so detection still works on a
+-- vanilla install where the [plugin] lists are empty. Built once, lazily (configs are live by the
+-- time an item is used).
+local _heal_sections
+
+local function _build_heal_sections()
+    local set = {}
+    local ok, ini = pcall(function() return ini_file("ai_tweaks\\xr_eat_medkit.ltx") end)
+    if ok and ini and ini:section_exist("plugin") then
+        local keys = { "medkits", "bandages" }
+        for k = 1, #keys do
+            local list = parse_list(ini, "plugin", keys[k])
+            if list then for i = 1, #list do set[list[i]] = true end end
+        end
+    end
+    return set
+end
+
+local function _is_heal_section(section)
+    if not _heal_sections then _heal_sections = _build_heal_sections() end
+    return _heal_sections[section]
+        or xinventory.is_in_category(section, "medkit")
+        or xinventory.is_in_category(section, "bandage")
+end
 
 local function _on_npc_medkit_use(_trace, npc, _medkit, kind)
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
@@ -65,7 +83,11 @@ end
 
 local function _on_actor_item_use(_trace, _item, section)
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
-    if not HEALING_ITEMS[section] then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING } end
+    -- Heal detection mirrors the NPC side (the engine eat-medkit list) with a category fallback;
+    -- see _is_heal_section. No hardcoded section list, so any modpack's medkit/bandage participates.
+    if not _is_heal_section(section) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING }
+    end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
