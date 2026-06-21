@@ -448,11 +448,19 @@ end
 -- @cost O(1) | 1 luabind (xlevel.get_level_id) on first offmap capture, 0 thereafter
 local function _capture_home_level(squad, opts)
     if not opts.offmap then return true end
-    if _ap_squad_home_level[squad.id] then return true end
+    -- Keep the captured home stable during an active off-map session, but refresh it on a fresh
+    -- dispatch when no session is active. The home_level entry is only cleared on entity unregister
+    -- or the load-sweep, never on normal session completion, so a live squad that finished a round
+    -- trip, moved to another level, and is re-dispatched off-map would otherwise inherit its first
+    -- home and route the return leg to the wrong (stale) level.
+    if _ap_squad_home_level[squad.id] and is_offmap_dispatched(squad.id) then return true end
     local lid = xlevel.get_level_id(squad)
-    if not lid then return false end
-    _ap_squad_home_level[squad.id] = lid
-    return true
+    if lid then
+        _ap_squad_home_level[squad.id] = lid
+        return true
+    end
+    -- Level momentarily unavailable (mid-transition): keep any prior value, else refuse.
+    return _ap_squad_home_level[squad.id] ~= nil
 end
 
 -- Merge per-call session state into the new scripted_squad data entry. Off-map dispatches
