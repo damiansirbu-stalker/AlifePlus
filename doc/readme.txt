@@ -73,9 +73,9 @@ Trade and needs:
 - Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Arrival satisfies the need. Inventory items are not destroyed.
 
 Loot ownership:
-Every kill belongs to whoever made it, the player and the stalkers alike.
+Every kill belongs to whoever made it, the player and the stalkers alike. The two sides toggle independently in MCM.
 - NPCs no longer strip the kills you made while you stand nearby. Walk away and scavengers may take them.
-- A body a living NPC killed cannot be looted while that stalker is alive and near it. Walk off, or wait until he dies, and it opens up.
+- A body a living NPC killed will not open while that stalker is alive and near it. Walk off, or wait until he dies, and it opens up.
 - These controls and the per-visit trade profit cap live under the Economy menu.
 
 Day/night cycle:
@@ -253,6 +253,18 @@ Needs
 
   Arrival satisfies the need. Inventory items are not destroyed by the arrival itself. Engine-side combat behavior (medkit, bandage, stim usage in firefights) is independent and unchanged.
 
+Loot Ownership
+
+  Every kill belongs to whoever made it. Two independent halves, each its own toggle, share one reservation radius. Both live under Economy > Loot.
+
+  Reserve your kills from NPCs. A body you killed is skipped by NPC looters while you stand within the reservation radius. The scavenger AI treats your kill as off-limits and walks past it. Step away and the reservation lapses, so a passing stalker may strip it like any other corpse. This is the half that stops an NPC from picking your fresh kill clean before you reach it.
+
+  Block looting an NPC's kill. A body a living stalker killed will not open while its killer is alive and within the reservation radius. Aim at it, press use, and nothing happens but a PDA tip naming the owner. When the killer dies, or you walk past the radius, the body opens and loots like any other. Companions, zombified killers, and story corpses never hold a claim against you.
+
+  How the block works. The claim is enforced at the moment the corpse would open, not at the item-take. The use key that opens a claimed body is vetoed before the loot window is built, so the body never opens. This is why an auto-loot mod driven through the normal loot window is stopped with it: there is no open window to act on. A mod that transfers items straight off a corpse without opening it (proximity or remote auto-loot) is the one path that slips through, since no window and no use press are involved.
+
+  Reservation radius. One distance governs both halves, 30 m by default, tunable 10 to 150 under Economy > Loot. Beyond it, both your reservation and an NPC's claim lapse. The master switch off is plain vanilla looting in both directions.
+
 Trade
 
   AlifePlus runs a category-based NPC buy/sell cycle on arrival at trader smarts. NPCs visit a trader, sell surplus from their inventory, and restock ammo, grenades, and consumables per a per-rank policy. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat. Built on Alundaio's buy/sell core (2013, maintained by Tronex through 2019), modernized to accept extension instead of dirtying item files, and to carry depth the original row schema could not express.
@@ -401,7 +413,7 @@ Mod compatibility:
   - Faction-relation mods (Dynamic Faction Relations, zone-relation tweaks): change which causes can fire. Intended.
   - Spawn / population mods (Dynamic Mutants, ReSpawn Mutant Collection, Rebound Encounters): more entities to act on; pair with AlifeGuard.
   - Extended sim-distance / offline mods (Living Zone, Extended Offline, ROAD alife range): enlarge the population; fight AlifeGuard more than AlifePlus.
-  - Autolooter / proximity-loot mods: their auto-transfer bypasses the block on an NPC's claimed kill (the move veto never fires); reserving your own kills from NPC looters still works.
+  - Autolooter / proximity-loot mods: opening a claimed corpse is blocked, so auto-loot driven through the loot window is stopped with it. Only remote/proximity transfer that never opens the corpse can still take a claimed kill. Reserving your own kills from NPC looters is unaffected.
   - Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.
 
 ---

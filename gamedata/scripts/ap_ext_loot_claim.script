@@ -1,8 +1,12 @@
---- ap_ext_loot_claim: corpse loot ownership -- reserves the actor's kills from NPC looters and denies looting a living NPC's claimed kill
+--- ap_ext_loot_claim: corpse loot ownership -- reserves the actor's kills from NPC looters (Half A)
+--- and vetoes opening a living NPC's claimed kill (Half B). Half A and Half B toggle independently
+--- in MCM (loot_reserve_own / loot_block_npc), both under the loot_enabled master.
 
 local type, tostring, RegisterScriptCallback = type, tostring, RegisterScriptCallback
+local string_format, math_random = string.format, math.random
 local xevent, xttltable, xcreature = xevent, xttltable, xcreature
 local xtime, xobject, xpda, xinventory = xtime, xobject, xpda, xinventory
+local level, game, game_relations = level, game, game_relations
 local CALLBACK = ap_core_const.CALLBACK
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local cfg = ap_core_mcm.cfg
@@ -17,21 +21,37 @@ local LOG = "[EXT.LOOT]"
 -- window restarts on reload.
 local OWNER_TTL_SEC = 6 * HOURS_TO_SECONDS
 
+-- Tip re-warn throttle (game seconds). The keypress veto (Half B) stops the loot menu from opening,
+-- so GUI_ON_HIDE no longer fires to reset a warned-set on menu close. A short per-corpse TTL gives
+-- once-per-approach warning while swallowing USE-key mashing.
+local TIP_TTL_SEC = 5
+
+-- Claim warn tip: a random line from the st_ap_loot_claim_warn_NNN pool (matches the news template
+-- convention, ap_ext_news.script:_load_pool). _warn_n is the pool size, counted once at load.
+local WARN_PREFIX = "st_ap_loot_claim_warn"
+local MAX_WARN_VARIANTS = 16
+
 -- victim_id -> killer_id
 local _owner = nil
--- corpse ids that already showed the claim tip this open-session (reset on menu close)
-local _warned = {}
+-- corpse id -> true, short-TTL throttle for the claim tip (replaces the menu-close reset)
+local _tip_ttl = nil
 -- actor id, captured at first update (avoids depending on AC_ID load-time global)
 local _ac_id = nil
+-- owner map stashed at load_state, imported at first_update. _owner:import calls the game clock
+-- (xtime.game_sec -> level.get_start_time), which AVs in the load_state phase (Level() not loaded
+-- yet); the first update tick is the earliest point Level() is guaranteed live. See xtime.game_sec.
+local _saved_owner = nil
+-- number of st_ap_loot_claim_warn_NNN variants present, counted at on_game_start
+local _warn_n = 0
 
 --- xevent wrapper over xr_corpse_detection.near_actor. Returns true ("skip, near actor") for a
 --- corpse the actor killed while the actor is within the reservation radius; otherwise the
 --- vanilla distance check. Disabled-system and non-actor-owned corpses fall straight through.
---- Traces the reserve/lapse decision (gated by ap_core_debug.enabled(); noop when off -- the
---- common non-owned path returns before the trace branch, so disabled cost is unchanged).
+--- Gated by Half A (loot_reserve_own). Traces the reserve/lapse decision (gated by
+--- ap_core_debug.enabled(); noop when off -- the common non-owned path returns before the trace).
 --- @cost O(1) | common case 1 ttl lookup; actor-owned case + 2 luabind (position/distance)
 local function _near_actor_hook(orig, obj)
-    if not cfg.loot_enabled or not obj or not _ac_id then return orig(obj) end
+    if not (cfg.loot_enabled and cfg.loot_reserve_own) or not obj or not _ac_id then return orig(obj) end
     local id = obj:id()
     if id and _owner:get(id) == _ac_id then
         local actor = db.actor
@@ -48,16 +68,19 @@ local function _near_actor_hook(orig, obj)
     return orig(obj)
 end
 
---- Record corpse ownership on death. Skips suicides, story corpses, and (for NPC killers)
---- non-stalker / companion / zombied kills: only a living stalker can hold and defend a claim,
---- so the player is never blocked from looting those.
---- @cost O(1) | story id always; is_stalker/companion/community only for NPC killers
+--- Record corpse ownership on death. Skips suicides, story corpses, the actor's own companions
+--- (their body is always yours to recover), and (for NPC killers) non-stalker / companion / zombied
+--- kills: only a living stalker can hold and defend a claim, so the player is never blocked from
+--- looting those. Recording is gated by the master only -- the ledger feeds both halves, so it fills
+--- whenever the feature is on.
+--- @cost O(1) | story id + victim companion always; is_stalker/companion/community only for NPC killers
 local function _on_death(victim, killer)
     if not cfg.loot_enabled or not victim or not killer then return end
     _ac_id = _ac_id or (db.actor and db.actor:id())
     local victim_id, killer_id = victim:id(), killer:id()
     if victim_id == killer_id then return end
     if get_object_story_id(victim_id) then return end
+    if victim:has_info("npcx_is_companion") then return end
     if killer_id ~= _ac_id then
         if not xcreature.is_stalker(killer) then return end
         if killer:has_info("npcx_is_companion") then return end
@@ -87,39 +110,91 @@ local function _on_hit(obj, _amount, _dir, who, bone_index)
     end
 end
 
---- Tip the actor that the kill is claimed: a PDA tip headed by the owner's name + portrait.
-local function _warn(owner)
-    xpda.npc_tip(owner, "st_ap_loot_claim_warn", { sound = "beep_1" })
-end
-
---- Deny taking an item from a living NPC's claimed kill within the reservation radius.
---- xinventory.is_corpse_take gates loot-mode takes from the dead-body bag; the claim holds when the
---- owner is a living NPC (not the actor) inside the radius. Owner == actor, dead, offline, or beyond
---- radius: claim void, take allowed. Claim tip fires once per corpse open.
---- @cost O(1) | mode/bag compare first; ttl lookup + alive + 1 distance only on a loot take
-local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
-    if not cfg.loot_enabled or not xinventory.is_corpse_take(mode, bag) then return end
-    local owner_id = npc_id and _owner:get(npc_id)
-    if not owner_id or owner_id == _ac_id then return end
+--- The living NPC that holds a defensible claim on a corpse, or nil. A claim holds when the corpse
+--- is owned by someone other than the actor, that owner is still alive and online, the owner is not
+--- an enemy of the actor (you are already at war with them, so they cannot loot-lock a body away from
+--- you), and the actor is within the reservation radius of the owner. Owner == actor / dead / offline
+--- / enemy / beyond radius -> claim void (nil). The returned object is the claimer, used for the tip.
+--- Relation is read here (block time), not at the kill, so a faction that turns hostile lapses live.
+--- @cost O(1) | ttl lookup; alive + relation + 1 distance only when an owner exists
+local function _claim_owner(corpse_id)
+    local owner_id = corpse_id and _owner:get(corpse_id)
+    if not owner_id or owner_id == _ac_id then return nil end
     local owner = xobject.go(owner_id)
-    if not owner or not owner:alive() then return end
-    if db.actor:position():distance_to(owner:position()) > cfg.loot_reservation_radius then return end
-    xinventory.deny_move(flags)
-    if not _warned[npc_id] then
-        _warned[npc_id] = true
-        _warn(owner)
+    if not owner or not owner:alive() then return nil end
+    local owner_comm = xcreature.community(owner)
+    if owner_comm and game_relations.is_factions_enemies(get_actor_true_community(), owner_comm) then return nil end
+    if db.actor:position():distance_to(owner:position()) > cfg.loot_reservation_radius then return nil end
+    return owner
+end
+
+--- Count the st_ap_loot_claim_warn_NNN variants present in the loaded string table, walking _001..N
+--- until a miss (translate returns the key / nil / empty), mirroring ap_ext_news.script:_load_pool.
+local function _count_warn_variants()
+    for i = 1, MAX_WARN_VARIANTS do
+        local id = string_format("%s_%03d", WARN_PREFIX, i)
+        local text = game.translate_string(id)
+        if text == id or text == nil or text == "" then return i - 1 end
     end
+    return MAX_WARN_VARIANTS
+end
+
+--- Tip the actor that the kill is claimed: a PDA tip headed by the owner's name + portrait, carrying a
+--- random line from the warn pool. Throttled per corpse by _tip_ttl so a held/mashed USE key warns
+--- once per approach.
+local function _warn_once(corpse_id, owner)
+    if _tip_ttl:get(corpse_id) then return end
+    _tip_ttl:set(corpse_id, true)
+    local idx = _warn_n > 0 and math_random(_warn_n) or 1
+    xpda.npc_tip(owner, string_format("%s_%03d", WARN_PREFIX, idx), { sound = "beep_1" })
+end
+
+--- Half B primary: veto opening a living NPC's claimed kill. on_before_key_press fires before the
+--- engine runs the USE action; clearing ret_value makes level_input.on_key_press return true and the
+--- engine skips the open (level_input.script:18-19). level.get_target_obj is the same cached crosshair
+--- pick the engine selects the corpse from (Actor.cpp:2012), so it matches what USE would open. This
+--- is the only pre-open veto that holds under the modded loot UI, whose init_mode opens regardless of
+--- ret (ui_inventory.script:62). It also stops auto-loot mods driven through the standard menu path.
+--- @cost O(1) | bind compare first; target + claim lookup only on a USE press
+local function _on_before_key_press(_key, bind, _dis, flags)
+    if not (cfg.loot_enabled and cfg.loot_block_npc) then return end
+    if bind ~= key_bindings.kUSE then return end
+    local obj = level.get_target_obj()
+    if not obj then return end
+    local id = obj:id()
+    local owner = _claim_owner(id)
+    if not owner then return end
+    flags.ret_value = false
+    _warn_once(id, owner)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner_id)
+        ap_core_debug.debug("%s blocked open corpse=%s owner=%s", LOG, id, owner:id())
     end
 end
 
-local function _on_gui_hide(_name)
-    _warned = {}
+--- Half B backstop: deny an in-menu take from a claimed corpse, covering a loot menu opened by a path
+--- that bypasses the USE keystroke (the keypress veto above is the primary gate). xinventory.is_corpse_take
+--- funnels every take path (move, take-all, drag, double-click) through one check. Does not catch a
+--- direct transfer_item (auto-loot "remote") -- that emits raw trade net events with no script veto.
+--- @cost O(1) | mode/bag compare first; claim lookup only on a loot take
+local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
+    if not (cfg.loot_enabled and cfg.loot_block_npc) then return end
+    if not xinventory.is_corpse_take(mode, bag) then return end
+    local owner = _claim_owner(npc_id)
+    if not owner then return end
+    xinventory.deny_move(flags)
+    _warn_once(npc_id, owner)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner:id())
+    end
 end
 
 local function _on_first_update()
     _ac_id = db.actor and db.actor:id()
+    -- PHASE B: Level() is live at the first update tick, so the game-clock import is safe here.
+    if _saved_owner then
+        _owner:import(_saved_owner)
+        _saved_owner = nil
+    end
 end
 
 local function _on_save_state(m_data)
@@ -127,14 +202,17 @@ local function _on_save_state(m_data)
 end
 
 local function _on_load_state(m_data)
+    -- PHASE A: stash only. No _owner:import here -- it calls the game clock (level.get_start_time),
+    -- which AVs during the load_state phase (CTD). Deferred to _on_first_update (PHASE B).
     local saved = m_data.ap_ext_loot_claim
     if type(saved) ~= "table" then return end
-    if type(saved.owner) == "table" then _owner:import(saved.owner) end
+    if type(saved.owner) == "table" then _saved_owner = saved.owner end
 end
 
 function on_game_start()
     _owner = xttltable.create_ttl_table({ default_ttl = OWNER_TTL_SEC, clock = xtime.game_sec })
-    _warned = {}
+    _tip_ttl = xttltable.create_ttl_table({ default_ttl = TIP_TTL_SEC, clock = xtime.game_sec })
+    _warn_n = _count_warn_variants()
 
     -- on_game_start re-runs on every save load; the hook persists across loads (xevent state is
     -- not reset), so re-hooking returns false. is_hooked distinguishes that from a real failure.
@@ -148,8 +226,8 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.NPC_ON_DEATH_CALLBACK, _on_death)
     RegisterScriptCallback(CALLBACK.MONSTER_ON_DEATH_CALLBACK, _on_death)
     RegisterScriptCallback(CALLBACK.NPC_ON_HIT_CALLBACK, _on_hit)
+    RegisterScriptCallback(CALLBACK.ON_BEFORE_KEY_PRESS, _on_before_key_press)
     RegisterScriptCallback(CALLBACK.ACTOR_MENU_ON_ITEM_BEFORE_MOVE, _on_item_before_move)
-    RegisterScriptCallback(CALLBACK.GUI_ON_HIDE, _on_gui_hide)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
