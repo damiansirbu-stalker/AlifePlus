@@ -120,17 +120,24 @@ local function _dispatch_entry(entry, event_type, event_data, is_radiant, sc)
 end
 
 local function _process(event_type, event_data)
-    local consequences = _registry[event_type]
-    if not consequences or #consequences == 0 then return end
+    local registered = _registry[event_type]
+    if not registered or #registered == 0 then return end
 
     ap_core_debug.debug("[CONSUMER] RECEIVED cause=%s squad=%s level=%s type=%s",
         event_type, event_data.squad_id or event_data.id, event_data.level_id, event_data.cause_type)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
     local sc = hud_collecting()
-    -- In-place Fisher-Yates on _registry[event_type]. Order between events is permuted; every
-    -- entry still gets considered. Avoids per-event allocation. Mirrors ap_core_producer's _cascade_buf shuffle.
-    local count = #consequences
+    -- Iterate over a snapshot of the registered handlers, not the live _registry[event_type]. A
+    -- consequence handler may legally call ap_api.unregister_consequence (on itself or a sibling)
+    -- mid-dispatch, which table_removes from the live array under us -- shifting an unvisited entry
+    -- into an already-visited slot and leaving consequences[count] nil (a nil _dispatch_entry CTD).
+    -- The snapshot also carries the per-dispatch Fisher-Yates shuffle, so the live registry order
+    -- and its registration semantics are left untouched. The copy is tiny (1 entry for radiant 1:1
+    -- causes, a handful for reactive) and _process only runs after a cause actually publishes.
+    local count = #registered
+    local consequences = {}
+    for i = 1, count do consequences[i] = registered[i] end
     for i = count, 2, -1 do
         local j = math_random(i)
         if j ~= i then consequences[i], consequences[j] = consequences[j], consequences[i] end
