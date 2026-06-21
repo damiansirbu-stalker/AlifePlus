@@ -96,11 +96,15 @@ local function _try_picked_cause(trace, squad, level_id, opts)
         if opts.budget.remaining <= 0 then
             return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
         end
-        opts.budget.remaining = opts.budget.remaining - 1
         local dst = ap_core_util.find_smart_observed(trace, opts.stash.position, {
             level_id = level_id, filter = function(s) return not xsmart.is_base(s) end,
         })
         if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        -- Consume the scan slot only on a successful scan. A missed ambush scan must not spend the
+        -- budget, else the loot fallback (the [STASH_AMBUSH, STASH_LOOT] cascade for outlaws) hits
+        -- BUDGET_EXHAUSTED and never scans -- defeating "ambush preferred, loot as fallback".
+        -- Worst case is 2 find_smart calls per _on_smart (ambush miss + loot), within the perf budget.
+        opts.budget.remaining = opts.budget.remaining - 1
         local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, dst)
         if not t_ok then
             return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
