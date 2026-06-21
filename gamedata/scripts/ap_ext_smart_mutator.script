@@ -292,16 +292,21 @@ local function _restore_conquered(now)
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
         return
     end
-    local restored = 0
+    local restored, skipped = 0, 0
     for smart_id, data in pairs(_conquered_pending) do
         if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
+        -- Enforce the per-level cap on restore too. The cap can be lowered in MCM between sessions
+        -- (e.g. switching presets Chaotic -> Calm); without this, every saved conquest is reinstated
+        -- and the new cap is permanently exceeded (the scan loop never re-checks it).
+        -- can_conquest_on_level counts the entries already restored in this pass.
+        if not can_conquest_on_level(data.level_id) then skipped = skipped + 1; goto continue end
         _conquered_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, conquered_at = data.conquered_at or now }
         restored = restored + 1
         ::continue::
     end
     _conquered_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d", restored)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d skipped=%d", restored, skipped)
 end
 
 local function _restore_swarmed(now)
@@ -311,16 +316,19 @@ local function _restore_swarmed(now)
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: swarm disabled, skipped restore")
         return
     end
-    local restored = 0
+    local restored, skipped = 0, 0
     for smart_id, data in pairs(_swarmed_pending) do
         if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
+        -- Enforce the per-level cap on restore (cap can be lowered in MCM between sessions).
+        -- can_swarm_on_level counts the entries already restored in this pass.
+        if not can_swarm_on_level(data.level_id) then skipped = skipped + 1; goto continue end
         _swarmed_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, swarmed_at = data.swarmed_at or now }
         restored = restored + 1
         ::continue::
     end
     _swarmed_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d", restored)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d skipped=%d", restored, skipped)
 end
 
 local function _restore_infested(now)
@@ -330,16 +338,19 @@ local function _restore_infested(now)
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: infest disabled, skipped restore")
         return
     end
-    local restored = 0
+    local restored, skipped = 0, 0
     for smart_id, data in pairs(_infested_pending) do
         if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
+        -- Enforce the per-level cap on restore (cap can be lowered in MCM between sessions).
+        -- can_infest_on_level counts the entries already restored in this pass.
+        if not can_infest_on_level(data.level_id) then skipped = skipped + 1; goto continue end
         _infested_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, infested_at = data.infested_at or now }
         restored = restored + 1
         ::continue::
     end
     _infested_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: infest restored=%d", restored)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: infest restored=%d skipped=%d", restored, skipped)
 end
 
 local function _on_game_load()
