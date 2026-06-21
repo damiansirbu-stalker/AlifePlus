@@ -3,7 +3,7 @@ local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
-local xtime, xtable, xttltable, xcreature, xconst = xtime, xtable, xttltable, xcreature, xconst
+local xtime, xtable, xttltable, xcreature, xconst, xobject = xtime, xtable, xttltable, xcreature, xconst, xobject
 local ap_core_debug, ap_core_util = ap_core_debug, ap_core_util
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -277,6 +277,40 @@ local function _on_squad_npc_death(squad, npc, killer)
     end)
 end
 
+-- Clear kill-count and alpha status when an entity despawns. Without this, entities removed
+-- without a death event (A-Life offline cull, population control such as AlifeGuard, level
+-- unload) leak their _ap_killers / _ap_alphas entries into the save indefinitely, and a recycled
+-- server id can inherit the stale count -- e.g. a fresh mutant wrongly promoted to alpha. Death
+-- already routes through _unregister_entity (kill cleared, alpha moved to the dead-grace table),
+-- so by the time the corpse's server entity unregisters these are usually already nil.
+local function _on_entity_unregister(se_obj)
+    local id = se_obj and se_obj.id
+    if not id then return end
+    _ap_killers[id] = nil
+    _ap_alphas[id] = nil
+end
+
+-- Drop saved ids that no longer resolve to a live server entity. Some engine release paths bypass
+-- SERVER_ENTITY_ON_UNREGISTER, so a leaked entry can ride through a save; this catches it once
+-- entities are restored. Runs at on_game_load (not load_state): alife_object is only valid after
+-- STATE_Read. Mirrors ap_core_broker's recycled-id sweep. Removing the current key during pairs()
+-- iteration is allowed in Lua.
+local function _sweep_dead(map)
+    local dropped = 0
+    for id in pairs(map) do
+        if not xobject.se(id) then map[id] = nil; dropped = dropped + 1 end
+    end
+    return dropped
+end
+
+local function _on_game_load()
+    local dk = _sweep_dead(_ap_killers)
+    local da = _sweep_dead(_ap_alphas)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[TRACKER] on_game_load sweep: killers_dropped=%d alphas_dropped=%d", dk, da)
+    end
+end
+
 function on_game_start()
     _ap_alpha_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
@@ -285,6 +319,8 @@ function on_game_start()
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
 
     ap_core_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
