@@ -455,7 +455,7 @@ Presets:
 FAQ:
 
 Do I need modded exes?
-  Yes. AlifePlus needs modded exes. See Compatibility for supported builds. Vanilla Anomaly does not expose the APIs the framework relies on.
+  Yes. AlifePlus needs themrdemonized modded exes (2025.9.10 or newer) or AOEngine (v0.55 or newer). Vanilla Anomaly does not expose the APIs the framework relies on.
 
 Does it work with other A-Life mods?
   AlifePlus has no known incompatibilities with warfare or AI addons.
