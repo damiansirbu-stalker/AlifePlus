@@ -414,6 +414,7 @@ Mod compatibility:
   - Spawn / population mods (Dynamic Mutants, ReSpawn Mutant Collection, Rebound Encounters): more entities to act on; pair with AlifeGuard.
   - Extended sim-distance / offline mods (Living Zone, Extended Offline, ROAD alife range): enlarge the population; fight AlifeGuard more than AlifePlus.
   - Autolooter / proximity-loot mods: opening a claimed corpse is blocked, so auto-loot driven through the loot window is stopped with it. Only remote/proximity transfer that never opens the corpse can still take a claimed kill. Reserving your own kills from NPC looters is unaffected.
+  - Interaction Dot Marks (Catspaw): opening, take-all, and auto-loot of a claimed corpse through its dot are blocked. Remote transfer that never opens the corpse can still take a claimed kill.
   - Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.
 
 ---

@@ -188,6 +188,33 @@ local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     end
 end
 
+--- Veto a claimed kill when Dot Marks opens or auto-loots the corpse through its own interaction
+--- action, which never fires the kUSE keystroke the keypress veto watches. Clearing flags.ret_value
+--- aborts the action; same decision as the keypress veto.
+--- @cost O(1) | master/half compare first; claim lookup only on a Dot Marks corpse interact
+local function _veto_dotmarks(id, flags)
+    if not (cfg.loot_enabled and cfg.loot_block_npc) or not flags then return end
+    local owner = _claim_owner(id)
+    if not owner then return end
+    flags.ret_value = false
+    _warn_once(id, owner)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s blocked dotmarks corpse=%s owner=%s", LOG, id, owner:id())
+    end
+end
+
+--- dotmarks_on_manual_interact_release(id, mark, flags): primary single-press corpse open.
+local function _on_dotmarks_interact(id, _mark, flags)
+    _veto_dotmarks(id, flags)
+end
+
+--- dotmarks_on_before_secondary_action(id, mark, prompt, functor, flags): long-press take-all / autoloot.
+--- id is nil when ExecuteAction fires with no target arg; fall back to the prompt's own target, the
+--- same id the action runs on.
+local function _on_dotmarks_secondary(id, _mark, prompt, _functor, flags)
+    _veto_dotmarks(id or (prompt and prompt.args and prompt.args.id), flags)
+end
+
 local function _on_first_update()
     _ac_id = db.actor and db.actor:id()
     -- PHASE B: Level() is live at the first update tick, so the game-clock import is safe here.
@@ -231,5 +258,15 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+
+    -- Dot Marks opens corpses through its own action, not the kUSE keystroke, so the keypress veto is
+    -- blind to it. Gate on dotmarks_callbacks: inert when Dot Marks is absent, and its load registers
+    -- both callback names before we subscribe.
+    if dotmarks_callbacks then
+        RegisterScriptCallback(CALLBACK.DOTMARKS_ON_MANUAL_INTERACT_RELEASE, _on_dotmarks_interact)
+        RegisterScriptCallback(CALLBACK.DOTMARKS_ON_BEFORE_SECONDARY_ACTION, _on_dotmarks_secondary)
+        ap_core_debug.info("%s hooked Dot Marks corpse callbacks", LOG)
+    end
+
     ap_core_debug.info("%s Initialized", LOG)
 end
