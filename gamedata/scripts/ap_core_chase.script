@@ -1,0 +1,59 @@
+--- ap_core_chase: engine-method hooks that let an AP-scripted squad pursue another squad
+--- by id (continuous coordinate homing). Two guarded monkeypatches of sim_squad_scripted
+--- installed at on_game_start, both keyed on the broker _ap_scripted_squads registry
+--- (entry.target_squad_id):
+---   get_current_task  -> offline group movement: a task built from the target live vertices,
+---                        rebuilt each call so the chaser homes on the target current position
+---                        (alife_online_offline_group_brain.cpp:80-84 consumes this every update).
+---   get_script_target -> online + server: returns the target id so specific_update keeps
+---                        re-pinning assigned_target_id and the reach-task squad fallback fires
+---                        (xr_reach_task.script:251-254). Replacing the whole method also means
+---                        the vanilla numeric-id branch (sim_squad_scripted.script:139, the clean
+---                        -vanilla obj:clsid() crash) never runs for chasers.
+--- Both delegate to the captured original for any squad without a squad-target chase entry, so
+--- they chain safely with warfare identical get_current_task hook regardless of load order.
+--- @override -- monkeypatch of sim_squad_scripted; document in readme "Disable before installing".
+--- @src anomaly/sim_squad_scripted.script(102-142 get_script_target, 1349-1359 get_current_task),
+---      anomaly/xr_reach_task.script(251-254), warfare_monkeypatches_sim_squad.script(8-36)
+
+local ap_core_broker, ap_core_debug = ap_core_broker, ap_core_debug
+
+-- Live registry lookup each call (the broker reassigns _ap_scripted_squads on load, so a
+-- cached table ref would go stale; get_scripted_squads returns the current table).
+local function _chase_target_id(squad)
+    local entry = ap_core_broker.get_scripted_squads()[squad.id]
+    return entry and entry.target_squad_id
+end
+
+function on_game_start()
+    local cls = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
+    if not cls then
+        ap_core_debug.err("[SQUAD] chase: sim_squad_scripted class missing; hooks not installed")
+        return
+    end
+
+    -- Alias xlibs/engine refs here (post-load, non-nil) so the hot-path closures capture
+    -- upvalues instead of doing module-level aliasing that may capture nil at load order.
+    local xobject = xobject
+    local CALifeSmartTerrainTask = CALifeSmartTerrainTask
+
+    local orig_get_current_task = cls.get_current_task
+    local orig_get_script_target = cls.get_script_target
+
+    cls.get_current_task = function(self)
+        local tid = _chase_target_id(self)
+        local target_se = tid and xobject.se(tid)
+        if target_se then
+            return CALifeSmartTerrainTask(target_se.m_game_vertex_id, target_se.m_level_vertex_id)
+        end
+        return orig_get_current_task(self)
+    end
+
+    cls.get_script_target = function(self)
+        local tid = _chase_target_id(self)
+        if tid then return tid end
+        return orig_get_script_target(self)
+    end
+
+    ap_core_debug.info("[SQUAD] chase: squad-target hooks installed")
+end
