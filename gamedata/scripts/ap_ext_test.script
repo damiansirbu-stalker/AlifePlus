@@ -1,6 +1,6 @@
 --- ap_ext_test: MCM debug tools and demo harnesses
 
-local pairs, ipairs, pcall, table = pairs, ipairs, pcall, table
+local pairs, ipairs, pcall, table, tostring = pairs, ipairs, pcall, table, tostring
 local table_sort, table_remove, math_min = table.sort, table.remove, math.min
 local math_floor, math_huge = math.floor, math.huge
 local string_format, time_global = string.format, time_global
@@ -19,6 +19,205 @@ local ARTEFACTS = {
 local function _tip(msg)
     local actor = db.actor
     if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
+end
+
+-- Phase-1 de-risk harness for n482 CONTINUOUS_NPC_CHASE (the homing primitive only; the
+-- Phase-2 leash is not built yet). Commands:
+--   chase(chaser_id, target_id) -- explicit: any squad pursues any squad. The workhorse.
+--   chase_near()                -- nearest squad pursues 2nd-nearest (ONLINE homing smoke).
+--   chase_far()                 -- farthest (likely OFFLINE) squad pursues the nearest, so the
+--                                  get_current_task offline-movement hook is exercised; poll
+--                                  chase_status to watch the off-screen chaser close (gvid/dist).
+--   chase_status(chaser_id)     -- online?/level/gvid/assigned/current_action + target/dist.
+--   chase_stop(chaser_id)       -- release.
+-- Test surface: online homing (chase_near), offline homing (chase_far), online<->offline
+-- transition (chase_near then walk away), target death (chase a hostile, let it die -> release),
+-- save/load (chase then save+reload -> chase_status shows assigned still = target).
+
+-- Pick the nearest (want_far=false) or farthest (want_far=true) squad to apos on level_id.
+local function _pick_squad(apos, level_id, exclude_id, want_far)
+    local best, best_dist = nil, nil
+    for squad in xsquad.iter_squads() do
+        if squad.id == exclude_id then goto continue end
+        if xlevel.get_level_id(squad) ~= level_id then goto continue end
+        local sep_dist = apos:distance_to(squad.position)
+        if not best_dist or (want_far and sep_dist > best_dist) or (not want_far and sep_dist < best_dist) then
+            best, best_dist = squad, sep_dist
+        end
+        ::continue::
+    end
+    return best
+end
+
+--- @export console
+function chase(chaser_id, target_id)
+    local chaser = chaser_id and xobject.se(chaser_id)
+    local target = target_id and xobject.se(target_id)
+    if not (chaser and target) then return _tip("need valid chaser/target ids") end
+    local res = ap_core_broker.script_squad_target(chaser, target_id)
+    ap_core_debug.debug("[TEST] chase chaser=%d target=%d code=%s", chaser_id, target_id, tostring(res.code))
+    _tip(string_format("chase %d -> %d : %s", chaser_id, target_id, tostring(res.code)))
+end
+
+--- @export console
+function chase_near()
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local level_id = xlevel.get_level_id(alife():actor())
+    local apos = actor:position()
+    local chaser = _pick_squad(apos, level_id, nil, false)
+    if not chaser then return _tip("No squad on level") end
+    local target = _pick_squad(apos, level_id, chaser.id, false)
+    if not target then return _tip("Need 2 squads on level") end
+    chase(chaser.id, target.id)
+end
+
+--- @export console
+function chase_far()
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local level_id = xlevel.get_level_id(alife():actor())
+    local apos = actor:position()
+    local chaser = _pick_squad(apos, level_id, nil, true)
+    if not chaser then return _tip("No squad on level") end
+    local target = _pick_squad(apos, level_id, chaser.id, false)
+    if not target then return _tip("Need 2 squads on level") end
+    chase(chaser.id, target.id)
+    _tip(string_format("OFFLINE chase: far %d -> near %d (poll chase_status)", chaser.id, target.id))
+end
+
+--- @export console
+function chase_status(chaser_id)
+    local chaser = chaser_id and xobject.se(chaser_id)
+    if not chaser then return _tip("No squad " .. tostring(chaser_id)) end
+    local entry = ap_core_broker.get_scripted_squads()[chaser_id]
+    local target_id = entry and entry.target_squad_id
+    local target = target_id and xobject.se(target_id)
+    local sep_dist = target and chaser.position:distance_to(target.position) or -1
+    ap_core_debug.debug("[TEST] chase_status chaser=%d online=%s lvl=%s gvid=%s assigned=%s act=%s | target=%s online=%s dist=%.1f",
+        chaser_id, tostring(chaser.online), tostring(xlevel.get_level_id(chaser)), tostring(chaser.m_game_vertex_id),
+        tostring(chaser.assigned_target_id), tostring(chaser.current_action),
+        tostring(target_id), target and tostring(target.online) or "nil", sep_dist)
+    _tip(string_format("c=%d on=%s assigned=%s act=%s dist=%.1f",
+        chaser_id, tostring(chaser.online), tostring(chaser.assigned_target_id), tostring(chaser.current_action), sep_dist))
+end
+
+--- @export console
+function chase_stop(chaser_id)
+    local ok = chaser_id and ap_core_broker.release_squad(chaser_id)
+    _tip("chase_stop " .. tostring(chaser_id) .. " -> " .. tostring(ok))
+end
+
+-- Automatic homing probe. chase_probe() / chase_probe_far() start a chase, then sample it on a
+-- timer (no manual polling) and print a verdict in a news tip + [TEST] probe lines in alifeplus.log:
+--   PASS         = lock held + distance closed (homing works).
+--   LOCK LOST    = chaser dropped the (still-alive) target mid-chase (arrival machine misbehaves).
+--   INCONCLUSIVE = no closing -- target stationary/blocked, re-run elsewhere.
+-- chase_probe = nearest vs 2nd-nearest (online, ~30s). chase_probe_far = farthest (offline) chaser
+-- vs nearest (exercises the get_current_task offline-movement hook, ~90s).
+local _probe = nil
+
+-- One sample: advance tick, log dist/state, track start/last dist and first lock-loss.
+local function _probe_sample(probe)
+    local chaser = xobject.se(probe.chaser_id)
+    local target = xobject.se(probe.target_id)
+    probe.ticks = probe.ticks + 1
+    local sep_dist = (chaser and target) and chaser.position:distance_to(target.position) or -1
+    local assigned = chaser and chaser.assigned_target_id
+    ap_core_debug.debug("[TEST] probe t=%d dist=%.1f act=%s assigned=%s on=%s target_alive=%s",
+        probe.ticks, sep_dist, tostring(chaser and chaser.current_action),
+        tostring(assigned), tostring(chaser and chaser.online), tostring(target ~= nil))
+    if sep_dist >= 0 then
+        if probe.start_dist < 0 then probe.start_dist = sep_dist end
+        probe.last_dist = sep_dist
+    end
+    if assigned ~= probe.target_id and not probe.lost_at then
+        probe.lost_at = probe.ticks
+        if target then
+            probe.lost_members = target:npc_count()
+        else
+            probe.lost_members = 0
+        end
+    end
+end
+
+local function _probe_verdict(probe)
+    if probe.lost_at and (probe.lost_members or 0) <= 0 then
+        return string_format("TARGET DIED at t=%d (correct release)", probe.lost_at)
+    end
+    if probe.lost_at then
+        return string_format("LOCK LOST at t=%d (BUG: target had %d members)", probe.lost_at, probe.lost_members)
+    end
+    local closed_dist = probe.start_dist - probe.last_dist
+    if probe.start_dist >= 0 and closed_dist > 5 then
+        return string_format("PASS closed %.0f -> %.0f", probe.start_dist, probe.last_dist)
+    end
+    return string_format("INCONCLUSIVE dist %.0f -> %.0f (target stationary?)", probe.start_dist, probe.last_dist)
+end
+
+local function _probe_tick()
+    local probe = _probe
+    if not probe then return true end
+    -- Abort cleanly if the chase was released externally (e.g. chase_stop).
+    if not ap_core_broker.get_scripted_squads()[probe.chaser_id] then
+        ap_core_debug.debug("[TEST] probe aborted (chase released) chaser=%d", probe.chaser_id)
+        _probe = nil
+        return true
+    end
+    _probe_sample(probe)
+    if probe.ticks < probe.max then
+        ResetTimeEvent("ap_ext_test", "chase_probe", probe.interval)
+        return false
+    end
+    local verdict = _probe_verdict(probe)
+    ap_core_debug.debug("[TEST] probe verdict chaser=%d: %s", probe.chaser_id, verdict)
+    _tip("PROBE " .. verdict)
+    ap_core_broker.release_squad(probe.chaser_id)
+    _probe = nil
+    return true
+end
+
+local function _probe_start(chaser, target, max_ticks, interval_sec)
+    if _probe then return _tip("probe already running; wait or chase_stop") end
+    local res = ap_core_broker.script_squad_target(chaser, target.id)
+    if res.code ~= ap_core_const.RESULT.SUCCESS then
+        return _tip("probe dispatch failed: " .. tostring(res.reason))
+    end
+    _probe = {
+        chaser_id = chaser.id, target_id = target.id,
+        ticks = 0, max = max_ticks, interval = interval_sec,
+        start_dist = -1, last_dist = -1, lost_at = nil,
+    }
+    ap_core_debug.debug("[TEST] probe start chaser=%d target=%d max=%d interval=%d",
+        chaser.id, target.id, max_ticks, interval_sec)
+    _tip(string_format("PROBE start %d -> %d (~%ds)", chaser.id, target.id, max_ticks * interval_sec))
+    CreateTimeEvent("ap_ext_test", "chase_probe", interval_sec, _probe_tick)
+end
+
+--- @export console
+function chase_probe()
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local level_id = xlevel.get_level_id(alife():actor())
+    local apos = actor:position()
+    local chaser = _pick_squad(apos, level_id, nil, false)
+    if not chaser then return _tip("No squad on level") end
+    local target = _pick_squad(apos, level_id, chaser.id, false)
+    if not target then return _tip("Need 2 squads on level") end
+    _probe_start(chaser, target, 10, 3)
+end
+
+--- @export console
+function chase_probe_far()
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local level_id = xlevel.get_level_id(alife():actor())
+    local apos = actor:position()
+    local chaser = _pick_squad(apos, level_id, nil, true)
+    if not chaser then return _tip("No squad on level") end
+    local target = _pick_squad(apos, level_id, chaser.id, false)
+    if not target then return _tip("Need 2 squads on level") end
+    _probe_start(chaser, target, 18, 5)
 end
 
 local function _find_nearest_alpha()
