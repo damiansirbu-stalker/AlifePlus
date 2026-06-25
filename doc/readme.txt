@@ -255,15 +255,15 @@ Needs
 
 Loot Ownership
 
-  Every kill belongs to whoever made it. Two independent halves, each its own toggle, share one reservation radius. Both live under Economy > Loot.
+  A kill is reserved for whoever made it, against every other looter, while the owner is present and the claim is fresh. An NPC kill belongs to the killer's squad: any living squadmate within range holds it, so dropping one stalker does not free the body while the rest of his squad stands over it. This is a three-way reservation, the same rule running in all three directions, each its own toggle, radius, and duration, all under Economy > Loot.
 
-  Reserve your kills from NPCs. A body you killed is skipped by NPC looters while you stand within the reservation radius. The scavenger AI treats your kill as off-limits and walks past it. Step away and the reservation lapses, so a passing stalker may strip it like any other corpse. This is the half that stops an NPC from picking your fresh kill clean before you reach it.
+  You against NPCs. A body you killed is skipped by NPC looters while you stand within the reserve radius. The scavenger AI treats your kill as off-limits and walks past it. Step away and the reservation lapses, so a passing stalker may strip it like any other corpse.
 
-  Block looting an NPC's kill. A body a living stalker killed will not open while its killer is alive and within the reservation radius. Aim at it, press use, and nothing happens but a PDA tip naming the owner. When the killer dies, or you walk past the radius, the body opens and loots like any other. Companions, zombified killers, and story corpses never hold a claim against you.
+  NPCs against you. A body a stalker squad killed will not open while a living member of that squad is within range of it. Aim at it, press use, and nothing happens but a PDA tip naming the owner. When the squad is dead or beyond the radius, or the claim runs out its hour, the body opens and loots like any other. Companions, zombified killers, and story corpses never hold a claim against you.
 
-  How the block works. The claim is enforced at the moment the corpse would open, not at the item-take. The use key that opens a claimed body is vetoed before the loot window is built, so the body never opens. This is why an auto-loot mod driven through the normal loot window is stopped with it: there is no open window to act on. A mod that transfers items straight off a corpse without opening it (proximity or remote auto-loot) is the one path that slips through, since no window and no use press are involved.
+  NPCs against each other. A passing stalker will not strip a kill another squad made while a member of that squad is near the body. The killing squad collects its own. Bystanders walk past. The loot a squad earns stays with that squad until they leave or fall.
 
-  Reservation radius. One distance governs both halves, 30 m by default, tunable 10 to 150 under Economy > Loot. Beyond it, both your reservation and an NPC's claim lapse. The master switch off is plain vanilla looting in both directions.
+  Radius and duration. Each side carries its own reserve distance and its own claim lifetime, all 150 m and 1 game hour by default, tunable under Economy > Loot. Beyond the radius, or once the lifetime elapses, the claim lapses. Turn all three off for plain vanilla looting in every direction.
 
 Trade
 
@@ -402,7 +402,7 @@ Compatibility & Safety:
 Mod compatibility:
 
   Superseded:
-  - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers both directions (your kills and theirs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
+  - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
 
   Conflicts (critical):
   - Unauthorized "synergy" / "bridge" patches claiming to connect AlifePlus to another mod: instability, save corruption.

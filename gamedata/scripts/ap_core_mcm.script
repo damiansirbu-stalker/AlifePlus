@@ -310,10 +310,15 @@ defaults = {
     mutator_area_infest_decay_hours = 48,
 
     -- Economy: loot ownership + trade resolution
-    loot_enabled = true,
-    loot_reserve_own = true,
-    loot_block_npc = true,
-    loot_reservation_radius = 30,
+    loot_reserve_own_enabled = true,
+    loot_reserve_own_radius = 150,
+    loot_reserve_own_ttl = 1,
+    loot_block_npc_enabled = true,
+    loot_block_npc_radius = 150,
+    loot_block_npc_ttl = 1,
+    loot_block_npc_vs_npc_enabled = true,
+    loot_block_npc_vs_npc_radius = 150,
+    loot_block_npc_vs_npc_ttl = 1,
     trade_profit_max = 5000,
 
     -- Development
@@ -342,8 +347,10 @@ local stateless_overrides = {
     -- Stash item flows (whole consequence; no arrive-action split exists for stash)
     consequence_stash_loot_enabled = false,
     consequence_stash_fill_enabled = false,
-    -- Corpse loot ownership (actor-kill reservation + living-NPC-claim veto)
-    loot_enabled = false,
+    -- Corpse loot ownership (three flows: reserve own kills, block looting NPC kills, block NPC-vs-NPC)
+    loot_reserve_own_enabled = false,
+    loot_block_npc_enabled = false,
+    loot_block_npc_vs_npc_enabled = false,
 }
 
 local _key_to_tab = {
@@ -364,10 +371,15 @@ local _key_to_tab = {
     news_interval_max_sec = "news",
     news_scope = "news",
     news_max_age_game_hours = "news",
-    loot_enabled = "economy/loot",
-    loot_reserve_own = "economy/loot",
-    loot_block_npc = "economy/loot",
-    loot_reservation_radius = "economy/loot",
+    loot_reserve_own_enabled = "economy/loot",
+    loot_reserve_own_radius = "economy/loot",
+    loot_reserve_own_ttl = "economy/loot",
+    loot_block_npc_enabled = "economy/loot",
+    loot_block_npc_radius = "economy/loot",
+    loot_block_npc_ttl = "economy/loot",
+    loot_block_npc_vs_npc_enabled = "economy/loot",
+    loot_block_npc_vs_npc_radius = "economy/loot",
+    loot_block_npc_vs_npc_ttl = "economy/loot",
     trade_profit_max = "economy/trade",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
@@ -740,10 +752,15 @@ function on_mcm_load()
                         gr = {
                             _slide("ui_mcm_ap_economy_loot_title"),
                             _desc("ui_mcm_ap_economy_loot_desc"),
-                            _check("loot_enabled"),
-                            _check("loot_reserve_own"),
-                            _check("loot_block_npc"),
-                            _track("loot_reservation_radius", 10, 150, 10),
+                            _check("loot_reserve_own_enabled"),
+                            _track("loot_reserve_own_radius", 10, 150, 10),
+                            _track("loot_reserve_own_ttl", 1, 6, 1),
+                            _check("loot_block_npc_enabled"),
+                            _track("loot_block_npc_radius", 10, 150, 10),
+                            _track("loot_block_npc_ttl", 1, 6, 1),
+                            _check("loot_block_npc_vs_npc_enabled"),
+                            _track("loot_block_npc_vs_npc_radius", 10, 150, 10),
+                            _track("loot_block_npc_vs_npc_ttl", 1, 6, 1),
                         },
                     },
                     {
