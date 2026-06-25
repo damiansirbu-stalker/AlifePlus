@@ -11,8 +11,6 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
-local TRACE = ap_core_const.TRACE
 
 local LOG_INIT = ap_core_debug.bracket(CONSEQUENCE.SQUADKILL_REVENGE)
 
@@ -25,16 +23,7 @@ local _personality_revenge = { PERSONALITY.AGGRESSION, PERSONALITY.RELATION }
 
 local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
-local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
-    CONSEQUENCE.SQUADKILL_REVENGE, "consequence_squadkill_revenge_rush", PRE_RELEASE_GULAG.SQUADKILL_REVENGE)
-
-local _on_arrive_revenge = ap_ext_common.make_on_arrive({
-    consequence_key = CONSEQUENCE.SQUADKILL_REVENGE,
-    rush_cfg_key = "consequence_squadkill_revenge_rush",
-    gulag_value = PRE_RELEASE_GULAG.SQUADKILL_REVENGE,
-    max_chases_cfg_key = "consequence_squadkill_revenge_max_chases",
-    max_distance = ap_core_const.RANGE_RADIO,
-})
+local _move_squad_chasers = ap_ext_common.move_squad_chasers
 
 local function _handler_revenge(event_data)
     local trace = event_data._trace
@@ -82,12 +71,8 @@ local function _handler_revenge(event_data)
             if is_player_kill then
                 _move_actor_chasers(avengers, moved, { actor_relation_check = true })
             else
-                dst_smart = ap_core_util.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
-                })
-                if not dst_smart then return { code = TRACE.NO_SMART } end
-                dst_id = dst_smart.id
-                _move_smart_chasers(avengers, dst_smart, killer_squad_id, moved)
+                -- Persistent chase (relentless vendetta; follows the killer across levels).
+                _move_squad_chasers(avengers, killer_squad_id, moved)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #avengers - #moved })
         end)
@@ -112,7 +97,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.SQUADKILL_REVENGE, {
         event = CAUSE.SQUADKILL,
         condition = function() return cfg.consequence_squadkill_revenge_enabled end,
-        on_arrive = _on_arrive_revenge,
     }, _handler_revenge)
     ap_core_debug.info(LOG_INIT .. " Initialized: 1 consequence (revenge)")
 end

@@ -11,9 +11,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 local RANGE_SCENT = ap_core_const.RANGE_SCENT
-local TRACE = ap_core_const.TRACE
 local LOG = ap_core_debug.bracket(CONSEQUENCE.ALPHAKILL_TARGETED)
 
 local cfg = ap_core_mcm.cfg
@@ -22,16 +20,7 @@ local _personality = { PERSONALITY.AGGRESSION }
 
 local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
-local _move_smart_chasers = ap_ext_common.make_move_smart_chasers(
-    CONSEQUENCE.ALPHAKILL_TARGETED, "consequence_alphakill_targeted_rush", PRE_RELEASE_GULAG.ALPHAKILL_TARGETED)
-
-local _on_arrive = ap_ext_common.make_on_arrive({
-    consequence_key = CONSEQUENCE.ALPHAKILL_TARGETED,
-    rush_cfg_key = "consequence_alphakill_targeted_rush",
-    gulag_value = PRE_RELEASE_GULAG.ALPHAKILL_TARGETED,
-    max_chases_cfg_key = "consequence_alphakill_targeted_max_chases",
-    max_distance = ap_core_const.RANGE_SCENT,
-})
+local _move_squad_chasers = ap_ext_common.move_squad_chasers
 
 local function _handler(event_data)
     local trace = event_data._trace
@@ -76,12 +65,8 @@ local function _handler(event_data)
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else
-                dst_smart = ap_core_util.find_smart(killer_squad.position, {
-                    level_id = level_id, max_distance = RANGE_SCENT,
-                })
-                if not dst_smart then return { code = TRACE.NO_SMART } end
-                dst_id = dst_smart.id
-                _move_smart_chasers(hunters, dst_smart, killer_squad.id, moved)
+                -- Level-scoped chase (mutant hunters give up when the killer leaves the map).
+                _move_squad_chasers(hunters, killer_squad.id, moved, { scope = "level" })
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #hunters - #moved })
         end)
@@ -106,7 +91,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.ALPHAKILL_TARGETED, {
         event = CAUSE.ALPHAKILL,
         condition = function() return cfg.consequence_alphakill_targeted_enabled end,
-        on_arrive = _on_arrive,
     }, _handler)
     ap_core_debug.info(LOG .. " Initialized")
 end

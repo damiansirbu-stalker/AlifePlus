@@ -13,8 +13,6 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
-local TRACE = ap_core_const.TRACE
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE.HARVEST)
 
@@ -31,16 +29,7 @@ local _personality_haunt = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 
 local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
-local _move_smart_rob = ap_ext_common.make_move_smart_chasers(
-    CONSEQUENCE.HARVEST_ROB, "consequence_harvest_rob_rush", PRE_RELEASE_GULAG.HARVEST_ROB)
-
-local _on_arrive_rob = ap_ext_common.make_on_arrive({
-    consequence_key = CONSEQUENCE.HARVEST_ROB,
-    rush_cfg_key = "consequence_harvest_rob_rush",
-    gulag_value = PRE_RELEASE_GULAG.HARVEST_ROB,
-    max_chases_cfg_key = "consequence_harvest_rob_max_chases",
-    max_distance = ap_core_const.RANGE_RADIO,
-})
+local _move_squad_chasers = ap_ext_common.move_squad_chasers
 
 local function _handler_rob(event_data)
     local trace = event_data._trace
@@ -84,12 +73,8 @@ local function _handler_rob(event_data)
             if taker_is_player then
                 _move_actor_chasers(robbers, moved, { actor_relation_check = true })
             else
-                dst_smart = ap_core_util.find_smart(target_squad.position, {
-                    level_id = level_id, max_distance = ap_core_const.RANGE_RADIO,
-                })
-                if not dst_smart then return { code = TRACE.NO_SMART } end
-                dst_id = dst_smart.id
-                _move_smart_rob(robbers, dst_smart, taker_squad_id, moved)
+                -- Level-scoped chase (robbers give up when the taker leaves the map).
+                _move_squad_chasers(robbers, taker_squad_id, moved, { scope = "level" })
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #robbers - #moved })
         end)
@@ -164,7 +149,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.HARVEST_ROB, {
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_rob_enabled end,
-        on_arrive = _on_arrive_rob,
     }, _handler_rob)
     ap_core_consumer.register(CONSEQUENCE.HARVEST_HAUNT, {
         event = CAUSE.HARVEST,
