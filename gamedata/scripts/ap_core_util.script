@@ -7,7 +7,6 @@ local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
-local PRINCIPLED_FACTIONS = ap_core_const.PRINCIPLED_FACTIONS
 
 --- Subscribe to an event with logging
 function event_subscribe(event_name, callback, subscriber_name)
@@ -370,11 +369,6 @@ local function _in_safe_haven(entry)
     return smart ~= nil and xsmart.is_base(smart)
 end
 
--- Soft-pause exemption: principled factions (Dolg/army/Monolith/ISG) do not disengage.
-local function _is_principled(faction)
-    return faction ~= nil and PRINCIPLED_FACTIONS[faction] == true
-end
-
 --- Decide whether to keep a chase scripted. RELEASE checks first (cheap before expensive),
 --- then soft PAUSE checks (skipped for principled factions). Pure; safe to call from the scan
 --- and from dispatch (on a proposed entry stub).
@@ -387,10 +381,8 @@ function keep_scripted(squad, entry)
     if _relation_dropped(squad, entry) then return VERDICT.RELEASE, REASON.NO_LONGER_ENEMY end
     if _story_target(entry) then return VERDICT.RELEASE, REASON.STORY_PROTECTED end
     if _different_map(squad, entry) then return VERDICT.RELEASE, REASON.LEFT_MAP end
-    if not _is_principled(squad.player_id) then
-        if _in_safe_haven(entry) then return VERDICT.PAUSE, REASON.AT_BASE end
-        if xlevel.surge_active() then return VERDICT.PAUSE, REASON.SURGE end
-    end
+    if _in_safe_haven(entry) then return VERDICT.PAUSE, REASON.AT_BASE end
+    if xlevel.surge_active() then return VERDICT.PAUSE, REASON.SURGE end
     return VERDICT.KEEP, nil
 end
 
