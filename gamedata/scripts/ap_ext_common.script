@@ -1,7 +1,7 @@
 --- ap_ext_common: Shared ext-domain dispatch patterns. Today: chase pattern (recursive on_arrive).
 
 local ipairs, pairs = ipairs, pairs
-local xobject, xsmart, xlevel = xobject, xsmart, xlevel
+local xobject, xsmart, xlevel, xsquad = xobject, xsmart, xlevel, xsquad
 local ap_core_debug, ap_core_broker, ap_core_util = ap_core_debug, ap_core_broker, ap_core_util
 
 local RESULT = ap_core_const.RESULT
@@ -63,6 +63,11 @@ function make_on_arrive(opts)
         end
         local target_squad = xobject.se(target_squad_id)
         if not target_squad then return end
+        -- Guard against a recycled/dead target id. The server id may resolve to a different object
+        -- (reused slot) or to an emptied squad after the target was wiped between arrival ticks.
+        -- The initial find_squads path validates this (xsquad._squad_base_valid); the recursive
+        -- re-target did not -- end the chase instead of pursuing a stranger or a corpse-less husk.
+        if not xsquad.is_squad(target_squad) or target_squad:npc_count() == 0 then return end
         local level_id = xlevel.get_level_id(target_squad)
         if not level_id then return end
         if xlevel.get_level_id(squad) ~= level_id then return end
