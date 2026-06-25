@@ -8,7 +8,7 @@ local RESULT = ap_core_const.RESULT
 --- player). Used when the chase target is the player.
 --- @param squads table chasers
 --- @param moved table accumulator of successfully-dispatched chasers
---- @param opts table|nil Forwarded to script_actor_target (e.g. { actor_relation_check = true })
+--- @param opts table|nil Forwarded to script_actor_target (e.g. { check_relation = true })
 function move_actor_chasers(squads, moved, opts)
     local chase_opts = {}
     if opts then for k, v in pairs(opts) do chase_opts[k] = v end end
@@ -21,14 +21,14 @@ end
 
 --- Dispatch chasers to pursue a target squad directly via continuous coordinate homing
 --- (script_squad_target + the ap_core_chase hooks). Replaces the smart-hop relay for non-player
---- chase targets. Committed pursuit (interruptable = false). opts.relation_check = true marks a
+--- chase targets. Committed pursuit (interruptable = false). opts.check_relation = true marks a
 --- faction chase that disengages when relation flips friendly (mutant chases leave it unset).
 --- @param squads table chasers
 --- @param target_squad_id number
 --- @param moved table accumulator of successfully-dispatched chasers
---- @param opts table|nil { relation_check }
+--- @param opts table|nil { check_relation }
 function move_squad_chasers(squads, target_squad_id, moved, opts)
-    local chase_opts = { interruptable = false, relation_check = opts and opts.relation_check }
+    local chase_opts = { interruptable = false, check_relation = opts and opts.check_relation }
     for _, chaser in ipairs(squads) do
         local res = ap_core_broker.script_squad_target(chaser, target_squad_id, chase_opts)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end

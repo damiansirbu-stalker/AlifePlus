@@ -20,15 +20,15 @@ local ap_core_broker, ap_core_debug = ap_core_broker, ap_core_debug
 
 -- Live registry lookup each call (the broker reassigns _ap_scripted_squads on load, so a
 -- cached table ref would go stale; get_scripted_squads returns the current table).
-local function _chase_target_id(squad)
+local function _get_chase_target_id(squad)
     local entry = ap_core_broker.get_scripted_squads()[squad.id]
     if not entry or entry.paused then return nil end
     return entry.target_squad_id
 end
 
 function on_game_start()
-    local cls = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
-    if not cls then
+    local squad_class = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
+    if not squad_class then
         ap_core_debug.err("[SQUAD] chase: sim_squad_scripted class missing; hooks not installed")
         return
     end
@@ -38,21 +38,21 @@ function on_game_start()
     local xobject = xobject
     local CALifeSmartTerrainTask = CALifeSmartTerrainTask
 
-    local orig_get_current_task = cls.get_current_task
-    local orig_get_script_target = cls.get_script_target
+    local orig_get_current_task = squad_class.get_current_task
+    local orig_get_script_target = squad_class.get_script_target
 
-    cls.get_current_task = function(self)
-        local tid = _chase_target_id(self)
-        local target_se = tid and xobject.se(tid)
+    squad_class.get_current_task = function(self)
+        local target_id = _get_chase_target_id(self)
+        local target_se = target_id and xobject.se(target_id)
         if target_se then
             return CALifeSmartTerrainTask(target_se.m_game_vertex_id, target_se.m_level_vertex_id)
         end
         return orig_get_current_task(self)
     end
 
-    cls.get_script_target = function(self)
-        local tid = _chase_target_id(self)
-        if tid then return tid end
+    squad_class.get_script_target = function(self)
+        local target_id = _get_chase_target_id(self)
+        if target_id then return target_id end
         return orig_get_script_target(self)
     end
 
