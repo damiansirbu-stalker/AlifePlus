@@ -329,6 +329,31 @@ REASON = {
     LOW_TACTICS       = "low_tactics",
     STALKER_EXCLUDED  = "stalker_excluded",
     ALL_FILTERED      = "all_filtered",
+    -- chase leash (keep_scripted release/pause reasons; AT_BASE reused for safe-haven pause)
+    TARGET_LOST       = "target_lost",
+    TTL_EXPIRED       = "ttl_expired",
+    NO_LONGER_ENEMY   = "no_longer_enemy",
+    STORY_PROTECTED   = "story_protected",
+    SCOPE_EXCEEDED    = "scope_exceeded",
+    SURGE             = "surge",
+    WEATHER           = "weather",
+}
+
+--- keep_scripted verdicts: KEEP = continue, PAUSE = hold (resume when the condition clears),
+--- RELEASE = drop the script and return the squad to autonomous sim.
+VERDICT = {
+    KEEP    = "keep",
+    PAUSE   = "pause",
+    RELEASE = "release",
+}
+
+--- Factions that do not disengage; exempt from the soft chase pauses (base/surge/weather).
+--- Mirrors ap_ext_const.alignment_principled (kept core-side so ap_core_util needs no ext import).
+PRINCIPLED_FACTIONS = {
+    dolg     = true,
+    army     = true,
+    monolith = true,
+    isg      = true,
 }
 
 --- Consequence identifiers (trace operations + rate-limit keys)

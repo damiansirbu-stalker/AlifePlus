@@ -1,10 +1,15 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
-local xbus, xsquad, xsmart, xconst = xbus, xsquad, xsmart, xconst
+local xbus, xsquad, xsmart, xconst, xlevel, xobject, xtime = xbus, xsquad, xsmart, xconst, xlevel, xobject, xtime
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
+local VERDICT = ap_core_const.VERDICT
+local REASON = ap_core_const.REASON
+local SCRIPTED_SQUAD_TTL = ap_core_const.SCRIPTED_SQUAD_TTL
+local PRINCIPLED_FACTIONS = ap_core_const.PRINCIPLED_FACTIONS
+local WEATHER_RAIN_PAUSE = 0.5
 
 --- Subscribe to an event with logging
 function event_subscribe(event_name, callback, subscriber_name)
@@ -288,6 +293,115 @@ function has_service_npc_at_smart(smart)
         if _has_role_at_smart(smart, SERVICE_ROLES[i]) then return true end
     end
     return false
+end
+
+-- ============================================================================
+-- CHASE LEASH: keep_scripted decides KEEP / PAUSE / RELEASE for a chase entry
+-- (actor- or squad-target), composed of small (bool) predicates -- the same shape
+-- as the broker offmap despawn chain. Pure: reads xlibs atoms + the entry, no side
+-- effects, so the broker scan (acts on the verdict) and dispatch (refuses a non-KEEP
+-- start) both call it. Every predicate here is offline-safe; online-only conditions
+-- (outmatched, lost-contact) are deferred.
+-- ============================================================================
+
+local function _is_actor_chase(entry)
+    -- Among chase entries (the only ones keep_scripted runs on), the actor chase is the one
+    -- without a squad target. Avoids reading scripted_target here -- the broker owns that field.
+    return entry.target_squad_id == nil
+end
+
+local function _chase_target_se(entry)
+    return entry.target_squad_id and xobject.se(entry.target_squad_id)
+end
+
+-- RELEASE: target squad gone or wiped (N/A for the actor -- always present).
+local function _target_lost(entry)
+    if _is_actor_chase(entry) then return false end
+    local target = _chase_target_se(entry)
+    if not target then return true end
+    return target:npc_count() <= 0
+end
+
+-- RELEASE: time-to-live elapsed.
+local function _ttl_expired(entry, now)
+    local ttl = entry.ttl or SCRIPTED_SQUAD_TTL
+    return (now - (entry.tracked_at or 0)) > ttl
+end
+
+-- RELEASE: chaser faction is no longer an enemy of the target faction.
+local function _relation_dropped(squad, entry)
+    local chaser_faction = squad.player_id
+    if not chaser_faction then return false end
+    local target_faction
+    if _is_actor_chase(entry) then
+        target_faction = get_actor_true_community()
+    else
+        local target = _chase_target_se(entry)
+        target_faction = target and target.player_id
+    end
+    if not target_faction then return false end
+    return not game_relations.is_factions_enemies(chaser_faction, target_faction)
+end
+
+-- RELEASE: target is a story-protected NPC/squad (never chase quest-critical; N/A for actor).
+local function _story_target(entry)
+    if _is_actor_chase(entry) then return false end
+    return xobject.is_story(_chase_target_se(entry))
+end
+
+-- RELEASE: target left the chase scope. Default "level" releases when the target's level
+-- differs from the chase home level; "persistent" never level-releases. entry.home_level_id
+-- is stamped at dispatch -- nil leaves this inert.
+local function _scope_exceeded(entry)
+    if (entry.scope or "level") ~= "level" then return false end
+    local home = entry.home_level_id
+    if not home then return false end
+    local target_level
+    if _is_actor_chase(entry) then
+        target_level = xlevel.get_actor_level_id()
+    else
+        target_level = xlevel.get_level_id(_chase_target_se(entry))
+    end
+    return target_level ~= nil and target_level ~= home
+end
+
+-- PAUSE: target reached a base (safe haven). Actor -> actor's nearest smart; squad -> its smart.
+local function _in_safe_haven(entry)
+    local smart
+    if _is_actor_chase(entry) then
+        smart = xsmart.get_actor_smart()
+    else
+        local target = _chase_target_se(entry)
+        smart = target and target.smart_id and xobject.se(target.smart_id)
+    end
+    return smart ~= nil and xsmart.is_base(smart)
+end
+
+-- Soft-pause exemption: principled factions (Dolg/army/Monolith/ISG) do not disengage.
+local function _is_principled(faction)
+    return faction ~= nil and PRINCIPLED_FACTIONS[faction] == true
+end
+
+--- Decide whether to keep a chase scripted. RELEASE checks first (cheap before expensive),
+--- then soft PAUSE checks (skipped for principled factions). Pure; safe to call from the scan
+--- and from dispatch (on a proposed entry stub).
+--- @param squad se_squad The chaser
+--- @param entry table The _ap_scripted_squads entry (actor- or squad-target chase)
+--- @return string verdict VERDICT.KEEP|PAUSE|RELEASE
+--- @return string|nil reason REASON.X on PAUSE/RELEASE
+function keep_scripted(squad, entry)
+    local now = xtime.game_sec()
+    if _target_lost(entry) then return VERDICT.RELEASE, REASON.TARGET_LOST end
+    if _ttl_expired(entry, now) then return VERDICT.RELEASE, REASON.TTL_EXPIRED end
+    if _relation_dropped(squad, entry) then return VERDICT.RELEASE, REASON.NO_LONGER_ENEMY end
+    if _story_target(entry) then return VERDICT.RELEASE, REASON.STORY_PROTECTED end
+    if _scope_exceeded(entry) then return VERDICT.RELEASE, REASON.SCOPE_EXCEEDED end
+    if not _is_principled(squad.player_id) then
+        if _in_safe_haven(entry) then return VERDICT.PAUSE, REASON.AT_BASE end
+        if xlevel.surge_active() then return VERDICT.PAUSE, REASON.SURGE end
+        if xlevel.rain_factor() >= WEATHER_RAIN_PAUSE then return VERDICT.PAUSE, REASON.WEATHER end
+    end
+    return VERDICT.KEEP, nil
 end
 
 function on_game_start()
