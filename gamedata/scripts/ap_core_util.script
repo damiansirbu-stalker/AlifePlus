@@ -353,7 +353,9 @@ end
 -- differs from the chase home level; "persistent" never level-releases. entry.home_level_id
 -- is stamped at dispatch -- nil leaves this inert.
 local function _scope_exceeded(entry)
-    if (entry.scope or "level") ~= "level" then return false end
+    -- Default "persistent" (follow across levels, vanilla behaviour); consequences opt into
+    -- "level" to release on a map change. Only "level" scope level-releases.
+    if (entry.scope or "persistent") ~= "level" then return false end
     local home = entry.home_level_id
     if not home then return false end
     local target_level

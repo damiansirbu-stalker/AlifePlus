@@ -22,7 +22,8 @@ local ap_core_broker, ap_core_debug = ap_core_broker, ap_core_debug
 -- cached table ref would go stale; get_scripted_squads returns the current table).
 local function _chase_target_id(squad)
     local entry = ap_core_broker.get_scripted_squads()[squad.id]
-    return entry and entry.target_squad_id
+    if not entry or entry.paused then return nil end
+    return entry.target_squad_id
 end
 
 function on_game_start()
