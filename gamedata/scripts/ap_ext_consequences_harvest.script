@@ -71,10 +71,10 @@ local function _handler_rob(event_data)
         local dst_smart = nil
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if taker_is_player then
-                _move_actor_chasers(robbers, moved, { actor_relation_check = true })
+                _move_actor_chasers(robbers, moved, { relation_check = true })
             else
-                -- Level-scoped chase (robbers give up when the taker leaves the map).
-                _move_squad_chasers(robbers, taker_squad_id, moved, { scope = "level" })
+                -- Faction chase: disengages if relation flips friendly; stays within the map.
+                _move_squad_chasers(robbers, taker_squad_id, moved, { relation_check = true })
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #robbers - #moved })
         end)

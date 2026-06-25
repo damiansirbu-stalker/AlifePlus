@@ -1,15 +1,13 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
-local xbus, xsquad, xsmart, xconst, xlevel, xobject, xtime = xbus, xsquad, xsmart, xconst, xlevel, xobject, xtime
+local xbus, xsquad, xsmart, xconst, xlevel, xobject = xbus, xsquad, xsmart, xconst, xlevel, xobject
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local TRACE = ap_core_const.TRACE
 local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
-local SCRIPTED_SQUAD_TTL = ap_core_const.SCRIPTED_SQUAD_TTL
 local PRINCIPLED_FACTIONS = ap_core_const.PRINCIPLED_FACTIONS
-local WEATHER_RAIN_PAUSE = 0.5
 
 --- Subscribe to an event with logging
 function event_subscribe(event_name, callback, subscriber_name)
@@ -322,14 +320,11 @@ local function _target_lost(entry)
     return target:npc_count() <= 0
 end
 
--- RELEASE: time-to-live elapsed.
-local function _ttl_expired(entry, now)
-    local ttl = entry.ttl or SCRIPTED_SQUAD_TTL
-    return (now - (entry.tracked_at or 0)) > ttl
-end
-
--- RELEASE: chaser faction is no longer an enemy of the target faction.
+-- RELEASE: chaser faction is no longer an enemy of the target faction. Only chases that opted in
+-- (entry.relation_check, set by the faction-vs-faction consequences) check this; mutant chases
+-- pursue by species and never disengage on faction relation, so they leave the flag unset.
 local function _relation_dropped(squad, entry)
+    if not entry.relation_check then return false end
     local chaser_faction = squad.player_id
     if not chaser_faction then return false end
     local target_faction
@@ -349,22 +344,18 @@ local function _story_target(entry)
     return xobject.is_story(_chase_target_se(entry))
 end
 
--- RELEASE: target left the chase scope. Default "level" releases when the target's level
--- differs from the chase home level; "persistent" never level-releases. entry.home_level_id
--- is stamped at dispatch -- nil leaves this inert.
-local function _scope_exceeded(entry)
-    -- Default "persistent" (follow across levels, vanilla behaviour); consequences opt into
-    -- "level" to release on a map change. Only "level" scope level-releases.
-    if (entry.scope or "persistent") ~= "level" then return false end
-    local home = entry.home_level_id
-    if not home then return false end
+-- RELEASE: chaser and target are on different maps. Chases never leave their map -- a target that
+-- transitions is left behind. Stateless: compares the two live levels, no stored scope/home.
+local function _different_map(squad, entry)
+    local chaser_level = xlevel.get_level_id(squad)
+    if not chaser_level then return false end
     local target_level
     if _is_actor_chase(entry) then
         target_level = xlevel.get_actor_level_id()
     else
         target_level = xlevel.get_level_id(_chase_target_se(entry))
     end
-    return target_level ~= nil and target_level ~= home
+    return target_level ~= nil and target_level ~= chaser_level
 end
 
 -- PAUSE: target reached a base (safe haven). Actor -> actor's nearest smart; squad -> its smart.
@@ -392,16 +383,13 @@ end
 --- @return string verdict VERDICT.KEEP|PAUSE|RELEASE
 --- @return string|nil reason REASON.X on PAUSE/RELEASE
 function keep_scripted(squad, entry)
-    local now = xtime.game_sec()
     if _target_lost(entry) then return VERDICT.RELEASE, REASON.TARGET_LOST end
-    if _ttl_expired(entry, now) then return VERDICT.RELEASE, REASON.TTL_EXPIRED end
     if _relation_dropped(squad, entry) then return VERDICT.RELEASE, REASON.NO_LONGER_ENEMY end
     if _story_target(entry) then return VERDICT.RELEASE, REASON.STORY_PROTECTED end
-    if _scope_exceeded(entry) then return VERDICT.RELEASE, REASON.SCOPE_EXCEEDED end
+    if _different_map(squad, entry) then return VERDICT.RELEASE, REASON.LEFT_MAP end
     if not _is_principled(squad.player_id) then
         if _in_safe_haven(entry) then return VERDICT.PAUSE, REASON.AT_BASE end
         if xlevel.surge_active() then return VERDICT.PAUSE, REASON.SURGE end
-        if xlevel.rain_factor() >= WEATHER_RAIN_PAUSE then return VERDICT.PAUSE, REASON.WEATHER end
     end
     return VERDICT.KEEP, nil
 end

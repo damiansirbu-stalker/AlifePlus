@@ -65,8 +65,8 @@ local function _handler(event_data)
             if is_player_kill then
                 _move_actor_chasers(hunters, moved)
             else
-                -- Level-scoped chase (mutant hunters give up when the killer leaves the map).
-                _move_squad_chasers(hunters, killer_squad.id, moved, { scope = "level" })
+                -- Instinct chase: mutants pursue by species, no relation check; stays within the map.
+                _move_squad_chasers(hunters, killer_squad.id, moved)
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #hunters - #moved })
         end)

@@ -21,14 +21,14 @@ end
 
 --- Dispatch chasers to pursue a target squad directly via continuous coordinate homing
 --- (script_squad_target + the ap_core_chase hooks). Replaces the smart-hop relay for non-player
---- chase targets. Committed pursuit (interruptable = false); opts.scope sets the chase scope
---- ("level" gives up on a map change; nil/persistent follows across levels).
+--- chase targets. Committed pursuit (interruptable = false). opts.relation_check = true marks a
+--- faction chase that disengages when relation flips friendly (mutant chases leave it unset).
 --- @param squads table chasers
 --- @param target_squad_id number
 --- @param moved table accumulator of successfully-dispatched chasers
---- @param opts table|nil { scope }
+--- @param opts table|nil { relation_check }
 function move_squad_chasers(squads, target_squad_id, moved, opts)
-    local chase_opts = { interruptable = false, scope = opts and opts.scope }
+    local chase_opts = { interruptable = false, relation_check = opts and opts.relation_check }
     for _, chaser in ipairs(squads) do
         local res = ap_core_broker.script_squad_target(chaser, target_squad_id, chase_opts)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end

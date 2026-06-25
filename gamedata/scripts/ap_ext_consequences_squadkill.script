@@ -69,10 +69,10 @@ local function _handler_revenge(event_data)
         local dst_smart = nil
         ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
             if is_player_kill then
-                _move_actor_chasers(avengers, moved, { actor_relation_check = true })
+                _move_actor_chasers(avengers, moved, { relation_check = true })
             else
-                -- Persistent chase (relentless vendetta; follows the killer across levels).
-                _move_squad_chasers(avengers, killer_squad_id, moved)
+                -- Faction chase: disengages if relation flips friendly; stays within the map.
+                _move_squad_chasers(avengers, killer_squad_id, moved, { relation_check = true })
             end
             return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #avengers - #moved })
         end)
