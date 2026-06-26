@@ -1,6 +1,8 @@
 ; AlifePlus trade policy. Two stalker tiers split by RANK_VETERAN (12000, per ap_core_const).
 ; Entry order in each block = BUY priority (top entries fill first; cash exhausted = stop).
 ; Min/max counted in rounds for ammo categories (per xinventory D5), items otherwise.
+; Combat ammo: buy floor = 1 box (15 rifle / 16 pistol), sell ceiling = 3-box CAP (45 / 48),
+; so trade tops a short NPC up but never sells the looted boxes it carries. Rookies buy no AP.
 ; Sell-only categories use min=0, max=0 -- min=0 means count<0 never triggers buy.
 ; Pre-filter ("untouchable" + "equipped") bypasses policy entirely; never reached here.
 ; A row key is either a category (medkit, grenade, ...) or a single item section. An item uses
@@ -10,10 +12,10 @@
 ; purged from NPCs by the AlifeBalance cull, which names it. Ammo in rounds, items otherwise.
 
 [ap_trade_policy_rookie]
-ammo_slot_3_t1    = 15, 15
-ammo_slot_2_t1    = 16, 16
-ammo_slot_3_t2    = 0, 0
-ammo_slot_2_t2    = 0, 0
+ammo_slot_3_t1    = 15, 45
+ammo_slot_2_t1    = 16, 48
+ammo_slot_3_t2    = 0, 45
+ammo_slot_2_t2    = 0, 48
 ammo_not_equipped = 0, 0
 grenade_f1        = 0, 0
 grenade_rgd5      = 0, 0
@@ -36,10 +38,10 @@ crafting          = 0, 0
 other             = 0, 0
 
 [ap_trade_policy_veteran]
-ammo_slot_3_t1    = 15, 15
-ammo_slot_2_t1    = 16, 16
-ammo_slot_3_t2    = 15, 15
-ammo_slot_2_t2    = 16, 16
+ammo_slot_3_t1    = 15, 45
+ammo_slot_2_t1    = 16, 48
+ammo_slot_3_t2    = 15, 45
+ammo_slot_2_t2    = 16, 48
 ammo_not_equipped = 0, 0
 grenade_f1        = 1, 3
 grenade_rgd5      = 1, 3

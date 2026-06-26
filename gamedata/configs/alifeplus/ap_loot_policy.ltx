@@ -2,28 +2,36 @@
 ; Applied by ap_ext_loot_select to what an NPC just looted from a corpse: for each capped key,
 ; the cheapest looted members are deleted until the NPC's whole-inventory count for that key is at
 ; or under max, so the kept loot is the highest-value. Only this pickup is trimmed; the standing
-; loadout is left to the AlifeBalance cull.
+; loadout is left to the AlifeBalance cull (whose ceilings match these GATHER caps).
 ;
-; Row shape matches ap_stash_policy.ltx: `key = min, max`. Loot uses MAX only (min is ignored -- a
-; pickup is never "filled" to a minimum). A key is a category name or a single item section name.
-; A key left unlisted is never trimmed (kept in full): equipped-weapon ammo (ammo_slot_2_tN /
-; ammo_slot_3_tN), crafting, money, and `other` are intentionally omitted so the NPC keeps them.
-; Untouchable (quest / anim / blacklisted) and equipped items are skipped automatically by the
-; xinventory categorizer regardless of policy contents.
+; Row shape: `key = min, max`. Loot uses MAX only (min is ignored -- a pickup is never "filled"
+; to a minimum). A key is a category name or a single item section name. A key left unlisted is
+; never trimmed; money is the only intentional case. Combat ammo is capped at the 3-box CAP
+; (45 rifle / 48 pistol; box_size 15 / 16) so an NPC can scavenge spare boxes but not hoard up
+; to the cull ceiling. grenade_smoke = 0 drops looted smoke on pickup (engine crash when NPCs
+; throw it). Untouchable (quest / anim / blacklisted) and equipped items are skipped
+; automatically by the xinventory categorizer regardless of policy contents.
 
 [ap_loot_policy]
+ammo_slot_3_t1    = 0, 45
+ammo_slot_3_t2    = 0, 45
+ammo_slot_2_t1    = 0, 48
+ammo_slot_2_t2    = 0, 48
 ammo_not_equipped = 0, 0
-grenade           = 0, 2
-grenade_ammo      = 0, 2
-medkit            = 0, 2
-bandage           = 0, 3
-antirad           = 0, 2
-stim              = 0, 1
-pill              = 0, 2
-food              = 0, 2
-drink             = 0, 2
+grenade           = 0, 3
+grenade_smoke     = 0, 0
+grenade_ammo      = 0, 3
+medkit            = 0, 5
+bandage           = 0, 5
+antirad           = 0, 3
+stim              = 0, 3
+pill              = 0, 3
+food              = 0, 5
+drink             = 0, 3
 weapon            = 0, 1
 outfit            = 0, 1
 helmet            = 0, 1
-artefact          = 0, 1
+artefact          = 0, 3
 device            = 0, 1
+crafting          = 0, 3
+other             = 0, 3
