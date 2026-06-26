@@ -1,0 +1,188 @@
+--- ap_ext_loot_select: corpse loot policy. Trims what an NPC just looted from a corpse down to a
+--- policy -- ammo for its equipped weapon, plus per-category / per-section caps -- and deletes the
+--- rest. Sibling to ap_ext_loot_claim: claim decides WHO may loot, select decides WHAT is kept.
+---
+--- One more consumer of the shared xinventory policy kernel (alongside trade, stash, and the
+--- AlifeBalance cull). Decoupled from the cull: this caps only what a single pickup adds and never
+--- touches the NPC's standing loadout (the cull is periodic whole-inventory hygiene).
+---
+--- Flow: subscribe to npc_on_get_all_from_corpse (fired per item inside the looter's loot scan,
+--- xr_corpse_detection.script:249, before corpse:transfer_item). Accumulate the item ids the NPC
+--- actually takes, then run one trim pass deferred to the next frame (by which point the items are
+--- in the NPC's inventory). React after the take; never hook get_all_from_corpse, never prevent it.
+--- The callback fires under vanilla and loot overhauls alike (npc_looting_fix.script:140), so the
+--- trigger is override-robust. Online only -- corpse looting is a GOAP scheme on game objects.
+
+local RegisterScriptCallback = RegisterScriptCallback
+local string_sub, table_sort, pairs = string.sub, table.sort, pairs
+local xinventory, xcreature, xobject = xinventory, xcreature, xobject
+local CALLBACK = ap_core_const.CALLBACK
+local cfg = ap_core_mcm.cfg
+
+local LOG = "[EXT.LOOTSEL]"
+local POLICY_PATH = "alifeplus\\ap_loot_policy.ltx"
+local POLICY_SECTION = "ap_loot_policy"
+-- CreateTimeEvent group id. The (group, npc_id) pair is idempotent (_g.script:345), so all per-item
+-- callbacks from one corpse in one frame collapse into a single deferred trim for that looter.
+local TIMER_EV = "ap_loot_select"
+-- Cost ranking fallback for sections missing a `cost` field: treat as cheapest (released first).
+local DEFAULT_COST = 0
+
+-- { entries, rules } loaded from POLICY_PATH at on_game_start. rules[key] = { min, max } per
+-- category or item section; loot uses max only (min is ignored -- a pickup is never "filled").
+local LOOT_POLICY = nil
+
+-- npc_id -> array of item ids the NPC took this frame, drained by the deferred trim. Ephemeral
+-- (reset on game start / load); the trim always fires next frame and clears its entry, so no leak.
+local _looted = {}
+
+--- Per-item count unit, matching xinventory.classify's _unit (ammo counts in ROUNDS, everything
+--- else in ITEMS). Kept local so n483 stays within the AlifePlus charter; mirrors xinventory.script:766.
+--- @cost O(1) | 1 string_sub + (ammo only) 1 ammo_get_count luabind
+--- @param category string Item category from xinventory.policy_key
+--- @param item game_object Inventory item
+--- @return number Count this item contributes to its policy key
+local function _looted_unit(category, item)
+    if category == "ammo_not_equipped"
+        or string_sub(category, 1, 11) == "ammo_slot_2"
+        or string_sub(category, 1, 11) == "ammo_slot_3" then
+        return item:ammo_get_count() or 0
+    end
+    return 1
+end
+
+--- Cheapest-first comparator for the per-key release order (kept items are the top N by cost).
+local function _by_cost_asc(lhs, rhs)
+    return lhs.cost < rhs.cost
+end
+
+--- Load the loot policy via the shared kernel. Defensive: a missing file / section yields empty
+--- rules so the trim no-ops cleanly.
+--- @cost O(lines) | 1 ini parse at on_game_start
+local function _load_policy()
+    local block = xinventory.load_policy(POLICY_PATH, { POLICY_SECTION })[POLICY_SECTION]
+    LOOT_POLICY = { entries = block.entries, rules = block.rules }
+end
+
+--- Bucket the just-looted items still in the NPC's inventory under their capped policy key.
+--- Untouchable / equipped items are dropped by xinventory.policy_key (story / companion / quest /
+--- strapped / equipped, all inherited from xinventory.get_category); unlisted / uncapped keys are
+--- skipped (kept in full).
+--- @cost O(items) | 1 iterate; per item: policy_key + (capped only) get_cost
+--- @param npc_id number Looter NPC id
+--- @param ids table Array of looted item ids
+--- @param cat_opts table From xinventory.get_category_opts
+--- @param rules table Policy rules map
+--- @return table { [key] = { cat, items = { { item, sec, cost }, ... } } }
+local function _bucket_looted(npc_id, ids, cat_opts, rules)
+    local want = {}
+    for i = 1, #ids do want[ids[i]] = true end
+    local buckets = {}
+    xinventory.iterate_inventory(npc_id, function(_, item)
+        if not item or not want[item:id()] then return end
+        local key, cat, sec = xinventory.policy_key(item, cat_opts, rules)
+        if not key then return end
+        local rule = rules[key]
+        if not (rule and rule.max) then return end
+        local bucket = buckets[key]
+        if not bucket then
+            bucket = { cat = cat, items = {} }
+            buckets[key] = bucket
+        end
+        local items = bucket.items
+        items[#items + 1] = { item = item, sec = sec, cost = xinventory.get_cost(sec) or DEFAULT_COST }
+    end)
+    return buckets
+end
+
+--- Release the cheapest looted members of one capped key until the whole-inventory count for that
+--- key is at or under max, leaving any standing excess for the AlifeBalance cull. Traces each
+--- release under the usual enabled() gate (noop below DEBUG).
+--- @cost O(K log K) sort + 0-K release | K = looted members in this key
+--- @param npc_id number Looter NPC id (trace only)
+--- @param key string Policy key (trace only)
+--- @param bucket table { cat, items } from _bucket_looted
+--- @param max number Policy cap for this key
+--- @param count number Whole-inventory count for this key (from classify)
+--- @return number Members released
+local function _trim_key(npc_id, key, bucket, max, count)
+    if count <= max then return 0 end
+    local items = bucket.items
+    table_sort(items, _by_cost_asc)
+    local released = 0
+    for i = 1, #items do
+        if count <= max then break end
+        local entry = items[i]
+        xinventory.release_item(entry.item)
+        count = count - _looted_unit(bucket.cat, entry.item)
+        released = released + 1
+        if ap_core_debug.enabled() then
+            ap_core_debug.debug("%s release npc=%d key=%s sec=%s cost=%d count=%d/%d",
+                LOG, npc_id, key, entry.sec, entry.cost, count, max)
+        end
+    end
+    return released
+end
+
+--- Trim one looter's fresh pickup to the policy, deferred to the frame after the loot. Resolves the
+--- looter, drains its pending ids, then for each capped key releases the cheapest looted members
+--- first until the whole-inventory count is at/under max. Returns true so CreateTimeEvent removes
+--- the one-shot event.
+--- @safety SAFE - bails on gone / dead / unscriptable looter, nil policy, empty pending
+--- @cost O(items + K log K) | classify (1 iterate) + bucket (1 iterate) + per-key sort + 0-N release
+--- @param npc_id number Looter NPC id
+--- @return boolean true (one-shot event complete)
+local function _trim_npc_deferred(npc_id)
+    local ids = _looted[npc_id]
+    _looted[npc_id] = nil
+    if not ids or not cfg.loot_select_enabled or not LOOT_POLICY then return true end
+
+    local npc = xobject.go(npc_id)
+    if not npc or not npc:alive() or xcreature.is_unscriptable(npc) then return true end
+
+    local rules = LOOT_POLICY.rules
+    local cat_opts = xinventory.get_category_opts(npc)
+    -- Whole-inventory counts per policy key (ammo in rounds); the cap is measured against the full
+    -- inventory, release acts only on the looted set (n483 decision 2).
+    local counts = xinventory.classify(npc, cat_opts, rules)
+    local buckets = _bucket_looted(npc_id, ids, cat_opts, rules)
+
+    local released = 0
+    for key, bucket in pairs(buckets) do
+        released = released + _trim_key(npc_id, key, bucket, rules[key].max, counts[key] or 0)
+    end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s trim npc=%d released=%d", LOG, npc_id, released)
+    end
+    return true
+end
+
+--- Capture an item an NPC is taking from a corpse. Fired per item; the engine transfers the item
+--- only when lootable ~= nil (xr_corpse_detection.script:250-255), so only those are recorded.
+--- Skips unscriptable looters (companions, story, traders, named) so their loot is never trimmed and
+--- nothing is accumulated for them. Schedules a single next-frame trim, idempotent per looter.
+--- @safety SAFE - nil-guarded npc / item; no-op when disabled or non-lootable
+--- @cost O(1) | enable check + (per lootable item) is_unscriptable (cached) + 1 append + CreateTimeEvent
+--- @param npc game_object The looting NPC
+--- @param _corpse game_object The corpse (unused)
+--- @param item game_object The item being looted
+--- @param lootable any Non-nil when the engine will transfer the item
+local function _on_loot(npc, _corpse, item, lootable)
+    if not cfg.loot_select_enabled or lootable == nil then return end
+    if not npc or not item or xcreature.is_unscriptable(npc) then return end
+    local npc_id = npc:id()
+    local ids = _looted[npc_id]
+    if not ids then
+        ids = {}
+        _looted[npc_id] = ids
+    end
+    ids[#ids + 1] = item:id()
+    CreateTimeEvent(TIMER_EV, npc_id, 0, _trim_npc_deferred, npc_id)
+end
+
+function on_game_start()
+    _looted = {}
+    _load_policy()
+    RegisterScriptCallback(CALLBACK.NPC_ON_GET_ALL_FROM_CORPSE, _on_loot)
+    ap_core_debug.info("%s Initialized", LOG)
+end

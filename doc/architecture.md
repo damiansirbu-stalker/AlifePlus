@@ -86,7 +86,7 @@ Project-wide constraints that hold across all pipelines and modules.
 
 Two layers. Core is the framework. Ext is the domain. Core never imports ext; all ext modules register with core via function references at on_game_start.
 
-### Core (14 files)
+### Core (15 files)
 
 | File | Role |
 |------|------|
@@ -100,6 +100,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_producer | Event Pipeline: radiant + reactive gate chains, cause generator cascade, xbus publish |
 | ap_core_consumer | Dispatch Pipeline: xbus subscribe, consequence iteration, result codes, rate gating |
 | ap_core_broker | Squad lifecycle: protection, ownership registry, scripting, 20s scan, arrival, release, transit balance |
+| ap_core_chase | Squad-target chase: two guarded sim_squad_scripted monkeypatches (get_current_task / get_script_target) that home an AP-scripted chaser on another squad by id, keyed on the broker registry; delegate to the captured original for non-chase squads (chain-safe with warfare) |
 | ap_core_record | Activity record: FIFO of dispatched consequences with denormalized display facts; HUD / news / external integrators read from it |
 | ap_core_map | PDA map markers rendered from activity record entries; 10s apply timer, 20s validate pass, 60s linger before unmark |
 | ap_core_hud | Pipeline statistics overlay (UIStatsHUD): counters, gate breakdown, periodic dump |
@@ -113,17 +114,18 @@ Multi-cause files (4): ap_ext_causes_area, ap_ext_causes_instincts, ap_ext_cause
 
 Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequences_alphakill, ap_ext_consequences_area, ap_ext_consequences_basekill, ap_ext_consequences_harvest, ap_ext_consequences_instincts, ap_ext_consequences_massacre, ap_ext_consequences_needs, ap_ext_consequences_squadkill, ap_ext_consequences_stash, ap_ext_consequences_wounded.
 
-### Ext: named modules (10 files)
+### Ext: named modules (11 files)
 
 | File | Role |
 |------|------|
 | ap_ext_const | Domain const tables: CAUSE_CATEGORY, alignment_*, PERSONALITY traits, mutant species displays, range tiers |
 | ap_ext_util | Domain gates: alignment / species / personality / tactics checks, FIFO-cached species resolution |
-| ap_ext_common | Shared chase pattern: move_actor_chasers / make_move_smart_chasers / make_on_arrive |
+| ap_ext_common | Shared chase dispatch: move_actor_chasers (player target) / move_squad_chasers (squad target) |
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn) |
 | ap_ext_trade | NPC supply-trader orchestration: loads `configs/alifeplus/ap_trade_policy.ltx` per-rank blocks (`[ap_trade_policy_rookie]` / `[ap_trade_policy_veteran]` split by `RANK_VETERAN`) for per-category min / max; per-event net-profit cap is the MCM `trade_profit_max` override (economy > trade), applied to all ranks |
 | ap_ext_loot_claim | Three-way corpse loot ownership over one xttltable ledger (victim -> {killer, squad, death game_sec}; actor kills via npc_on_hit `from_death_callback`, NPC kills squad-owned via `get_object_squad` with lone-killer fallback). Half A (reserve own) and Flow C (npc-vs-npc) share a generic exclusion arbiter `_npc_loot_excluded` xevent-hooked at `xr_corpse_detection.near_actor`; Flow C's scanning-NPC identity comes from a `find_valid_target` wrapper (xevent on the global `evaluator_corpse` class), since near_actor receives only the corpse. Half B vetoes the actor opening a claimed kill at `on_before_key_press` (level.get_target_obj), with `ActorMenu_on_item_before_move` and Dot Marks backstops. Each flow carries its own MCM enable / radius / TTL; the death timestamp is aged per-flow at read, ledger retention capped at the max TTL. Squad claim holds while a living member sits within radius (`xsquad.iter_member_ids`); squad id validated against recycling via `xsquad.is_squad` |
+| ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept). Subscribes to `npc_on_get_all_from_corpse` (per-item, fired before `corpse:transfer_item`), records the looted item ids, and runs one trim deferred to the next frame via `CreateTimeEvent` (idempotent per looter id). The trim reuses the xinventory kernel (`load_policy [ap_loot_policy]`, `classify`, `policy_key`, `get_cost`, `release_item`): per capped key it releases the cheapest looted members first until the whole-inventory count is at/under max, keeping the highest-value loot and leaving any standing excess to the AlifeBalance cull. Untouchable / equipped inherited from `get_category`. MCM `loot_select_enabled`; online only; skips unscriptable looters. No money path, no save state |
 | ap_ext_fx | Multi-source horror aggregator: composes xpp psy_antenna tint, xsound tinnitus, and level snd_volume ducking via max-across-sources factor; consumers call add_source / remove_source / clear; acquires xpp + xsound slots on first source, releases on last clear |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
 | ap_ext_test | In-game debug commands |
@@ -406,11 +408,11 @@ Save persistence: the offmap counter exports / imports via xttltable in `ap_core
 
 ## Item flow
 
-Three AP flows touch items: Supply Trader (buy/sell on arrival), Stash Loot (squad takes from stash), Stash Fill (squad deposits surplus to stash). All three load their LTX via `xinventory.load_policy`, classify inventory via `xinventory.get_category(item, opts)` / `xinventory.get_section_category(sec)`, and resolve untouchables through the same categorizer.
+Four AP flows touch items: Supply Trader (buy/sell on arrival), Stash Loot (squad takes from stash), Stash Fill (squad deposits surplus to stash), Corpse Loot Trim (an NPC keeps only a policy-bounded share of what it just looted from a body). All four load their LTX via `xinventory.load_policy`, classify inventory via `xinventory.get_category(item, opts)` / `xinventory.get_section_category(sec)`, and resolve untouchables through the same categorizer.
 
 The unified category model is the modernization step over Alundaio's `items\trade\gulag_job_trade_buy_sell.ltx` (per-section keep counts inside each tradeable item's LTX). Per-section meant every tradeable section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate. AP's `xinventory.get_category` reads engine-baked `_ITM` Parse_ITM buckets (outfit, helmet, artefact, device, money, grenade_ammo, ammo, eatable filtered to food/drink) plus hand-set predicates for the medical 5 (medkit, bandage, antirad, stim, pill) and grenades. A modpack medkit section gets `medkit` category automatically when the engine binds it to `kind=i_medical`. No per-modpack LTX maintenance, no item file edits — the policy operates on categories, the engine assigns categories to sections.
 
-Runtime untouchable checks layered in 1.7.5 (`xinventory.get_category:632-637`): runtime `story_id` via `get_object_story_id` (vanilla quest-tracker convention, `release_npc_inventory.script:81` precedent), `axr_companions.is_assigned_item(opts.npc_id, item:id())` (companion-gifted, `axr_companions.script:1300,1360` precedent), `se_load_var(item_id, "", "strapped_item")` (player-strapped, `itms_manager.script:338` precedent). Section-level untouchable (quest / anim / blacklisted) gates first via `get_section_category`. Equipped check uses `opts.equipped_ids`. All three runtime checks centralized in `get_category` so every consumer (trade, stash loot, stash fill, AlifeBalance inventory-balance) respects them without per-consumer code.
+Runtime untouchable checks layered in 1.7.5 (`xinventory.get_category:632-637`): runtime `story_id` via `get_object_story_id` (vanilla quest-tracker convention, `release_npc_inventory.script:81` precedent), `axr_companions.is_assigned_item(opts.npc_id, item:id())` (companion-gifted, `axr_companions.script:1300,1360` precedent), `se_load_var(item_id, "", "strapped_item")` (player-strapped, `itms_manager.script:338` precedent). Section-level untouchable (quest / anim / blacklisted) gates first via `get_section_category`. Equipped check uses `opts.equipped_ids`. All three runtime checks centralized in `get_category` so every consumer (trade, stash loot, stash fill, corpse loot trim, AlifeBalance inventory-balance) respects them without per-consumer code.
 
 `xinventory.load_policy(path, sections, specials_set)` is the shared LTX kernel. Each named section yields `{ entries, rules, specials }`. `entries` preserves declaration order (= BUY / LOOT priority); `rules` is the per-category hash for O(1) lookup; `specials` carries numeric keys named in `specials_set` (`profit_max`, `extras_max`, `fill_max`, ...). Consumer mods ship their own policy LTX under `configs/<mod>/<purpose>_policy.ltx`; the shape is fixed in xlibs, the values are owned by the mod. AlifePlus uses `ap_trade_policy.ltx` for trade and `ap_stash_policy.ltx` for stash. AlifeBalance uses `ab_inventory_policy.ltx` for the inventory-balance cull pass.
 
@@ -421,6 +423,7 @@ Per-flow policy lives in dedicated LTX files under `configs/alifeplus/`, DLTX-ov
 | Supply Trader | `ap_ext_consequences_needs.script` `_arrive_trade` -> `ap_ext_trade.trade` | `ap_trade_policy.ltx` blocks `[ap_trade_policy_rookie]` / `[ap_trade_policy_veteran]` split by `npc:character_rank() >= RANK_VETERAN` (12000) | Four phases: (1) PHASE 1 count NPC inventory per category. (2) PHASE 2 SELL iterates inventory and drops anything whose category count > max; transfers item to seller, credits NPC `floor(cost * 0.5)`; `iterate_surplus` mutates counts in place so PHASE 3 sees the post-sell totals. (3) PHASE 3 BUY walks policy entries in declaration order, fills any category whose count < min using post-sell cash: ammo via `_buy_ammo_tier` (per equipped slot's k_ap-sorted tier map, cheapest section in target tier), consumables via `_buy_consumable_category` (cheapest-first walk over `xinventory.get_category_sections`). (4) PHASE 4 profit cap: if (cash_after - cash_before) > `profit_max`, the excess transfers back to the seller. Only money path. SELL precedes BUY so the cash gained from selling spares funds the buy pass, not just the NPC's walked-in cash. |
 | Stash Loot | `ap_ext_consequences_stash.script` `_arrive_loot` | `ap_stash_policy.ltx` block `[ap_stash_policy]` (single uniform block, no per-rank) | Three gates: untouchable in stash -> skip whole stash (no loot, no clear). Crafting in stash AND MCM `consequence_stash_loot_skip_crafting` -> skip whole stash. Otherwise: per-category loot pass (any entry with min > 0, take from stash up to min). Non-ammo entries use section-only resolution and round-robin assignment. Ammo entries use per-member resolution (`xinventory.resolve_ammo_category`) to find a squad member whose equipped pistol or rifle takes the round; the matched member gets the loot. Extras pass takes top-N by `cost` from leftover stash sections (N = `extras_max`). Always clears the stash at end. Sections the squad does not take are destroyed by the clear. |
 | Stash Fill | `ap_ext_consequences_stash.script` `_arrive_fill` | same `ap_stash_policy.ltx` block | Deposits any category whose squad count exceeds policy max, total per-event capped by `fill_max`. Picks items from online squad members' inventories using per-member `get_category_opts` for ammo tier resolution. `treasure_manager` round-trips sections as section names only; stateful categories (weapon, outfit, helmet, device, ammo with non-default count) survive only the section name. |
+| Corpse Loot Trim | `ap_ext_loot_select.script` `_trim_npc_deferred` (reactive `npc_on_get_all_from_corpse`, deferred one frame via `CreateTimeEvent`) | `ap_loot_policy.ltx` block `[ap_loot_policy]` (single uniform block; loot uses `max` only, `min` ignored) | Records the item ids an NPC takes from a corpse (only when the engine will transfer them, lootable flag non-nil), then next frame classifies the looter's whole inventory and, per capped policy key, releases the cheapest looted members first (`get_cost` ascending) via `release_item` until the count is at/under max. Acts only on the just-looted set, so the kept loot is the highest-value and any standing excess is left to the AlifeBalance cull. Ammo-for-weapon is automatic via `get_category_opts` (equipped pistol/rifle tiers kept; `ammo_not_equipped` capped to delete). Online only; skips unscriptable looters (companions, story, traders, named). No money path, no save state. |
 
 `ap_ext_consequences_needs.script` `_on_arrive` previously also ran a per-need item-consumption step (HUNGER ate food, HEAL used medkits, etc.); dropped per n477. Need satisfaction is now the arrival itself (DTO timestamp reset). The Supply Trader arrival action above is the only item-mutation flow under the Needs umbrella.
 
@@ -437,6 +440,8 @@ ap_core_broker manages the full lifecycle: scripting, arrival detection, post-ar
 script_squad(squad, smart, opts) sets scripted_target via xsquad.acquire_squad. scripted_target routes the squad to specific_update (direct A->B movement). AP clears __lock on acquisition; scripted_target alone is sufficient for routing. If another mod clears scripted_target between ticks, generic_update runs and the squad may be reassigned by SIMBOARD; reassert_target restores scripted_target within 20s. The squad is registered in _ap_scripted_squads with TTL, optional arrival handler, and wait duration.
 
 script_actor_target(squad) scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
+
+script_squad_target(squad, target_id, opts) scripts a squad to pursue another squad by id via continuous coordinate homing (the ap_core_chase hooks; see Chase pattern). No arrival detection - the chase ends when the target dies or the leash releases. Both chase forms set entry.is_chase and run the evaluate_chase leash on the periodic scan instead of the arrival/gulag flow.
 
 ### Scripted-squad scan
 
@@ -531,7 +536,7 @@ Radiant cadence accumulates AP-scripted squads. Reactive events (massacre, wound
 Interruptable flag. script_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
 
 - `interruptable = true`: on-map needs (14 of 17), all instincts (7), and stash_ambush. Routine maintenance trips, deferrable.
-- `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase recursion in ap_ext_common (move_actor_chasers, make_move_smart_chasers, make_on_arrive), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches need their return-home pipeline to complete and lose it if preempted outbound.
+- `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase dispatch in ap_ext_common (move_actor_chasers, move_squad_chasers), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches need their return-home pipeline to complete and lose it if preempted outbound.
 
 The broker default is `true` only as a safety net; no caller relies on it.
 
@@ -821,17 +826,25 @@ Gate order within the RULES phase (where present): alignment -> species -> perso
 
 ### Chase pattern
 
-Three reactive RESPOND consequences (harvest_rob, alphakill_targeted, squadkill_revenge) share a chase pattern: a chaser squad pursues a non-stationary target by re-finding the target's current smart on each arrival and re-routing. Implemented once in ap_ext_common, consumed by the three consequences via factory closures.
+Three reactive consequences (squadkill_revenge, harvest_rob, alphakill_targeted) pursue a non-stationary target. Two target kinds share one lifecycle:
 
-Three helpers:
+- Player target: `move_actor_chasers` -> `script_actor_target` sets `scripted_target = "actor"`, which the engine re-resolves to id 0 every update, so pursuit is continuous and the actor never "arrives".
+- Squad target: `move_squad_chasers` -> `script_squad_target` drives continuous coordinate homing. A squad id is not a natively-resolvable scripted target (vanilla `get_script_target` / `get_current_task` resolve only `"actor"` and smart names), so `ap_core_chase` installs two guarded `sim_squad_scripted` monkeypatches at on_game_start, both keyed on the broker `_ap_scripted_squads` registry (`entry.target_squad_id`):
+  - `get_current_task` builds a `CALifeSmartTerrainTask` from the target's live vertices each call. This is the only movement input the offline group brain consumes (`alife_online_offline_group_brain.cpp:80-84`), and it THROW2s on a nil task - the hook never returns nil (it returns a constructed task, or the captured original, which itself falls back to `get_alife_task`).
+  - `get_script_target` returns the target id so the online reach-task squad fallback fires (`xr_reach_task.script:251-254`) and `specific_update` keeps re-pinning `assigned_target_id`. Replacing the whole method also sidesteps the clean-vanilla numeric-id `obj:clsid()` crash (`sim_squad_scripted.script:139`).
 
-- move_actor_chasers(squads, moved): dispatch chasers via script_actor_target when the target is the player. No arrival detection; engine native pursuit.
-- make_move_smart_chasers(consequence_key, rush_cfg_key, gulag_value): factory; builds the initial dispatch closure when the target is a non-player squad. The squad gets script_squad with on_arrive = consequence_key.
-- make_on_arrive({ consequence_key, rush_cfg_key, gulag_value, max_chases_cfg_key, max_distance }): factory; builds the recursive on_arrive closure. Re-finds the target's current smart at max_distance, scripts the squad there, increments chase_count, stops when chase_count > cfg[max_chases_cfg_key].
+Both hooks delegate to the captured original for any squad without a chase entry, so they chain safely with warfare's identical `get_current_task` hook regardless of load order. The chaser homes until the target dies (`am_i_reached` is `npc_count()==0`); a combat death releases the chase. The smart-hop relay (`make_move_smart_chasers` / recursive `make_on_arrive`, which trailed a moving target by one smart-to-smart leg) is deleted.
 
-Each chase consequence calls the two factories at module load with its own consequence key, cfg key strings, gulag value, and search range (RADIO for human chasers, SCENT for mutant chasers). The resulting closures are stored as module-locals (_move_smart_chasers, _on_arrive_X) and registered with the consumer via consumer.register(name, { on_arrive = closure }, handler). Each chase handler also references _move_actor_chasers (alias for the shared module function) for the player-target branch.
+#### Leash
 
-The on_arrive key passed in script_squad opts is the consequence's enum string, identical for both initial dispatch and every recursion step. The broker's arrival handler registry resolves the key to the same closure each time.
+`ap_core_util.evaluate_chase(squad, entry)` is the single retention decision for both chase kinds, returning `(verdict, reason)` with verdict in `VERDICT.{KEEP, PAUSE, RELEASE}`. It composes small offline-safe `is_*` predicates, RELEASE-before-PAUSE and cheap-before-expensive, short-circuiting on the first hit - the same `(bool, reason)` shape as the broker off-map despawn chain. Pure (no side effects), so the periodic scan and the dispatch both call it.
+
+- RELEASE: `_is_target_lost` (squad target gone or wiped; N/A for the actor), `_is_no_longer_enemy` (opt-in via `entry.check_relation` - faction chases set it, mutant species chases omit it because `is_factions_enemies` is false for undefined mutant pairs), `_is_target_story_protected` (target carries a story id), `_is_target_off_map` (chaser and target on different maps - stateless, so a chase never follows across a level change or leaks into the off-map session system).
+- PAUSE (resume when the condition clears): `_is_target_in_base` (target sheltered in a base smart), `xlevel.is_surge`. Every chaser pauses uniformly; no faction exemption.
+
+The scan (`ap_core_broker._update_chase`) acts on the verdict. RELEASE unscripts. PAUSE stops driving the engine target - the squad-target hook returns nil while paused, and the actor target is released and re-set on resume - with a min-hold (`CHASE_MIN_PAUSE_SEC`, hysteresis against base flicker) and a max-pause cap (`CHASE_MAX_PAUSE_SEC` -> release). KEEP resumes a paused chase and reasserts the actor target. The dispatch (`script_squad_target`) runs the same `evaluate_chase` on the proposed entry stub and refuses any start that is not KEEP. Both chase kinds also share the one ledger TTL (`SCRIPTED_SQUAD_TTL`), checked above the chase/smart split in the scan.
+
+Persistence is the seed only: `_ap_scripted_squads` stores `target_squad_id`; the hooks regenerate the task each tick, so the engine saves neither the task nor `assigned_target_id`. A chase survives save/load and resumes within one scan.
 
 ### Domain gates
 

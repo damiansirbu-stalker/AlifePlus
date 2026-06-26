@@ -27,7 +27,10 @@
     <text>Economy</text>
   </string>
   <string id="ui_mcm_menu_loot">
-    <text>Loot</text>
+    <text>Loot claim</text>
+  </string>
+  <string id="ui_mcm_menu_loot_policy">
+    <text>Loot policy</text>
   </string>
   <string id="ui_mcm_menu_trade">
     <text>Trade</text>
@@ -785,12 +788,6 @@
   <string id="ui_mcm_ap_consequences_alphakill_targeted_consequence_alphakill_targeted_max_squads_desc">
     <text>Maximum alpha squads that pursue the killer.</text>
   </string>
-  <string id="ui_mcm_ap_consequences_alphakill_targeted_consequence_alphakill_targeted_max_chases">
-    <text>Max chases per hunter</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_alphakill_targeted_consequence_alphakill_targeted_max_chases_desc">
-    <text>Maximum times a hunter re-scripts to follow a fleeing killer. 0 disables chase.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / MASSACRE SCAVENGE ==================== -->
   <string id="ui_mcm_ap_consequences_massacre_scavenge_title">
     <text>Massacre Scavenge</text>
@@ -954,12 +951,6 @@
   <string id="ui_mcm_ap_consequences_squadkill_revenge_consequence_squadkill_revenge_max_squads_desc">
     <text>Maximum avenger squads that pursue a killer (random 1..N).</text>
   </string>
-  <string id="ui_mcm_ap_consequences_squadkill_revenge_consequence_squadkill_revenge_max_chases">
-    <text>Max chases per avenger</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_squadkill_revenge_consequence_squadkill_revenge_max_chases_desc">
-    <text>Maximum times an avenger re-scripts to follow a fleeing killer. 0 disables chase.</text>
-  </string>
   <!-- ==================== CONSEQUENCES / BASEKILL SUPPORT ==================== -->
   <string id="ui_mcm_ap_consequences_basekill_support_title">
     <text>Basekill Support</text>
@@ -1122,12 +1113,6 @@
   </string>
   <string id="ui_mcm_ap_consequences_harvest_rob_consequence_harvest_rob_max_squads_desc">
     <text>Maximum hunter squads that pursue the artefact taker (random 1..N).</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_harvest_rob_consequence_harvest_rob_max_chases">
-    <text>Max chases per hunter</text>
-  </string>
-  <string id="ui_mcm_ap_consequences_harvest_rob_consequence_harvest_rob_max_chases_desc">
-    <text>Maximum times a hunter re-scripts to follow a fleeing taker. 0 disables chase.</text>
   </string>
   <!-- ==================== CONSEQUENCES / HARVEST HAUNT ==================== -->
   <string id="ui_mcm_ap_consequences_harvest_haunt_title">
@@ -1962,16 +1947,16 @@
     <text>When enabled, squads move at rush speed to claim their nest.</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_title">
-    <text>Loot</text>
+    <text>Loot claim</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_desc">
-    <text>Every kill belongs to whoever made it, and holds while the owner is near the body. An NPC kill belongs to the killer's squad. The same rule runs three ways, each with its own switch, radius, and duration.</text>
+    <text>A kill belongs to whoever made it, and the claim holds while the owner stays near the body. The same rule runs three ways, identical for every side: your kills are reserved from NPC looters, an NPC squad's kills are reserved from you, and rival squads are held off each other. Each direction has its own radius and duration. No side is privileged.</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_reserve_own_enabled">
     <text>Reserve your kills from NPCs</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_reserve_own_enabled_desc">
-    <text>NPC looters skip a body you killed while you are near it.</text>
+    <text>NPC looters skip a body you killed while you stand within the reserve radius. Walk away and a passing stalker may take it.</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_reserve_own_radius">
     <text>Reserve radius (m)</text>
@@ -1989,7 +1974,7 @@
     <text>Block looting an NPC's kill</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_block_npc_enabled_desc">
-    <text>A kill an NPC squad made will not open while the squad is near it.</text>
+    <text>A body an NPC squad killed will not open while a living member stays near it. A PDA tip names the owner when you try.</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_block_npc_radius">
     <text>Block radius (m)</text>
@@ -2007,7 +1992,7 @@
     <text>Block NPCs from each other's kills</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_block_npc_vs_npc_enabled_desc">
-    <text>An NPC leaves a kill another squad made while that squad is near it.</text>
+    <text>A stalker walks past a kill another squad made while that squad stays near the body. The killers collect their own.</text>
   </string>
   <string id="ui_mcm_ap_economy_loot_loot_block_npc_vs_npc_radius">
     <text>NPC vs NPC radius (m)</text>
@@ -2021,16 +2006,28 @@
   <string id="ui_mcm_ap_economy_loot_loot_block_npc_vs_npc_ttl_desc">
     <text>Game hours before the claim lapses.</text>
   </string>
+  <string id="ui_mcm_ap_economy_loot_policy_title">
+    <text>Loot policy</text>
+  </string>
+  <string id="ui_mcm_ap_economy_loot_policy_desc">
+    <text>A policy decides what an NPC keeps off a body. It holds ammo that fits the NPC's own weapons and the most valuable items in each class up to a cap, and destroys whatever is left. A stalker walks away with a working loadout instead of a corpse-sized hoard. The bodies you reach later are leaner. Long saves stay clear of the loot buildup that slows and eventually breaks them. These caps live in an editable policy file built on the same shape as trade and stashes, so one consistent set of rules runs the whole economy.</text>
+  </string>
+  <string id="ui_mcm_ap_economy_loot_policy_loot_select_enabled">
+    <text>Apply loot policy</text>
+  </string>
+  <string id="ui_mcm_ap_economy_loot_policy_loot_select_enabled_desc">
+    <text>NPCs keep ammo for their own weapons and the most valuable items in each class, then destroy the surplus that would otherwise pile up on them. Off restores vanilla NPC looting.</text>
+  </string>
   <string id="ui_mcm_ap_economy_trade_title">
     <text>Trade</text>
   </string>
   <string id="ui_mcm_ap_economy_trade_desc">
-    <text>Stalkers restock ammo and gear and offload surplus when they reach a trader. What each rank buys and sells is defined in the trade policy file. The cap below limits the rubles an NPC can net from one trade and applies to everyone. Trading itself is toggled under Supply (causes).</text>
+    <text>When a stalker reaches a trader he sells his surplus, then restocks ammo and gear by rank: rookies on basics, veterans on premium rounds and grenades. The buy and sell bands live in an editable policy file built on the same shape as looting and stashes, so one consistent set of rules runs the whole economy. The cap below limits the rubles an NPC nets from a single visit, all ranks. Trading itself switches on under Supply, in causes.</text>
   </string>
   <string id="ui_mcm_ap_economy_trade_trade_profit_max">
     <text>Max profit per trade (rubles)</text>
   </string>
   <string id="ui_mcm_ap_economy_trade_trade_profit_max_desc">
-    <text>Net rubles an NPC may gain from a single trade visit, all ranks. 0 = no profit. Overrides the trade policy file. Default 5000.</text>
+    <text>Net rubles an NPC may gain from a single trade visit, all ranks. 0 = no profit. Default 5000.</text>
   </string>
 </string_table>

@@ -76,6 +76,7 @@ Loot ownership:
 Every kill belongs to whoever made it, the player and the stalkers alike. The two sides toggle independently in MCM.
 - NPCs no longer strip the kills you made while you stand nearby. Walk away and scavengers may take them.
 - A body a living NPC killed will not open while that stalker is alive and near it. Walk off, or wait until he dies, and it opens up.
+- NPCs keep only useful loot from a body: ammo for their own weapon and a capped share of each supply, and the rest is destroyed, so bodies you reach later are not stripped bare.
 - These controls and the per-visit trade profit cap live under the Economy menu.
 
 Day/night cycle:
@@ -253,7 +254,19 @@ Needs
 
   Arrival satisfies the need. Inventory items are not destroyed by the arrival itself. Engine-side combat behavior (medkit, bandage, stim usage in firefights) is independent and unchanged.
 
-Loot Ownership
+Economy
+
+The Zone runs one connected economy. Four systems share a single set of category rules, so what a stalker keeps, sells, and stashes all answer to the same limits.
+
+  Loot claim. A kill belongs to whoever made it, held while the owner stays near the body. The same rule runs three ways, identical for every side: your kills against NPC looters, an NPC squad's kills against you, and rival squads against each other.
+
+  Loot policy. An NPC keeps ammo that fits its own weapons and the most valuable items in each class, then destroys the rest. Stalkers carry a working loadout, the bodies you reach are leaner, and long saves stay clear of the loot buildup that drags them down.
+
+  Trade. At a trader a stalker sells his surplus and restocks ammo and gear by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
+
+  Market. Planned. A faction's traders will briefly stock what its stalkers recently sold, drawn from its own policy file, rank-gated and at a premium, so the surplus finds its way back to the player.
+
+Loot Claim
 
   A kill is reserved for whoever made it, against every other looter, while the owner is present and the claim is fresh. An NPC kill belongs to the killer's squad: any living squadmate within range holds it, so dropping one stalker does not free the body while the rest of his squad stands over it. This is a three-way reservation, the same rule running in all three directions, each its own toggle, radius, and duration, all under Economy > Loot.
 
@@ -265,11 +278,21 @@ Loot Ownership
 
   Radius and duration. Each side carries its own reserve distance and its own claim lifetime, all 150 m and 1 game hour by default, tunable under Economy > Loot. Beyond the radius, or once the lifetime elapses, the claim lapses. Turn all three off for plain vanilla looting in every direction.
 
+Loot Policy
+
+  An NPC that loots a body keeps only what is useful to it and destroys the rest, so the bodies you reach later are leaner instead of picked clean by passing stalkers. Only the fresh pickup is bounded. The looter's standing gear is left alone.
+
+  Kept: ammo that fits the looter's own pistol or rifle, plus a capped share of each supply class (a few medkits and bandages, some food and drink, one spare weapon, one outfit, and so on). Ammo for weapons the looter does not carry is dropped. When a class runs over its cap, the cheap surplus is what goes and the most valuable items stay.
+
+  Quest items, story gear, an item you gave a companion, and the looter's own equipped weapon and armour are never touched. Companions, traders, and named characters keep their loot untouched.
+
+  The caps live in an editable policy file, and the system toggles under Economy > Loot.
+
 Trade
 
   AlifePlus runs a category-based NPC buy/sell cycle on arrival at trader smarts. NPCs visit a trader, sell surplus from their inventory, and restock ammo, grenades, and consumables per a per-rank policy. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat. Built on Alundaio's buy/sell core (2013, maintained by Tronex through 2019), modernized to accept extension instead of dirtying item files, and to carry depth the original row schema could not express.
 
-  Categories instead of items. Alundaio's row schema lived inside each tradeable item's LTX: every section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate in trade. AlifePlus declares categories in ap_trade_policy.ltx (DLTX-overridable). xinventory resolves any section to its category through the engine's own item buckets. A Boomsticks AP round, a GAMMA addon medkit, an EFP grenade all classify automatically through their existing kind and class fields. The modder adds the item, the mod ships, AlifePlus trades it. No per-modpack LTX maintenance, no item file edits.
+  Categories instead of items. Alundaio's row schema lived inside each tradeable item's LTX: every section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate in trade. AlifePlus declares categories in a DLTX-overridable policy file. xinventory resolves any section to its category through the engine's own item buckets. A Boomsticks AP round, a GAMMA addon medkit, an EFP grenade all classify automatically through their existing kind and class fields. The modder adds the item, the mod ships, AlifePlus trades it. No per-modpack LTX maintenance, no item file edits.
 
   Per-rank policy. Two blocks split policy by character rank: rookie (rank below 12000) and veteran (rank 12000 and above). Each block lists categories with a min, max band: medkit, bandage, antirad, stim, pill, grenade, food, drink, plus per-slot ammo tiers (ammo_slot_2_t1/t2 pistol basic/premium, ammo_slot_3_t1/t2 rifle basic/premium). Entry order sets the buy priority.
 
@@ -403,6 +426,7 @@ Mod compatibility:
 
   Superseded:
   - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
+  - Anti-loot addons (NPC Stop Looting Dead Bodies, BoltBeGone): the loot policy keeps NPC looting on and bounds what each looter keeps, so blocking the loot path is no longer needed. AlifeBalance's Inventory Balance does the same for standing inventory.
 
   Conflicts (critical):
   - Unauthorized "synergy" / "bridge" patches claiming to connect AlifePlus to another mod: instability, save corruption.

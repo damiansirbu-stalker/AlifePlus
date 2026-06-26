@@ -534,14 +534,30 @@ function script_squad(squad, smart, opts)
 end
 
 --- Script squad to pursue player directly (no arrival detection)
---- Sets scripted_target="actor" via xsquad.target_actor; player movement prevents arrival checks
---- @safety SAFE - nil-guarded, releases existing script before re-scripting
---- @cost O(1) | 0 luabind
+--- Runs the evaluate_chase leash gate first and refuses a start the leash would immediately
+--- pause/release (surge, actor-in-base, relation already friendly), matching script_squad_target;
+--- otherwise sets scripted_target="actor" via xsquad.target_actor (player movement prevents arrival checks)
+--- @safety SAFE - nil-guarded; gates before releasing, so a refused start leaves any existing chase intact
+--- @cost O(1) | ~3 luabind medium on dispatch (evaluate_chase: actor smart, surge, optional relation)
 --- @param squad se_squad Squad server object
---- @param opts table|nil { check_relation = true } to release chaser if squad faction is no longer enemy of actor's true_community
+--- @param opts table|nil { check_relation, interruptable }
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function script_actor_target(squad, opts)
     if not squad then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
+    local entry = {
+        is_chase = true,
+        scripted_target = "actor",
+        tracked_at = xtime.game_sec(),
+        check_relation = opts and opts.check_relation or nil,
+        interruptable = not (opts and opts.interruptable == false),
+    }
+    -- Dispatch gate: refuse a chase the leash would immediately pause or release (matches script_squad_target).
+    local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
+    if verdict ~= VERDICT.KEEP then
+        ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d refused verdict=%s reason=%s",
+            squad.id, verdict, tostring(reason))
+        return { code = RESULT.FAILED_RULES, reason = reason, id = squad.id }
+    end
     if _ap_scripted_squads[squad.id] then
         ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d already scripted (target=%s), releasing first",
             squad.id, tostring(_ap_scripted_squads[squad.id].scripted_target))
@@ -550,13 +566,7 @@ function script_actor_target(squad, opts)
     if not xsquad.target_actor(squad, true) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id }
     end
-    _ap_scripted_squads[squad.id] = {
-        is_chase = true,
-        scripted_target = "actor",
-        tracked_at = xtime.game_sec(),
-        check_relation = opts and opts.check_relation or nil,
-        interruptable = not (opts and opts.interruptable == false),
-    }
+    _ap_scripted_squads[squad.id] = entry
     ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d -> actor", squad.id)
     return { code = RESULT.SUCCESS, id = squad.id, dst = "actor", dst_id = 0 }
 end
@@ -568,8 +578,8 @@ end
 --- target dies. The ap_core_chase get_script_target hook returns target_id (driving
 --- specific_update + the online reach-task fallback); the get_current_task hook moves the
 --- offline group toward the target live vertices. This dispatch only records the entry.
---- The periodic scan runs the evaluate_chase leash on this entry (TTL, relation, base-pause,
---- surge/weather-pause, scope, target-death); the dispatch gate below refuses a doomed start.
+--- The periodic scan runs the evaluate_chase leash on this entry (target-death / opt-in relation /
+--- story / off-map release; base + surge pause; shared TTL); the dispatch gate below refuses a doomed start.
 --- @safety SAFE - nil-guarded, releases existing script before re-scripting
 --- @cost O(1) | 2 luabind trivial (current_action, __lock field writes)
 --- @src anomaly/sim_squad_scripted.script(276-331 specific_update, 1362 am_i_reached), ap_core_chase.script
@@ -592,6 +602,8 @@ function script_squad_target(squad, target_id, opts)
     -- Dispatch gate: refuse a chase the leash would immediately pause or release.
     local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
+        ap_core_debug.debug("[SQUAD] script_squad_target: squad=%d refused verdict=%s reason=%s",
+            squad.id, verdict, tostring(reason))
         return { code = RESULT.FAILED_RULES, reason = reason, id = squad.id }
     end
     if _ap_scripted_squads[squad.id] then
@@ -700,8 +712,8 @@ end
 
 -- Run the on_arrive handler if registered. Returns true if the caller should proceed
 -- to commit (no handler, missing handler, or handler completed without rescripting).
--- Returns false when the handler rescripted the squad (chase recursion via
--- ap_ext_common.make_on_arrive); the new entry owns its own arrival lifecycle.
+-- Returns false when the handler rescripted the squad (an on_arrive handler that rescripts,
+-- as the area/needs consequences do); the new entry owns its own arrival lifecycle.
 local function _run_arrival_handler(squad_id, squad, data)
     local key = data.on_arrive
     if not key then return true end
@@ -714,6 +726,44 @@ local function _run_arrival_handler(squad_id, squad, data)
         squad_id, key, data.scripted_target)
     handler(squad, data.on_arrive_args)
     return _ap_scripted_squads[squad_id] == data
+end
+
+-- Dump a squad's per-member engine jobs as ONE line (DEBUG): a count breakdown
+-- (generic = the random cover@ scatter stub job_type_id 0; campfire = id 1; other = anchored
+-- path/smartcover/designer; none = unassigned) followed by compact id=job pairs with the
+-- "logic@<smart>_" prefix stripped. generic>0 is the corner/road camper (xr_cover.script:42-62).
+-- npc_info is populated only when the smart is online and on the actor's level; logs
+-- "no_snapshot" otherwise. A member on a campfire job may still be on the scheme's random-cover
+-- fallback once the ~6 fire vertices fill (xr_campfire_point.script:104-108) -- not visible here.
+-- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
+local function _log_member_jobs(squad, smart)
+    if not ap_core_debug.enabled() then return end
+    local sname = tostring(smart:name())
+    if not (smart.online and smart.is_on_actor_level) then
+        ap_core_debug.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
+            squad.id, sname)
+        return
+    end
+    local prefix, parts = "logic@" .. sname .. "_", {}
+    local plen = #prefix
+    local n_generic, n_campfire, n_other, n_none = 0, 0, 0, 0
+    for member_id in xsquad.iter_member_ids(squad) do
+        local job = xsmart.get_job_for_npc(smart, member_id)
+        local label
+        if not job or not job.section then
+            label, n_none = "none", n_none + 1
+        else
+            local section = job.section
+            label = (section:sub(1, plen) == prefix) and section:sub(plen + 1) or (section:gsub("^logic@", ""))
+            local tid = job.job_type_id
+            if tid == xsmart.JOB_TYPE_GENERIC_POINT then n_generic = n_generic + 1
+            elseif tid == xsmart.JOB_TYPE_CAMPFIRE_POINT then n_campfire = n_campfire + 1
+            else n_other = n_other + 1 end
+        end
+        parts[#parts + 1] = member_id .. "=" .. label
+    end
+    ap_core_debug.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
+        squad.id, sname, #parts, n_generic, n_campfire, n_other, n_none, table.concat(parts, ", "))
 end
 
 -- Detect physical arrival; on arrival, run the offmap session step, run the on_arrive
@@ -740,6 +790,7 @@ local function _run_arrival(squad_id, squad, data, now)
     if _commit_arrival(squad_id, squad, smart, data, now) then
         ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
             squad_id, data.scripted_target, data.pre_release_gulag)
+        _log_member_jobs(squad, smart)
     end
 end
 
@@ -885,6 +936,14 @@ local function _log_tracked_entry(squad_id, data, now)
             now - (data.tracked_at or now),
             tostring(data.offmap or false), tostring(data.arrived or false),
             tostring(data.interruptable or false))
+        -- Squads already in the gulag hold (data.arrived) -- including any restored from a save --
+        -- never re-enter _run_arrival, so their gulag_started member-job dump never fires. Dump it
+        -- here each scan instead, so a loaded save still shows what jobs the seated NPCs hold.
+        if data.arrived and data.target_smart_id then
+            local squad = xobject.se(squad_id)
+            local smart = xobject.se(data.target_smart_id)
+            if squad and smart then _log_member_jobs(squad, smart) end
+        end
         return
     end
     ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_dwell home=%s arrived_age=%ds return_in=%ds left_home=%s",

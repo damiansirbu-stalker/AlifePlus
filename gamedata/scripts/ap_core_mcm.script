@@ -154,7 +154,6 @@ defaults = {
     consequence_alphakill_targeted_enabled = true,
     consequence_alphakill_targeted_rush = true,
     consequence_alphakill_targeted_max_squads = 3,
-    consequence_alphakill_targeted_max_chases = 5,
 
     -- Consequence: Massacre Scavenge
     consequence_massacre_scavenge_enabled = true,
@@ -188,7 +187,6 @@ defaults = {
     consequence_squadkill_revenge_enabled = true,
     consequence_squadkill_revenge_rush = true,
     consequence_squadkill_revenge_max_squads = 2,
-    consequence_squadkill_revenge_max_chases = 5,
 
     -- Consequence: Basekill Support
     consequence_basekill_support_enabled = true,
@@ -214,7 +212,6 @@ defaults = {
     consequence_harvest_rob_enabled = true,
     consequence_harvest_rob_rush = true,
     consequence_harvest_rob_max_squads = 2,
-    consequence_harvest_rob_max_chases = 5,
 
     -- Consequence: Harvest Haunt
     consequence_harvest_haunt_enabled = true,
@@ -319,6 +316,7 @@ defaults = {
     loot_block_npc_vs_npc_enabled = true,
     loot_block_npc_vs_npc_radius = 150,
     loot_block_npc_vs_npc_ttl = 1,
+    loot_select_enabled = true,
     trade_profit_max = 5000,
 
     -- Development
@@ -351,6 +349,8 @@ local stateless_overrides = {
     loot_reserve_own_enabled = false,
     loot_block_npc_enabled = false,
     loot_block_npc_vs_npc_enabled = false,
+    -- Corpse loot trim (NPC keeps only policy-allowed loot; deletes the rest)
+    loot_select_enabled = false,
 }
 
 local _key_to_tab = {
@@ -380,6 +380,7 @@ local _key_to_tab = {
     loot_block_npc_vs_npc_enabled = "economy/loot",
     loot_block_npc_vs_npc_radius = "economy/loot",
     loot_block_npc_vs_npc_ttl = "economy/loot",
+    loot_select_enabled = "economy/loot_policy",
     trade_profit_max = "economy/trade",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
@@ -480,7 +481,6 @@ local _key_to_tab = {
     consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_rush = "consequences/alphakill_targeted",
     consequence_alphakill_targeted_max_squads = "consequences/alphakill_targeted",
-    consequence_alphakill_targeted_max_chases = "consequences/alphakill_targeted",
     consequence_massacre_scavenge_enabled = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_rush = "consequences/massacre_scavenge",
     consequence_massacre_scavenge_max_squads = "consequences/massacre_scavenge",
@@ -500,7 +500,6 @@ local _key_to_tab = {
     consequence_squadkill_revenge_enabled = "consequences/squadkill_revenge",
     consequence_squadkill_revenge_rush = "consequences/squadkill_revenge",
     consequence_squadkill_revenge_max_squads = "consequences/squadkill_revenge",
-    consequence_squadkill_revenge_max_chases = "consequences/squadkill_revenge",
     consequence_basekill_support_enabled = "consequences/basekill_support",
     consequence_basekill_support_rush = "consequences/basekill_support",
     consequence_basekill_support_max_squads = "consequences/basekill_support",
@@ -524,7 +523,6 @@ local _key_to_tab = {
     consequence_harvest_rob_enabled = "consequences/harvest_rob",
     consequence_harvest_rob_rush = "consequences/harvest_rob",
     consequence_harvest_rob_max_squads = "consequences/harvest_rob",
-    consequence_harvest_rob_max_chases = "consequences/harvest_rob",
     consequence_harvest_haunt_enabled = "consequences/harvest_haunt",
     consequence_harvest_haunt_rush = "consequences/harvest_haunt",
     consequence_harvest_haunt_max_squads = "consequences/harvest_haunt",
@@ -764,6 +762,15 @@ function on_mcm_load()
                         },
                     },
                     {
+                        id = "loot_policy",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_economy_loot_policy_title"),
+                            _desc("ui_mcm_ap_economy_loot_policy_desc"),
+                            _check("loot_select_enabled"),
+                        },
+                    },
+                    {
                         id = "trade",
                         sh = true,
                         gr = {
@@ -993,7 +1000,6 @@ function on_mcm_load()
                             _check("consequence_alphakill_targeted_enabled"),
                             _check("consequence_alphakill_targeted_rush"),
                             _track("consequence_alphakill_targeted_max_squads", 1, 10, 1),
-                            _track("consequence_alphakill_targeted_max_chases", 0, 10, 1),
                         },
                     },
                     {
@@ -1069,7 +1075,6 @@ function on_mcm_load()
                             _check("consequence_squadkill_revenge_enabled"),
                             _check("consequence_squadkill_revenge_rush"),
                             _track("consequence_squadkill_revenge_max_squads", 1, 20, 1),
-                            _track("consequence_squadkill_revenge_max_chases", 0, 10, 1),
                         },
                     },
                     {
@@ -1145,7 +1150,6 @@ function on_mcm_load()
                             _check("consequence_harvest_rob_enabled"),
                             _check("consequence_harvest_rob_rush"),
                             _track("consequence_harvest_rob_max_squads", 1, 20, 1),
-                            _track("consequence_harvest_rob_max_chases", 0, 10, 1),
                         },
                     },
                     {
