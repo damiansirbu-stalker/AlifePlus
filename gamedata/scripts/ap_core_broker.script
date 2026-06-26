@@ -790,7 +790,6 @@ local function _run_arrival(squad_id, squad, data, now)
     if _commit_arrival(squad_id, squad, smart, data, now) then
         ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
             squad_id, data.scripted_target, data.pre_release_gulag)
-        _log_member_jobs(squad, smart)
     end
 end
 
@@ -849,9 +848,12 @@ local function _resume_chase(squad, data)
     data.paused = nil
     data.paused_at = nil
     data.pause_reason = nil
-    squad.__lock = nil
-    squad.current_action = 0
-    if not data.target_squad_id then
+    -- Squad chase homes via the ap_core_chase hooks (no target slot), so it sets the move fields
+    -- itself; actor chase routes through xsquad.target_actor, which sets the same fields.
+    if data.target_squad_id then
+        squad.__lock = nil
+        squad.current_action = 0
+    else
         xsquad.target_actor(squad, true)
     end
     ap_core_debug.debug("[SQUAD] chase_resume: squad=%d", squad.id)
@@ -936,9 +938,8 @@ local function _log_tracked_entry(squad_id, data, now)
             now - (data.tracked_at or now),
             tostring(data.offmap or false), tostring(data.arrived or false),
             tostring(data.interruptable or false))
-        -- Squads already in the gulag hold (data.arrived) -- including any restored from a save --
-        -- never re-enter _run_arrival, so their gulag_started member-job dump never fires. Dump it
-        -- here each scan instead, so a loaded save still shows what jobs the seated NPCs hold.
+        -- Arrived squads (incl. save-restored) only pass through this debug-gated dump, never
+        -- _run_arrival again, so their member jobs are snapshotted here beside the tracked line.
         if data.arrived and data.target_smart_id then
             local squad = xobject.se(squad_id)
             local smart = xobject.se(data.target_smart_id)
