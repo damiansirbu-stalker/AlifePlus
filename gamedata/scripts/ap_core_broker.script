@@ -4,7 +4,7 @@
 --- dispatched_at, arrived_at, return_home_at, left_home) on top of the shared scripted
 --- dispatch fields and run through the same periodic scan (UPDATE_SCRIPTED_SQUADS_SEC).
 local pairs, next, tostring, type = pairs, next, tostring, type
-local table_remove, RegisterScriptCallback = table.remove, RegisterScriptCallback
+local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
 local string_format = string.format
 local xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice = xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice
 
@@ -670,7 +670,7 @@ end
 -- member with no job, or one on JOB_TYPE_GENERIC_POINT, fails. When the smart is offline or off
 -- the actor's level its job table is unreadable; treat as placed (unevaluable -> do not release).
 -- Shared by _commit_arrival (arrival gate) and the _update_gulag mid-hold re-check.
--- @src anomaly/smart_terrain.script(771) npc_info[id].job; gulag_general.script(282) generic_point
+-- @src anomaly/smart_terrain.script(771) the bound .job; gulag_general.script(282) generic_point
 local function is_placed(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return true end
     for member_id in xsquad.iter_member_ids(squad) do
@@ -734,6 +734,17 @@ local function _run_arrival_handler(squad_id, squad, data)
     return _ap_scripted_squads[squad_id] == data
 end
 
+-- Classify one member's job for the dump: (label, kind), kind = generic/campfire/other/none.
+-- label strips the passed "logic@<smart>_" prefix for brevity.
+local function _job_label_and_kind(job, prefix, plen)
+    if not job or not job.section then return "none", "none" end
+    local section = job.section
+    local label = (section:sub(1, plen) == prefix) and section:sub(plen + 1) or (section:gsub("^logic@", ""))
+    if job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return label, "generic" end
+    if job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT then return label, "campfire" end
+    return label, "other"
+end
+
 -- Dump a squad's per-member engine jobs as ONE line (DEBUG): a count breakdown
 -- (generic = the random cover@ scatter stub job_type_id 0; campfire = id 1; other = anchored
 -- path/smartcover/designer; none = unassigned) followed by compact id=job pairs with the
@@ -750,26 +761,18 @@ local function _log_member_jobs(squad, smart)
             squad.id, sname)
         return
     end
-    local prefix, parts = "logic@" .. sname .. "_", {}
+    local prefix = "logic@" .. sname .. "_"
     local plen = #prefix
-    local n_generic, n_campfire, n_other, n_none = 0, 0, 0, 0
+    local parts = {}
+    local counts = { generic = 0, campfire = 0, other = 0, none = 0 }
     for member_id in xsquad.iter_member_ids(squad) do
-        local job = xsmart.get_job_for_npc(smart, member_id)
-        local label
-        if not job or not job.section then
-            label, n_none = "none", n_none + 1
-        else
-            local section = job.section
-            label = (section:sub(1, plen) == prefix) and section:sub(plen + 1) or (section:gsub("^logic@", ""))
-            local tid = job.job_type_id
-            if tid == xsmart.JOB_TYPE_GENERIC_POINT then n_generic = n_generic + 1
-            elseif tid == xsmart.JOB_TYPE_CAMPFIRE_POINT then n_campfire = n_campfire + 1
-            else n_other = n_other + 1 end
-        end
+        local label, kind = _job_label_and_kind(xsmart.get_job_for_npc(smart, member_id), prefix, plen)
+        counts[kind] = counts[kind] + 1
         parts[#parts + 1] = member_id .. "=" .. label
     end
     ap_core_debug.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
-        squad.id, sname, #parts, n_generic, n_campfire, n_other, n_none, table.concat(parts, ", "))
+        squad.id, sname, #parts, counts.generic, counts.campfire, counts.other, counts.none,
+        table_concat(parts, ", "))
 end
 
 -- Detect physical arrival; on arrival, run the offmap session step, run the on_arrive
@@ -936,6 +939,15 @@ local function _update_scripted_squad(squad_id)
     _update_gulag(squad_id, squad, data, now)
 end
 
+-- Resolve a tracked squad and dump its member jobs (DEBUG). Split out so _log_tracked_entry
+-- stays under the complexity cap.
+local function _log_squad_jobs(squad_id, data)
+    if not (data.arrived and data.target_smart_id) then return end
+    local squad = xobject.se(squad_id)
+    local smart = xobject.se(data.target_smart_id)
+    if squad and smart then _log_member_jobs(squad, smart) end
+end
+
 -- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
 local function _log_tracked_entry(squad_id, data, now)
     if data.scripted_target then
@@ -946,11 +958,7 @@ local function _log_tracked_entry(squad_id, data, now)
             tostring(data.interruptable or false))
         -- Arrived squads (incl. save-restored) only pass through this debug-gated dump, never
         -- _run_arrival again, so their member jobs are snapshotted here beside the tracked line.
-        if data.arrived and data.target_smart_id then
-            local squad = xobject.se(squad_id)
-            local smart = xobject.se(data.target_smart_id)
-            if squad and smart then _log_member_jobs(squad, smart) end
-        end
+        _log_squad_jobs(squad_id, data)
         return
     end
     ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_dwell home=%s arrived_age=%ds return_in=%ds left_home=%s",
