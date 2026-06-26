@@ -665,13 +665,19 @@ function unregister_arrival_handler(key)
 end
 
 
--- True when the destination smart has been evaluated and has no available jobs for the
--- squad's faction. When the smart is offline or off the actor's level, has_jobs_for
--- cannot evaluate meaningfully and the predicate returns false (no rejection). Shared
--- by _commit_arrival and the re-check in _update_gulag.
-local function _no_jobs_for_squad(smart, squad)
-    if not (smart.online and smart.is_on_actor_level) then return false end
-    return not xsmart.has_jobs_for(smart, squad)
+-- True when every squad member holds an anchored engine job at the smart -- a real placement,
+-- not the generic_point cover scatter stub (xr_cover.script:42-62, the corner/road camper). A
+-- member with no job, or one on JOB_TYPE_GENERIC_POINT, fails. When the smart is offline or off
+-- the actor's level its job table is unreadable; treat as placed (unevaluable -> do not release).
+-- Shared by _commit_arrival (arrival gate) and the _update_gulag mid-hold re-check.
+-- @src anomaly/smart_terrain.script(771) npc_info[id].job; gulag_general.script(282) generic_point
+local function is_placed(smart, squad)
+    if not (smart.online and smart.is_on_actor_level) then return true end
+    for member_id in xsquad.iter_member_ids(squad) do
+        local job = xsmart.get_job_for_npc(smart, member_id)
+        if not job or job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return false end
+    end
+    return true
 end
 
 -- Validate arrival and commit the gulag entry. Pair with the dispatch-side clear in
@@ -680,8 +686,8 @@ end
 -- commit fires SIMBOARD:assign_squad_to_smart(squad, smart.id) to add the destination entry.
 -- Together they keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
 local function _commit_arrival(squad_id, squad, smart, data, now)
-    if _no_jobs_for_squad(smart, squad) then
-        ap_core_debug.debug("[SQUAD] release_no_jobs: squad=%d target=%s", squad_id, data.scripted_target)
+    if not is_placed(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_unplaced: squad=%d target=%s", squad_id, data.scripted_target)
         if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
         return false
     end
@@ -794,8 +800,8 @@ local function _run_arrival(squad_id, squad, data, now)
 end
 
 -- Update the gulag state for one scan. Two paths: (1) release_at reached -> normal
--- release (offmap-aware); (2) mid-gulag has_jobs_for re-check via _no_jobs_for_squad ->
--- release if the destination no longer accepts the squad.
+-- release (offmap-aware); (2) mid-hold placement re-check via is_placed -> release if a
+-- member drifted onto the generic_point scatter stub (or lost its job).
 local function _update_gulag(squad_id, squad, data, now)
     if not data.arrived then return end
     if now >= data.release_at then
@@ -813,8 +819,8 @@ local function _update_gulag(squad_id, squad, data, now)
     if not data.target_smart_id then return end
     local smart = xobject.se(data.target_smart_id)
     if not smart then return end
-    if _no_jobs_for_squad(smart, squad) then
-        ap_core_debug.debug("[SQUAD] release_no_jobs_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
+    if not is_placed(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_unplaced_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
         if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
     end
 end
