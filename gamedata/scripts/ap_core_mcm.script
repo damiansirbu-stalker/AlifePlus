@@ -320,6 +320,11 @@ defaults = {
     loot_select_enabled = true,
     trade_profit_max = 5000,
 
+    -- Economy: faction market (ap_ext_market)
+    market_enabled = true,
+    market_intensity = 1,
+    market_window_hours = 12,
+
     -- Development
     log_level = "WARN",
     map_markers = false,
@@ -352,6 +357,8 @@ local stateless_overrides = {
     loot_block_npc_vs_npc_enabled = false,
     -- Corpse loot trim (NPC keeps only policy-allowed loot; deletes the rest)
     loot_select_enabled = false,
+    -- Faction market (trader stock injection)
+    market_enabled = false,
 }
 
 local _key_to_tab = {
@@ -384,6 +391,9 @@ local _key_to_tab = {
     loot_block_npc_vs_npc_ttl = "economy/loot",
     loot_select_enabled = "economy/loot_policy",
     trade_profit_max = "economy/trade",
+    market_enabled = "economy/market",
+    market_intensity = "economy/market",
+    market_window_hours = "economy/market",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
     cause_alphakill_enabled = "causes/reactions",
@@ -780,6 +790,17 @@ function on_mcm_load()
                             _slide("ui_mcm_ap_economy_trade_title"),
                             _desc("ui_mcm_ap_economy_trade_desc"),
                             _track("trade_profit_max", 0, 20000, 500),
+                        },
+                    },
+                    {
+                        id = "market",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_economy_market_title"),
+                            _desc("ui_mcm_ap_economy_market_desc"),
+                            _check("market_enabled"),
+                            _track("market_intensity", 0, 2, 0.1),
+                            _track("market_window_hours", 1, 48, 1),
                         },
                     },
                 },

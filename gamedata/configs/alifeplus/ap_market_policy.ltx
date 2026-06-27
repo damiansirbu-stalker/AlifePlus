@@ -1,0 +1,59 @@
+; AlifePlus faction market policy. The market injects a bounded echo of what a faction's
+; stalkers recently sold into that faction's hub traders at restock, rank-gated and priced at a
+; premium. Single source for: which item categories/sections may appear, how many, the price
+; premium, the spawned condition, the ledger decay window, and the per-rank appearance gate.
+; DLTX-overridable. Categories are engine-derived (xinventory.get_section_category over Parse_ITM
+; _ITM buckets + curated consumable sets); nothing here invents sections.
+;
+; [ap_market_policy] specials (single numeric values, not category rows):
+;   premium             price multiplier on the item's FULL (100%-condition) base cost
+;   per_trader_max      max market items injected into one trader per restock
+;   item_condition      condition weapons/armour spawn at (0..1); 0.1 = GAMMA-broken
+;   ledger_window_hours game-hours a sold section stays eligible before it decays out
+; Category/section rows: key = per-trader cap (max copies of that key at one trader).
+;   A key is a category (weapon, medkit, ...) or a single item section. A sold item uses its
+;   section rule when listed, else its category rule; a key absent here is NEVER injected.
+;   Cap 0 = listed-but-excluded (same as absent for injection). Ammo counts in rounds.
+
+[ap_market_policy]
+premium             = 5.0
+per_trader_max      = 4
+item_condition      = 0.1
+ledger_window_hours = 24
+
+weapon              = 2
+outfit              = 1
+helmet              = 1
+artefact            = 1
+device              = 2
+medkit              = 3
+bandage             = 3
+antirad             = 2
+stim                = 2
+food                = 3
+drink               = 3
+grenade             = 2
+crafting            = 3
+
+; Hard rank floor: a category (or single section) here is blocked until the player reaches the
+; named rank tier. Tier names per game_relations.ltx [game_relations] rating
+; (novice/trainee/experienced/professional/veteran/expert/master/legend).
+[ap_market_rank_floor]
+artefact = veteran
+outfit   = experienced
+helmet   = experienced
+
+; Per-rank cost band: for the player's current tier, the first "cost:chance" whose cost >= the
+; item cost wins (ascending). Cheap items stay common at low rank; expensive items rare at low
+; rank. A tier with no row falls back to [default]; a cost above every threshold takes the last
+; (rarest) entry.
+[ap_market_rank_chance]
+novice       = 3000:1.0, 12000:0.30, 999999:0.05
+trainee      = 5000:1.0, 18000:0.40, 999999:0.10
+experienced  = 8000:1.0, 25000:0.50, 999999:0.15
+professional = 12000:1.0, 35000:0.60, 999999:0.25
+veteran      = 20000:1.0, 999999:0.50
+expert       = 30000:1.0, 999999:0.70
+master       = 999999:1.0
+legend       = 999999:1.0
+default      = 8000:1.0, 25000:0.50, 999999:0.15

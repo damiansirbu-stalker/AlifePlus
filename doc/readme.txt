@@ -37,7 +37,7 @@ Structural invariants make this possible:
 - Event-driven contract: nothing runs unless the engine says something happened.
 - Physical simulation guarantee: consequences use entities already in the simulation, never spawned, teleported, or fabricated.
 - Item transfer only: items move between carriers (NPCs, stashes, traders). AlifePlus never invents new section names. Every materialized item is a section the engine already knows from vanilla configs.
-- Money flows match vanilla: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, or any other AP flow.
+- Money flows match vanilla: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only adds trader stock and sets its price, which you pay at the trader like any purchase.
 
 The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.
 
@@ -256,7 +256,7 @@ Needs
 
 Economy
 
-The Zone runs one connected economy. Four systems share a single set of category rules, so what a stalker keeps, sells, and stashes all answer to the same limits.
+The Zone runs one connected economy, and with the faction market it now comes full circle. Four systems share a single set of category rules, so what a stalker loots, keeps, sells, and stashes all answer to the same limits, and a slice of what a faction sells eventually circles back to you.
 
   Loot claim. A kill belongs to whoever made it, held while the owner stays near the body. The same rule runs three ways, identical for every side: your kills against NPC looters, an NPC squad's kills against you, and rival squads against each other.
 
@@ -264,7 +264,7 @@ The Zone runs one connected economy. Four systems share a single set of category
 
   Trade. At a trader a stalker sells his surplus and restocks ammo and gear by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
 
-  Market. Planned. A faction's traders will briefly stock what its stalkers recently sold, drawn from its own policy file, rank-gated and at a premium, so the surplus finds its way back to the player.
+  Market. A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders.
 
 Loot Claim
 
@@ -309,6 +309,24 @@ Trade
   Sell before buy. The sell phase runs before the buy phase, so cash from selling spares funds restocks. Squads with high-value spares restock more rows per visit instead of walking in cash-poor and out half-empty.
 
   This closes the in-Zone economy loop. NPCs harvest at anomaly fields, kill mutants for parts, loot or fill stashes. The surplus turns into cash at the next trader visit. The cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.
+
+Market
+
+  The market is the read side of the trade cycle. The trade cycle above moves items from stalkers into traders. The market records what passes through and stocks a rank-gated slice of it back at those traders for you to buy.
+
+  What you see. When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated to your rank, priced at a premium, and gone again after a short window.
+
+  The ledger. Every NPC sale at a trader is recorded by faction in a decaying ledger. What a faction sells, that faction's traders may later carry. The record fades over a window, one day by default, so the stock reflects recent sales rather than old ones. Nothing leaves the trade cycle to feed this. The market only reads it.
+
+  The echo. A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
+
+  Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive gear and artefacts only as you rise. A rookie sees ammo and parts, a veteran the rifles and artefacts a faction is losing. The gate, the allowed items, their caps, and the premium all live in an editable policy file.
+
+  Price and condition. An item shows at one trader, once, for a short window, at several times its full value, five by default. It is stocked broken, the way GAMMA traders carry gear, but priced on its full worth, not its damaged state. Different traders of a faction carry different items.
+
+  Adds only. The market never takes money or items from anyone. It adds stock and sets the price, and you pay that premium through the normal trade window like any other purchase. Turn it off and traders carry only their vanilla stock. It ships on.
+
+  What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never better than the gear that faction is actually fielding. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
 
 Instincts
 
