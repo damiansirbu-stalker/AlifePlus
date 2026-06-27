@@ -53,13 +53,19 @@ local function _evaluate(_trace, item, npc)
     end
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
+    local taker_id = taker_is_player and xconst.ACTOR_ENTITY_ID or npc:id()
+    if not ap_core_limiter.check_causer_rate_limit(taker_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
+
     _pickup_cooldown:set(section, true)
 
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(taker_id)
     return {
         cause = CAUSE.HARVEST,
         taker_is_player = taker_is_player,
-        taker_id = taker_is_player and xconst.ACTOR_ENTITY_ID or npc:id(),
+        taker_id = taker_id,
         taker_squad_id = taker_squad_id,
         taker_squad = taker_squad,
         artefact_section = section,

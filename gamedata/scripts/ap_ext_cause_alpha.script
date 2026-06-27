@@ -42,7 +42,12 @@ local function _on_death(trace, squad, se_victim, se_killer)
             killer_id = killer_id, kills = kills, level = level }
     end
 
+    if not ap_core_limiter.check_causer_rate_limit(killer_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
+
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(killer_id)
     return {
         cause = CAUSE.ALPHA,
         killer_id = killer_id,

@@ -27,6 +27,9 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
     if not killer_squad then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
     if not _alignment_human[killer_squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_core_limiter.check_causer_rate_limit(se_killer.id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
 
     local smart = xsquad.get_squad_smart(squad)
     if not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SMART } end
@@ -38,6 +41,7 @@ local function _on_squad_npc_death(trace, squad, se_victim, se_killer)
     if not count then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
 
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(se_killer.id)
     return {
         cause = CAUSE.MASSACRE,
         smart = smart,

@@ -9,6 +9,12 @@ GLOBAL_CONSEQUENCE_WINDOW_SEC = 60
 --- Mirrors framework pattern: pipeline windows are const, only caps are MCM-exposed.
 OFFMAP_WINDOW_SEC = 48 * 3600
 
+--- Per-causer reaction window (game seconds). Caps how many reactive causes one source entity
+--- (killer / patient / taker, actor or NPC) may trigger before the window expires. Fixed window,
+--- MCM-exposed cap (cause_max_per_causer). Stops a single causer (the actor on a hostile map like
+--- Radar) from saturating every reactive cause attributed to its id.
+CAUSER_WINDOW_SEC = 1 * 3600
+
 --- Rank thresholds (per anomaly/configs/creatures/game_relations.ltx:7).
 --- Compare with `>=` against engine character_rank() to gate veteran+ behaviors.
 RANK_VETERAN = 12000
@@ -284,6 +290,7 @@ REASON = {
     NO_BRANCH         = "no_branch",
     BUDGET_EXHAUSTED  = "budget_exhausted",
     OFFMAP_EXHAUSTED  = "offmap_exhausted",
+    CAUSER_EXHAUSTED  = "causer_exhausted",
     NO_OFFMAP_REACH   = "no_offmap_reach",
     OFFMAP_ALREADY_DISPATCHED = "offmap_already_dispatched",
     NO_HOME_LEVEL     = "no_home_level",

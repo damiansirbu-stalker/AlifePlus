@@ -134,6 +134,38 @@ function increment_offmap_counter(level_id)
     _offmap_counter:add(_get_offmap_rate_key(level_id))
 end
 
+--- Per-causer reaction counter (game-sec clock, ephemeral - NOT persisted; resets on save load /
+--- level transition via VM reinit). Caps how many reactive causes a single source entity
+--- (killer / patient / taker) may trigger within CAUSER_WINDOW_SEC. Shared across all reactive
+--- causes: the counter is keyed by causer id only, so massacre, squadkill, alpha, ... attributed
+--- to the same id all draw from one budget. Faction- and cause-agnostic.
+local _causer_counter = nil
+
+local function _get_causer_rate_key(causer_id)
+    return "causer:" .. tostring(causer_id)
+end
+
+--- Check the per-causer reaction limit (true = allowed, false = blocked).
+--- Nil causer (unidentified killer) is always allowed: cannot key a cooldown on it.
+--- @param causer_id number|nil Source entity id (actor id or NPC id)
+--- @return boolean allowed, number count, number max
+function check_causer_rate_limit(causer_id)
+    if not causer_id then return true end
+    local max = cfg.cause_max_per_causer
+    local count = _causer_counter:count(_get_causer_rate_key(causer_id))
+    if count >= max then
+        return false, count, max
+    end
+    return true, count, max
+end
+
+--- Increment the per-causer counter after a reactive cause publishes.
+--- @param causer_id number|nil Source entity id
+function increment_causer_counter(causer_id)
+    if not causer_id then return end
+    _causer_counter:add(_get_causer_rate_key(causer_id))
+end
+
 local function _on_save_state(m_data)
     m_data.ap_core_limiter = { offmap_counter = _offmap_counter:export() }
 end
@@ -157,6 +189,10 @@ function on_game_start()
     _global_consequence_counter = nil
     _offmap_counter = xttltable.create_ttl_counter({
         ttl = ap_core_const.OFFMAP_WINDOW_SEC,
+        clock = xtime.game_sec,
+    })
+    _causer_counter = xttltable.create_ttl_counter({
+        ttl = ap_core_const.CAUSER_WINDOW_SEC,
         clock = xtime.game_sec,
     })
     RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)

@@ -41,7 +41,12 @@ local function _on_squad_npc_death(trace, squad, npc, killer)
         killer_faction = killer_squad and killer_squad.get_squad_community and killer_squad:get_squad_community()
     end
 
+    if not ap_core_limiter.check_causer_rate_limit(killer_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
+
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(killer_id)
     return {
         cause = CAUSE.SQUADKILL,
         squad_id = squad.id,

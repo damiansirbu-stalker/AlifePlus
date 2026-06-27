@@ -41,9 +41,14 @@ local function _on_death(trace, squad, npc, killer)
         if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
     end
 
+    if not ap_core_limiter.check_causer_rate_limit(killer_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
+
     local species = squad and xcreature.get_mutant_species(squad.id)
 
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(killer_id)
     return {
         cause = CAUSE.ALPHAKILL,
         id = victim_id,

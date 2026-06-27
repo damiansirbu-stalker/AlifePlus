@@ -1,5 +1,5 @@
 --- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
-local xobject, xsquad, xsmart, xlevel, xevent = xobject, xsquad, xsmart, xlevel, xevent
+local xobject, xsquad, xsmart, xlevel, xevent, xconst = xobject, xsquad, xsmart, xlevel, xevent, xconst
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -45,11 +45,16 @@ local function _on_npc_medkit_use(_trace, npc, _medkit, kind)
         end
     end
 
+    if not ap_core_limiter.check_causer_rate_limit(npc:id()) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
+
     local se_npc = xobject.se(npc:id())
     if not se_npc then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(npc:id())
     return {
         cause = CAUSE.WOUNDED,
         npc_id = npc:id(),
@@ -77,8 +82,12 @@ local function _on_actor_item_use(_trace, _item, section)
     if smart and xsmart.is_base(smart) and smart.faction == get_actor_true_community() then
         return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE }
     end
+    if not ap_core_limiter.check_causer_rate_limit(xconst.ACTOR_ENTITY_ID) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
 
     ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.increment_causer_counter(xconst.ACTOR_ENTITY_ID)
     return {
         cause = CAUSE.WOUNDED,
         npc_id = nil,
