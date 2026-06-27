@@ -680,9 +680,10 @@ local function has_anchored_jobs(smart, squad)
     return true
 end
 
--- Campfire seats sit <=8m from the fire (xr_campfire_point seat ring); 10m clears that plus vertex
--- snapping, so a campfire-job member past it is on the find_random_cover fallback, not a seat.
-local CAMPFIRE_SEAT_RADIUS = 10
+-- Campfire seats sit within 8m of the fire (xr_campfire_point seat ring tops out at radius 8).
+-- 8m is the seat-ring edge: a campfire-job member past it is on the find_random_cover fallback,
+-- not a seat, with no false positive on a legit sitter.
+local CAMPFIRE_SEAT_RADIUS = 8
 
 -- True when a member's server position is beyond the seat radius from every bound fire.
 local function _member_off_campfire(smart, member_id)
