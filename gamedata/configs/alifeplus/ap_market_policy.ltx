@@ -9,7 +9,7 @@
 ;   premium             price multiplier on the item's FULL (100%-condition) base cost
 ;   per_trader_max      max market items injected into one trader per restock
 ;   item_condition      condition weapons/armour spawn at (0..1); 0.1 = GAMMA-broken
-;   ledger_window_hours game-hours a sold section stays eligible before it decays out
+;   ledger_max          distinct sections kept per faction (bounded dedup FIFO, oldest evicted)
 ; Category/section rows: key = per-trader cap (max copies of that key at one trader).
 ;   A key is a category (weapon, medkit, ...) or a single item section. A sold item uses its
 ;   section rule when listed, else its category rule; a key absent here is NEVER injected.
@@ -19,7 +19,7 @@
 premium             = 5.0
 per_trader_max      = 4
 item_condition      = 0.1
-ledger_window_hours = 24
+ledger_max          = 20
 
 weapon              = 2
 outfit              = 1

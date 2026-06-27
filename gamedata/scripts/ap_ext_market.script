@@ -5,12 +5,19 @@
 ---
 --- Observe, do not modify. ap_ext_trade.trade already returns { sold } and the trade arrival knows
 --- the seller; the market reads that output via an xevent hook (ap_ext_trade is unchanged) and
---- records the sold sections per faction into a decaying ledger. At restock the market reads the
---- ledger for the trader's faction, filters by policy + role + the player-rank gate, and injects.
+--- records the sold sections per faction. At restock the market reads the trader's faction ledger,
+--- filters by policy + role + the player-rank gate, and injects.
+---
+--- Ledger shape. Per faction, a bounded dedup FIFO of section names (most-recent at the end), capped
+--- at ledger_max. The section is all that is kept; injection re-derives cost, category, and rank from
+--- it. A plain table, saved and loaded verbatim, so it needs no clock and is safe at load_state.
 ---
 --- Echo, not conservation. Every trader restock destroys the trader's whole ruck then respawns the
 --- config list (purchase_list.cpp:20 -> InventoryOwner.cpp:596), so anything sold to a trader is
 --- purged each cycle. Injection re-materialises a bounded echo; no double-count.
+---
+--- Different stock per trader. A section injected at one trader is claimed for the goods window, so a
+--- sibling faction trader restocking inside that window draws different sections (_claimed).
 ---
 --- Integration-first, one path. If the Trader Destockifier is present we ride its trader_on_restock
 --- callback; otherwise we hook trade_manager.update and detect the restock ourselves. Exactly one.
@@ -22,8 +29,8 @@
 
 local RegisterScriptCallback = RegisterScriptCallback
 local math_random, math_floor = math.random, math.floor
-local pairs, tonumber, type = pairs, tonumber, type
-local string_sub, table_sort = string.sub, table.sort
+local pairs, tonumber, type, tostring = pairs, tonumber, type, tostring
+local table_remove, table_concat, table_sort = table.remove, table.concat, table.sort
 local xinventory, xsquad, xtime, xevent, xttltable, xobject =
     xinventory, xsquad, xtime, xevent, xttltable, xobject
 local CALLBACK = ap_core_const.CALLBACK
@@ -34,15 +41,16 @@ local POLICY_PATH = "alifeplus\\ap_market_policy.ltx"
 local POLICY_SECTION = "ap_market_policy"
 local FLOOR_SECTION = "ap_market_rank_floor"
 local CHANCE_SECTION = "ap_market_rank_chance"
-local SPECIALS = { premium = true, per_trader_max = true, item_condition = true, ledger_window_hours = true }
+local SPECIALS = { premium = true, per_trader_max = true, item_condition = true, ledger_max = true }
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
 local SAVE_KEY = "ap_ext_market"
+local DEFAULT_LEDGER_MAX = 20
 
 -- Factions that never seed the market (no real allegiance / cannot trade goods)
 local _SKIP_FACTION = { trader = true, monster = true, zombied = true, [""] = true }
--- Role -> categories that role may stock. A general trader stocks everything whitelisted; a
--- pure medic stocks consumables; a pure mechanic stocks gear / parts.
+-- Role -> categories that role may stock. A general trader stocks everything whitelisted; a pure
+-- medic stocks consumables; a pure mechanic stocks gear / parts.
 local _MEDICAL = { medkit = true, bandage = true, antirad = true, stim = true, pill = true, food = true, drink = true }
 local _GEAR = { weapon = true, helmet = true, device = true, crafting = true, grenade = true }
 
@@ -51,19 +59,16 @@ local MARKET_POLICY = nil
 -- { floor = { [section|category] = tier }, bands = { [tier] = { {cost,chance} asc }, default } }
 local RANK_RULESET = nil
 
--- Decaying ledger of recently-sold sections (xttltable counter). Each sale adds an occurrence under
--- key "faction|section"; a positive count() within the window = recently sold. Game-second clock so
--- the window tracks game time across sleep / time-skip and survives save/load -- timestamps persist
--- and counter import does NOT call the clock, so it is safe at load_state where game_sec would AV
--- (xtime.script:8-12; a ttl_table here would CTD on import because its import calls the clock).
-local _ledger = nil
--- Distribution claim: a section injected at one faction trader is claimed for the goods window so
--- another trader of the same faction restocking inside the window carries different items.
--- Ephemeral (resets on load); a fresh distribution after a reload is harmless.
+-- Ledger: faction -> ordered dedup FIFO of section names, oldest first, newest last. Bounded to
+-- ledger_max per faction. Section is all we keep. Plain table: saved / loaded verbatim, no clock,
+-- so it is safe at load_state (game_sec AVs there).
+local _ledger = {}
+-- Distribution claim (ttl_table, goods window, ephemeral): a section injected at one trader is
+-- claimed so sibling faction traders carry different items. Reset on load; harmless.
 local _claimed = nil
 -- item_id -> { trader_id, inject_time(game_sec) } for tagged market goods. Ephemeral: the items are
--- real alife objects that persist, but the engine restock wipes them within a cycle, and on reload
--- they simply lose the premium tag and the timed release (then the next restock purges them).
+-- real alife objects, but the engine restock wipes them within a cycle; on reload they lose the
+-- premium tag and the timed release, then the next restock purges them.
 local _market_goods = {}
 -- Reused collector for expired ids, so _release_expired never mutates _market_goods mid-iteration.
 local _release_buf = {}
@@ -90,13 +95,9 @@ local function _parse_band(pair)
     return nil
 end
 
---- Parse the two rank blocks into the ruleset shape get_rank_chance expects. The floor block is
---- "key = tier"; the chance block is "tier = cost:chance, cost:chance, ..." (ascending after sort).
---- Both optional: a missing block yields an empty map, so get_rank_chance opens (no gating).
---- @cost O(lines) | 1 ini parse at on_game_start
 local function _band_cost_asc(a, b) return a.cost < b.cost end
 
--- Parse a "cost:chance, cost:chance, ..." cell into an ascending band row.
+--- Parse a "cost:chance, cost:chance, ..." cell into an ascending band row.
 local function _parse_chance_row(value)
     local row = {}
     local list = str_explode(value, ",")
@@ -108,7 +109,7 @@ local function _parse_chance_row(value)
     return row
 end
 
--- Invoke fn(key, value) for every non-empty key/value line of an ini section.
+--- Invoke fn(key, value) for every non-empty key/value line of an ini section.
 local function _each_kv(ini, section, fn)
     if not ini:section_exist(section) then return end
     for i = 0, ini:line_count(section) - 1 do
@@ -117,6 +118,8 @@ local function _each_kv(ini, section, fn)
     end
 end
 
+--- Parse the two rank blocks into the get_rank_chance ruleset. Both optional.
+--- @cost O(lines) | 1 ini parse at on_game_start
 local function _load_rank_ruleset()
     local ini = ini_file(POLICY_PATH)
     local floor, bands = {}, {}
@@ -129,15 +132,10 @@ end
 -- CONFIG ACCESSORS
 -- ============================================================================
 
-local function _premium()       return (MARKET_POLICY and MARKET_POLICY.specials.premium) or 1 end
-local function _item_condition() return (MARKET_POLICY and MARKET_POLICY.specials.item_condition) or 0.1 end
-local function _ledger_window_sec()
-    local hours = (MARKET_POLICY and MARKET_POLICY.specials.ledger_window_hours) or 24
-    return hours * 3600
-end
-local function _goods_window_sec()
-    return cfg.market_window_hours * 3600
-end
+local function _premium()        return (MARKET_POLICY and MARKET_POLICY.specials.premium) or 1 end
+local function _item_condition()  return (MARKET_POLICY and MARKET_POLICY.specials.item_condition) or 0.1 end
+local function _ledger_max()      return (MARKET_POLICY and MARKET_POLICY.specials.ledger_max) or DEFAULT_LEDGER_MAX end
+local function _goods_window_sec() return cfg.market_window_hours * 3600 end
 local function _per_trader_cap()
     local base = (MARKET_POLICY and MARKET_POLICY.specials.per_trader_max) or 0
     return math_floor(base * cfg.market_intensity + 0.5)
@@ -151,10 +149,24 @@ local function _is_market_faction(faction)
     return faction ~= nil and not _SKIP_FACTION[faction]
 end
 
---- Record one sold section under its faction; refreshes the section's decay window.
+--- Push a sold section into its faction FIFO: dedup (drop any existing position), append as newest,
+--- evict the oldest once over the cap.
 local function _ledger_add(faction, section)
-    if not _ledger then return end
-    _ledger:add(faction .. "|" .. section)
+    local list = _ledger[faction]
+    if not list then
+        list = {}
+        _ledger[faction] = list
+    end
+    for i = 1, #list do
+        if list[i] == section then table_remove(list, i); break end
+    end
+    list[#list + 1] = section
+    local evicted
+    if #list > _ledger_max() then evicted = table_remove(list, 1) end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s ledger faction=%s +%s n=%d%s", LOG, faction, section, #list,
+            evicted and (" evict=" .. evicted) or "")
+    end
 end
 
 --- xevent wrapper over ap_ext_trade.trade: run the original, then record the sold sections keyed by
@@ -170,9 +182,12 @@ local function _observe_trade(orig, npc, seller, opts)
     if not (npc and result and result.sold and #result.sold > 0) then return result end
     local squad = xsquad.get_squad_by_member(npc:id())
     local faction = squad and xsquad.get_community(squad)
-    if _is_market_faction(faction) then
-        for i = 1, #result.sold do _ledger_add(faction, result.sold[i]) end
+    if not _is_market_faction(faction) then return result end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s observe faction=%s npc=%d sold=%s", LOG, faction, npc:id(),
+            table_concat(result.sold, ","))
     end
+    for i = 1, #result.sold do _ledger_add(faction, result.sold[i]) end
     return result
 end
 
@@ -194,30 +209,42 @@ local function _rule_for(section, category, rules)
     return key, rules[key]
 end
 
--- Decide whether one ledger entry yields an injectable section for this faction trader. Returns the
--- section name when eligible (faction-prefixed, live, unclaimed, whitelisted with a positive cap,
--- category accepted by the role, and passing the player-rank roll), else nil.
-local function _eligible_section(key, count, prefix, plen, role_info, rules)
-    if count <= 0 or string_sub(key, 1, plen) ~= prefix or _claimed:has(key) then return nil end
-    local section = string_sub(key, plen + 1)
+--- Decide whether one ledger section is injectable at a faction trader: not already claimed by a
+--- sibling trader this window, whitelisted with a positive cap, category accepted by the role, and
+--- passing the player-rank roll. Traces the rejection reason when debug is on.
+local function _eligible_section(section, faction, role_info, rules)
+    if _claimed:has(faction .. "|" .. section) then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s claimed", LOG, section) end
+        return false
+    end
     local category = xinventory.get_section_category(section)
     local _, rule = _rule_for(section, category, rules)
-    if not (rule and rule.max and rule.max > 0) then return nil end
-    if not _accepts_category(role_info, category) then return nil end
-    if math_random() > xinventory.get_rank_chance(section, db.actor, RANK_RULESET) then return nil end
-    return section
+    if not (rule and rule.max and rule.max > 0) then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s not-whitelisted cat=%s", LOG, section, category) end
+        return false
+    end
+    if not _accepts_category(role_info, category) then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s role-reject cat=%s", LOG, section, category) end
+        return false
+    end
+    local chance = xinventory.get_rank_chance(section, db.actor, RANK_RULESET)
+    if math_random() > chance then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s rank-roll chance=%.2f", LOG, section, chance) end
+        return false
+    end
+    return true
 end
 
---- Collect the sections eligible to inject at a faction trader (per _eligible_section).
---- @cost O(L) ledger entries + per match: get_section_category + get_rank_chance
+--- Collect the sections eligible to inject at a faction trader, walking that faction's FIFO.
+--- @cost O(L) ledger length + per match: get_section_category + get_rank_chance
 --- @return table Array of distinct section names
 local function _eligible_sections(faction, role_info, rules)
     local out = {}
-    local prefix = faction .. "|"
-    local plen = #prefix
-    for key, count in pairs(_ledger:all()) do
-        local section = _eligible_section(key, count, prefix, plen, role_info, rules)
-        if section then out[#out + 1] = section end
+    local list = _ledger[faction]
+    if not list then return out end
+    for i = 1, #list do
+        local section = list[i]
+        if _eligible_section(section, faction, role_info, rules) then out[#out + 1] = section end
     end
     return out
 end
@@ -230,29 +257,38 @@ local function _shuffle(t)
     end
 end
 
---- Inject a bounded echo of the faction's recently-sold goods into one online trader. Resolves the
---- trader's curated role + faction (xdata.npc_roles, mirrored by the ap_core_cache role bucket);
---- skips traders with no resolved role/faction. Picks from the eligible set up to the per-trader cap
---- (scaled by MCM intensity), honouring per-category caps, spawns each at the configured condition,
---- tags it for the premium hook + timed release, and claims it so sibling traders carry other items.
---- @safety SAFE - bails on disabled, dead trader, unresolved role/faction, nil policy
---- @cost O(items injected) on top of _eligible_sections
--- Try to inject one section at the trader, honouring its per-category cap. Spawns at the configured
--- condition, tags the item for the premium hook + timed release, and claims it for distribution.
--- ctx = { trader_id, faction, rules, cat_count, cond, window, now }. Returns true on a spawn.
+--- Try to inject one section at the trader, honouring its per-category cap. Spawns at the configured
+--- condition, tags the item for the premium hook + timed release, and claims it for distribution.
+--- ctx = { trader_id, faction, rules, cat_count, cond, window, now }. Returns true on a spawn.
 local function _try_inject_section(ctx, sec)
     local category = xinventory.get_section_category(sec)
     local key, rule = _rule_for(sec, category, ctx.rules)
     local used = ctx.cat_count[key] or 0
-    if used >= rule.max then return false end
+    if used >= rule.max then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s cat-cap %s full", LOG, sec, key) end
+        return false
+    end
     local item_se = xinventory.create_item(sec, ctx.trader_id, { cond = ctx.cond })
-    if not (item_se and item_se.id) then return false end
+    if not (item_se and item_se.id) then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s spawn-fail %s", LOG, sec) end
+        return false
+    end
     _market_goods[item_se.id] = { trader_id = ctx.trader_id, inject_time = ctx.now }
     _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
     ctx.cat_count[key] = used + 1
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s inject %s id=%d base=%d premium=%sx cond=%.2f", LOG, sec, item_se.id,
+            xinventory.get_cost(sec) or 0, _premium(), ctx.cond)
+    end
     return true
 end
 
+--- Inject a bounded echo of the faction's recently-sold goods into one online trader. Resolves the
+--- trader's curated role + faction (xdata.npc_roles); skips traders with no resolved role/faction.
+--- Picks from the eligible set up to the per-trader cap (scaled by MCM intensity), honouring
+--- per-category caps, spawns each at the configured condition, tags it for the premium hook + timed
+--- release, and claims it so sibling traders carry other items.
+--- @safety SAFE - bails on disabled, dead trader, unresolved role/faction, nil policy
 --- @param trader game_object Online trader at its restock
 local function _inject_at_trader(trader)
     if not cfg.market_enabled or not MARKET_POLICY then return end
@@ -264,11 +300,17 @@ local function _inject_at_trader(trader)
     if not se then return end
     local section = se:section_name()
     local role_info = section and xdata.npc_roles[section]
-    if not (role_info and role_info.faction) then return end
+    if not (role_info and role_info.faction) then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s restock trader=%d no-role sec=%s", LOG, trader:id(), tostring(section)) end
+        return
+    end
     local faction = role_info.faction
 
     local rules = MARKET_POLICY.rules
     local eligible = _eligible_sections(faction, role_info, rules)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s restock trader=%d faction=%s cap=%d eligible=%d", LOG, trader:id(), faction, cap, #eligible)
+    end
     if #eligible == 0 then return end
     _shuffle(eligible)
 
@@ -282,8 +324,8 @@ local function _inject_at_trader(trader)
         if injected >= cap then break end
         if _try_inject_section(ctx, eligible[i]) then injected = injected + 1 end
     end
-    if injected > 0 and ap_core_debug.enabled() then
-        ap_core_debug.debug("%s inject trader=%d faction=%s n=%d", LOG, trader:id(), faction, injected)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s restock trader=%d faction=%s injected=%d/%d", LOG, trader:id(), faction, injected, cap)
     end
 end
 
@@ -344,7 +386,7 @@ end
 --- the price to full base cost x premium (relation/eco discount kept, condition discount dropped) by
 --- writing ret.new_cost (utils_item.script returns tonumber(ret.new_cost) or cost). Non-market items
 --- are untouched.
---- @param _kind string Cost path ("multiuse" / "ammo" / "condition_based") -- unused, override is uniform
+--- @param _kind string Cost path -- unused, override is uniform
 --- @param obj game_object The item being priced
 --- @param profile table Trade profile (carries .discount)
 --- @param _cost number Engine-computed cost (replaced)
@@ -356,16 +398,22 @@ local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     local parent = obj:parent()
     if not (parent and parent:id() == tag.trader_id) then return end
     local base = obj:cost() or 0
-    ret.new_cost = math_floor(base * _premium() * (profile and profile.discount or 1))
+    local price = math_floor(base * _premium() * (profile and profile.discount or 1))
+    ret.new_cost = price
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s price id=%d base=%d -> %d", LOG, obj:id(), base, price)
+    end
 end
 
 -- ============================================================================
 -- WINDOW RELEASE
 -- ============================================================================
 
--- Release one market good by id (online or offline) via the xlibs wrapper.
+--- Release one market good if it is online. Offline goods are left to the engine restock purge; the
+--- tag is dropped either way (below), so an offline trader's stale good simply loses its premium.
 local function _release_one(id)
-    xinventory.release_item_id(id)
+    local obj = xobject.go(id)
+    if obj then xinventory.release_item(obj) end
 end
 
 --- Release market goods past their window. Repeating timer (re-armed each fire). The engine restock
@@ -388,6 +436,9 @@ local function _release_expired()
         _market_goods[id] = nil
         _release_buf[i] = nil
     end
+    if count > 0 and ap_core_debug.enabled() then
+        ap_core_debug.debug("%s released %d expired", LOG, count)
+    end
     -- Periodic re-arm: ResetTimeEvent + return false (re-CreateTimeEvent with the same id no-ops
     -- mid-callback because removal trails the return, _g.script:345,374).
     ResetTimeEvent(RELEASE_EV, RELEASE_EV, RELEASE_PERIOD_MS / 1000)
@@ -399,12 +450,12 @@ end
 -- ============================================================================
 
 local function _on_save(m_data)
-    if _ledger then m_data[SAVE_KEY] = { ledger = _ledger:export() } end
+    m_data[SAVE_KEY] = { ledger = _ledger }
 end
 
 local function _on_load(m_data)
     local data = m_data and m_data[SAVE_KEY]
-    if data and data.ledger and _ledger then _ledger:import(data.ledger) end
+    if data and data.ledger then _ledger = data.ledger end
 end
 
 -- ============================================================================
@@ -426,10 +477,10 @@ function on_game_start()
     _subscribed = false
     _use_restock_callback = false
     _market_goods = {}
+    _ledger = {}
     _load_policy()
     _load_rank_ruleset()
-    _ledger = xttltable.create_ttl_counter({ clock = xtime.game_sec, ttl = _ledger_window_sec() })
-    _claimed = xttltable.create_ttl_table({ clock = xtime.game_sec, default_ttl = _goods_window_sec() })
+    _claimed = xttltable.create_ttl_table({ clock = xtime.game_sec })
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)

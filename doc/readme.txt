@@ -316,7 +316,7 @@ Market
 
   What you see. When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated to your rank, priced at a premium, and gone again after a short window.
 
-  The ledger. Every NPC sale at a trader is recorded by faction in a decaying ledger. What a faction sells, that faction's traders may later carry. The record fades over a window, one day by default, so the stock reflects recent sales rather than old ones. Nothing leaves the trade cycle to feed this. The market only reads it.
+  The ledger. Every NPC sale at a trader is recorded by faction in a bounded list of recent sales. What a faction sells, that faction's traders may later carry. The list keeps only the most recent distinct items and drops the oldest as new ones come in, so the stock reflects recent sales. Nothing leaves the trade cycle to feed this. The market only reads it.
 
   The echo. A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
 
