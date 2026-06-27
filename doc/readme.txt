@@ -268,7 +268,7 @@ The Zone runs one connected economy. Four systems share a single set of category
 
 Loot Claim
 
-  A kill is reserved for whoever made it, against every other looter, while the owner is present and the claim is fresh. An NPC kill belongs to the killer's squad: any living squadmate within range holds it, so dropping one stalker does not free the body while the rest of his squad stands over it. This is a three-way reservation, the same rule running in all three directions, each its own toggle, radius, and duration, all under Economy > Loot.
+  A kill is reserved for whoever made it, against every other looter, while the owner is present and the claim is fresh. An NPC kill belongs to the killer's squad: any living squadmate within range holds it, so dropping one stalker does not free the body while the rest of his squad stands over it. This is a three-way reservation, the same rule running in all three directions, each its own toggle, radius, and duration, all under Economy > Loot claim.
 
   You against NPCs. A body you killed is skipped by NPC looters while you stand within the reserve radius. The scavenger AI treats your kill as off-limits and walks past it. Step away and the reservation lapses, so a passing stalker may strip it like any other corpse.
 
@@ -276,7 +276,7 @@ Loot Claim
 
   NPCs against each other. A passing stalker will not strip a kill another squad made while a member of that squad is near the body. The killing squad collects its own. Bystanders walk past. The loot a squad earns stays with that squad until they leave or fall.
 
-  Radius and duration. Each side carries its own reserve distance and its own claim lifetime, all 150 m and 1 game hour by default, tunable under Economy > Loot. Beyond the radius, or once the lifetime elapses, the claim lapses. Turn all three off for plain vanilla looting in every direction.
+  Radius and duration. Each side carries its own reserve distance and its own claim lifetime, all 150 m and 1 game hour by default, tunable under Economy > Loot claim. Beyond the radius, or once the lifetime elapses, the claim lapses. Turn all three off for plain vanilla looting in every direction.
 
 Loot Policy
 
@@ -286,7 +286,7 @@ Loot Policy
 
   Quest items, story gear, an item you gave a companion, and the looter's own equipped weapon and armour are never touched. Companions, traders, and named characters keep their loot untouched.
 
-  The caps live in an editable policy file, and the system toggles under Economy > Loot.
+  The caps live in an editable policy file, and the system toggles under Economy > Loot policy.
 
 Trade
 
