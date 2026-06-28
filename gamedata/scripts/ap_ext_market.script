@@ -44,6 +44,7 @@ local CHANCE_SECTION = "ap_market_rank_chance"
 local SPECIALS = { premium = true, per_trader_max = true, item_condition = true, ledger_max = true }
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
+local VIEW_LOG_INTERVAL_SEC = 3
 local SAVE_KEY = "ap_ext_market"
 local DEFAULT_LEDGER_MAX = 20
 
@@ -72,6 +73,8 @@ local _claimed = nil
 local _market_goods = {}
 -- Reused collector for expired ids, so _release_expired never mutates _market_goods mid-iteration.
 local _release_buf = {}
+-- Debug throttle: trader_id -> next os.clock at which a trade-view line may log again.
+local _view_log_next = {}
 
 local _subscribed = false
 local _use_restock_callback = false
@@ -283,6 +286,20 @@ local function _try_inject_section(ctx, sec)
     return true
 end
 
+--- Resolve a trader's curated role + faction from xdata.npc_roles; nil (with a debug note) for an
+--- uncurated trader. Split out to keep _inject_at_trader under the complexity ceiling.
+local function _resolve_trader_role(trader)
+    local se = xobject.se(trader:id())
+    if not se then return nil end
+    local section = se:section_name()
+    local role_info = section and xdata.npc_roles[section]
+    if role_info and role_info.faction then return role_info end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s restock trader=%d no-role sec=%s", LOG, trader:id(), tostring(section))
+    end
+    return nil
+end
+
 --- Inject a bounded echo of the faction's recently-sold goods into one online trader. Resolves the
 --- trader's curated role + faction (xdata.npc_roles); skips traders with no resolved role/faction.
 --- Picks from the eligible set up to the per-trader cap (scaled by MCM intensity), honouring
@@ -296,20 +313,15 @@ local function _inject_at_trader(trader)
     local cap = _per_trader_cap()
     if cap <= 0 then return end
 
-    local se = xobject.se(trader:id())
-    if not se then return end
-    local section = se:section_name()
-    local role_info = section and xdata.npc_roles[section]
-    if not (role_info and role_info.faction) then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s restock trader=%d no-role sec=%s", LOG, trader:id(), tostring(section)) end
-        return
-    end
+    local role_info = _resolve_trader_role(trader)
+    if not role_info then return end
     local faction = role_info.faction
+    local tname = ap_core_debug.enabled() and (trader:character_name() or "?") or "?"
 
     local rules = MARKET_POLICY.rules
     local eligible = _eligible_sections(faction, role_info, rules)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s restock trader=%d faction=%s cap=%d eligible=%d", LOG, trader:id(), faction, cap, #eligible)
+        ap_core_debug.debug("%s restock trader=%d(%s) faction=%s cap=%d eligible=%d", LOG, trader:id(), tname, faction, cap, #eligible)
     end
     if #eligible == 0 then return end
     _shuffle(eligible)
@@ -325,7 +337,7 @@ local function _inject_at_trader(trader)
         if _try_inject_section(ctx, eligible[i]) then injected = injected + 1 end
     end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s restock trader=%d faction=%s injected=%d/%d", LOG, trader:id(), faction, injected, cap)
+        ap_core_debug.debug("%s restock trader=%d(%s) faction=%s injected=%d/%d", LOG, trader:id(), tname, faction, injected, cap)
     end
 end
 
@@ -391,8 +403,29 @@ end
 --- @param profile table Trade profile (carries .discount)
 --- @param _cost number Engine-computed cost (replaced)
 --- @param ret table Output: set ret.new_cost to override
+-- Debug: while the player has a trader's buy panel open, on_get_item_cost fires per item. Log which
+-- trader it is and how many market goods it holds right now, throttled per trader, so the log shows
+-- exactly which trader the player visited and whether it carried market stock. Skips the actor's own
+-- (sell-side) items.
+local function _log_trade_view(obj)
+    if not ap_core_debug.enabled() then return end
+    local parent = obj:parent()
+    local actor = db.actor
+    if not parent or (actor and parent:id() == actor:id()) then return end
+    local trader_id = parent:id()
+    local now = os.clock()
+    if (_view_log_next[trader_id] or 0) > now then return end
+    _view_log_next[trader_id] = now + VIEW_LOG_INTERVAL_SEC
+    local count = 0
+    for _, tag in pairs(_market_goods) do
+        if tag.trader_id == trader_id then count = count + 1 end
+    end
+    ap_core_debug.debug("%s view trader=%d(%s) market_goods=%d", LOG, trader_id, parent:character_name() or "?", count)
+end
+
 local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     if not (cfg.market_enabled and obj and ret) then return end
+    _log_trade_view(obj)
     local tag = _market_goods[obj:id()]
     if not tag then return end
     local parent = obj:parent()
