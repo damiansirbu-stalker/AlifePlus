@@ -118,16 +118,37 @@ local function _actor_witnessing(corpse_pos)
     return _within(actor:position(), corpse_pos, WITNESS_RANGE)
 end
 
---- Show a seldom yield tip attributed to npc, drawn from the prefix's pool. Bails on the cheap roll
+--- Actor character name for the #name# slot, or nil.
+local function _actor_name()
+    local actor = db.actor
+    return actor and actor:character_name() or nil
+end
+
+--- Resolve a pooled in-character line and fill the #name# slot (the news template token convention).
+--- A variant carrying #name# renders with the supplied name; with no name it falls back to variant
+--- 001, kept nameless by convention, so the token never renders raw. The function-form gsub
+--- neutralises any % in the name.
+--- @cost O(1) | 1 translate (+ 1 fallback translate / 1 gsub on a name line)
+local function _resolve_pooled(prefix, pool_n, name)
+    local idx = pool_n > 0 and math_random(pool_n) or 1
+    local text = game.translate_string(string_format("%s_%03d", prefix, idx))
+    if not text:find("#name#", 1, true) then return text end
+    if name and name ~= "" then
+        return (text:gsub("#name#", function() return name end))
+    end
+    return game.translate_string(string_format("%s_001", prefix))
+end
+
+--- Show a seldom yield tip attributed to npc, drawn from the prefix's pool, with the #name# slot
+--- filled by name (the kill owner for npc-vs-npc, the actor for reserve-own). Bails on the cheap roll
 --- first (no clock read), then the shared minimum interval, so it stays rare even on the hot path.
---- @cost O(1) | roll only on the common bail; os.clock + npc_tip only when a tip actually fires
-local function _yield_tip(npc, prefix, pool_n)
+--- @cost O(1) | roll only on the common bail; os.clock + _resolve_pooled only when a tip fires
+local function _yield_tip(npc, prefix, pool_n, name)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local now = os.clock()
     if now < _yield_tip_next then return end
     _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
-    local idx = pool_n > 0 and math_random(pool_n) or 1
-    xpda.npc_tip(npc, string_format("%s_%03d", prefix, idx), { sound = "news" })
+    xpda.npc_tip(npc, _resolve_pooled(prefix, pool_n, name), { sound = "news" })
 end
 
 --- First living, online squad member within radius of the corpse, or nil.
@@ -192,7 +213,7 @@ local function _excluded_reserve_own(v, obj)
             actor_pos:distance_to(corpse_pos), cfg.loot_reserve_own_radius,
             reserved and "reserved" or "lapsed")
     end
-    if reserved then _yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n) end
+    if reserved then _yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n, _actor_name()) end
     return reserved
 end
 
@@ -211,20 +232,22 @@ local function _excluded_squad_claim(v, obj, looker)
     if not _fresh(v, cfg.loot_block_npc_vs_npc_ttl) then return false end
     local corpse_pos = _corpse_pos(obj)
     local radius = cfg.loot_block_npc_vs_npc_radius
-    local blocked
+    local blocked, owner_name
     if v.squad then
         local looker_squad = get_object_squad(looker)
         if looker_squad and looker_squad.id == v.squad then return false end
         local squad = xobject.se(v.squad)
         blocked = xsquad.is_squad(squad) and _first_member_within(squad, corpse_pos, radius) ~= nil
+        if blocked then owner_name = xsquad.get_commander_name(squad) end
     else
         if v.killer == looker:id() then return false end
         local owner = xobject.go(v.killer)
         if not owner or not owner:alive() then return false end
         blocked = _within(owner:position(), corpse_pos, radius)
+        if blocked then owner_name = owner:character_name() end
     end
     if blocked and _actor_witnessing(corpse_pos) then
-        _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n)
+        _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n, owner_name)
     end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s npc_vs_npc corpse=%s owner=%s looker=%s -> %s", LOG, corpse_id,
@@ -353,8 +376,7 @@ end
 local function _warn_once(corpse_id, owner)
     if _tip_ttl:get(corpse_id) then return end
     _tip_ttl:set(corpse_id, true)
-    local idx = _warn_n > 0 and math_random(_warn_n) or 1
-    xpda.npc_tip(owner, string_format("%s_%03d", WARN_PREFIX, idx), { sound = "beep_1" })
+    xpda.npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _actor_name()), { sound = "beep_1" })
 end
 
 --- Half B primary: veto opening a living NPC's claimed kill. on_before_key_press fires before the
