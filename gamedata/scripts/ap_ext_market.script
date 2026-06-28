@@ -41,12 +41,15 @@ local POLICY_PATH = "alifeplus\\ap_market_policy.ltx"
 local POLICY_SECTION = "ap_market_policy"
 local FLOOR_SECTION = "ap_market_rank_floor"
 local CHANCE_SECTION = "ap_market_rank_chance"
-local SPECIALS = { premium = true, per_trader_max = true, item_condition = true, ledger_max = true }
+local SPECIALS = { premium = true, item_condition = true, ledger_max = true }
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
 local VIEW_LOG_INTERVAL_SEC = 3
 local SAVE_KEY = "ap_ext_market"
 local DEFAULT_LEDGER_MAX = 20
+-- Chatter fires only for a restock whose most valuable injected item clears this base cost, so a
+-- nearby stalker mentions rifles and artefacts, not bread. Base cost (pre-premium), in rubles.
+local CHATTER_MIN_COST = 5000
 
 -- Factions that never seed the market (no real allegiance / cannot trade goods)
 local _SKIP_FACTION = { trader = true, monster = true, zombied = true, [""] = true }
@@ -67,9 +70,12 @@ local _ledger = {}
 -- Distribution claim (ttl_table, goods window, ephemeral): a section injected at one trader is
 -- claimed so sibling faction traders carry different items. Reset on load; harmless.
 local _claimed = nil
--- item_id -> { trader_id, inject_time(game_sec) } for tagged market goods. Ephemeral: the items are
--- real alife objects, but the engine restock wipes them within a cycle; on reload they lose the
--- premium tag and the timed release, then the next restock purges them.
+-- item_id -> { trader_id, inject_time(game_sec) } for tagged market goods. Persisted across
+-- save/load: the items are real alife objects that survive the save, and this tag table is saved
+-- alongside _ledger, so the premium price and the timed release survive a reload (a player reloads
+-- inside the goods window routinely). Validated at first update: any entry whose item the engine
+-- purged on an offline restock between save and load is dropped; a recycled id that slips through is
+-- still caught at pricing time by the parent==trader guard in _on_get_item_cost.
 local _market_goods = {}
 -- Reused collector for expired ids, so _release_expired never mutates _market_goods mid-iteration.
 local _release_buf = {}
@@ -140,8 +146,7 @@ local function _item_condition()  return (MARKET_POLICY and MARKET_POLICY.specia
 local function _ledger_max()      return (MARKET_POLICY and MARKET_POLICY.specials.ledger_max) or DEFAULT_LEDGER_MAX end
 local function _goods_window_sec() return cfg.market_window_hours * 3600 end
 local function _per_trader_cap()
-    local base = (MARKET_POLICY and MARKET_POLICY.specials.per_trader_max) or 0
-    return math_floor(base * cfg.market_intensity + 0.5)
+    return cfg.market_items_per_trader
 end
 
 -- ============================================================================
@@ -300,9 +305,30 @@ local function _resolve_trader_role(trader)
     return nil
 end
 
+--- Push one chatter line about a notable item this trader just took in, but only when the trader is
+--- on the player's current level (chatter is local). Delivery reuses the news speaker + sender via
+--- ap_ext_news.send_chatter; with no eligible nearby stalker to voice it, nothing is said.
+--- Announce a notable restock through the chatter channel. This only describes the event (the
+--- trader, the item, where); the channel (ap_ext_news.send_chatter) owns the selection policy --
+--- whether the subject is on the player's map, whether the faction is non-hostile, who voices it,
+--- and the throttle. Stays silent if the trader's level cannot be resolved.
+--- @param trader game_object The trader that restocked
+--- @param section string The most valuable section injected this restock
+--- @param faction string The trader's faction (role_info.faction)
+local function _try_chatter(trader, section, faction)
+    local se = xobject.se(trader:id())
+    local level_id = se and xlevel.get_level_id(se)
+    if not level_id then return end
+    ap_ext_news.send_chatter("st_ap_chatter_market", {
+        trader   = trader:character_name() or "",
+        item     = xinventory.get_item_name(section),
+        location = xlevel.get_level_name(level_id) or "",
+    }, { level_id = level_id, faction = faction })
+end
+
 --- Inject a bounded echo of the faction's recently-sold goods into one online trader. Resolves the
 --- trader's curated role + faction (xdata.npc_roles); skips traders with no resolved role/faction.
---- Picks from the eligible set up to the per-trader cap (scaled by MCM intensity), honouring
+--- Picks from the eligible set up to the per-trader cap (the MCM items-per-trader count), honouring
 --- per-category caps, spawns each at the configured condition, tags it for the premium hook + timed
 --- release, and claims it so sibling traders carry other items.
 --- @safety SAFE - bails on disabled, dead trader, unresolved role/faction, nil policy
@@ -332,13 +358,24 @@ local function _inject_at_trader(trader)
         window = _goods_window_sec(), now = xtime.game_sec(),
     }
     local injected = 0
+    local best_sec, best_cost = nil, 0
     for i = 1, #eligible do
         if injected >= cap then break end
-        if _try_inject_section(ctx, eligible[i]) then injected = injected + 1 end
+        local sec = eligible[i]
+        if _try_inject_section(ctx, sec) then
+            injected = injected + 1
+            local cost = xinventory.get_cost(sec) or 0
+            if cost > best_cost then best_cost, best_sec = cost, sec end
+        end
     end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s restock trader=%d(%s) faction=%s injected=%d/%d", LOG, trader:id(), tname, faction, injected, cap)
     end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s chatter gate trader=%d best=%s cost=%d min=%d", LOG, trader:id(),
+            tostring(best_sec), best_cost, CHATTER_MIN_COST)
+    end
+    if best_sec and best_cost >= CHATTER_MIN_COST then _try_chatter(trader, best_sec, faction) end
 end
 
 --- Deferred injection for the self-patched restock path: by the time this fires (0.1s after the
@@ -479,16 +516,37 @@ local function _release_expired()
 end
 
 -- ============================================================================
--- SAVE / LOAD (ledger only)
+-- SAVE / LOAD
 -- ============================================================================
 
 local function _on_save(m_data)
-    m_data[SAVE_KEY] = { ledger = _ledger }
+    m_data[SAVE_KEY] = { ledger = _ledger, market_goods = _market_goods }
 end
 
 local function _on_load(m_data)
+    -- Data only: no alife queries here (LOAD_STATE fires before entities exist). Stale-id
+    -- validation is deferred to _on_first_update via _validate_market_goods.
     local data = m_data and m_data[SAVE_KEY]
-    if data and data.ledger then _ledger = data.ledger end
+    if not data then return end
+    if data.ledger then _ledger = data.ledger end
+    if data.market_goods then _market_goods = data.market_goods end
+end
+
+--- Drop restored goods whose item no longer exists (a trader purged its ruck on an offline restock
+--- between save and load). Runs once at first update, when alife queries are safe. A recycled id
+--- that survives here is still rejected at pricing time by the parent==trader guard in
+--- _on_get_item_cost, so premium never mis-applies.
+local function _validate_market_goods()
+    local dropped = 0
+    for id in pairs(_market_goods) do
+        if not xobject.se(id) then
+            _market_goods[id] = nil
+            dropped = dropped + 1
+        end
+    end
+    if dropped > 0 and ap_core_debug.enabled() then
+        ap_core_debug.debug("%s load dropped %d stale goods", LOG, dropped)
+    end
 end
 
 -- ============================================================================
@@ -498,6 +556,7 @@ end
 local function _on_first_update()
     if _subscribed then return end
     _subscribed = true
+    _validate_market_goods()
     local _ = ap_ext_trade
     xevent.hook("ap_ext_trade", "trade", _observe_trade)
     RegisterScriptCallback(CALLBACK.ON_GET_ITEM_COST, _on_get_item_cost)

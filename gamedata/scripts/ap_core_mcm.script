@@ -16,6 +16,8 @@ defaults = {
 
     -- News (PDA gossip composer)
     news_enabled = true,
+    chatter_enabled = true,
+    chatter_interval_sec = 30,
     news_interval_min_sec = 60,
     news_interval_max_sec = 200,
     news_scope = "allies",
@@ -322,7 +324,7 @@ defaults = {
 
     -- Economy: faction market (ap_ext_market)
     market_enabled = true,
-    market_intensity = 1,
+    market_items_per_trader = 4,
     market_window_hours = 12,
 
     -- Development
@@ -376,6 +378,8 @@ local _key_to_tab = {
     consequence_max_events = "framework",
     global_consequence_max_events = "framework",
     news_enabled = "news",
+    chatter_enabled = "news",
+    chatter_interval_sec = "news",
     news_interval_min_sec = "news",
     news_interval_max_sec = "news",
     news_scope = "news",
@@ -392,7 +396,7 @@ local _key_to_tab = {
     loot_select_enabled = "economy/loot_policy",
     trade_profit_max = "economy/trade",
     market_enabled = "economy/market",
-    market_intensity = "economy/market",
+    market_items_per_trader = "economy/market",
     market_window_hours = "economy/market",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
@@ -799,7 +803,7 @@ function on_mcm_load()
                             _slide("ui_mcm_ap_economy_market_title"),
                             _desc("ui_mcm_ap_economy_market_desc"),
                             _check("market_enabled"),
-                            _track("market_intensity", 0, 2, 0.1),
+                            _track("market_items_per_trader", 0, 20, 1),
                             _track("market_window_hours", 1, 48, 1),
                         },
                     },
@@ -820,6 +824,9 @@ function on_mcm_load()
                         {"world",  "world"},
                     }),
                     _track("news_max_age_game_hours", 1, 72, 1),
+                    { id = "div_chatter", type = "line" },
+                    _check("chatter_enabled"),
+                    _track("chatter_interval_sec", 5, 300, 5),
                 },
             },
             {

@@ -237,7 +237,7 @@ local function _pick_speaker(actor_comm, scope, channel_status)
         local st = storage[id]
         local npc = st and st.object
         local comm = _is_speaker_npc_eligible(npc, id) and npc:character_community() or nil
-        if comm and alignment_human[comm] and channel_status[comm]
+        if comm and alignment_human[comm] and (not channel_status or channel_status[comm])
             and _passes_scope(comm, actor_comm, scope) then
             pool[#pool + 1] = npc
         end
@@ -279,6 +279,103 @@ local function _do_engine_dispatch(trace, picked, msg)
             sender = picked.name, channel = picked.channel, msg = msg,
             engine_ms = engine_timer:get_ms() }
     end)
+end
+
+-- ============================================================================
+-- CHATTER: immediate, localized one-off lines pushed by a producer the instant something happens,
+-- instead of drained from the record queue. Reuses the news machinery: a producer hands a template
+-- pool prefix, a slots table, and selection context (level, faction); send_chatter gates it (local,
+-- non-hostile, throttled), fills a variant, picks an online stalker as the voice (the same
+-- _pick_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
+-- ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate from news.
+-- ============================================================================
+
+local _chatter_pools = {}
+local _chatter_locale = nil
+
+-- Chatter's own throttle (real-sec os.clock, independent of the news compose interval): at most one
+-- chatter line every cfg.chatter_interval_sec. When many producers fire in one tick, without this
+-- they would each speak at once; the throttle lets the first through and drops the rest. Ephemeral,
+-- resets on load -- a short real-time throttle needs no persistence.
+local _chatter_next = 0
+
+-- Locale-cached template pool for a chatter prefix (rebuilt on language switch, like the news pools).
+local function _chatter_pool(prefix)
+    local loc = _detect_locale()
+    if loc ~= _chatter_locale then
+        _chatter_locale = loc
+        _chatter_pools = {}
+    end
+    local pool = _chatter_pools[prefix]
+    if not pool then
+        pool = _load_pool(prefix)
+        _chatter_pools[prefix] = pool
+    end
+    return pool
+end
+
+--- Push one chatter line for the given pool prefix, filled from slots. Returns true if a line was
+--- spoken. Gated by cfg.chatter_enabled; needs an eligible online stalker (the voice) and a live
+--- news channel, else it stays silent. Producers own the content decision (when, what facts);
+--- this owns only voice + render + send, identical to the radio path.
+--- @param pool_prefix string Template id prefix, e.g. "st_ap_chatter_<type>"
+--- @param slots table Slot values keyed by placeholder name (#item#, #location#, ...)
+--- @param opts table|nil Selection context: { level_id = number, faction = string }. level_id, if
+---   set, must equal the player's current level (chatter is local). faction, if set, must not be at
+---   war with the player (a loner hears nothing from a faction hostile to them).
+--- @return boolean spoken
+local CHATTER_LOG = "[EXT.CHATTER]"
+
+function send_chatter(pool_prefix, slots, opts)
+    local dbg = ap_core_debug.enabled()
+    if not cfg.chatter_enabled or not slots then
+        if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
+        return false
+    end
+    if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level_id() then
+        if dbg then ap_core_debug.debug("%s skip %s: off-level (subject=%s)", CHATTER_LOG, pool_prefix, tostring(opts.level_id)) end
+        return false
+    end
+    if opts and opts.faction then
+        local actor_comm = get_actor_true_community()
+        if actor_comm and game_relations.is_factions_enemies(actor_comm, opts.faction) then
+            if dbg then ap_core_debug.debug("%s skip %s: enemy faction %s vs %s", CHATTER_LOG, pool_prefix, opts.faction, actor_comm) end
+            return false
+        end
+    end
+    local now = os.clock()
+    if now < _chatter_next then
+        if dbg then ap_core_debug.debug("%s skip %s: throttled (%.1fs left)", CHATTER_LOG, pool_prefix, _chatter_next - now) end
+        return false
+    end
+    local pool = _chatter_pool(pool_prefix)
+    if #pool == 0 then
+        if dbg then ap_core_debug.debug("%s skip %s: empty pool (XML not loaded?)", CHATTER_LOG, pool_prefix) end
+        return false
+    end
+    local filtered = _filter_variants(pool, slots)
+    if #filtered == 0 then
+        if dbg then ap_core_debug.debug("%s skip %s: all %d variants filtered (missing slot)", CHATTER_LOG, pool_prefix, #pool) end
+        return false
+    end
+    local msg = _clean_output(_substitute(filtered[math_random(#filtered)], slots))
+    if not msg then
+        if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
+        return false
+    end
+    -- nil channel_status: xpda.send is direct to the actor, not channel-routed, so the speaker only
+    -- needs to pass the scope filter; the news radio channel does not have to be receivable.
+    local picked = _pick_speaker(get_actor_true_community(), cfg.news_scope, nil)
+    if not picked then
+        if dbg then ap_core_debug.debug("%s skip %s: no speaker (scope=%s, nobody to say it)", CHATTER_LOG, pool_prefix, tostring(cfg.news_scope)) end
+        return false
+    end
+    -- Direct give_game_news (immediate), NOT dnm:PushToChannel which queues onto the radio's delayed
+    -- schedule. Chatter is instant and does not ride the news pipeline.
+    xpda.send(picked.name, msg, picked.icon)
+    _chatter_next = now + cfg.chatter_interval_sec
+    if dbg then ap_core_debug.debug("%s sent %s by %s: %s", CHATTER_LOG, pool_prefix, picked.name, msg) end
+    return true
 end
 
 -- Pick the per-consequence template pool for the focal entry.

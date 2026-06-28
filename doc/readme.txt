@@ -220,15 +220,15 @@ Opportunities
     - Ambush - An outlaw squad spots the stash and camps it as bait.
     - Fill - A stalker squad spots the stash and hides supplies inside.
 
-  Area
-    - Conquer - Stalker factions claim empty territory (Ecologists excluded). Mutants use Swarm.
+  Territory
+    - Area Conquer - Stalker factions claim empty territory (Ecologists excluded). Mutants use Area Swarm.
       Conquest adds the conqueror's spawns alongside the originals as a shared injection (both streams stay active).
       Territory decays over time (MCM configurable).
-    - Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains.
+    - Area Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains.
       Swarming adds the swarming species' spawns alongside the originals as a shared injection (both streams stay active).
       Territory decays over time.
-      Decay, cap, and spawn count tune independently from Conquer in MCM.
-    - Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
+      Decay, cap, and spawn count tune independently from Area Conquer in MCM.
+    - Area Infest - Feral, predator, and aberrant mutants claim smart terrains as nests.
       Only squads carrying an alpha can infest.
       Infestation replaces original spawns with the infesting species as an exclusive injection (originals are suppressed).
       A per-level cap limits spread.
