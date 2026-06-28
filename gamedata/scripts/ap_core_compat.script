@@ -171,8 +171,11 @@ end
 ---   ap_core_broker.get_scripted_ids()[id]                  -> alias for get_scripted_squads
 ---   record.consequence / record.other_*_display            -> synthesized on get_record / get_records
 ---   ap_core_const.CONSEQUENCE_INFO[c].action_key           -> rebuilt from CONSEQUENCE + ACTION enums
---- Active consumer: Warfare-Alife-Overhaul-erepb/warfare_alifeplus.script (lines 37,48,49,60,65).
---- Retirement blocked on Erepb updating to ap_api directly; remove this shim when that lands.
+--- DEPRECATED: the sole consumer, Warfare-Alife-Overhaul-erepb/warfare_alifeplus.script,
+--- migrated to ap_api in Warfare 1.5.5 (2026-05-29, commit 0826fb5). Versions <= 1.5.4
+--- (last release 2026-05-18) still consume this shim.
+--- TODO(retire after 2026-07-31): grace window for stragglers still on <= 1.5.4, then remove
+--- _wire_deprecated_surface() (its call in on_game_start below) and _add_deprecated_record_fields.
 local function _wire_deprecated_surface()
     ap_core_broker.get_scripted_ids = ap_core_broker.get_scripted_squads
 
