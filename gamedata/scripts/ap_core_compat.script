@@ -101,6 +101,25 @@ local function _v16_to_v17_reset_smart_mutator(m_data)
     m_data.ap_ext_smart_mutator = nil
 end
 
+--- v1.7 -> v1.8: wipe the pre-squad loot owner ledger. The value shape changed
+--- (victim_id -> killer_id  ==>  victim_id -> { killer, squad, t }); an old number
+--- row crashes _excluded_reserve_own (indexes v.killer on a number). Runs once per
+--- save (xchange log), so the wipe is a clean one-shot, not a recurring reset.
+--- Cleared IN PLACE because ap_ext_loot_claim captures the inner owner map by
+--- reference at its own load_state, and load_state dispatch order is nondeterministic
+--- (pairs over a function-keyed intercept table, axr_main.script:272); a parent-key
+--- nil could be missed if loot_claim ran first. Same pattern as
+--- _v15_to_v155_release_orphan_arrivals.
+local function _v17_to_v18_reset_loot_owner(m_data)
+    local saved = m_data.ap_ext_loot_claim
+    if type(saved) ~= "table" then return end
+    local owner = saved.owner
+    if type(owner) ~= "table" then return end
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for k in pairs(owner) do _to_remove[#_to_remove + 1] = k end
+    for i = 1, #_to_remove do owner[_to_remove[i]] = nil end
+end
+
 --- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
 --- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
 local function _v155_to_v16_extract_record_save_key(m_data)
@@ -124,6 +143,7 @@ xchange.register("ap_v135_to_v14_cleanup_squad_key",             _v135_to_v14_cl
 xchange.register("ap_v15_to_v155_release_orphan_arrivals",       _v15_to_v155_release_orphan_arrivals)
 xchange.register("ap_v155_to_v16_extract_record_save_key",       _v155_to_v16_extract_record_save_key)
 xchange.register("ap_v16_to_v17_reset_smart_mutator",            _v16_to_v17_reset_smart_mutator)
+xchange.register("ap_v17_to_v18_reset_loot_owner",               _v17_to_v18_reset_loot_owner)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
