@@ -41,7 +41,10 @@ local POLICY_PATH = "alifeplus\\ap_market_policy.ltx"
 local POLICY_SECTION = "ap_market_policy"
 local FLOOR_SECTION = "ap_market_rank_floor"
 local CHANCE_SECTION = "ap_market_rank_chance"
-local SPECIALS = { premium = true, item_condition = true, ledger_max = true }
+local SPECIALS = { ledger_max = true }
+-- Sections never injected regardless of policy or category cap. grenade_smoke is bugged, so the
+-- market must never echo it even though the grenade category is otherwise sold.
+local _EXCLUDED_SECTIONS = { grenade_smoke = true }
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
 local VIEW_LOG_INTERVAL_SEC = 3
@@ -141,8 +144,8 @@ end
 -- CONFIG ACCESSORS
 -- ============================================================================
 
-local function _premium()        return (MARKET_POLICY and MARKET_POLICY.specials.premium) or 1 end
-local function _item_condition()  return (MARKET_POLICY and MARKET_POLICY.specials.item_condition) or 0.1 end
+local function _premium()        return cfg.market_premium end
+local function _item_condition()  return cfg.market_item_condition end
 local function _ledger_max()      return (MARKET_POLICY and MARKET_POLICY.specials.ledger_max) or DEFAULT_LEDGER_MAX end
 local function _goods_window_sec() return cfg.market_window_hours * 3600 end
 local function _per_trader_cap()
@@ -221,6 +224,10 @@ end
 --- sibling trader this window, whitelisted with a positive cap, category accepted by the role, and
 --- passing the player-rank roll. Traces the rejection reason when debug is on.
 local function _eligible_section(section, faction, role_info, rules)
+    if _EXCLUDED_SECTIONS[section] then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s excluded (bugged)", LOG, section) end
+        return false
+    end
     if _claimed:has(faction .. "|" .. section) then
         if ap_core_debug.enabled() then ap_core_debug.debug("%s skip %s claimed", LOG, section) end
         return false
@@ -440,6 +447,20 @@ end
 --- @param profile table Trade profile (carries .discount)
 --- @param _cost number Engine-computed cost (replaced)
 --- @param ret table Output: set ret.new_cost to override
+-- Debug: log one tagged good's live state at the viewed trader -- whether its game object is still
+-- online, who owns it now, and its condition. Names why a good the player expected can be missing
+-- (offline, released, or owned by someone else). Split out so _log_trade_view stays a flat walk.
+local function _log_trade_good(trader_id, id)
+    local go = xobject.go(id)
+    if not go then
+        ap_core_debug.debug("%s view-good trader=%d id=%d offline (no game object)", LOG, trader_id, id)
+        return
+    end
+    local parent = go:parent()
+    ap_core_debug.debug("%s view-good trader=%d id=%d sec=%s parent=%s cond=%.2f", LOG,
+        trader_id, id, go:section(), tostring(parent and parent:id()), go:condition())
+end
+
 -- Debug: while the player has a trader's buy panel open, on_get_item_cost fires per item. Log which
 -- trader it is and how many market goods it holds right now, throttled per trader, so the log shows
 -- exactly which trader the player visited and whether it carried market stock. Skips the actor's own
@@ -454,8 +475,11 @@ local function _log_trade_view(obj)
     if (_view_log_next[trader_id] or 0) > now then return end
     _view_log_next[trader_id] = now + VIEW_LOG_INTERVAL_SEC
     local count = 0
-    for _, tag in pairs(_market_goods) do
-        if tag.trader_id == trader_id then count = count + 1 end
+    for id, tag in pairs(_market_goods) do
+        if tag.trader_id == trader_id then
+            count = count + 1
+            _log_trade_good(trader_id, id)
+        end
     end
     ap_core_debug.debug("%s view trader=%d(%s) market_goods=%d", LOG, trader_id, parent:character_name() or "?", count)
 end
@@ -471,7 +495,7 @@ local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     local price = math_floor(base * _premium() * (profile and profile.discount or 1))
     ret.new_cost = price
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s price id=%d base=%d -> %d", LOG, obj:id(), base, price)
+        ap_core_debug.debug("%s price id=%d base=%d cond=%.2f -> %d", LOG, obj:id(), base, obj:condition(), price)
     end
 end
 

@@ -320,13 +320,13 @@ Market
 
   The echo. A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
 
-  Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive gear and artefacts only as you rise. A rookie sees ammo and parts, a veteran the rifles and artefacts a faction is losing. The gate, the allowed items, their caps, and the premium all live in an editable policy file.
+  Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive ones only as you rise. A rookie sees common consumables and parts, a veteran the high-value artefacts, devices, and medical a faction is losing. The gate, the allowed items, and their caps live in an editable policy file. Traders sell consumables, artefacts, devices, and grenades, not gear, so the market echoes those; outfits, helmets, and weapons are not stocked because traders do not sell them.
 
-  Price and condition. An item shows at one trader, once, for a short window, at several times its full value, five by default. It is stocked broken, the way GAMMA traders carry gear, but priced on its full worth, not its damaged state. Different traders of a faction carry different items.
+  Price and condition. An item shows at one trader, once, for a short window, at several times its full value, five by default. Different traders of a faction carry different items. The premium and the spawn condition are sliders under Economy then Faction market.
 
   Adds only. The market never takes money or items from anyone. It adds stock and sets the price, and you pay that premium through the normal trade window like any other purchase. Turn it off and traders carry only their vanilla stock. It ships on.
 
-  What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never better than the gear that faction is actually fielding. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
+  What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never more than what that faction actually sells. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
 
 Instincts
 

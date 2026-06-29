@@ -17,7 +17,7 @@ defaults = {
     -- News (PDA gossip composer)
     news_enabled = true,
     chatter_enabled = true,
-    chatter_interval_sec = 30,
+    chatter_interval_sec = 15,
     news_interval_min_sec = 60,
     news_interval_max_sec = 200,
     news_scope = "allies",
@@ -326,6 +326,8 @@ defaults = {
     market_enabled = true,
     market_items_per_trader = 4,
     market_window_hours = 12,
+    market_premium = 5.0,
+    market_item_condition = 0.9,
 
     -- Development
     log_level = "WARN",
@@ -398,6 +400,8 @@ local _key_to_tab = {
     market_enabled = "economy/market",
     market_items_per_trader = "economy/market",
     market_window_hours = "economy/market",
+    market_premium = "economy/market",
+    market_item_condition = "economy/market",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
     cause_alphakill_enabled = "causes/reactions",
@@ -805,6 +809,8 @@ function on_mcm_load()
                             _check("market_enabled"),
                             _track("market_items_per_trader", 0, 20, 1),
                             _track("market_window_hours", 1, 48, 1),
+                            _track("market_premium", 1, 20, 0.5),
+                            _track("market_item_condition", 0.05, 1, 0.05),
                         },
                     },
                 },
