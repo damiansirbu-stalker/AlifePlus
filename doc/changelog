@@ -1,17 +1,31 @@
-next
-  Summary: Continuous squad hunts, squad-based loot ownership, NPC-vs-NPC reservation, NPC corpse loot policy, per-side config, NPC remarks, vanilla campfire overflow, harmonized item policies, faction market, per-instigator reaction limit
+1.8.0
+  Summary: Symmetric chase, symmetric kill ownership, fair corpse looting, faction market, shared item policy, reaction limit
+  
+  Market
+    - A faction's hub traders now briefly stock a few items that faction's stalkers recently sold.
+      The stock is gated to your rank, priced at a premium, and cleared after a short window.
+      Works only with real items, sold by stalkers in the Trade system which earlier were obtained from looting or loadouts
+    - Loot, trade, and stash now share the same policies  
 
-  - A squad hunting a target now tracks its live position and follows it across the map, instead of re-routing only at smart terrains and trailing a step behind. The chase is symmetrical, running the same rules whether the target is you or another squad. Squads avenging a killed ally, outlaws chasing an artefact thief, and mutant packs hunting their alpha's killer all hunt this way.
-  - The chase reacts rather than pursuing blindly. It breaks off when the target dies, escapes to another map, or stops being an enemy. It pauses when the target shelters in a base or a surge rolls in, then resumes once the way clears.
-  - Added the third side of loot ownership: NPCs no longer strip each other's kills. A kill an NPC squad made is left for that squad while a member stands near it, and other stalkers walk past.
-  - Loot ownership is now squad-based. A kill belongs to the killer's whole squad, so dropping one stalker no longer frees the body while the rest of his squad stands over it. Lone killers and your own kills stay individually owned.
-  - Reworked the Economy > Loot claim menu: each side now has its own switch, radius, and claim duration, 150 m and one hour by default, replacing the single 30 m shared radius and the master toggle.
-  - NPCs occasionally speak when they leave a kill for you or for another squad.
-  - Added a corpse loot policy: an NPC that loots a body now keeps only ammo for its own weapon and a capped share of each supply, and the rest is destroyed, so bodies you reach later are not stripped bare. Tunable under Economy > Loot policy, off by toggle.
-  - A base campfire seats only a handful of stalkers. When it fills, vanilla leaves the rest sitting at random spots nearby, a corner or the open road. A squad AlifePlus controls now moves on to find room instead of settling there. The quirk is vanilla, so the camping stays for squads AlifePlus does not control.
-  - Harmonized the loot, trade, and stash policies onto one shared set of item limits, so NPCs keep their combat ammo and gather supplies to sell.
-  - Added the faction market. A faction's hub traders now briefly stock a few of the items that faction's stalkers recently sold, gated to your rank and priced at a premium, then cleared after a short window. The market only reads the trade cycle and adds stock, so it takes no money or items from anyone, and you pay the premium at the trader like any purchase. It closes the loot, trade, and market loop: what a faction loots and keeps, it carries and sells, and a slice comes back to you. Tunable under Economy > Faction market, with the allowed items, caps, premium, and rank gate in an editable policy file.
-  - A single source no longer draws an endless run of reactions. Whoever sets one off (a killer, a wounded NPC, or whoever grabs an artefact, you included) can trigger only so many within a game hour, so a map where you are the only enemy stops aiming every reaction at you. Tunable in the framework settings as Reactions per causer.
+  Loot Claim
+    - A kill now belongs to whoever made it, reserved the same way in every direction.
+      Your kills are reserved from NPCs, an NPC's from you, and NPCs no longer strip each other.
+      The claim covers the killer's whole squad, so the body stays held while the squad stands over it.
+      Each side has its own switch, radius, and claim time under Economy > Loot claim, 150 m and 1 hour.
+	  
+  Loot Policy
+    - An NPC that loots a body now takes a fair share and leaves the rest, based on a policy config 
+      A looter keeps only ammo for its own weapon and a capped share of each supply, the rest is destroyed.
+      Bodies you reach later still hold their gear, so loot-blocker addons are no longer needed.
+    - NPCs occasionally remark when they leave a kill for you or for another squad.
+	
+  Chase
+    - New chase system extended from vanilla based on target live position, symmetrical for player and NPCs.
+      It cancels when the target dies, leaves the map, or turns non-hostile. It pauses when the target is at a base or a surge occurs.	
+
+  Framework
+    - A map where you are the only enemy no longer aims every reaction at you. Each instigator triggers only so many reactions per game hour, tunable as Reactions per causer.
+	- Improved the logic of checking available job/animations in smart terrains. Squads now move on from a full base campfire to find room elsewhere.
 
 1.7.9
   Summary: Interaction Dot Marks compatibility

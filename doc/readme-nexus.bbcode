@@ -1,4 +1,4 @@
-Version: 1.7.9 (xlibs 1.7.7)
+Version: 1.8.0 (xlibs 1.8.0)
 
 [url=https://github.com/damiansirbu-stalker/AlifePlus]GitHub[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md]Manifesto[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md]Integration Guide[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog]Changelog[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt]На русском[/url] | [url=https://github.com/damiansirbu-stalker/AlifePlus/issues]Bugs, suggestions[/url]
 
@@ -263,7 +263,7 @@ Arrival satisfies the need. Inventory items are not destroyed by the arrival its
 [size=2][b]Trade[/b][/size]
 AlifePlus runs a category-based NPC buy/sell cycle on arrival at trader smarts. NPCs visit a trader, sell surplus from their inventory, and restock ammo, grenades, and consumables per a per-rank policy. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat. Built on Alundaio's buy/sell core (2013, maintained by Tronex through 2019), modernized to accept extension instead of dirtying item files, and to carry depth the original row schema could not express.
 
-[b]Categories instead of items.[/b] Alundaio's row schema lived inside each tradeable item's LTX: every section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate in trade. AlifePlus declares categories in ap_trade_policy.ltx (DLTX-overridable). xinventory resolves any section to its category through the engine's own item buckets. A Boomsticks AP round, a GAMMA addon medkit, an EFP grenade all classify automatically through their existing kind and class fields. The modder adds the item, the mod ships, AlifePlus trades it. No per-modpack LTX maintenance, no item file edits.
+[b]Categories instead of items.[/b] Alundaio's row schema lived inside each tradeable item's LTX: every section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate in trade. AlifePlus declares categories in an editable policy file (DLTX-overridable). xinventory resolves any section to its category through the engine's own item buckets. A Boomsticks AP round, a GAMMA addon medkit, an EFP grenade all classify automatically through their existing kind and class fields. The modder adds the item, the mod ships, AlifePlus trades it. No per-modpack LTX maintenance, no item file edits.
 
 [b]Per-rank policy.[/b] Two blocks split policy by character rank: rookie (rank below 12000) and veteran (rank 12000 and above). Each block lists categories with a min, max band: medkit, bandage, antirad, stim, pill, grenade, food, drink, plus per-slot ammo tiers (ammo_slot_2_t1/t2 pistol basic/premium, ammo_slot_3_t1/t2 rifle basic/premium). Entry order sets the buy priority.
 

@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.7.9 (xlibs 1.7.7)
+- Version: 1.8.0 (xlibs 1.8.0)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -320,7 +320,7 @@ Market
 
   The echo. A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
 
-  Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive ones only as you rise. A rookie sees common consumables and parts, a veteran the high-value artefacts, devices, and medical a faction is losing. The gate, the allowed items, and their caps live in an editable policy file. Traders sell consumables, artefacts, devices, and grenades, not gear, so the market echoes those; outfits, helmets, and weapons are not stocked because traders do not sell them.
+  Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive ones only as you rise. A rookie sees common consumables and parts, a veteran the high-value artefacts, devices, and medical a faction is losing. The gate, the allowed items, and their caps live in an editable policy file. Traders sell consumables, artefacts, devices, and grenades, so the market echoes those. Gear like outfits, helmets, and weapons is not stocked, since traders do not sell it.
 
   Price and condition. An item shows at one trader, once, for a short window, at several times its full value, five by default. Different traders of a faction carry different items. The premium and the spawn condition are sliders under Economy then Faction market.
 
