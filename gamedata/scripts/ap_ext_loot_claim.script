@@ -14,7 +14,7 @@ local type, tostring, rawget, RegisterScriptCallback = type, tostring, rawget, R
 local string_format, math_random = string.format, math.random
 local xevent, xttltable, xcreature, xsquad = xevent, xttltable, xcreature, xsquad
 local xtime, xobject, xpda, xinventory = xtime, xobject, xpda, xinventory
-local level, game, game_relations = level, game, game_relations
+local level, game, game_relations, game_object = level, game, game_relations, game_object
 local CALLBACK = ap_core_const.CALLBACK
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local cfg = ap_core_mcm.cfg
@@ -141,10 +141,13 @@ end
 
 --- Show a seldom yield tip attributed to npc, drawn from the prefix's pool, with the #name# slot
 --- filled by name (the kill owner for npc-vs-npc, the actor for reserve-own). Bails on the cheap roll
---- first (no clock read), then the shared minimum interval, so it stays rare even on the hot path.
---- @cost O(1) | roll only on the common bail; os.clock + _resolve_pooled only when a tip fires
+--- first (no clock read), then drops an enemy speaker (a hostile NPC never voices a courteous yield
+--- line at the actor), then the shared minimum interval, so it stays rare even on the hot path.
+--- @cost O(1) | roll only on the common bail; 1 relation luabind past the roll; os.clock + _resolve_pooled only on fire
 local function _yield_tip(npc, prefix, pool_n, name)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
+    local actor = db.actor
+    if not actor or npc:relation(actor) >= game_object.enemy then return end
     local now = os.clock()
     if now < _yield_tip_next then return end
     _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
