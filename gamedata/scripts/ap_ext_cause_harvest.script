@@ -1,5 +1,5 @@
 --- ap_ext_cause_harvest: Artefact pickup by player or NPC
-local xsquad, xlevel, xconst, xttltable, xinventory = xsquad, xlevel, xconst, xttltable, xinventory
+local xsquad, xlevel, xconst, xttltable, xinventory, xtime = xsquad, xlevel, xconst, xttltable, xinventory, xtime
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -14,9 +14,15 @@ local LOG = ap_core_debug.bracket(CAUSE.HARVEST)
 
 local cfg = ap_core_mcm.cfg
 
+-- game_sec (not os.clock): the cooldown tracks in-game time so it respects sleep / time accel,
+-- consistent with the other reactive causes (massacre, basekill) and loot_claim.
+-- NOT persisted across save/load: a load_state import would call the clock (xtime.game_sec ->
+-- level.get_start_time) during alife load, which ACCESS-VIOLATES before the level timer is live
+-- (the hazard loot_claim defers around via actor_on_first_update). The table resets on each Lua VM
+-- reinit (level transition) -- acceptable for an anti-spam gate.
 local _pickup_cooldown = xttltable.create_ttl_table({
     default_ttl = ap_core_const.HARVEST_COOLDOWN_SEC,
-    clock = os.clock,
+    clock = xtime.game_sec,
 })
 
 local function _evaluate(_trace, item, npc)
