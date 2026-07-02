@@ -449,15 +449,34 @@ end
 
 local function _on_first_update()
     _ac_id = db.actor and db.actor:id()
-    -- PHASE B: Level() is live at the first update tick, so the game-clock import is safe here.
+    -- PHASE B: Level() is live at the first update tick, so the game-clock set() is safe here.
+    -- Reconstruct each claim with its persisted remaining TTL (entries are { k = killer, rem = secs })
+    -- rather than re-stamping a fresh full default_ttl. A bare number is a legacy-shape save (owner
+    -- id only, no TTL) -- re-stamp the default window for back-compat.
     if _saved_owner then
-        _owner:import(_saved_owner)
+        for victim_id, rec in pairs(_saved_owner) do
+            if type(rec) == "table" then
+                if rec.k and rec.rem and rec.rem > 0 then _owner:set(victim_id, rec.k, rec.rem) end
+            elseif rec then
+                _owner:set(victim_id, rec)
+            end
+        end
         _saved_owner = nil
     end
 end
 
 local function _on_save_state(m_data)
-    m_data.ap_ext_loot_claim = { owner = _owner:export() }
+    -- Persist owner + remaining TTL per claim, not just the owner map. _owner:export drops TTLs and
+    -- :import re-stamps a fresh full default_ttl from load time, which lets a claim be kept alive
+    -- indefinitely by save-scumming and lets a reused server id read a stale owner for up to the full
+    -- window. Capturing remaining_ttl lets _on_first_update restore the real remaining window and drop
+    -- already-expired claims. game_sec is live at SAVE_STATE (gameplay), so remaining_ttl is safe here.
+    local saved = {}
+    for victim_id, killer_id in pairs(_owner:all()) do
+        local rem = _owner:remaining_ttl(victim_id)
+        if rem and rem > 0 then saved[victim_id] = { k = killer_id, rem = rem } end
+    end
+    m_data.ap_ext_loot_claim = { owner = saved }
 end
 
 local function _on_load_state(m_data)
