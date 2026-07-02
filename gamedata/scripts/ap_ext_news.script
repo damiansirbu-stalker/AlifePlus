@@ -10,7 +10,7 @@ local string_format, string_gsub, string_find = string.format, string.gsub, stri
 local table_concat = table.concat
 local game_translate_string = game.translate_string
 local xobject_se = xobject.se
-local xtime, xlevel, xpda, xprofiler, xttltable = xtime, xlevel, xpda, xprofiler, xttltable
+local xtime, xlevel, xpda, xprofiler = xtime, xlevel, xpda, xprofiler
 local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
 
 local TRACE, CONSEQUENCE, REASON = ap_core_const.TRACE, ap_core_const.CONSEQUENCE, ap_core_const.REASON
@@ -25,14 +25,12 @@ local OP_COLLECT       = "news:collect"
 local OP_PICK_SPEAKER  = "news:pick_speaker"
 local OP_DISPATCH      = "news:dispatch"
 
-local DEDUP_CAPACITY = 512
 local MAX_TEMPLATE_VARIANTS = 20
 
 local SCOPE_OWN, SCOPE_ALLIES, SCOPE_WORLD = "own", "allies", "world"
 
 local _templates_by_consequence = {}
 local _locale = nil
-local _reported_cons_ids = nil
 local _pending_dispatch = nil
 
 -- Load a numbered template pool: walk prefix_001..N until miss/empty
@@ -168,7 +166,11 @@ local function _collect_eligible()
     local cur_level = xlevel.get_actor_level_id()
     for i = 1, #recs do
         local entry = recs[i]
-        if entry.cons_id and not _reported_cons_ids:has(entry.cons_id)
+        -- entry.reported is a flag on the shared ap_core_record entry, flipped true when this event
+        -- is gossiped (below). It rides the record's own save/load, so a reload no longer
+        -- re-broadcasts an already-reported event. The old _reported_cons_ids cache was rebuilt
+        -- empty on every Lua VM reinit (level transition / load), losing the dedup.
+        if entry.cons_id and not entry.reported
             and entry.level_id and entry.level_id == cur_level
             and entry.game_hours and (now_gh - entry.game_hours) <= max_age
         then
@@ -403,13 +405,13 @@ local function _compose_tick_impl(trace)
     local entry = entries[math_random(#entries)]
     local pool, cons_name = _pick_template(entry)
     if not pool or #pool == 0 then
-        _reported_cons_ids:set(entry.cons_id, true)
+        entry.reported = true
         return { code = TRACE.NO_TEMPLATES, cons = cons_name or "?" }
     end
     local slots = _slots_for(entry)
     local filtered = _filter_variants(pool, slots)
     if #filtered == 0 then
-        _reported_cons_ids:set(entry.cons_id, true)
+        entry.reported = true
         return { code = TRACE.NO_MSG, cons = cons_name or "?", reason = REASON.ALL_FILTERED }
     end
     local template = filtered[math_random(#filtered)]
@@ -424,7 +426,7 @@ local function _compose_tick_impl(trace)
             actor_comm = actor_comm or "?", channels = _format_channels(channel_status) }
     end
     _pending_dispatch = { trace = trace, picked = picked, msg = msg }
-    _reported_cons_ids:set(entry.cons_id, true)
+    entry.reported = true
     return { code = TRACE.SENT, sender = picked.name }
 end
 
@@ -458,6 +460,5 @@ end
 
 function on_game_start()
     _locale = nil
-    _reported_cons_ids = xttltable.create_fifo_cache({ capacity = DEDUP_CAPACITY })
     CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, 30, _on_compose_timer)
 end
