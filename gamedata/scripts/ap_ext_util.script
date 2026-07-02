@@ -15,6 +15,12 @@ local _INV_TO_BASE = {
     [PERSONALITY.INV_GREED]      = PERSONALITY.GREED,
 }
 
+-- Neutral fallback trait set for a community with no PERSONALITY row: every trait lookup misses
+-- and resolves to 0.5 via the `or 0.5` defaults in check_personality. Plus a once-per-community
+-- warn set so the gap is visible in the log without spamming it.
+local EMPTY_TRAITS = {}
+local _warned_unknown = {}
+
 function is_night()
     if not level.present() then return false end
     local hours = level.get_time_hours()
@@ -68,7 +74,17 @@ end
 function check_personality(traits, community)
     if not traits or not community then return true end
     local faction_traits = PERSONALITY[community]
-    if not faction_traits then return true end
+    if not faction_traits then
+        -- Unknown faction/species (e.g. a modded community not in the PERSONALITY table): fall back
+        -- to neutral 0.5 traits (clamped to FLOOR/CEILING below) instead of passing unconditionally,
+        -- so a community added to an alignment set without a personality row is gated
+        -- probabilistically rather than firing every consequence at 100%. Warn once per community.
+        if not _warned_unknown[community] then
+            _warned_unknown[community] = true
+            ap_core_debug.warn("[EXT.UTIL] check_personality: no PERSONALITY entry for '%s'; using neutral 0.5", tostring(community))
+        end
+        faction_traits = EMPTY_TRAITS
+    end
     local sum, count = 0, 0
     for i = 1, #traits do
         local key = traits[i]
