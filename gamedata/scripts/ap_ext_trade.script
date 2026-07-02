@@ -43,13 +43,27 @@ local function _load_trade_policy()
     }
 end
 
+-- Resolve a section's cost, warning once per section when it has no `cost` field. Falling back to
+-- DEFAULT_COST silently lets NPCs trade an unpriced (e.g. modded) section at a flat rate, which for
+-- a valuable item is a money leak; the once-per-section warn surfaces the misconfig during playtest.
+local _warned_no_cost = {}
+local function _cost(sec)
+    local c = xinventory.get_cost(sec)
+    if c then return c end
+    if not _warned_no_cost[sec] then
+        _warned_no_cost[sec] = true
+        ap_core_debug.warn("[EXT.TRADE] section '%s' has no cost; using DEFAULT_COST=%d", tostring(sec), DEFAULT_COST)
+    end
+    return DEFAULT_COST
+end
+
 -- Return a fresh cost-asc-sorted copy of sections (does not mutate the input list, which
 -- may be cached by xinventory and shared with other callers).
 local function _sorted_by_cost(sections)
     local sorted = {}
     for i = 1, #sections do sorted[i] = sections[i] end
     table_sort(sorted, function(a, b)
-        return (xinventory.get_cost(a) or DEFAULT_COST) < (xinventory.get_cost(b) or DEFAULT_COST)
+        return _cost(a) < _cost(b)
     end)
     return sorted
 end
@@ -72,7 +86,7 @@ local function _buy_ammo_tier(npc, seller, weapon_sec, tier_num, target_rounds, 
     local rounds_added = 0
     for _, sec in ipairs(tier_sections) do
         local box = xinventory.get_box_size(sec) or 30
-        local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
+        local cost = floor(_cost(sec) * BUY_MULT)
         while rounds_added < target_rounds do
             if xcreature.get_money(npc) < cost then break end
             if not xinventory.create_item(sec, npc:id(), { ammo = box }) then break end
@@ -94,7 +108,7 @@ end
 local function _buy_one_section(npc, seller, sec, current, target, bought)
     local box = xinventory.get_box_size(sec)
     local step = box or 1
-    local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
+    local cost = floor(_cost(sec) * BUY_MULT)
     while current < target do
         if xcreature.get_money(npc) < cost then break end
         if not xinventory.create_item(sec, npc:id(), box and { ammo = box } or nil) then break end
@@ -200,7 +214,7 @@ function trade(npc, seller, _opts)
         counts = counts,
         on_surplus = function(item, _cat, sec, _unit)
             xinventory.transfer_item(npc, item, seller)
-            xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))
+            xcreature.give_money(npc, floor(_cost(sec) * SELL_MULT))
             sold[#sold + 1] = sec
         end,
     })
