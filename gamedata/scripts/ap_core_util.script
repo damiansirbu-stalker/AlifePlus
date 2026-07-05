@@ -28,16 +28,15 @@ function event_publish(event_name, event_data)
     return result
 end
 
---- Increment TTL counter by key, return count when threshold reached (then reset)
+--- Increment a TTL counter by key and return the new running count. Non-destructive:
+--- the caller clears the key itself (counter:remove(key)) once it acts on the count, so a
+--- blocked action leaves the accumulated cluster intact for the next call instead of dropping it.
 --- @param counter table TTL table instance (xttltable.create_ttl_table)
 --- @param key any Counter key
---- @param threshold number Minimum count to fire
---- @return number|nil Count if threshold reached, nil otherwise
-function count_until_threshold(counter, key, threshold)
+--- @return number New running count (>= 1)
+function accumulate_count(counter, key)
     local count = (counter:get(key) or 0) + 1
     counter:set(key, count)
-    if count < threshold then return nil end
-    counter:remove(key)
     return count
 end
 

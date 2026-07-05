@@ -19,13 +19,7 @@ local _alignment_human = ap_ext_const.alignment_human
 
 local function _on_squad_npc_death(trace, squad, _npc, se_killer)
     if not cfg.cause_basekill_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
-    if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
-    end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
-    if not ap_core_limiter.check_causer_rate_limit(se_killer and se_killer.id) then
-        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
-    end
 
     local smart = xsquad.get_squad_smart(squad)
     if not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_SMART } end
@@ -33,8 +27,17 @@ local function _on_squad_npc_death(trace, squad, _npc, se_killer)
         return { code = RESULT.FAILED_RULES, reason = REASON.NOT_AT_BASE }
     end
 
-    local count = ap_core_util.count_until_threshold(_deaths, smart.id, cfg.cause_basekill_threshold)
-    if not count then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
+    -- Accumulate every eligible death into the base's cluster, then gate publication. The cluster
+    -- clears only on an actual publish, so an exhausted (shared) REACTIONS budget or per-causer
+    -- cap holds the deaths instead of dropping them uncounted.
+    local count = ap_core_util.accumulate_count(_deaths, smart.id)
+    if count < cfg.cause_basekill_threshold then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
+    if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
+    end
+    if not ap_core_limiter.check_causer_rate_limit(se_killer and se_killer.id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
+    end
 
     local faction = squad.player_id
 
@@ -42,6 +45,7 @@ local function _on_squad_npc_death(trace, squad, _npc, se_killer)
 
     local killer_squad = se_killer and xsquad.get_squad_by_member(se_killer.id) or nil
 
+    _deaths:remove(smart.id)
     ap_core_limiter.increment_cause_counter(CATEGORY)
     ap_core_limiter.increment_causer_counter(se_killer and se_killer.id)
     return {
