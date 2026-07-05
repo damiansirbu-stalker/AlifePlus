@@ -277,6 +277,39 @@ local function _on_squad_npc_death(squad, npc, killer)
     end)
 end
 
+-- Clear kill/alpha state when an entity despawns without a death event (AlifeGuard release,
+-- GAMMA despawners, engine cull). Server ids recycle with no grace (id_generator.h), so a leaked
+-- entry hands its kill count to a fresh entity via _register_kill's old + 1. Death itself already
+-- routes through _unregister_entity, so this is usually a no-op pair of hash deletes.
+local function _on_entity_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    _ap_killers[id] = nil
+    _ap_alphas[id] = nil
+end
+
+-- Drop saved ids that no longer resolve to a stalker or mutant. Catches entries that leaked
+-- through a save via paths that bypass server_entity_on_unregister (callbacks.md); the class
+-- check also drops ids recycled onto a different entity kind. Broker load-sweep pattern.
+local function _sweep_recycled_ids(map)
+    local dropped = 0
+    for id in pairs(map) do
+        if not xcreature.is_npc(id) then
+            map[id] = nil
+            dropped = dropped + 1
+        end
+    end
+    return dropped
+end
+
+local function _on_game_load()
+    local dropped_killers = _sweep_recycled_ids(_ap_killers)
+    local dropped_alphas = _sweep_recycled_ids(_ap_alphas)
+    if dropped_killers > 0 or dropped_alphas > 0 then
+        ap_core_debug.info("[TRACKER] load_sweep: dropped killers=%d alphas=%d", dropped_killers, dropped_alphas)
+    end
+end
+
 function on_game_start()
     _ap_alpha_dead = xttltable.create_ttl_table({ default_ttl = DEAD_GRACE_SEC })
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
@@ -285,6 +318,8 @@ function on_game_start()
 
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
+    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
 
     ap_core_debug.info("AlifePlus v%s (xlibs v%s)", _ap_deps.get_version(), xlibs.get_version())
