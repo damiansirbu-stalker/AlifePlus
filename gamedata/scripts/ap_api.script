@@ -48,11 +48,9 @@ end
 --- mutate freely without affecting broker state. Each entry carries:
 ---   scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args,
 ---   pre_release_gulag, arrived (optional), release_at (optional).
---- Off-map sessions additionally carry: offmap = true, home_level, dispatched_at,
---- arrived_at (set on outbound arrival), return_home_at (set on outbound arrival, consumed
---- on return-home dispatch), left_home (set when the squad's current level diverges from
---- home_level). Scripted fields may be nil during the dwell phase (post-arrival,
---- pre-return) while the session fields remain set.
+--- Off-map sessions additionally carry: offmap = true, dispatched_at. Scripted fields may be
+--- nil after the squad is released at the destination while the session fields remain set until
+--- the squad settles or the despawn safety net reclaims it.
 --- Entry holds control state only; consequence/action/cause/identity belong to the activity
 --- record (see get_record / get_records).
 --- Prefer get_scripted_squad(id) for single-entry lookups (one entry copy, not the whole map).

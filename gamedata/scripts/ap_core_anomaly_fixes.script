@@ -1,0 +1,50 @@
+--- ap_core_anomaly_fixes: bugfix monkeypatches to vanilla Anomaly A-Life scripts.
+--- Home for corrections to engine-script behavior AP relies on. Each fix WRAPS (captures and calls
+--- the original), never replaces, so it composes with any modpack overlay regardless of load order
+--- (script-loading.md "Composing Wrappers"). Installed once at on_game_start under a _patched guard.
+---
+--- FIX 1 -- SIMBOARD roster desync on scripted squad moves.
+--- sim_squad_scripted:specific_update (script:289) and :generic_update (script:356) re-home a squad
+--- through the roster-blind self:assign_smart, which sets squad.smart_id and re-registers NPC jobs
+--- but never updates SIMBOARD.smarts[id].squads / population. Capacity reads (xsmart.has_capacity,
+--- is_smart_empty) then drift. Each wrapper captures smart_id before the original runs and calls
+--- xsmart.reconcile_squad_roster after, which syncs the roster idempotently -- a no-op on a base
+--- that already fixed it (e.g. GAMMA's overlay), the correction on a roster-blind base (vanilla).
+--- @override -- monkeypatch of sim_squad_scripted; document in readme "Disable before installing".
+--- @src anomaly/sim_squad_scripted.script(276-289 specific_update, 333-356 generic_update)
+
+local xsmart, ap_core_debug = xsmart, ap_core_debug
+
+local _patched = false
+
+function on_game_start()
+    if _patched then return end
+    local squad_class = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
+    if not squad_class then
+        ap_core_debug.err("[CORE.ANOMALY] sim_squad_scripted class missing; roster sync not installed")
+        return
+    end
+
+    local reconcile = xsmart.reconcile_squad_roster
+    local orig_specific = squad_class.specific_update
+    local orig_generic = squad_class.generic_update
+
+    if orig_specific then
+        squad_class.specific_update = function(self, script_target_id)
+            local from_smart_id = self.smart_id
+            orig_specific(self, script_target_id)
+            reconcile(self, from_smart_id)
+        end
+    end
+
+    if orig_generic then
+        squad_class.generic_update = function(self)
+            local from_smart_id = self.smart_id
+            orig_generic(self)
+            reconcile(self, from_smart_id)
+        end
+    end
+
+    _patched = true
+    ap_core_debug.info("[CORE.ANOMALY] sim_squad_scripted roster sync installed")
+end

@@ -1,12 +1,12 @@
 --- ap_core_broker: Squad scripting lifecycle, ownership registry, protection, arrival,
---- off-map lifecycle. One _ap_scripted_squads table covers both regular scripted
---- dispatches and off-map sessions; off-map sessions add phase fields (home_level,
---- dispatched_at, arrived_at, return_home_at, left_home) on top of the shared scripted
---- dispatch fields and run through the same periodic scan (UPDATE_SCRIPTED_SQUADS_SEC).
+--- off-map lifecycle. One _ap_scripted_squads table covers both regular scripted dispatches
+--- and off-map sessions; off-map sessions add offmap + dispatched_at on top of the shared
+--- scripted dispatch fields and run through the same periodic scan (UPDATE_SCRIPTED_SQUADS_SEC).
+--- An off-map squad travels to its target, holds the gulag briefly, then settles there as a
+--- vanilla resident; the despawn safety net reclaims one that never settled.
 local pairs, next, tostring, type = pairs, next, tostring, type
 local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
-local string_format = string.format
-local xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice = xobject, xsquad, xsmart, xtime, xtable, xlevel, xslice
+local xobject, xsquad, xsmart, xtime, xtable, xslice = xobject, xsquad, xsmart, xtime, xtable, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
@@ -24,7 +24,6 @@ local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
 local cfg = ap_core_mcm.cfg
 
 local _ap_scripted_squads = {}
-local _ap_squad_home_level = {}
 local _arrival_handlers = {}
 
 -- Module-level reusable scratch table for _sweep_recycled_ids; cleared on each call to
@@ -209,11 +208,10 @@ local function _unscript_squad(squad_or_id)
     return true
 end
 
--- Replace an off-map entry with a session-only entry: scripted fields cleared, off-map
--- session fields carried over. Used at gulag release on outbound arrival: the squad has
--- reached the destination and AP hands it back to vanilla AI for the dwell window, but
--- the session must persist so the return-home dispatch fires later. Non-offmap entries
--- fall through to _unscript_squad.
+-- Release an off-map squad that could not settle (no job at the destination, or lost one
+-- mid-hold), keeping only the offmap session so the despawn safety net reclaims it once it
+-- goes offline. Clears the AP script; the squad reverts to vanilla AI in the meantime.
+-- Non-offmap entries fall through to _unscript_squad.
 local function _release_to_dwell(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
@@ -230,13 +228,9 @@ local function _release_to_dwell(squad_or_id)
         xsquad.release_squad(squad)
     end
     _ap_scripted_squads[squad_id] = {
-        interruptable  = false,
-        offmap         = true,
-        home_level     = data.home_level,
-        dispatched_at  = data.dispatched_at,
-        arrived_at     = data.arrived_at,
-        return_home_at = data.return_home_at,
-        left_home      = data.left_home,
+        interruptable = false,
+        offmap        = true,
+        dispatched_at = data.dispatched_at,
     }
     return true
 end
@@ -257,112 +251,19 @@ end
 -- =========================================================================
 -- Off-map lifecycle
 -- =========================================================================
--- An off-map session is a round-trip with four phases driven by entry fields
--- (no explicit phase enum):
---   outbound  : scripted_target set, arrived_at nil
---   dwell     : scripted_target nil, arrived_at set, return_home_at set
---   returning : scripted_target set to home_smart, arrived_at set, return_home_at nil
---   home      : entry dropped
--- Sessions survive non-offmap re-dispatches during dwell (script_squad preserves the
--- session fields when an existing entry has offmap=true). The arrival hook is
--- idempotent on arrived_at, so dwell-phase local arrivals never re-stamp the session.
-
--- Pick a home smart for return-home dispatch.
--- Distance-free pick: the squad is on a foreign level when this runs, so squad.position is in
--- a different coordinate frame than home_level smarts. Cross-frame distance comparison would be
--- spatially meaningless. xsmart.find_first_smart returns the first faction-accepting base on
--- home_level; falls back to the first smart on home_level for factions with no base presence.
--- @cost O(n) smarts worst case per call (early exit on first match); hourly scan amortizes fine
-local function _pick_home_smart(squad, home_level)
-    if not squad or not home_level then return nil end
-    local home_smart = xsmart.find_first_smart({
-        level_id = home_level,
-        factions = squad.player_id,
-        filter = xsmart.is_base,
-    })
-    if home_smart then return home_smart end
-    return xsmart.find_first_smart({ level_id = home_level })
-end
+-- An off-map session has no return leg: the squad travels to its target smart, holds the
+-- gulag for pre_release_gulag, then _unscript_squad settles it there as a vanilla resident.
+-- A squad that cannot get a job (or loses one mid-hold) is released via _release_to_dwell,
+-- keeping only offmap + dispatched_at so the despawn safety net reclaims it once offline.
+-- The entry carries offmap + dispatched_at; sessions survive non-offmap re-dispatches during
+-- the hold (script_squad preserves those two fields when an existing entry has offmap=true).
 
 -- Populate off-map session fields on a fresh scripted entry. Called from script_squad
--- when opts.offmap is true. home_level reads the broker-private capture populated by
--- script_squad's inline xlevel.get_level_id call earlier in the same call frame.
+-- when opts.offmap is true.
 local function _init_offmap_session(data, squad_id, now)
-    data.offmap         = true
-    data.home_level     = _ap_squad_home_level[squad_id]
-    data.dispatched_at  = now
-    data.arrived_at     = nil
-    data.return_home_at = nil
-    data.left_home      = nil
-    ap_core_debug.debug("[SQUAD.OFFMAP] register: squad=%d home_level=%s",
-        squad_id, tostring(data.home_level))
-end
-
--- Stamp arrived_at + return_home_at on outbound arrival. Idempotent: dwell-phase local
--- arrivals see arrived_at already set and early-return (no double-stamp).
-local function _stamp_offmap_arrival(squad_id, data, now)
-    if data.arrived_at then return end
-    data.arrived_at     = now
-    data.return_home_at = now + cfg.offmap_return_home_hours * 3600
-    ap_core_debug.debug("[SQUAD.OFFMAP] arrived: squad=%d return_home_at=%d (in %dh)",
-        squad_id, data.return_home_at, (data.return_home_at - now) / 3600)
-end
-
--- Set left_home flag once when squad's current level diverges from home_level.
--- squad_on_after_level_change does not fire reliably across save/reload; we poll instead.
-local function _mark_left_home(squad_id, squad, data)
-    local cur_level = xlevel.get_level_id(squad)
-    if not cur_level then return end
-    if cur_level ~= data.home_level and not data.left_home then
-        ap_core_debug.debug("[SQUAD.OFFMAP] left_home: squad=%d to_level=%s",
-            squad_id, tostring(cur_level))
-        data.left_home = true
-    end
-end
-
--- True when the squad has returned to its home level after having left. Drops the entry.
--- Releases the engine scripted_target before returning so the squad does not leak as
--- is_scripted forever. Mirrors _check_offmap_despawn's "decide + act + return true" pattern.
-local function _check_home_returned(squad_id, squad, data)
-    if not data.left_home then return false end
-    local cur_level = xlevel.get_level_id(squad)
-    if not cur_level or cur_level ~= data.home_level then return false end
-    ap_core_debug.debug("[SQUAD.OFFMAP] home_returned: squad=%d", squad_id)
-    xsquad.release_squad(squad)
-    return true
-end
-
--- Dispatch the return-home leg. Replaces the entry with a fresh scripted entry whose
--- target is the home smart; the off-map session fields (home_level, dispatched_at,
--- arrived_at, left_home, offmap) carry over. return_home_at is cleared (consumed) — its
--- nil-ness distinguishes the returning phase from dwell. Caller must refetch data after
--- the call (the table reference changes).
-local function _dispatch_return_home(squad_id, squad, data, now)
-    local home_smart = _pick_home_smart(squad, data.home_level)
-    if not home_smart then
-        ap_core_debug.debug("[SQUAD.OFFMAP] return_home_no_smart: squad=%d home_level=%s",
-            squad_id, tostring(data.home_level))
-        return false
-    end
-    local name = home_smart:name()
-    if not name or name == "" then return false end
-    if not xsquad.acquire_squad(squad, home_smart, false) then return false end
-    -- Clear source (foreign dwell smart) before engine bumps smart_id to home_smart.
-    xsmart.assign_squad_to_smart(squad, nil)
-    _ap_scripted_squads[squad_id] = {
-        scripted_target   = name,
-        target_smart_id   = home_smart.id,
-        tracked_at        = now,
-        pre_release_gulag = PRE_RELEASE_GULAG_DEFAULT,
-        interruptable     = false,
-        offmap            = true,
-        home_level        = data.home_level,
-        dispatched_at     = data.dispatched_at,
-        arrived_at        = data.arrived_at,
-        left_home         = data.left_home,
-    }
-    ap_core_debug.debug("[SQUAD.OFFMAP] return_home_dispatch: squad=%d -> %s", squad_id, name)
-    return true
+    data.offmap        = true
+    data.dispatched_at = now
+    ap_core_debug.debug("[SQUAD.OFFMAP] register: squad=%d", squad_id)
 end
 
 -- Despawn safety. Releases the engine entity when the session age exceeds the budget
@@ -406,55 +307,23 @@ end
 local function _preserve_offmap_session(existing, opts)
     if not existing or not existing.offmap or opts.offmap then return nil end
     return {
-        offmap         = true,
-        home_level     = existing.home_level,
-        dispatched_at  = existing.dispatched_at,
-        arrived_at     = existing.arrived_at,
-        return_home_at = existing.return_home_at,
-        left_home      = existing.left_home,
+        offmap        = true,
+        dispatched_at = existing.dispatched_at,
     }
 end
 
--- Per-scan off-map state update: left_home, home_returned, return-home dispatch, despawn,
--- diagnostics. Returns true when the caller should drop the entry. _dispatch_return_home
--- replaces the entry, so we refetch data afterwards before the despawn/diagnostics step.
+-- Per-scan off-map state update: despawn safety net + diagnostics. Returns true when the
+-- caller should drop the entry (squad despawned).
 local function _scan_offmap_entry(squad_id, squad, data, now)
-    _mark_left_home(squad_id, squad, data)
-    if _check_home_returned(squad_id, squad, data) then return true end
-    if data.return_home_at and now >= data.return_home_at and not data.scripted_target then
-        if _dispatch_return_home(squad_id, squad, data, now) then
-            data = _ap_scripted_squads[squad_id]
-        end
-    end
     if _check_offmap_despawn(squad_id, squad, data, now) then return true end
     if ap_core_debug.enabled() then
-        local cur_level = xlevel.get_level_id(squad)
-        local return_in = data.return_home_at
-            and string_format("%.1fh", (data.return_home_at - now) / 3600)
-            or "n/a"
-        ap_core_debug.debug("[SQUAD.OFFMAP] scan_entry: squad=%d section=%s level=%s home=%s left=%s arrived=%s online=%s age=%.1fh return_in=%s",
-            squad_id, squad:section_name(),
-            tostring(cur_level), tostring(data.home_level),
-            tostring(data.left_home or false), tostring(data.arrived_at ~= nil),
-            tostring(squad.online or false),
-            (now - (data.dispatched_at or now)) / 3600, return_in)
+        ap_core_debug.debug("[SQUAD.OFFMAP] scan_entry: squad=%d section=%s online=%s age=%.1fh",
+            squad_id, squad:section_name(), tostring(squad.online or false),
+            (now - (data.dispatched_at or now)) / 3600)
     end
     return false
 end
 
-
--- Capture squad's home level on first off-map dispatch. xlevel.get_level_id returns nil
--- during level transitions; signal refusal so the caller can re-publish the cause on the
--- next budget tick when the squad has settled.
--- @cost O(1) | 1 luabind (xlevel.get_level_id) on first offmap capture, 0 thereafter
-local function _capture_home_level(squad, opts)
-    if not opts.offmap then return true end
-    if _ap_squad_home_level[squad.id] then return true end
-    local lid = xlevel.get_level_id(squad)
-    if not lid then return false end
-    _ap_squad_home_level[squad.id] = lid
-    return true
-end
 
 -- Merge per-call session state into the new scripted_squad data entry. Off-map dispatches
 -- get a fresh session; non-offmap re-dispatches inherit preserved session fields (so a
@@ -488,11 +357,6 @@ function script_squad(squad, smart, opts)
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
     opts = opts or {}
-    if not _capture_home_level(squad, opts) then
-        ap_core_debug.warn("[SQUAD] script_squad: squad=%d offmap dispatch refused, get_level_id nil",
-            squad.id)
-        return { code = RESULT.FAILED_ACTION, reason = REASON.NO_HOME_LEVEL, id = squad.id }
-    end
     local name = smart:name()
     if not name or name == "" then
         ap_core_debug.warn("[SQUAD] script_squad: squad=%d invalid smart name", squad.id)
@@ -617,8 +481,8 @@ function script_squad_target(squad, target_id, opts)
 end
 
 --- Get AP scripted squad table (read-only reference, do not modify).
---- Returned entries may carry off-map session fields (offmap, home_level, dispatched_at,
---- arrived_at, return_home_at, left_home) alongside the standard scripted-dispatch fields.
+--- Returned entries may carry off-map session fields (offmap, dispatched_at) alongside the
+--- standard scripted-dispatch fields.
 function get_scripted_squads()
     return _ap_scripted_squads
 end
@@ -706,7 +570,7 @@ local function _campfire_stray(smart, squad)
 end
 
 -- Validate arrival and commit the gulag entry. Pair with the dispatch-side clear in
--- script_squad and _dispatch_return_home: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
+-- script_squad: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
 -- to remove the source roster entry (before engine specific_update bumps squad.smart_id);
 -- commit fires SIMBOARD:assign_squad_to_smart(squad, smart.id) to add the destination entry.
 -- Together they keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
@@ -720,25 +584,6 @@ local function _commit_arrival(squad_id, squad, smart, data, now)
     data.release_at = now + data.pre_release_gulag
     xsmart.assign_squad_to_smart(squad, smart.id)
     return true
-end
-
--- Offmap arrival step. Returns true when the caller should bail (home arrived, session
--- lifecycle done). Outbound arrival stamps the session and returns false so the caller
--- proceeds. Dwell-phase local arrivals (arrived_at set, return_home_at set) fall through
--- to the handler + gulag without re-stamping the session. On home arrival, register the
--- home_smart on SIMBOARD roster before unscripting so the symmetric outbound/return roster
--- semantics match (outbound registers via _commit_arrival).
-local function _handle_offmap_arrival(squad_id, squad, smart, data, now)
-    if data.arrived_at and not data.return_home_at then
-        xsmart.assign_squad_to_smart(squad, smart.id)
-        ap_core_debug.debug("[SQUAD.OFFMAP] home_arrived: squad=%d", squad_id)
-        _unscript_squad(squad)
-        return true
-    end
-    if not data.arrived_at then
-        _stamp_offmap_arrival(squad_id, data, now)
-    end
-    return false
 end
 
 -- Run the on_arrive handler if registered. Returns true if the caller should proceed
@@ -819,7 +664,6 @@ local function _run_arrival(squad_id, squad, data, now)
     end
     if not xsmart.is_arrived(squad, smart) then return end
     _log_proximity("arrived", squad, smart, data)
-    if data.offmap and _handle_offmap_arrival(squad_id, squad, smart, data, now) then return end
     if not _run_arrival_handler(squad_id, squad, data) then return end
     if _commit_arrival(squad_id, squad, smart, data, now) then
         ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
@@ -827,21 +671,16 @@ local function _run_arrival(squad_id, squad, data, now)
     end
 end
 
--- Update the gulag state for one scan. Two paths: (1) release_at reached -> normal release
--- (offmap-aware); (2) mid-hold re-check -> release if a member lost its job, sits on the
--- generic_point stub (has_anchored_jobs), or strayed from the fire (_campfire_stray).
+-- Update the gulag state for one scan. Two paths: (1) release_at reached -> settle the squad
+-- as a resident via _unscript_squad (off-map squads settle at the destination, no return);
+-- (2) mid-hold re-check -> release if a member lost its job, sits on the generic_point stub
+-- (has_anchored_jobs), or strayed from the fire (_campfire_stray).
 local function _update_gulag(squad_id, squad, data, now)
     if not data.arrived then return end
     if now >= data.release_at then
-        if data.offmap then
-            ap_core_debug.debug("[SQUAD] gulag_released_to_dwell: squad=%d target=%s",
-                squad_id, tostring(data.scripted_target))
-            _release_to_dwell(squad)
-        else
-            ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
-                squad_id, tostring(data.scripted_target))
-            _unscript_squad(squad)
-        end
+        ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
+            squad_id, tostring(data.scripted_target))
+        _unscript_squad(squad)
         return
     end
     if not data.target_smart_id then return end
@@ -921,8 +760,8 @@ local function _update_chase(squad_id, squad, data, now)
     end
 end
 
---- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag. Off-map sessions add left_home /
---- home_returned / return-home / despawn checks via _scan_offmap_entry.
+--- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag. Off-map sessions add
+--- the despawn safety-net check via _scan_offmap_entry.
 local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
@@ -986,11 +825,8 @@ local function _log_tracked_entry(squad_id, data, now)
         _log_squad_jobs(squad_id, data)
         return
     end
-    ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_dwell home=%s arrived_age=%ds return_in=%ds left_home=%s",
-        squad_id, tostring(data.home_level or "-"),
-        data.arrived_at and (now - data.arrived_at) or -1,
-        data.return_home_at and (data.return_home_at - now) or -1,
-        tostring(data.left_home or false))
+    ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_released age=%ds",
+        squad_id, now - (data.dispatched_at or now))
 end
 
 -- Kick an xslice session every UPDATE_SCRIPTED_SQUADS_SEC; one squad per frame caps the per-frame cost at one arrival commit.
@@ -1020,11 +856,9 @@ end
 local function _on_save_state(m_data)
     m_data.ap_core_broker = {
         ap_scripted_squads = _ap_scripted_squads,
-        home_levels        = _ap_squad_home_level,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] save: scripted=%d home_levels=%d",
-            xtable.count(_ap_scripted_squads), xtable.count(_ap_squad_home_level))
+        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.count(_ap_scripted_squads))
     end
 end
 
@@ -1058,11 +892,8 @@ local function _on_load_state(m_data)
     for _, data in pairs(_ap_scripted_squads) do
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
-    local hl = saved.home_levels
-    _ap_squad_home_level = (type(hl) == "table") and hl or {}
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] load: scripted=%d home_levels=%d",
-            xtable.count(_ap_scripted_squads), xtable.count(_ap_squad_home_level))
+        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.count(_ap_scripted_squads))
     end
 end
 
@@ -1070,10 +901,8 @@ end
 -- This is the safe point for alife_object queries against the just-restored save state.
 local function _on_game_load()
     local dropped_scripted = _sweep_recycled_ids(_ap_scripted_squads)
-    local dropped_home_levels = _sweep_recycled_ids(_ap_squad_home_level)
-    if dropped_scripted > 0 or dropped_home_levels > 0 then
-        ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d home_levels=%d",
-            dropped_scripted, dropped_home_levels)
+    if dropped_scripted > 0 then
+        ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d", dropped_scripted)
     end
 end
 
@@ -1082,7 +911,6 @@ end
 local function _on_entity_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
-    _ap_squad_home_level[id] = nil
     local data = _ap_scripted_squads[id]
     if data then
         if data.offmap then

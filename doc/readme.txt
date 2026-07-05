@@ -250,7 +250,7 @@ Needs
 
   Cross-map sibling rows: Social, Supply Trader, and Job Explore each ship a paired off-map row. Peaceful sociable factions (Ecologists, Clear Sky, Freedom, Loners) visit other camps for company. Peaceful greedy factions cross to another map to restock when no on-map trader is reachable. Peaceful curious factions (Ecologists, Clear Sky) scout neighbor maps. Army, Monolith, and Zombified squads never travel off-map.
   Reach grows with player progression. Stalkers reach the next map once Yantar X-16 is shut down, the next after the Brain Scorcher is deactivated at Radar, and master-rank squad commanders push one map further. Each step is tunable under MCM > World > Off-map.
-  Squads return home after a few in-zone days. Travellers stuck off-map are released after a week to keep level populations clean. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
+  Squads settle at the destination after a short stay; they do not return home. Travellers stuck off-map are released after a week to keep level populations clean. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
 
   Arrival satisfies the need. Inventory items are not destroyed by the arrival itself. Engine-side combat behavior (medkit, bandage, stim usage in firefights) is independent and unchanged.
 
@@ -394,18 +394,27 @@ Off-map transit.
 
 Any cause can flag a destination as off-map. The flag changes which smarts qualify and applies its own rate counter. The squad's arrival, hold, and release machinery is shared with on-map dispatch.
 
-The engine carries the actual cross-level movement through its own routing slot. The gulag at the destination binds jobs the same way it does for on-map arrivals.
+The engine carries the actual cross-level movement through its own routing slot. The gulag at the destination binds jobs the same way it does for on-map arrivals. There is no return leg: the squad holds the destination gulag for a short stay and then settles there as an ordinary resident. Its home becomes the destination.
 
 AlifePlus adds the protection layers around that capability:
 
 - Per-source rate cap. Off-map dispatches are limited over a sliding game-hour window, so no single level keeps bleeding squads forever.
 - Level adjacency. Cross-map dispatches stay within neighboring levels.
 - Engine-exposed filtering. Cross-level scans run only on data the engine still exposes off-level: faction ownership and smart-terrain flags.
-- Transit TTL. Every dispatched squad carries a recall timer if the engine never delivers it to the destination.
-- Live squad-to-smart map. SIMBOARD's roster stays current at dispatch and release, so cross-level capacity and garrison checks read the right counts.
+- Despawn safety net. A squad the engine never delivers, or that cannot settle at the destination, is despawned when it is offline so it never lingers off-map.
+- Live squad-to-smart map. SIMBOARD's roster stays current at dispatch and settle, so cross-level capacity and garrison checks read the right counts.
 - Release on bind-fail. Arrival release fires if the destination cannot bind jobs to every member. Mid-hold release fires if the engine retracts a job at the destination after arrival.
 
 Every off-map dispatch passes through the same broker that handles every on-map dispatch. The off-map flag affects only the selection and rate-limiting. Everything else is shared.
+
+Vanilla fixes:
+
+AlifePlus corrects two long-standing vanilla Anomaly A-Life bugs. Both are wrapped rather than replaced, so they layer cleanly on any base game or modpack and go inert where a modpack already fixes the same thing.
+
+- Squad chase. Vanilla cannot point one offline squad at another as a moving target. AlifePlus rebuilds the pursuit each tick, so NPC-versus-NPC and NPC-versus-player chases track the target's real position instead of a stale one.
+- Smart terrain headcount. When the engine moves a scripted squad between smart terrains, vanilla forgets to update that terrain's squad count. Capacity checks then drift, and a terrain can read as full when it is not. AlifePlus keeps the count correct for every squad move, its own and the engine's.
+
+These patches are global and affect every squad, not only AlifePlus's. If another mod already patches the same engine scripts, disable ap_core_chase.script and ap_core_anomaly_fixes.script before installing.
 
 Performance:
 
