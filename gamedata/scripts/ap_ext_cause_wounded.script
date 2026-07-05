@@ -17,16 +17,25 @@ AddScriptCallback(CALLBACK.X_NPC_MEDKIT_USE)
 
 local cfg = ap_core_mcm.cfg
 
-local HEALING_ITEMS = {
-    bandage = true,
-    army_bandage = true,
-    salicidic_bandage = true,
-    drug_coagulant = true,
-    tourniquet = true,
-    medkit = true,
-    medkit_army = true,
-    medkit_scientic = true,
-}
+-- A section is a wound heal if it is a medical item whose engine booster restores health or stops
+-- bleeding. The boost keys are the same signal GAMMA's Body Health System uses to classify heals
+-- (itms_manager.script boost_health_restore / boost_bleeding_restore), so any modpack's medkit,
+-- bandage, or coagulant is recognised with no item-name list. The kind == i_medical gate excludes
+-- edibles that restore trace health (cooked mutant meat is kind i_mutant_cooked with a small
+-- boost_health_restore), so eating does not read as being wounded. Cached per section.
+local _heal_cache = {}
+
+local function _is_heal_section(section)
+    if not section then return false end
+    local is_heal = _heal_cache[section]
+    if is_heal == nil then
+        is_heal = ini_sys:r_string_ex(section, "kind") == "i_medical"
+            and ((ini_sys:r_float_ex(section, "boost_health_restore") or 0) > 0
+                or (ini_sys:r_float_ex(section, "boost_bleeding_restore") or 0) > 0)
+        _heal_cache[section] = is_heal
+    end
+    return is_heal
+end
 
 local function _on_npc_medkit_use(_trace, npc, _medkit, kind)
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
@@ -70,7 +79,7 @@ end
 
 local function _on_actor_item_use(_trace, _item, section)
     if not cfg.cause_wounded_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
-    if not HEALING_ITEMS[section] then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING } end
+    if not _is_heal_section(section) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_HEALING } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
