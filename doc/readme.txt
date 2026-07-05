@@ -526,6 +526,7 @@ Credits:
 Altogolik - support, ideas, source materials
 Stalker_Boss - Russian translation
 gwalls - English copyediting
+Muratovnik - mutation cap restore fix, bug reports (alpha tracking, news dedup)
 
 ---
 
