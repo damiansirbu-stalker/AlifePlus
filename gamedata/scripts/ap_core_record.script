@@ -115,6 +115,17 @@ function clear_record(squad_id)
     _record_assigned[squad_id] = nil
 end
 
+--- Mark an entry as reported (gossiped by ap_ext_news). The flag lives on the entry, so it
+--- persists with the record across save/load and dies with the entry on FIFO eviction --
+--- a reload can no longer re-gossip an already-broadcast event.
+--- @safety SAFE - pure Lua table write
+--- @cost O(1) | 0 luabind
+--- @param cons_id number
+function mark_reported(cons_id)
+    local entry = _ap_record:get(cons_id)
+    if entry then entry.reported = true end
+end
+
 local function _match(entry, opts)
     for k, v in pairs(opts) do
         if entry[k] ~= v then return false end
