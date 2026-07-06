@@ -15,11 +15,12 @@ local DUMP_INTERVAL_SEC = 10
 --- Radiant pipeline counters (stable reference, zeroed on reset)
 --- Sweep fields (sweep_changes, sweep_keepalives) split received x_squad_on_change fires
 --- by kind (classified in producer _on_radiant: changed array vs nil keepalive).
---- Gate fields (deny_budget, protected, ratio) hold BLOCK counts. events is input count
+--- Gate fields (deny_budget, protected) hold BLOCK counts. events is input count
 --- (x_squad_on_change fires received). Cause/csq filter fields hold BLOCK counts.
---- causes, pub are pipeline-stage totals.
+--- causes, pub are pipeline-stage totals. No radiant ratio counter: the level mix is
+--- enforced at production inside the xcallbacks sweep, not rejected in the pipeline.
 r = { sweep_changes = 0, sweep_keepalives = 0,
-    events = 0, deny_budget = 0, protected = 0, ratio = 0,
+    events = 0, deny_budget = 0, protected = 0,
     causes = 0, pub = 0, consequences = 0,
     cause_rules = 0, cause_scan = 0, cause_budget = 0,
     csq_rules = 0, csq_scan = 0, csq_action = 0, csq_bucket = 0, csq_cap = 0 }
@@ -45,11 +46,15 @@ function collecting()
     return cfg.statistics_position ~= "off" or _debug_enabled()
 end
 
+-- Forward declaration: the snapshot ring lives next to _dump below; _reset clears it.
+local _reset_history
+
 -- Zero all counter fields without reallocating tables
 local function _reset()
     for k in pairs(r) do r[k] = 0 end
     for k in pairs(x) do x[k] = 0 end
     _start_time = clock()
+    if _reset_history then _reset_history() end
 end
 
 --- Classify a predicate (cause-side) non-publishing result into the appropriate counter
@@ -133,19 +138,19 @@ end
 -- Sections: sensor | gates | cause stage | publish stage | classify stage | exec.
 -- Within sections, position disambiguates collisions (rules/scan appear in cause and classify).
 local _R_FIELDS = {
-    { "changes", "sweep_changes" }, { "keepalives", "sweep_keepalives" }, "|",
-    { "events", "events" }, { "budget", "deny_budget" }, { "prot", "protected" }, { "ratio", "ratio" }, "|",
-    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "budget", "cause_budget" }, "|",
-    { "pub", "pub" }, { "cap", "csq_cap" }, { "bucket", "csq_bucket" }, "|",
-    { "csqs", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
-    { "exec", "consequences" },
+    { "changed", "sweep_changes" }, { "turn", "sweep_keepalives" }, "|",
+    { "events", "events" }, { "window", "deny_budget" }, { "protected", "protected" }, "|",
+    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
+    { "published", "pub" }, { "cap", "csq_cap" }, { "limiter", "csq_bucket" }, "|",
+    { "handlers", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "executed", "consequences" },
 }
 local _X_FIELDS = {
-    { "events", "events" }, { "pacer", "pacer" }, { "ratio", "ratio" }, "|",
-    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "budget", "cause_budget" }, "|",
-    { "pub", "pub" }, { "bucket", "csq_bucket" }, "|",
-    { "csqs", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
-    { "exec", "consequences" },
+    { "events", "events" }, { "throttle", "pacer" }, { "balance", "ratio" }, "|",
+    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
+    { "published", "pub" }, { "limiter", "csq_bucket" }, "|",
+    { "handlers", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "executed", "consequences" },
 }
 
 local function _resolve_field(counters, field)
@@ -173,10 +178,53 @@ local function _compose_line(prefix, fields, counters, minutes)
 end
 
 local function _log_dump(minutes)
-    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL R: ", _R_FIELDS, r, nil))
-    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL X: ", _X_FIELDS, x, nil))
-    ap_core_debug.info("%s", _compose_line("[STATS] /MIN R: ", _R_FIELDS, r, minutes))
-    ap_core_debug.info("%s", _compose_line("[STATS] /MIN X: ", _X_FIELDS, x, minutes))
+    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL RADIANT: ", _R_FIELDS, r, nil))
+    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL REACTIVE: ", _X_FIELDS, x, nil))
+    ap_core_debug.info("%s", _compose_line("[STATS] /MIN RADIANT: ", _R_FIELDS, r, minutes))
+    ap_core_debug.info("%s", _compose_line("[STATS] /MIN REACTIVE: ", _X_FIELDS, x, minutes))
+end
+
+-- Snapshot ring for sliding-window rates: 7 slots x 10s dumps = the newest snapshot at
+-- least 60s old. Rates and percentages on the overlay read counter DELTAS against the
+-- oldest snapshot, so they show the last minute, not the session average (a session
+-- average needs ~5 minutes to converge and never reflects "now").
+local HIST_SLOTS = 7
+local _hist = {}
+local _hist_pos = 0
+
+_reset_history = function()
+    for slot = 1, HIST_SLOTS do _hist[slot] = nil end
+    _hist_pos = 0
+end
+
+-- Copy both counter tables (plus the derived handlers total) into the ring.
+local function _push_snapshot()
+    local snap_r, snap_x = {}, {}
+    for key, value in pairs(r) do snap_r[key] = value end
+    for key, value in pairs(x) do snap_x[key] = value end
+    snap_r._csq_tried = _csq_tried(r)
+    snap_x._csq_tried = _csq_tried(x)
+    _hist_pos = _hist_pos % HIST_SLOTS + 1
+    _hist[_hist_pos] = { t = clock(), r = snap_r, x = snap_x }
+end
+
+-- Oldest ring snapshot (nil while the ring is empty; the first slot while it fills).
+local function _oldest_snapshot()
+    local wrap = _hist[_hist_pos % HIST_SLOTS + 1]
+    return wrap or _hist[1]
+end
+
+-- Windowed delta of one field in one pipeline column ("r"/"x"), with the window length
+-- in minutes. Falls back to the whole session when the ring has no snapshot yet.
+local function _win_delta(col, field, session_minutes)
+    local live = col == "r" and r or x
+    local live_value = field == "_csq_tried" and _csq_tried(live) or (live[field] or 0)
+    local snapshot = _oldest_snapshot()
+    if not snapshot then return live_value, session_minutes end
+    local snapshot_col = col == "r" and snapshot.r or snapshot.x
+    local minutes = (clock() - snapshot.t) / 60
+    if minutes < 0.05 then return live_value, session_minutes end
+    return live_value - (snapshot_col[field] or 0), minutes
 end
 
 local function _dump()
@@ -186,6 +234,7 @@ local function _dump()
     if minutes < 0.1 then minutes = 0.1 end
     _log_dump(minutes)
     if _hud then _hud:Refresh(minutes, elapsed) end
+    _push_snapshot()
 end
 
 local function _on_dump_timer()
@@ -208,45 +257,48 @@ local function _on_visibility_timer()
     ResetTimeEvent("ap_stats", "vis", 2)
 end
 
--- HUD layout: { type, label, field, field_x, denom }
--- type: "input" (white, totals), "output" (green, passed), "filter" (red, blocked)
--- field: R-side counter name, or false = N/A for R (X-only row, e.g. the reactive pacer)
--- field_x: nil = same as field, false = N/A for X, string = different field name for X
--- denom: filter rows only - the field used as denominator for the % column (R+X summed)
+-- HUD layout: { type, label, field, field_x, denom, rate, pct }
+-- type: "section" (cream header line, no values), "input" (cream), "output" (green),
+--       "filter" (counts what a step rejected; loss = true paints it red)
+-- field: radiant counter name, or false = N/A for radiant (reactive-only row)
+-- field_x: nil = same as field, false = N/A for reactive, string = different field name
+-- rate: extra column shows a sliding-window per-minute rate of this column ("r"/"x")
+-- pct: extra column shows a sliding-window percentage of denom; "r"/"x" read one column,
+--      "rx" sums both (rows shared by the two pipelines)
+-- loss: red accent. Only intake/output being refused counts as loss (DENIED rows,
+--       limiter); RULES/SCAN rejections are the simulation deciding "not now" and stay
+--       neutral cream, so red on screen always means something to look at.
 local _ROWS = {
-    -- Sensor fires by kind (R-only; counted in producer _on_radiant from the changed arg)
-    { type = "input",  label = "change", field = "sweep_changes",    field_x = false },
-    { type = "input",  label = "keep",   field = "sweep_keepalives", field_x = false },
-    -- Gates (preamble: events is input, gates count what they blocked)
-    { type = "input",  label = "events", field = "events" },
-    { type = "filter", label = "budget", field = "deny_budget", field_x = false,   denom = "events" },
-    { type = "filter", label = "pacer",  field = false,         field_x = "pacer", denom = "events" },
-    { type = "filter", label = "prot",   field = "protected",   field_x = false,   denom = "events" },
-    { type = "filter", label = "ratio",  field = "ratio",                          denom = "events" },
-    -- Cause stage (causes is total predicate runs, filters count blocked)
-    { type = "input",  label = "causes", field = "causes" },
-    { type = "filter", label = "rules",  field = "cause_rules",  denom = "causes" },
-    { type = "filter", label = "scan",   field = "cause_scan",   denom = "causes" },
-    { type = "filter", label = "budget", field = "cause_budget", denom = "causes" },
-    -- Publish/dispatch stage (pub is published causes, cap/bucket count blocked at consumer entry)
-    { type = "output", label = "pub",    field = "pub" },
-    { type = "filter", label = "cap",    field = "csq_cap",    field_x = false, denom = "pub" },
-    { type = "filter", label = "bucket", field = "csq_bucket",                  denom = "pub" },
-    -- Classify stage (csqs is handlers actually invoked, filters count blocked)
-    { type = "input",  label = "csqs",   field = "_csq_tried" },
-    { type = "filter", label = "rules",  field = "csq_rules",  denom = "_csq_tried" },
-    { type = "filter", label = "scan",   field = "csq_scan",   denom = "_csq_tried" },
-    { type = "filter", label = "action", field = "csq_action", denom = "_csq_tried" },
-    -- Final (exec is successful consequences)
-    { type = "output", label = "exec",   field = "consequences" },
+    { type = "section", label = "INCOMING" },
+    { type = "input",  label = "events",      field = "events", rate = "r" },
+    { type = "input",  label = "  changed",   field = "sweep_changes",    field_x = false, denom = "events", pct = "r" },
+    { type = "input",  label = "  turn",      field = "sweep_keepalives", field_x = false, denom = "events", pct = "r" },
+    { type = "section", label = "DENIED" },
+    { type = "filter", label = "window",      field = "deny_budget", field_x = false,      denom = "events", pct = "r", loss = true },
+    { type = "filter", label = "protected",   field = "protected",   field_x = false,      denom = "events", pct = "r", loss = true },
+    { type = "filter", label = "throttle",    field = false,         field_x = "pacer",    denom = "events", pct = "x", loss = true },
+    { type = "filter", label = "balance",     field = false,         field_x = "ratio",    denom = "events", pct = "x", loss = true },
+    { type = "section", label = "EVALUATED" },
+    { type = "input",  label = "causes",      field = "causes", rate = "r" },
+    { type = "filter", label = "rules",       field = "cause_rules",  denom = "causes", pct = "rx" },
+    { type = "filter", label = "scan",        field = "cause_scan",   denom = "causes", pct = "rx" },
+    { type = "filter", label = "scan budget", field = "cause_budget", denom = "causes", pct = "rx" },
+    { type = "section", label = "OUTCOME" },
+    { type = "output", label = "published",   field = "pub", rate = "r" },
+    { type = "filter", label = "limiter",     field = "csq_bucket", denom = "pub", pct = "rx", loss = true },
+    { type = "output", label = "handlers",    field = "_csq_tried", rate = "r" },
+    { type = "filter", label = "rules",       field = "csq_rules",  denom = "_csq_tried", pct = "rx" },
+    { type = "filter", label = "scan",        field = "csq_scan",   denom = "_csq_tried", pct = "rx" },
+    { type = "filter", label = "action",      field = "csq_action", denom = "_csq_tried", pct = "rx" },
+    { type = "output", label = "executed",    field = "consequences", rate = "r" },
 }
 
-local ROW_H = 13
-local LABEL_W = 42
-local VAL_W = 28
-local EXTRA_W = 30
+local ROW_H = 14
+local LABEL_W = 74
+local VAL_W = 52
+local EXTRA_W = 46
 local TOTAL_W = LABEL_W + VAL_W * 2 + EXTRA_W
--- Layout: row 0 = elapsed, row 1 = column header (R/X), rows 2..(#_ROWS+1) = data + separators
+-- Layout: row 0 = elapsed, row 1 = column header (radiant/reactive), rows 2.. = data
 local NUM_HEADER_ROWS = 2
 local PANEL_H = (#_ROWS + NUM_HEADER_ROWS) * ROW_H + 4
 
@@ -273,39 +325,48 @@ function UIStatsHUD:__init() super()
     local xml = CScriptXmlInit()
     xml:ParseFile("ui_ap_stats.xml")
 
-    local clr_hdr        = GetARGB(220, 200, 180, 130)
-    local clr_input_lbl  = GetARGB(220, 200, 200, 200)
-    local clr_input_val  = GetARGB(240, 240, 240, 240)
-    local clr_output_lbl = GetARGB(220, 140, 200, 140)
-    local clr_output_val = GetARGB(240, 160, 220, 160)
-    local clr_filter_lbl = GetARGB(140, 180, 100, 100)
-    local clr_filter_val = GetARGB(160, 200, 120, 120)
-    local clr_extra      = GetARGB(140, 160, 140, 140)
+    -- Three-color ledger: aged cream (the mod's banner color) is the machine -- structure
+    -- and neutral flow; muted green is what the world gained (OUTCOME values); muted red is
+    -- what the machine refused (DENIED values and any nonzero denial percentage).
+    local clr_cream = GetARGB(230, 212, 201, 168)
+    local clr_green = GetARGB(240, 160, 220, 160)
+    local clr_red   = GetARGB(230, 210, 110, 100)
+    self._clr_cream = clr_cream
+    self._clr_red = clr_red
 
-    self._elapsed = self:_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_hdr)
+    self._elapsed = self:_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_cream)
 
     local hdr_y = ROW_H + 2
-    self:_text(xml, LABEL_W, hdr_y, VAL_W, "R", clr_hdr)
-    self:_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "X", clr_hdr)
-
-    local colors = {
-        input  = { clr_input_lbl,  clr_input_val },
-        output = { clr_output_lbl, clr_output_val },
-        filter = { clr_filter_lbl, clr_filter_val },
-    }
+    self:_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
+    self:_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
+    -- The counts are since-load totals; the right column is a different clock (sliding
+    -- 60s window), so it says so.
+    self:_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
 
     self._entries = {}
     for row_idx = 1, #_ROWS do
         local row = _ROWS[row_idx]
         local row_y = (row_idx + 1) * ROW_H + 2
-        local clr = colors[row.type]
-        self:_text(xml, 0, row_y, LABEL_W, row.label, clr[1])
-        local val_r = self:_text(xml, LABEL_W, row_y, VAL_W, "0", clr[2])
-        local val_x = self:_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", clr[2])
-        local extra = self:_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_extra)
-        self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
-            field = row.field, field_x = row.field_x, row_type = row.type, denom = row.denom }
+        self:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
     end
+end
+
+-- Build one overlay row: a section header line, or label + two value cells + extra cell.
+function UIStatsHUD:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
+    if row.type == "section" then
+        self:_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
+        return
+    end
+    local value_clr = clr_cream
+    if row.type == "output" then value_clr = clr_green
+    elseif row.loss then value_clr = clr_red end
+    self:_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
+    local val_r = self:_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)
+    local val_x = self:_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", value_clr)
+    local extra = self:_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_cream)
+    self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
+        field = row.field, field_x = row.field_x, row_type = row.type,
+        denom = row.denom, rate = row.rate, pct = row.pct, loss = row.loss }
 end
 
 function UIStatsHUD:__finalize() end
@@ -327,25 +388,30 @@ local function _get_value(entry, counters, is_x)
     return counters[field] or 0
 end
 
-local function _x_field_val(entry)
-    if entry.field_x == false then return 0 end
-    return x[entry.field_x or entry.field] or 0
-end
-
-local function _sum_rx(field)
-    if field == "_csq_tried" then return _csq_tried(r) + _csq_tried(x) end
-    return (r[field] or 0) + (x[field] or 0)
-end
-
-local function _extra_text(entry, minutes)
-    if entry.row_type == "input" or entry.row_type == "output" then
-        return string_format("%.1f/m", _sum_rx(entry.field) / minutes)
+-- Windowed numerator/denominator pair for a percentage row. Source "r"/"x" reads one
+-- pipeline column; "rx" sums both (rows the two pipelines share).
+local function _pct_deltas(entry, session_minutes)
+    local field = entry.field or entry.field_x
+    if entry.pct == "rx" then
+        local blocked_r = _win_delta("r", entry.field, session_minutes)
+        local blocked_x = _win_delta("x", entry.field_x or entry.field, session_minutes)
+        local denom_r = _win_delta("r", entry.denom, session_minutes)
+        local denom_x = _win_delta("x", entry.denom, session_minutes)
+        return blocked_r + blocked_x, denom_r + denom_x
     end
-    -- filter row: show % of its denominator field (R+X summed)
-    local denom = _sum_rx(entry.denom)
-    if denom == 0 then return "" end
-    local blocked = (r[entry.field] or 0) + _x_field_val(entry)
-    if blocked == 0 then return "" end
+    return _win_delta(entry.pct, field, session_minutes), _win_delta(entry.pct, entry.denom, session_minutes)
+end
+
+-- Extra column: sliding-window per-minute rate (rate rows) or sliding-window percentage
+-- of the row's denominator (pct rows). Empty when there is nothing to report.
+local function _extra_text(entry, session_minutes)
+    if entry.rate then
+        local delta, minutes = _win_delta(entry.rate, entry.field, session_minutes)
+        return string_format("%.1f/m", delta / minutes)
+    end
+    if not entry.pct then return "" end
+    local blocked, denom = _pct_deltas(entry, session_minutes)
+    if denom <= 0 or blocked <= 0 then return "" end
     return string_format("%d%%", blocked * 100 / denom)
 end
 
@@ -355,10 +421,20 @@ function UIStatsHUD:Refresh(minutes, elapsed_sec)
     local secs = math_floor(elapsed_sec % 60)
     self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", hours, mins, secs))
     for i = 1, #self._entries do
-        local entry = self._entries[i]
-        entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
-        entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
-        entry.extra:TextControl():SetText(_extra_text(entry, minutes))
+        self:_refresh_row(self._entries[i], minutes)
+    end
+end
+
+-- Refresh one row's cells. A nonzero LOSS percentage is the go-look signal: red only
+-- when it means something.
+function UIStatsHUD:_refresh_row(entry, minutes)
+    entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
+    entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
+    local extra = _extra_text(entry, minutes)
+    local extra_ctl = entry.extra:TextControl()
+    extra_ctl:SetText(extra)
+    if entry.loss then
+        extra_ctl:SetTextColor(extra ~= "" and self._clr_red or self._clr_cream)
     end
 end
 

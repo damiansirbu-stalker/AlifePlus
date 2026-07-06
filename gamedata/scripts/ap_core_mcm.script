@@ -2,10 +2,11 @@
 local type, RegisterScriptCallback = type, RegisterScriptCallback
 
 defaults = {
-    -- Event Pipeline (radiant gate order: budget peek -> protection -> alife_ratio -> per-cause -> per-consequence;
-    -- change_keepalive_min paces the squad_on_change sweep's keepalive fires, in game-minutes)
+    -- Event Pipeline. alife_rate + alife_ratio feed the xcallbacks squad sweep intake
+    -- (total x_squad_on_change fires per minute, and their current-level vs background
+    -- mix); the radiant gates downstream are budget peek -> protection only.
     alife_ratio = 8,
-    change_keepalive_min = 60,
+    alife_rate = 5,
     allow_external_ownership = true,
     cause_max_reactions = 20,
     cause_max_per_causer = 1,
@@ -66,7 +67,7 @@ defaults = {
     cause_heal_threshold = 12,
     cause_shelter_threshold = 48,
     cause_money_threshold = 24,
-    cause_supply_threshold = 24,
+    cause_supply_threshold = 12,
     cause_job_threshold = 18,
     cause_social_threshold = 36,
     cause_hunger_campfire_enabled = true,
@@ -370,7 +371,7 @@ local _key_to_tab = {
     map_markers = "development",
     statistics_position = "development",
     alife_ratio = "framework",
-    change_keepalive_min = "framework",
+    alife_rate = "framework",
     allow_external_ownership = "framework",
     cause_max_reactions = "framework",
     cause_max_per_causer = "framework",
@@ -686,7 +687,7 @@ function on_mcm_load()
                     _slide("ui_mcm_ap_framework_title"),
                     _desc("ui_mcm_ap_framework_desc"),
                     _track("alife_ratio", -10, 10, 1),
-                    _track("change_keepalive_min", 30, 240, 10),
+                    _track("alife_rate", 4, 60, 1),
                     _track("cause_max_reactions", 1, 100, 1),
                     _track("cause_max_needs", 1, 100, 1),
                     _track("cause_max_instincts", 1, 100, 1),

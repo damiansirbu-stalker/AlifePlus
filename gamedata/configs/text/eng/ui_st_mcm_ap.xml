@@ -226,19 +226,19 @@
     <text>Framework</text>
   </string>
   <string id="ui_mcm_ap_framework_desc">
-    <text>Event pipeline controls. Radiant events arrive from the x_squad_on_change sweep and pass through specialized rate limiters controlled by A-Life Ratio, Keepalive Interval, Cause Budget, Consequence Budget.</text>
+    <text>Event pipeline controls. The x_squad_on_change sweep produces squad events at exactly the A-Life Rate, split between the player's map and background maps by the A-Life Ratio. Cause and Consequence budgets cap what the events may do to the world.</text>
   </string>
   <string id="ui_mcm_ap_framework_alife_ratio">
     <text>A-Life Ratio</text>
   </string>
   <string id="ui_mcm_ap_framework_alife_ratio_desc">
-    <text>Balance between events on the player's map and background maps, similar to X-Ray's original going speed. Higher values favor the player's map. Zero treats all maps equally. Negative values favor background maps.</text>
+    <text>How the produced events are split between the player's map and background maps, similar to X-Ray's original going speed. Higher values favor the player's map (8 gives about 4 of 5 events to it). Zero splits evenly. Negative values favor background maps.</text>
   </string>
-  <string id="ui_mcm_ap_framework_change_keepalive_min">
-    <text>Keepalive interval</text>
+  <string id="ui_mcm_ap_framework_alife_rate">
+    <text>A-Life Rate</text>
   </string>
-  <string id="ui_mcm_ap_framework_change_keepalive_min_desc">
-    <text>[game minutes]\nHow long a squad may stay unchanged before the sweep publishes a keepalive x_squad_on_change event for it. Lower means idle squads are evaluated more often, higher means a calmer Zone. Change-driven events and direct reactive events (deaths, item use) are not affected.</text>
+  <string id="ui_mcm_ap_framework_alife_rate_desc">
+    <text>[events per minute]\nHow many squads get their moment of attention each minute, across all maps. An event is not an action: it is one look at one real squad in the live simulation. Whether that squad then does something, and what, follows from its own state at that moment: hunger, fear, losses, territory, opportunities around it. Most looks end with the squad carrying on as it was. Squads whose situation really changed are looked at first, quiet squads take turns. This setting paces the simulation, it does not script it. Direct reactive events (deaths, item use) are separate.</text>
   </string>
   <string id="ui_mcm_ap_framework_cause_max_reactions">
     <text>Reactions budget</text>

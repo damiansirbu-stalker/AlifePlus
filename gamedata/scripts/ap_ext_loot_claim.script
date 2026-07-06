@@ -14,6 +14,7 @@ local type, tostring, rawget, RegisterScriptCallback = type, tostring, rawget, R
 local string_format, math_random = string.format, math.random
 local xevent, xttltable, xcreature, xsquad = xevent, xttltable, xcreature, xsquad
 local xtime, xobject, xpda, xinventory = xtime, xobject, xpda, xinventory
+local INVALID_BONE_ID = xconst.INVALID_BONE_ID
 local level, game, game_relations, game_object = level, game, game_relations, game_object
 local CALLBACK = ap_core_const.CALLBACK
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
@@ -92,9 +93,16 @@ end
 
 --- Corpse world position, via the spine bone (a ragdolled corpse's object :position() can lag the
 --- visible mesh; vanilla xr_corpse_detection.script:377 reads safe_bone_pos for the same reason).
---- @cost O(1) | 1-2 luabind (safe_bone_pos; :position() fallback only if the bone is unresolved)
+--- Not vanilla utils_obj.safe_bone_pos: that helper falls back to bone_position("") when the bone
+--- is missing (utils_obj.script:62-65), and the empty-string bone read errors on skeletons without
+--- bip01_spine (mutant corpses, part-loaded ragdolls). Resolve the bone id first and only read a
+--- bone that exists; anything else uses the plain object position.
+--- @cost O(1) | 2 luabind on the bone path (get_bone_id + bone_position), 1 on the fallback
 local function _corpse_pos(obj)
-    return utils_obj.safe_bone_pos(obj, "bip01_spine") or obj:position()
+    if obj.get_bone_id and obj:get_bone_id("bip01_spine") ~= INVALID_BONE_ID then
+        return obj:bone_position("bip01_spine")
+    end
+    return obj:position()
 end
 
 --- Is the claim still within the given half's TTL (game hours)? Compares against the stored death
