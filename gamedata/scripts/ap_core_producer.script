@@ -1,8 +1,10 @@
---- ap_core_producer: Dispatches cause predicates on engine callbacks
---- Gate chains: radiant (PACER_1->PROTECTION->RATIO->PACER_2->EVAL), reactive (PACER->RATIO->EVAL)
+--- ap_core_producer: Dispatches cause predicates on callbacks.
+--- Gate chains: radiant (BUDGET->PROTECTION->RATIO->EVAL) on x_squad_on_change (the
+--- xlibs xcallbacks squad sweep, started here at on_game_start), reactive
+--- (PACER->RATIO->EVAL) on engine event callbacks.
 local pairs, tostring, type, unpack = pairs, tostring, type, unpack
-local clock, RegisterScriptCallback = os.clock, RegisterScriptCallback
-local ap_core_debug, ap_core_broker, ap_core_util = ap_core_debug, ap_core_broker, ap_core_util
+local RegisterScriptCallback, xcallbacks = RegisterScriptCallback, xcallbacks
+local ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter = ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter
 
 local CALLBACK = ap_core_const.CALLBACK
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -34,14 +36,7 @@ local _always_on_map = {
 local _radiant_ct = { on = 0, off = 0 }
 local _reactive_ct = { on = 0, off = 0 }
 
---- PACER_1: coarse rate limiter (100ms, ~10/sec). Pure os.clock + comparison, no squad fields.
-local _next_pacer1 = 0
-local PACER_1_INTERVAL = 0.1
-
---- PACER_2: budget limiter (cfg.distributor_interval_sec). Only eligible squads consume triggers.
-local _next_pacer2 = 0
-
---- GATE: RATIO (radiant 3/4, reactive 2/3)
+--- GATE: RATIO (radiant 3/3, reactive 2/3)
 --- @cost O(1) | 0 luabind
 --- @param on_map boolean true = on-map, false = off-map
 --- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
@@ -197,20 +192,31 @@ local function _eval_radiant_cascade(on_map, squad)
     end
 end
 
---- Radiant callback handler
---- Gates: PACER_1(1/4) -> is_protected(2/4) -> RATIO(3/4) -> PACER_2(4/4) -> EVAL(cascade)
+--- Radiant callback handler for x_squad_on_change, fired by the xlibs xcallbacks sweep
+--- (the prev/curr payload args are not consumed here; generators receive the squad only;
+--- changed is read for fire-kind telemetry: array = change fire, nil = keepalive fire).
+--- Gates: BUDGET(1/3) -> is_protected(2/3) -> RATIO(3/3) -> EVAL(cascade)
 --- Counters in each gate count what the gate BLOCKED (not what passed). events is input count.
-local function _on_radiant(squad)
+local function _on_radiant(squad, changed)
     if #_cascade_buf == 0 then return end
     local sc = hud_collecting()
-    if sc then sr.events = sr.events + 1 end
-    -- Gate 1: PACER_1 (100ms coarse limiter, pure clock + comparison)
-    local now = clock()
-    if now < _next_pacer1 then
-        if sc then sr.pacer1 = sr.pacer1 + 1 end
+    if sc then
+        sr.events = sr.events + 1
+        if changed then
+            sr.sweep_changes = sr.sweep_changes + 1
+        else
+            sr.sweep_keepalives = sr.sweep_keepalives + 1
+        end
+    end
+    -- Gate 1: BUDGET peek. Radiant is 1:1 publish->dispatch and the consumer refuses past
+    -- global_consequence_max_events per window, so when that window is full every evaluation
+    -- is provably wasted work (RULES + SCAN + publish thrown away at the consumer) and would
+    -- violate the cause publish contract. Non-consuming read; the counter only advances in
+    -- the consumer's _on_success.
+    if not ap_core_limiter.check_global_consequence_rate_limit() then
+        if sc then sr.deny_budget = sr.deny_budget + 1 end
         return
     end
-    _next_pacer1 = now + PACER_1_INTERVAL
     -- Gate 2: is_protected (full eligibility check)
     local protected, reason, detail, name = ap_core_broker.is_protected(squad)
     if protected then
@@ -223,7 +229,7 @@ local function _on_radiant(squad)
         if sc then sr.protected = sr.protected + 1 end
         return
     end
-    -- Gate 3: RATIO
+    -- Gate 3: RATIO (after protection so only eligible squads consume balance slots)
     local on_map = squad.online
     if not _alife_ratio_gate(on_map, _radiant_ct) then
         ap_core_debug.debug("[PRODUCER.RADIANT] ALIFE_RATIO_BLOCKED on_map=%s alife_ratio=%d on=%d off=%d sq=%s",
@@ -231,12 +237,6 @@ local function _on_radiant(squad)
         if sc then sr.ratio = sr.ratio + 1 end
         return
     end
-    -- Gate 4: PACER_2 (budget limiter, every trigger produces an EVAL)
-    if now < _next_pacer2 then
-        if sc then sr.pacer2 = sr.pacer2 + 1 end
-        return
-    end
-    _next_pacer2 = now + cfg.distributor_interval_sec
     -- EVAL cascade
     _eval_radiant_cascade(on_map, squad)
 end
@@ -381,6 +381,13 @@ local function _on_first_update()
     _first_update_done = true
 end
 
+-- Push the MCM keepalive into the xcallbacks squad sweep. Policy value lives here
+-- (cfg.change_keepalive_min, game-minutes); the mechanism lives in xlibs and ships
+-- dormant, so the producer both starts it and feeds it.
+local function _push_sweep_keepalive()
+    xcallbacks.configure(CALLBACK.X_SQUAD_ON_CHANGE, { keepalive_sec = cfg.change_keepalive_min * 60 })
+end
+
 --- on_game_start: reset state + register deferred init (no cross-module reads)
 function on_game_start()
     _dispatchers = {}
@@ -390,9 +397,9 @@ function on_game_start()
     _radiant_ct.off = 0
     _reactive_ct.on = 0
     _reactive_ct.off = 0
-    _next_pacer1 = 0
-    _next_pacer2 = 0
     _reactive_event_limiter = nil
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _push_sweep_keepalive)
+    xcallbacks.start(CALLBACK.X_SQUAD_ON_CHANGE, { keepalive_sec = cfg.change_keepalive_min * 60 })
     ap_core_debug.info("[PRODUCER] Initialized")
 end

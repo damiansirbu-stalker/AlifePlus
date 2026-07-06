@@ -374,7 +374,7 @@ For developers and advanced users:
 
 Architecture:
 
-- Radiant pipeline subscribes to squad-state events (squad updates, smart-terrain transitions, game-vertex changes). Each event passes a multi-gate chain (pacer, protection, ratio, budget) that admits a small handful per minute. Admitted events feed a cascade that shuffles registered radiant causes and stops on the first publish.
+- Radiant pipeline subscribes to x_squad_on_change, a synthetic callback from xlibs that watches every squad in the Zone and fires only when a squad's observable state changes (position, smart, online state, movement) or when nothing changed for a configurable keepalive window. Each fire passes a gate chain (dispatch budget, protection, on-map ratio) and feeds a cascade that shuffles registered radiant causes and stops on the first publish.
 - Reactive pipeline subscribes to engine events that already encode "something happened": deaths, hits, item use, anomaly contact. Each registered cause evaluates independently. A single event can publish to many consequences.
 - The simulation layer is the engine's own. The simulation board owns squad-to-smart routing, tracks which squads are at which smart, and fires the enter/leave callbacks other mods subscribe to. AlifePlus sets a one-shot destination override that replaces the target-picking step only, then clears on release.
 - Smart terrain mutations (territory conquest, mutant infestation) rebuild from LTX on load. A scanner re-applies them and decays expired conquests on smart-terrain events.
@@ -419,7 +419,7 @@ These patches are global and affect every squad, not only AlifePlus's. If anothe
 Performance:
 
 Reactive. AlifePlus does no work when the engine fires no event.
-Cheapest-first gates. A pure-Lua os.clock pacer rejects ~98% of the radiant ticks before any engine bridge runs. Protection, ratio, and budget gates follow in order.
+Cheapest-first gates. Radiant events arrive pre-filtered: the xlibs squad sweep visits 20 squads per second at constant cost and fires only on real change or keepalive, replacing the raw engine heartbeat of ~6,600 calls per minute. A budget read, protection, and the on-map ratio follow in order.
 Frame spreading. Long sweeps run through xslice across many frames via one shared AddUniqueCall driver, with deferred compaction (survivors swap) instead of per-item table.remove.
 Cached over scanned. ap_core_cache holds per-level indexes for smarts, stashes, and squads. Smart and stash buckets never invalidate (LTX-baked). Squad buckets update incrementally on register / unregister, never rebuilt.
 Smart data structures. xttltable provides O(1) token buckets with fractional accumulation, O(1) FIFO caches with ring-buffer eviction, and sliding-window TTL counters. Sorted lists use binary insert and binary search.
@@ -497,9 +497,9 @@ Log level goes from silent to full tracing with pathing, performance timing, and
 Two reset buttons live under Development. Reset ALL to Defaults restores every setting to factory state and takes effect on the first click. Reset ALL to Stateless Defaults restores factory state and then disables trade, item consumption, stash fill, stash loot, and smart ownership. AlifePlus dispatch and travel still run. Use the stateless preset on installs where another mod owns those systems.
 
 Presets:
-  Calm Zone: A-Life Interval 15-20, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
-  Vanilla+: A-Life Interval 12, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)
-  Chaotic: A-Life Interval 2-4, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+
+  Calm Zone: Keepalive interval 120-240, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
+  Vanilla+: Keepalive interval 60, Cause Budget 20, Consequence Budget 2, Global Rate Limit 5 (defaults)
+  Chaotic: Keepalive interval 30, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+
 
 ---
 

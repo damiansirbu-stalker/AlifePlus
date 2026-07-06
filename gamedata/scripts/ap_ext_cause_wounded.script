@@ -1,5 +1,5 @@
 --- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
-local xobject, xsquad, xsmart, xlevel, xevent, xconst = xobject, xsquad, xsmart, xlevel, xevent, xconst
+local xobject, xsquad, xsmart, xlevel, xcallbacks, xconst = xobject, xsquad, xsmart, xlevel, xcallbacks, xconst
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -11,9 +11,6 @@ local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local LOG = ap_core_debug.bracket(CAUSE.WOUNDED)
-
--- Declare custom callback (must be before on_game_start)
-AddScriptCallback(CALLBACK.X_NPC_MEDKIT_USE)
 
 local cfg = ap_core_mcm.cfg
 
@@ -108,23 +105,15 @@ local function _on_actor_item_use(_trace, _item, section)
     }
 end
 
-local function _setup_hooks()
-    local ok = xevent.hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
-        xevent.emit(CALLBACK.X_NPC_MEDKIT_USE, npc, medkit, kind)
-        return orig(npc, medkit, kind)
-    end)
-    if ok then
-        ap_core_debug.info(LOG .. " hooked xr_eat_medkit.consume_medkit")
-    end
-end
-
 local _adapters = {
     [CALLBACK.X_NPC_MEDKIT_USE]  = _on_npc_medkit_use,
     [CALLBACK.ACTOR_ON_ITEM_USE] = _on_actor_item_use,
 }
 
 function on_game_start()
-    _setup_hooks()
+    -- Detection lives in xlibs (xcallbacks: hook on xr_eat_medkit.consume_medkit,
+    -- installed on start); this file is a pure subscriber.
+    xcallbacks.start(CALLBACK.X_NPC_MEDKIT_USE)
     local cbs = ap_core_const.WOUNDED_CALLBACKS
     for i = 1, #cbs do
         ap_core_producer.register({

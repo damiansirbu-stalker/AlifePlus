@@ -1,6 +1,11 @@
 next
-  Summary: Loot yield tips, alpha tracking, mutation caps, off-map settle, smart-count fix, massacre firing, heal detection
+  Summary: Squad change sensor, loot yield tips, alpha tracking, mutation caps, off-map settle, smart-count fix, massacre firing, heal detection
 
+  - The imprecise vanilla squad_on_update is replaced by a synthetic update that fires only when a
+      squad really changed: moved, relocated to another smart, crossed a level, or went online or offline.
+    Every squad in the Zone gets its turn, and quiet squads check in on the new Keepalive interval setting.
+    The A-Life interval setting is removed, its pacing job is now done by real dispatch capacity.
+  - The new update ships in xlibs as x_squad_on_change, a public callback any mod can subscribe to.
   - Fixed enemies voicing the leave-a-kill-for-you remark, now only neutral and friendly stalkers do.
   - Fixed kill counts of despawned NPCs leaking to new entities, falsely promoting mutants to alpha.
   - Fixed mutation caps lowered in MCM not applying to existing saves, restore now trims to the cap.

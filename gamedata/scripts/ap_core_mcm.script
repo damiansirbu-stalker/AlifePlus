@@ -2,9 +2,10 @@
 local type, RegisterScriptCallback = type, RegisterScriptCallback
 
 defaults = {
-    -- Event Pipeline (gate order: alife_ratio -> distributor -> per-cause -> per-consequence)
+    -- Event Pipeline (radiant gate order: budget peek -> protection -> alife_ratio -> per-cause -> per-consequence;
+    -- change_keepalive_min paces the squad_on_change sweep's keepalive fires, in game-minutes)
     alife_ratio = 8,
-    distributor_interval_sec = 20,
+    change_keepalive_min = 60,
     allow_external_ownership = true,
     cause_max_reactions = 20,
     cause_max_per_causer = 1,
@@ -369,7 +370,7 @@ local _key_to_tab = {
     map_markers = "development",
     statistics_position = "development",
     alife_ratio = "framework",
-    distributor_interval_sec = "framework",
+    change_keepalive_min = "framework",
     allow_external_ownership = "framework",
     cause_max_reactions = "framework",
     cause_max_per_causer = "framework",
@@ -685,7 +686,7 @@ function on_mcm_load()
                     _slide("ui_mcm_ap_framework_title"),
                     _desc("ui_mcm_ap_framework_desc"),
                     _track("alife_ratio", -10, 10, 1),
-                    _track("distributor_interval_sec", 1, 30, 0.5),
+                    _track("change_keepalive_min", 30, 240, 10),
                     _track("cause_max_reactions", 1, 100, 1),
                     _track("cause_max_needs", 1, 100, 1),
                     _track("cause_max_instincts", 1, 100, 1),

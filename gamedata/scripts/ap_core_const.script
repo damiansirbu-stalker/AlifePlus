@@ -82,7 +82,7 @@ UPDATE_SCRIPTED_SQUADS_SEC = 10
 --- X-Ray callback names
 CALLBACK = {
     -- Cause triggers (via producer)
-    SQUAD_ON_UPDATE = "squad_on_update",
+    X_SQUAD_ON_CHANGE = "x_squad_on_change",
     SQUAD_ON_NPC_DEATH = "squad_on_npc_death",
     SQUAD_ON_AFTER_GAME_VERTEX_CHANGE = "squad_on_after_game_vertex_change",
     SQUAD_ON_AFTER_LEVEL_CHANGE = "squad_on_after_level_change",
@@ -146,9 +146,13 @@ CAUSE_CATEGORY = {
     OPPORTUNITIES = "category:opportunities",
 }
 
---- Radiant cause callbacks (all radiant causes register on these)
+--- Radiant cause callbacks (all radiant causes register on these).
+--- X_SQUAD_ON_CHANGE is a synthetic callback shipped by xlibs (xcallbacks.script), fired
+--- when a squad's observable state changed or its keepalive expired; the producer starts
+--- it at on_game_start. It replaced the raw engine squad_on_update firehose (6624/min,
+--- 99.94% discarded by the old gate chain).
 RADIANT_CALLBACKS = {
-    CALLBACK.SQUAD_ON_UPDATE,
+    CALLBACK.X_SQUAD_ON_CHANGE,
 }
 
 --- Reactive callback families (one logical event has multiple engine paths).
