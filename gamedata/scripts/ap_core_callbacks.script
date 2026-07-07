@@ -1,0 +1,421 @@
+--- ap_core_callbacks: AlifePlus synthetic callbacks -- Anomaly events the base game never
+--- exposed, declared into the vanilla _g.script callback registry (AddScriptCallback ->
+--- axr_main.callback_add) so any cause RegisterScriptCallbacks on them exactly like a stock
+--- callback (squad_on_npc_death, actor_on_item_use). Names are declared at module load, so
+--- the two-phase boot (axr_main loads every script before calling any on_game_start) has the
+--- intercept table populated before any subscriber binds; installs run in on_game_start.
+---
+--- Two events, two detection sources -- the source dictates the mechanism:
+---   ap_squad_on_change (squad, changed|nil, prev, curr)
+---     Custom event over live A-Life state; a squad has no call seam to hook, so we poll.
+---     A staggered sweep (SWEEP_BATCH squads per 1s tick, constant cost vs squad count) walks
+---     an id snapshot of SIMBOARD.squads (xsquad.collect_squad_ids), diffs 4 fields (gvid,
+---     online, smart_id, current_action) and queues real transitions. A credit accumulator
+---     emits exactly cfg.alife_rate fires per minute; each credit goes to a lane picked by
+---     cfg.alife_ratio (Bresenham, actor's level vs background), oldest queued change first,
+---     else the lane's next squad round-robin (the implicit keepalive). changed names the
+---     differing fields; nil = round-robin fire with no transition. prev/curr are reused
+---     tables: read-only during the callback, never retain refs. Supersedes polling the
+---     vanilla squad_on_update firehose (~6600/min, no meaning per fire).
+---   ap_npc_medkit_use (npc, medkit, kind)
+---     Completes a vanilla seam: xr_eat_medkit.consume_medkit fires no callback, so a
+---     function hook (xevent.hook) emits one before the original runs. kind is "health" or
+---     "bleed" (xr_eat_medkit.script). No options.
+---
+--- Instrumentation is complete but costs one boolean when DEBUG is off: every stat
+--- accumulator, xprofiler timing, and log line is gated on ap_core_debug.enabled().
+local type, clock, tostring, table_concat = type, os.clock, tostring, table.concat
+local RegisterScriptCallback, SendScriptCallback, AddScriptCallback =
+    RegisterScriptCallback, SendScriptCallback, AddScriptCallback
+local CreateTimeEvent, ResetTimeEvent = CreateTimeEvent, ResetTimeEvent
+local xevent, xlevel, xobject, xsquad, xprofiler = xevent, xlevel, xobject, xsquad, xprofiler
+local ap_core_debug = ap_core_debug
+
+local CALLBACK = ap_core_const.CALLBACK
+local cfg = ap_core_mcm.cfg
+local LOG = ap_core_debug.bracket("callbacks")
+local LOG_SQUAD = ap_core_debug.bracket("callbacks:squad")
+local CLSID_SQUAD = clsid.online_offline_group_s
+
+-- Declare both events at module load (phase 0), before any on_game_start subscriber can
+-- reference the names. Declaration is passive registry bookkeeping; nothing runs.
+AddScriptCallback(CALLBACK.AP_SQUAD_ON_CHANGE)
+AddScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE)
+
+--------------------------------------------------------------------------------
+--- ap_squad_on_change: detection walk + credit-driven fire engine.
+--- The walk (SWEEP_BATCH squads per SWEEP_TICK_SEC tick, circular cursor over an id
+--- snapshot from xsquad.collect_squad_ids) only detects and sorts: diff the 4 tracked
+--- fields, queue changed ids, rebuild the two lane fire-order lists as it goes. Per-tick
+--- walk cost is O(batch), independent of total squad count. The fire engine converts credit
+--- (cfg.alife_rate / 60 per tick) into fires: lane by Bresenham on cfg.alife_ratio, queued
+--- change first, else round-robin -- total rate, lane mix, and full coverage are each
+--- enforced by counting, not by timers. The per-squad refractory (os.clock) is the one
+--- clamp, protecting small lanes from rapid re-fires of the same squad.
+--------------------------------------------------------------------------------
+
+local SWEEP_TICK_SEC = 1
+local SWEEP_BATCH = 20
+local SWEEP_REFRACTORY_SEC = 60
+-- Candidate attempts per credit before the credit is dropped (candidates dead or inside
+-- refractory); bounds the fire loop when a lane is tiny or the Zone is empty.
+local FIRE_ATTEMPTS_MAX = 8
+
+--- Per-squad state: [squad_id] = { gvid, online, smart_id, action, fired_at }.
+--- gvid stands in for position: the engine advances m_game_vertex_id as the squad walks,
+--- so it is a pre-quantized movement signal with no vector userdata allocation.
+local _squad_snapshots = {}
+-- Walk cursor state: id snapshot of the squad pool (never live refs).
+local _squad_ids = nil
+local _squad_pos = 0
+-- Pending change FIFOs per lane (head/tail ring over a plain array) + shared dedup set.
+local _squad_pending = {
+    cur = { items = {}, head = 1, tail = 0 },
+    bg = { items = {}, head = 1, tail = 0 },
+}
+local _squad_pending_set = {}
+-- Lane fire-order lists: rebuilt during each walk pass ("next"), swapped at wrap into
+-- "active", consumed round-robin by the fire engine. Fire-order bookkeeping only; the
+-- walk stays the single place that iterates the squad pool.
+local _squad_lane_next = { cur = {}, bg = {} }
+local _squad_lane_active = { cur = {}, bg = {} }
+local _squad_lane_cursor = { cur = 0, bg = 0 }
+-- Bresenham lane counters (the classic on/off-map admission math, applied at production).
+local _squad_lane_ct = { cur = 0, bg = 0 }
+-- Fire credit: cfg.alife_rate / 60 added per tick; one fire consumes 1.
+local _squad_credit = 0
+-- Reused payload tables (trimmed/overwritten per fire; read-only for subscribers).
+local _squad_changed = {}
+local _squad_curr = {}
+-- Instrumentation accumulators (touched only when DEBUG is enabled).
+local _squad_stat = { visits = 0, detected = 0, fires_cur = 0, fires_bg = 0,
+    fires_change = 0, fires_keep = 0, dropped = 0, tick_ms = 0, tick_max = 0, ticks = 0 }
+local _squad_pass_started = 0
+-- First-pass flag: during the very first walk the active fire lists are filled directly
+-- (there is no completed pass to swap in), so production starts immediately instead of
+-- staying silent for a full pass period after game start.
+local _squad_first_pass = true
+
+-- Diff the squad against its snapshot into the reused _squad_changed array.
+-- Returns the number of changed fields (0 = unchanged).
+-- @cost O(1) | 2 luabind trivial (m_game_vertex_id, online); smart_id and
+--             current_action are Lua-side fields
+local function _squad_diff(squad, snap)
+    local changed_count = 0
+    if snap.gvid ~= squad.m_game_vertex_id then
+        changed_count = changed_count + 1; _squad_changed[changed_count] = "gvid"
+    end
+    if snap.online ~= (not not squad.online) then
+        changed_count = changed_count + 1; _squad_changed[changed_count] = "online"
+    end
+    if snap.smart_id ~= squad.smart_id then
+        changed_count = changed_count + 1; _squad_changed[changed_count] = "smart_id"
+    end
+    if snap.action ~= squad.current_action then
+        changed_count = changed_count + 1; _squad_changed[changed_count] = "action"
+    end
+    return changed_count
+end
+
+-- Visit one squad on the walk: resolve, lane-tag into the next fire list, diff, queue a
+-- detected change. Never fires and never advances the snapshot; the fire engine does
+-- both, so a queued change re-verifies against live fields at fire time.
+-- @cost O(1) | 1 medium (alife_object via xobject.se) + 0-2 cached-graph lookups + diff
+local function _squad_visit(id, actor_level, stat_on)
+    local squad = xobject.se(id)
+    if not squad then
+        _squad_snapshots[id] = nil
+        _squad_pending_set[id] = nil
+        return
+    end
+    if stat_on then _squad_stat.visits = _squad_stat.visits + 1 end
+    local is_cur = actor_level ~= nil and xlevel.get_level_id(squad) == actor_level
+    local lane_list = is_cur and _squad_lane_next.cur or _squad_lane_next.bg
+    lane_list[#lane_list + 1] = id
+    if _squad_first_pass then
+        local active = is_cur and _squad_lane_active.cur or _squad_lane_active.bg
+        active[#active + 1] = id
+    end
+    local snap = _squad_snapshots[id]
+    if not snap then
+        _squad_snapshots[id] = { gvid = squad.m_game_vertex_id, online = not not squad.online,
+            smart_id = squad.smart_id, action = squad.current_action, fired_at = 0 }
+        return
+    end
+    if _squad_diff(squad, snap) == 0 or _squad_pending_set[id] then return end
+    _squad_pending_set[id] = true
+    local fifo = is_cur and _squad_pending.cur or _squad_pending.bg
+    fifo.tail = fifo.tail + 1
+    fifo.items[fifo.tail] = id
+    if stat_on then _squad_stat.detected = _squad_stat.detected + 1 end
+end
+
+-- Bresenham lane pick for one credit. Returns true = current-level lane, false = background.
+-- Reads cfg.alife_ratio live: the same slider the reactive ratio gate uses, so both lanes
+-- share one mix source.
+-- @cost O(1) | 0 luabind
+local function _squad_pick_lane()
+    local bias = cfg.alife_ratio
+    local ct = _squad_lane_ct
+    if ct.cur + ct.bg >= 32768 then ct.cur = 0; ct.bg = 0 end
+    if bias == 0 then
+        if ct.cur <= ct.bg then ct.cur = ct.cur + 1; return true end
+        ct.bg = ct.bg + 1
+        return false
+    end
+    if bias > 0 then
+        if ct.bg * bias <= (10 - bias) * ct.cur then ct.bg = ct.bg + 1; return false end
+        ct.cur = ct.cur + 1
+        return true
+    end
+    local inverse = -bias
+    if ct.cur * inverse <= (10 - inverse) * ct.bg then ct.cur = ct.cur + 1; return true end
+    ct.bg = ct.bg + 1
+    return false
+end
+
+-- Pop the oldest still-pending change id from a lane FIFO (skips despawn-evicted ids).
+-- @cost amortized O(1) | 0 luabind
+local function _squad_pop_pending(fifo)
+    local items = fifo.items
+    while fifo.head <= fifo.tail do
+        local id = items[fifo.head]
+        items[fifo.head] = nil
+        fifo.head = fifo.head + 1
+        if _squad_pending_set[id] then
+            _squad_pending_set[id] = nil
+            return id
+        end
+    end
+    fifo.head = 1
+    fifo.tail = 0
+    return nil
+end
+
+-- Next round-robin candidate id from a lane's active fire list, nil when the lane is empty.
+-- @cost O(1) | 0 luabind
+local function _squad_next_round_robin(lane_key)
+    local list = _squad_lane_active[lane_key]
+    local size = #list
+    if size == 0 then return nil end
+    local cursor = _squad_lane_cursor[lane_key] % size + 1
+    _squad_lane_cursor[lane_key] = cursor
+    return list[cursor]
+end
+
+-- Fire ap_squad_on_change for one squad id if it resolves and is past its refractory.
+-- Re-diffs live fields against the snapshot so the payload is truthful at fire time (a
+-- change that reverted between detection and fire goes out as a round-robin fire).
+-- Returns true when the callback was sent (the credit is spent).
+-- @cost O(1) | 1 medium resolve + diff + SendScriptCallback fan-out
+local function _squad_fire(id, lane_key, now, stat_on)
+    local squad = xobject.se(id)
+    if not squad then
+        _squad_snapshots[id] = nil
+        return false
+    end
+    local snap = _squad_snapshots[id]
+    if not snap or (now - snap.fired_at) < SWEEP_REFRACTORY_SEC then return false end
+    local changed_count = _squad_diff(squad, snap)
+    for index = changed_count + 1, #_squad_changed do _squad_changed[index] = nil end
+    _squad_curr.gvid = squad.m_game_vertex_id
+    _squad_curr.online = not not squad.online
+    _squad_curr.smart_id = squad.smart_id
+    _squad_curr.action = squad.current_action
+    if stat_on then
+        -- Per-fire trace: the one line that lets a log reader follow a specific event from
+        -- production into the producer's radiant tid chain.
+        ap_core_debug.debug("%s fire sq=%d lane=%s kind=%s gvid=%s smart=%s online=%s action=%s",
+            LOG_SQUAD, id, lane_key, changed_count > 0 and table_concat(_squad_changed, ",") or "turn",
+            tostring(_squad_curr.gvid), tostring(_squad_curr.smart_id),
+            tostring(_squad_curr.online), tostring(_squad_curr.action))
+    end
+    SendScriptCallback(CALLBACK.AP_SQUAD_ON_CHANGE, squad,
+        changed_count > 0 and _squad_changed or nil, snap, _squad_curr)
+    snap.gvid = _squad_curr.gvid
+    snap.online = _squad_curr.online
+    snap.smart_id = _squad_curr.smart_id
+    snap.action = _squad_curr.action
+    snap.fired_at = now
+    if stat_on then
+        if changed_count > 0 then _squad_stat.fires_change = _squad_stat.fires_change + 1
+        else _squad_stat.fires_keep = _squad_stat.fires_keep + 1 end
+    end
+    return true
+end
+
+-- Try to fire from one lane: oldest queued change first, then round-robin. Returns the
+-- remaining attempt budget and whether a fire happened.
+-- @cost O(attempts) | <= attempts resolves worst case, 1 typical
+local function _squad_try_lane(lane_key, now, attempts, stat_on)
+    local fifo = _squad_pending[lane_key]
+    while attempts > 0 do
+        local id = _squad_pop_pending(fifo)
+        if not id then break end
+        attempts = attempts - 1
+        if _squad_fire(id, lane_key, now, stat_on) then return attempts, true end
+    end
+    local remaining = #_squad_lane_active[lane_key]
+    while attempts > 0 and remaining > 0 do
+        attempts = attempts - 1
+        remaining = remaining - 1
+        local id = _squad_next_round_robin(lane_key)
+        if id and _squad_fire(id, lane_key, now, stat_on) then return attempts, true end
+    end
+    return attempts, false
+end
+
+-- Spend one credit: pick the lane, try it, fall back to the other lane, drop the credit
+-- after FIRE_ATTEMPTS_MAX dead candidates (despawned or inside refractory).
+-- @cost O(attempts) | <= FIRE_ATTEMPTS_MAX resolves worst case, 1 typical
+local function _squad_spend_credit(now, stat_on)
+    local lane_key = _squad_pick_lane() and "cur" or "bg"
+    local attempts, fired = _squad_try_lane(lane_key, now, FIRE_ATTEMPTS_MAX, stat_on)
+    if not fired then
+        lane_key = lane_key == "cur" and "bg" or "cur"
+        attempts, fired = _squad_try_lane(lane_key, now, attempts, stat_on)
+    end
+    if not fired then
+        if stat_on then _squad_stat.dropped = _squad_stat.dropped + 1 end
+        return false
+    end
+    if stat_on then
+        if lane_key == "cur" then _squad_stat.fires_cur = _squad_stat.fires_cur + 1
+        else _squad_stat.fires_bg = _squad_stat.fires_bg + 1 end
+    end
+    return true
+end
+
+-- Swap the lane fire lists at walk wrap: the pass just completed becomes the active fire
+-- order, the next pass rebuilds from scratch (absorbs spawn, despawn, and level moves).
+-- @cost O(stale entries) trims | 0 luabind
+local _LANE_KEYS = { "cur", "bg" }
+local function _squad_swap_lanes()
+    for index = 1, 2 do
+        local lane_key = _LANE_KEYS[index]
+        local retired = _squad_lane_active[lane_key]
+        _squad_lane_active[lane_key] = _squad_lane_next[lane_key]
+        _squad_lane_next[lane_key] = retired
+        for slot = 1, #retired do retired[slot] = nil end
+        if _squad_lane_cursor[lane_key] > #_squad_lane_active[lane_key] then
+            _squad_lane_cursor[lane_key] = 0
+        end
+    end
+end
+
+-- Emit the pass summary and reset the accumulators. Caller gates on stat_on, so this only
+-- runs with DEBUG enabled.
+-- @cost O(1) | log write only
+local function _squad_log_pass(pass_seconds)
+    local stat = _squad_stat
+    local avg_ms = stat.ticks > 0 and stat.tick_ms / stat.ticks or 0
+    ap_core_debug.debug(
+        "%s pass=%.0fs visits=%d detected=%d fires cur=%d bg=%d (change=%d keep=%d) dropped=%d lane cur=%d bg=%d tick avg=%.3fms max=%.3fms",
+        LOG_SQUAD, pass_seconds, stat.visits, stat.detected, stat.fires_cur, stat.fires_bg,
+        stat.fires_change, stat.fires_keep, stat.dropped,
+        #_squad_lane_active.cur, #_squad_lane_active.bg, avg_ms, stat.tick_max)
+    stat.visits = 0; stat.detected = 0; stat.fires_cur = 0; stat.fires_bg = 0
+    stat.fires_change = 0; stat.fires_keep = 0; stat.dropped = 0
+    stat.tick_ms = 0; stat.tick_max = 0; stat.ticks = 0
+end
+
+-- One tick: walk one batch (detection), accrue credit, spend whole credits (firing).
+-- The id array rebuilds once per full pass via xsquad.collect_squad_ids; iteration never
+-- touches the live SIMBOARD table, so mid-tick spawn/despawn cannot invalidate the walk.
+-- @cost O(SWEEP_BATCH + fires) per tick, constant vs total squad count
+local function _squad_tick()
+    ResetTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC)
+    local stat_on = ap_core_debug.enabled()
+    local prof = xprofiler.new_if(stat_on):start()
+    local now = clock()
+    if not _squad_ids or _squad_pos >= #_squad_ids then
+        if _squad_ids then
+            _squad_swap_lanes()
+            if stat_on then _squad_log_pass(now - _squad_pass_started) end
+        end
+        _squad_pass_started = now
+        local ids, count = xsquad.collect_squad_ids(_squad_ids)
+        _squad_ids = ids
+        _squad_pos = 0
+        if count == 0 then return end
+    end
+    local actor_level = xlevel.get_actor_level_id()
+    local ids = _squad_ids
+    local last = _squad_pos + SWEEP_BATCH
+    if last > #ids then last = #ids end
+    for index = _squad_pos + 1, last do
+        _squad_visit(ids[index], actor_level, stat_on)
+    end
+    _squad_pos = last
+    _squad_credit = _squad_credit + cfg.alife_rate * (SWEEP_TICK_SEC / 60)
+    while _squad_credit >= 1 do
+        _squad_credit = _squad_credit - 1
+        _squad_spend_credit(now, stat_on)
+    end
+    if stat_on then
+        prof:stop()
+        local tick_ms = prof:get_ms()
+        local stat = _squad_stat
+        stat.tick_ms = stat.tick_ms + tick_ms
+        if tick_ms > stat.tick_max then stat.tick_max = tick_ms end
+        stat.ticks = stat.ticks + 1
+    end
+end
+
+-- Evict sweep state on squad despawn. The resolve-time nil checks catch paths that bypass
+-- unregister; this handler is the prompt path. Fires from the same server_entity_on_unregister
+-- Anomaly nils SIMBOARD.squads on (sim_squad_scripted:on_unregister).
+-- @cost O(1) | 1 luabind (clsid)
+local function _squad_on_entity_unregister(se_obj)
+    if not se_obj then return end
+    if se_obj:clsid() == CLSID_SQUAD then
+        local id = se_obj.id
+        _squad_snapshots[id] = nil
+        _squad_pending_set[id] = nil
+    end
+end
+
+-- Reset all mutable sweep state so a new game or a mid-session load starts clean.
+local function _squad_reset()
+    _squad_snapshots = {}
+    _squad_ids = nil
+    _squad_pos = 0
+    _squad_pending.cur.items = {}; _squad_pending.cur.head = 1; _squad_pending.cur.tail = 0
+    _squad_pending.bg.items = {}; _squad_pending.bg.head = 1; _squad_pending.bg.tail = 0
+    _squad_pending_set = {}
+    _squad_lane_next.cur = {}; _squad_lane_next.bg = {}
+    _squad_lane_active.cur = {}; _squad_lane_active.bg = {}
+    _squad_lane_cursor.cur = 0; _squad_lane_cursor.bg = 0
+    _squad_lane_ct.cur = 0; _squad_lane_ct.bg = 0
+    _squad_credit = 0
+    _squad_pass_started = 0
+    _squad_first_pass = true
+end
+
+--------------------------------------------------------------------------------
+--- ap_npc_medkit_use: heal-consumption hook.
+--- xr_eat_medkit.consume_medkit exposes no callback; the hook fires ours before the
+--- original runs, so the medkit still exists for the subscriber (consume_medkit releases
+--- it via alife_release_id).
+--------------------------------------------------------------------------------
+
+-- @cost O(1) install | per heal: 1 SendScriptCallback + original consume_medkit
+local function _medkit_install()
+    return xevent.hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
+        SendScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE, npc, medkit, kind)
+        return orig(npc, medkit, kind)
+    end)
+end
+
+--------------------------------------------------------------------------------
+--- Lifecycle.
+--------------------------------------------------------------------------------
+
+--- Install both events: the squad sweep (despawn eviction + 1s tick) and the medkit hook.
+function on_game_start()
+    _squad_reset()
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _squad_on_entity_unregister)
+    CreateTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC, _squad_tick)
+    _medkit_install()
+    ap_core_debug.info(LOG .. " Initialized (squad sweep + medkit hook)")
+end

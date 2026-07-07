@@ -5,7 +5,7 @@ AlifePlus is a reactive framework for STALKER Anomaly. It hooks X-Ray engine cal
 - Event Pipeline (ap_core_producer): gate chain -> cause generator -> xbus publish.
 - Dispatch Pipeline (ap_core_consumer): xbus subscribe -> consequence handler -> script_squad.
 
-The framework consumes its radiant heartbeat from xlibs (xcallbacks.script publishes x_squad_on_change at the MCM-configured rate and map mix; the producer starts it and feeds it) and owns protection (ap_core_broker), rate limiting (ap_core_limiter), squad lifecycle (ap_core_broker), tracing (ap_core_debug), PDA map markers (ap_core_map), and statistics overlay (ap_core_hud). Domain logic registers a cause generator with the producer and a consequence handler with the consumer.
+The framework produces its own radiant heartbeat (ap_core_callbacks.script declares and fires ap_squad_on_change at the MCM-configured rate and map mix) and owns protection (ap_core_broker), rate limiting (ap_core_limiter), squad lifecycle (ap_core_broker), tracing (ap_core_debug), PDA map markers (ap_core_map), and statistics overlay (ap_core_hud). Domain logic registers a cause generator with the producer and a consequence handler with the consumer.
 
 Two layers: core (ap_core_*) and ext (ap_ext_*). Core never imports ext. All domain logic reaches the framework through registered function references.
 
@@ -37,7 +37,7 @@ if (script_target_id) then self:specific_update(script_target_id)
 else self:generic_update() end
 ```
 
-`get_script_target()` returns `self.scripted_target` first when it is set (`sim_squad_scripted.script:104-106`). That single field is AlifePlus's entire write surface into targeting. AP's radiant input is not the engine heartbeat: the xlibs `xcallbacks` sweep (started by the producer) visits every squad on a staggered timer, diffs a 4-field snapshot, and produces `x_squad_on_change` fires at the configured rate and map mix, real transitions first, round-robin turns for quiet squads (see Event Pipeline). The pipeline runs synchronously inside that timer tick: sweep fires `x_squad_on_change` -> gates -> cause generator -> `ap_core_broker.script_squad` -> `xsquad.acquire_squad` sets `scripted_target`. The squad consumes the write at its NEXT `sim_squad_scripted:update`: the fork at `:233` reads `scripted_target` first, one frame later for online squads, up to one scheduler visit (~30s) later for offline squads. This is the same timing contract every reactive dispatch has always had (death and item callbacks also run outside the target squad's update), so radiant and reactive now share one synchrony model. AP authors only the write-back; the engine's own update loop acts on it.
+`get_script_target()` returns `self.scripted_target` first when it is set (`sim_squad_scripted.script:104-106`). That single field is AlifePlus's entire write surface into targeting. AP's radiant input is not the engine heartbeat: the `ap_core_callbacks` sweep (installed at on_game_start) visits every squad on a staggered timer, diffs a 4-field snapshot, and produces `ap_squad_on_change` fires at the configured rate and map mix, real transitions first, round-robin turns for quiet squads (see Event Pipeline). The pipeline runs synchronously inside that timer tick: sweep fires `ap_squad_on_change` -> gates -> cause generator -> `ap_core_broker.script_squad` -> `xsquad.acquire_squad` sets `scripted_target`. The squad consumes the write at its NEXT `sim_squad_scripted:update`: the fork at `:233` reads `scripted_target` first, one frame later for online squads, up to one scheduler visit (~30s) later for offline squads. This is the same timing contract every reactive dispatch has always had (death and item callbacks also run outside the target squad's update), so radiant and reactive now share one synchrony model. AP authors only the write-back; the engine's own update loop acts on it.
 
 ### Vanilla: a stateless weighted lottery
 
@@ -103,7 +103,8 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_cache | Per-level indexes over SIMBOARD.smarts_by_names (sync at actor_on_first_update), treasure_manager.caches (xslice step=3, ~2s warmup), and SIMBOARD.squads (sync at actor_on_first_update). Consumers fetch via smarts_on_level(level_id) / stashes_on_level(level_id) / squads_on_level(level_id) and pass as opts.source to xsmart.find_smart / xstash.find_stashes / xsquad.find_squads. Smarts and stashes never invalidate (LTX-baked positions). Squads update incrementally via squad_on_after_level_change (move between buckets) and server_entity_on_register / on_unregister (spawn / despawn); stale entries are a no-op cost because xsquad._squad_base_valid level gate is first. Also builds a standalone-role index keyed by smart_id (cross-level). Populated by xslice over the full alife pool via sim:iterate_objects with per-entity Stalker + Trader clsid class-gate. For each curated NPC (section in xdata.npc_roles with trader / medic / mechanic role) resolves the owning smart via smart.npc_info (engine roster) with find_smart-by-position fallback, then inserts the NPC into every applicable role bucket per xdata curation (multi-role NPCs land in trader AND mechanic when xdata declares both). Consumers: standalone_role_at_smart(smart_id, role) returns id-set, first_online_role_npc_at_smart(smart_id, role) returns first live game_object. Full rebuild per level transition (no incremental upkeep on this bucket; Lua VM reinit + actor_on_first_update fires fresh build). The earlier 1.7.1 approach using alife():iterate_level_objects_of_clsid walked graph().level().objects() (engine's switched-in registry, not the per-level alife pool) and silently dropped most offline curated NPCs |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
-| ap_core_producer | Event Pipeline: radiant gate chain on x_squad_on_change (budget peek, protection; starts the xlibs xcallbacks sweep and feeds it rate, ratio, and the debug logger), reactive gate chain on engine callbacks, cause generator cascade, xbus publish |
+| ap_core_callbacks | Synthetic callbacks AP declares and fires: ap_squad_on_change (a staggered SIMBOARD.squads sweep producing a rate/mix-controlled squad heartbeat, reads cfg.alife_rate/alife_ratio live) and ap_npc_medkit_use (xevent.hook on xr_eat_medkit.consume_medkit). Both declared at module load, installed in on_game_start. Tracing complete but one-boolean-gated on ap_core_debug.enabled() |
+| ap_core_producer | Event Pipeline: radiant gate chain on ap_squad_on_change (budget peek, protection), reactive gate chain on engine callbacks, cause generator cascade, xbus publish |
 | ap_core_consumer | Dispatch Pipeline: xbus subscribe, consequence iteration, result codes, rate gating |
 | ap_core_broker | Squad lifecycle: protection, ownership registry, scripting, 20s scan, arrival, release, transit balance |
 | ap_core_chase | Squad-target chase: two guarded sim_squad_scripted monkeypatches (get_current_task / get_script_target) that home an AP-scripted chaser on another squad by id, keyed on the broker registry; delegate to the captured original for non-chase squads (chain-safe with warfare) |
@@ -144,11 +145,11 @@ Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequ
 
 ### Execution model
 
-X-Ray runs Lua single-threaded. There is no concurrency within one engine tick. When a callback fires (the sweep's x_squad_on_change, or an engine reactive callback), the entire AP pipeline executes synchronously in one Lua call stack before control returns to the engine. Producer evaluates gates, cause generator runs, xbus publishes, consumer iterates consequences, each handler runs and may script a squad. All inside a single function call.
+X-Ray runs Lua single-threaded. There is no concurrency within one engine tick. When a callback fires (the sweep's ap_squad_on_change, or an engine reactive callback), the entire AP pipeline executes synchronously in one Lua call stack before control returns to the engine. Producer evaluates gates, cause generator runs, xbus publishes, consumer iterates consequences, each handler runs and may script a squad. All inside a single function call.
 
 ```
 sweep tick (1s timer, 20 squads, cursor)
-  -> diff snapshot -> SendScriptCallback("x_squad_on_change", squad, changed, prev, curr)
+  -> diff snapshot -> SendScriptCallback("ap_squad_on_change", squad, changed, prev, curr)
     -> producer._on_radiant (gate chain: BUDGET peek, is_protected, RATIO)
       -> EVAL cascade: shuffle generators, try each, stop on first publish
         -> cause generator returns nil -> try next
@@ -167,13 +168,13 @@ xbus.publish calls each subscriber inline and returns when all have finished.
 
 Producer receives engine callbacks and filters them through a gate chain before evaluating cause generators. Two variants because radiant and reactive events differ structurally.
 
-Radiant events are ambient observations delivered by `x_squad_on_change`, produced at a configured rate and map mix. The squad is both subject and responder. Every fire is meaningful: either an observed transition or the squad's round-robin turn.
+Radiant events are ambient observations delivered by `ap_squad_on_change`, produced at a configured rate and map mix. The squad is both subject and responder. Every fire is meaningful: either an observed transition or the squad's round-robin turn.
 
 Reactive events are world-state changes on engine callbacks (death, healing, pickup). The triggering entity may not be the entity AP acts on. Low frequency, high significance per event.
 
-#### The x_squad_on_change sweep (xlibs xcallbacks.script)
+#### The ap_squad_on_change sweep (ap_core_callbacks.script)
 
-AP does not subscribe to the engine's `squad_on_update` heartbeat (6,624 calls/min across ~776 squads, of which the old gate chain discarded 99.94%; the engine still fires it for other mods). The replacement is a synthetic engine callback shipped by xlibs: `xcallbacks.script` is the library's catalog of events the engine should have shipped (lineage: the modded-exes overlay's `callbacks_gameobject.script`), dormant by contract because xlibs has no intrinsic behavior; the producer starts it at on_game_start via `xcallbacks.start("x_squad_on_change", { rate_per_min, level_bias, logger })` and pushes MCM changes through `xcallbacks.configure`.
+AP does not subscribe to the engine's `squad_on_update` heartbeat (6,624 calls/min across ~776 squads, of which the old gate chain discarded 99.94%; the engine still fires it for other mods). The replacement is a custom synthetic callback AP declares and fires itself: `ap_core_callbacks.script` declares `ap_squad_on_change` into the vanilla `_g.script` callback registry (`AddScriptCallback` at module load, so the name exists before any subscriber binds) and installs the sweep in its own on_game_start. Rate and mix are read live from `cfg.alife_rate` / `cfg.alife_ratio` each tick, so MCM changes apply on the next tick with no push path.
 
 The sweep separates detection from production:
 
@@ -186,13 +187,13 @@ Detection: a 1s time event walks 20 squads per tick with a circular cursor over 
 | smart_id | assignment change |
 | current_action | moving vs staying |
 
-Production: a credit accumulator gains `rate_per_min / 60` per tick; each whole credit emits exactly one fire, so the total rate is enforced by counting, not by timers. Per credit: the lane is picked by `level_bias` (the manifesto's Bresenham, current level vs background, applied at production instead of rejection); the lane's oldest queued change fires first; with no pending change, the lane's next squad fires round-robin — the implicit keepalive that guarantees every squad its turn, longest-waiting first by list order. Fire payload is `(squad, changed, prev, curr)`; `changed` names the differing fields, nil = round-robin fire with no transition. The fire re-diffs live fields, so a queued change that reverted goes out truthfully. One clamp: a per-squad refractory (60s, os.clock) protects small lanes from rapid re-fires; a blocked fire defers (snapshot not advanced, re-detected next pass). First sight of a squad baselines silently; spawn is reactive territory. Snapshot state is ephemeral (never saved); eviction via server_entity_on_unregister plus the resolve-time nil checks.
+Production: a credit accumulator gains `cfg.alife_rate / 60` per tick; each whole credit emits exactly one fire, so the total rate is enforced by counting, not by timers. Per credit: the lane is picked by `cfg.alife_ratio` (the manifesto's Bresenham, current level vs background, applied at production instead of rejection; the same slider the reactive ratio gate uses); the lane's oldest queued change fires first; with no pending change, the lane's next squad fires round-robin — the implicit keepalive that guarantees every squad its turn, longest-waiting first by list order. Fire payload is `(squad, changed, prev, curr)`; `changed` names the differing fields, nil = round-robin fire with no transition. The fire re-diffs live fields, so a queued change that reverted goes out truthfully. One clamp: a per-squad refractory (60s, os.clock) protects small lanes from rapid re-fires; a blocked fire defers (snapshot not advanced, re-detected next pass). First sight of a squad baselines silently; spawn is reactive territory. Snapshot state is ephemeral (never saved); eviction via server_entity_on_unregister plus the resolve-time nil checks.
 
-The sweep is pure mechanism living a full layer below AlifePlus: no protection, no budgets, no knowledge that a pipeline exists. It fires for protected and warfare-owned squads too, so the public stream is uncensored; `x_squad_on_change` is a first-class integration surface (subscribe with plain `RegisterScriptCallback`; any xlibs consumer can start it, with or without AlifePlus installed), and the producer subscribes to it through the same engine callback registry as any foreign mod. Payload tables (`changed`, `prev`, `curr`) are reused between fires: read-only during the callback, never retain references. Instrumentation is injection-only (xlibs modules never log): AP passes `ap_core_debug` as `opts.logger`, and at DEBUG the sweep times its ticks (`xprofiler.new_if`) and emits one `[SQUAD_ON_CHANGE]` line per fire (squad, lane, kind, field values) plus a per-pass summary (`visits, detected, fires cur/bg, change/keep, dropped, tick avg/max ms`) into alifeplus.log; without an enabled logger every instrumentation site is one boolean check.
+The sweep is detection-only: no protection, no budgets, no knowledge that a pipeline exists. It fires for protected and warfare-owned squads too, so the stream the producer sees is uncensored; `ap_squad_on_change` goes through the same vanilla callback registry as any engine callback, so any co-installed mod can subscribe to it with plain `RegisterScriptCallback` (the event exists only when AlifePlus is installed, since AlifePlus declares and fires it). Payload tables (`changed`, `prev`, `curr`) are reused between fires: read-only during the callback, never retain references. Instrumentation is complete but costs one boolean when DEBUG is off: the sweep gates every stat accumulator, `xprofiler.new_if` tick timing, and log line on `ap_core_debug.enabled()`; at DEBUG it emits one `[CALLBACKS.SQUAD]` line per fire (squad, lane, kind, field values) plus a per-pass summary (`visits, detected, fires cur/bg, change/keep, dropped, tick avg/max ms`) into alifeplus.log.
 
 #### Radiant gate chain (ap_core_producer._on_radiant)
 
-Two gates on each `x_squad_on_change` fire; rate and level mix are enforced at production inside the sweep, so no ratio gate remains on the radiant path (the manifesto's A-Life Ratio lives at the intake now):
+Two gates on each `ap_squad_on_change` fire; rate and level mix are enforced at production inside the sweep, so no ratio gate remains on the radiant path (the manifesto's A-Life Ratio lives at the intake now):
 
 1. BUDGET peek. Non-consuming read of the global radiant dispatch counter (`ap_core_limiter.check_global_consequence_rate_limit`). Radiant is 1:1 publish-to-dispatch and the consumer refuses past `global_consequence_max_events` per window, so when the window is full every evaluation is provably wasted work and would violate the cause publish contract (universal rule 14). Window full -> return before any work. Self-tunes with the MCM cap; the counter only advances on dispatch SUCCESS, so failed consequences do not eat the window.
 2. is_protected. Full eligibility check via ap_core_broker.is_protected. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
@@ -202,7 +203,7 @@ Shuffling ensures fair distribution regardless of how many generators apply to a
 
 #### Reactive gate chain (ap_core_producer._on_reactive, line 259)
 
-Reactive callbacks: squad_on_npc_death, x_npc_medkit_use (synthetic, xlibs xcallbacks; started by ap_ext_cause_wounded), actor_on_item_take, npc_on_item_take, actor_on_item_use. Three gates:
+Reactive callbacks: squad_on_npc_death, ap_npc_medkit_use (synthetic, declared and hooked in ap_core_callbacks), actor_on_item_take, npc_on_item_take, actor_on_item_use. Three gates:
 
 1. PACER. Token bucket with per-callback-type keys, 1 token/sec per type. Independent from the radiant pacer.
 2. RATIO. Same Bresenham as radiant with its own counter pair. Some reactive callbacks (actor_on_item_use, actor_on_item_take) are always on-map (require a game_object which only exists online).
@@ -283,9 +284,9 @@ ap_core_limiter holds two limiter families. Pipeline limiter throttles event flo
 | Global radiant TTL counter | TTL counter | radiant only | 5 / 60s | ap_core_limiter (check_global_consequence_rate_limit) | MCM global_consequence_max_events |
 | Offmap balance counter | TTL counter, sliding window (game-sec) | per source level_id | 2 / 48 game-hours | ap_core_limiter (check_offmap_rate_limit, increment_offmap_counter) | MCM cause_max_offmap |
 | Per-causer reaction counter | TTL counter, sliding window (game-sec) | per causer entity id (shared across dispatching REACTIONS; alpha promotion excluded) | 1 / 1 game-hour | ap_core_limiter (check_causer_rate_limit, increment_causer_counter) | MCM cause_max_per_causer |
-| Sweep rate | credit accumulator, 1 credit = 1 fire | global sweep production | 12 / min | xlibs xcallbacks (fed by producer) | MCM alife_rate |
-| Sweep level mix | Bresenham lane pick per credit (current level vs background) | sweep production split | +8 (~4:1 current level) | xlibs xcallbacks (fed by producer) | MCM alife_ratio |
-| Sweep refractory | per-squad os.clock spacing | per squad | 60s | xlibs xcallbacks | constant |
+| Sweep rate | credit accumulator, 1 credit = 1 fire | global sweep production | 5 / min | ap_core_callbacks (reads cfg live) | MCM alife_rate |
+| Sweep level mix | Bresenham lane pick per credit (current level vs background) | sweep production split | +8 (~4:1 current level) | ap_core_callbacks (reads cfg live) | MCM alife_ratio |
+| Sweep refractory | per-squad os.clock spacing | per squad | 60s | ap_core_callbacks | constant |
 | BUDGET peek | non-consuming read of global radiant counter | radiant EVAL admission | 5 / 60s (shared window) | ap_core_producer gate 1 | MCM global_consequence_max_events |
 | Reactive PACER | token bucket | per callback type | 1 / sec | ap_core_producer | constant |
 | Per-squad MVT / Hull threshold | DTO last_<X>_at + arrival reset | per squad per cause | per cause | cause generator | MCM cause_<X>_threshold |
@@ -334,8 +335,9 @@ axr_main calls on_game_start() on every loaded script. File order alphabetical, 
 - _ap_deps asserts xlibs compatibility. Hard crash on mismatch.
 - ap_core_mcm loads config from defaults, registers on_option_change.
 - ap_core_debug registers actor_on_first_update for deferred log level init.
-- ap_core_producer resets dispatch state, registers actor_on_first_update, and starts the xlibs sweep: `xcallbacks.start("x_squad_on_change", { rate_per_min, level_bias, logger })` plus an on_option_change handler pushing MCM rate/ratio changes via `xcallbacks.configure` (xlibs ships the mechanism dormant; the consumer starts and feeds it). register() is write-through (maintains _handlers, _radiant_callbacks, _cascade_buf synchronously); engine subscription is deferred to actor_on_first_update. The callback names themselves are declared at xcallbacks module load (phase 0).
-- ap_ext_cause_wounded starts `xcallbacks.start("x_npc_medkit_use")` (heal-detection hook, formerly installed inline in this file) and registers its reactive generators; it is a pure subscriber now.
+- ap_core_callbacks declares both event names at module load (`AddScriptCallback`, phase 0) and installs both detections in its on_game_start: the `ap_squad_on_change` sweep (server_entity_on_unregister eviction + 1s tick, reading cfg.alife_rate/alife_ratio live) and the `ap_npc_medkit_use` hook on `xr_eat_medkit.consume_medkit`.
+- ap_core_producer resets dispatch state and registers actor_on_first_update; it subscribes to ap_squad_on_change (via RADIANT_CALLBACKS) but no longer starts or feeds the sweep. register() is write-through (maintains _handlers, _radiant_callbacks, _cascade_buf synchronously); engine subscription is deferred to actor_on_first_update.
+- ap_ext_cause_wounded registers its reactive generators against WOUNDED_CALLBACKS; it is a pure subscriber (detection lives in ap_core_callbacks).
 - ap_core_consumer registers actor_on_first_update. Does NOT subscribe to xbus yet.
 - ap_core_broker registers save/load callbacks, creates the 20s scripted-squad scan timer.
 - ap_core_hud resets statistics, registers first_update / option_change / net_destroy / GUI callbacks.
@@ -351,7 +353,7 @@ After phase 1: all generators and handlers are registered, _cascade_buf is fully
 
 Game world and actor exist. Deferred init runs:
 
-- Producer subscribes callbacks (radiant: shared _on_radiant on x_squad_on_change; reactive: per-callback dispatcher on engine callbacks) and sets _first_update_done. Late register() calls (post-first_update) subscribe new callbacks synchronously.
+- Producer subscribes callbacks (radiant: shared _on_radiant on ap_squad_on_change; reactive: per-callback dispatcher on engine callbacks) and sets _first_update_done. Late register() calls (post-first_update) subscribe new callbacks synchronously.
 - Consumer subscribes to xbus cause events.
 - Debug reads MCM log level (config now loaded), dumps MCM at DEBUG.
 - HUD clears stale map markers from previous session, starts marker timer if MCM map_markers is enabled. Activates statistics overlay if MCM statistics_position is not "off".
@@ -1089,7 +1091,7 @@ Five result codes: SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED. 
 
 ### Reactive rules
 
-1. A reactive cause subscribes to one engine callback or one callback-family constant. Callback families collapse multiple engine paths into one logical cause: HARVEST_CALLBACKS = { ACTOR_ON_ITEM_TAKE, NPC_ON_ITEM_TAKE }, WOUNDED_CALLBACKS = { X_NPC_MEDKIT_USE, ACTOR_ON_ITEM_USE }.
+1. A reactive cause subscribes to one engine callback or one callback-family constant. Callback families collapse multiple engine paths into one logical cause: HARVEST_CALLBACKS = { ACTOR_ON_ITEM_TAKE, NPC_ON_ITEM_TAKE }, WOUNDED_CALLBACKS = { AP_NPC_MEDKIT_USE, ACTOR_ON_ITEM_USE }.
 2. Cause:consequence is 1:N. Multiple consequences fan out independently per publish.
 3. RULES split across three locations:
    - Cause-level event RULES: universal event criteria (does this event qualify for publishing at all). Runs once per event. Fail = no publish.
@@ -1119,10 +1121,10 @@ xbus.subscribe("cause:massacre", function(data)
 end, "my_mod")
 ```
 
-The heartbeat itself is also public and ships in xlibs, not in AP: the xcallbacks sweep fires `x_squad_on_change` through the engine callback registry for every squad in the Zone (including squads AP refuses to touch), so a foreign mod subscribes natively (AP already starts the event; a consumer without AP calls `xcallbacks.start` itself):
+The heartbeat itself is public: ap_core_callbacks fires `ap_squad_on_change` through the vanilla callback registry for every squad in the Zone (including squads AP refuses to touch), so a co-installed mod subscribes natively. The event exists only when AlifePlus is installed, since AlifePlus declares and fires it:
 
 ```lua
-RegisterScriptCallback("x_squad_on_change", function(squad, changed, prev, curr)
+RegisterScriptCallback("ap_squad_on_change", function(squad, changed, prev, curr)
     -- changed: array of field names ("gvid", "online", "smart_id", "action"),
     -- nil = round-robin turn with no transition
     -- prev/curr: last and current 4-field snapshots; read-only, do not retain references

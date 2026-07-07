@@ -1,5 +1,5 @@
 --- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
-local xobject, xsquad, xsmart, xlevel, xcallbacks, xconst = xobject, xsquad, xsmart, xlevel, xcallbacks, xconst
+local xobject, xsquad, xsmart, xlevel, xconst = xobject, xsquad, xsmart, xlevel, xconst
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
 local CAUSE = ap_core_const.CAUSE
@@ -106,14 +106,13 @@ local function _on_actor_item_use(_trace, _item, section)
 end
 
 local _adapters = {
-    [CALLBACK.X_NPC_MEDKIT_USE]  = _on_npc_medkit_use,
+    [CALLBACK.AP_NPC_MEDKIT_USE]  = _on_npc_medkit_use,
     [CALLBACK.ACTOR_ON_ITEM_USE] = _on_actor_item_use,
 }
 
 function on_game_start()
-    -- Detection lives in xlibs (xcallbacks: hook on xr_eat_medkit.consume_medkit,
-    -- installed on start); this file is a pure subscriber.
-    xcallbacks.start(CALLBACK.X_NPC_MEDKIT_USE)
+    -- Detection lives in ap_core_callbacks (hook on xr_eat_medkit.consume_medkit, installed
+    -- there at on_game_start); this file is a pure subscriber.
     local cbs = ap_core_const.WOUNDED_CALLBACKS
     for i = 1, #cbs do
         ap_core_producer.register({

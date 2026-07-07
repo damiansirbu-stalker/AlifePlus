@@ -82,11 +82,11 @@ UPDATE_SCRIPTED_SQUADS_SEC = 10
 --- X-Ray callback names
 CALLBACK = {
     -- Cause triggers (via producer)
-    X_SQUAD_ON_CHANGE = "x_squad_on_change",
+    AP_SQUAD_ON_CHANGE = "ap_squad_on_change",
     SQUAD_ON_NPC_DEATH = "squad_on_npc_death",
     SQUAD_ON_AFTER_GAME_VERTEX_CHANGE = "squad_on_after_game_vertex_change",
     SQUAD_ON_AFTER_LEVEL_CHANGE = "squad_on_after_level_change",
-    X_NPC_MEDKIT_USE = "x_npc_medkit_use",
+    AP_NPC_MEDKIT_USE = "ap_npc_medkit_use",
     ACTOR_ON_ITEM_USE = "actor_on_item_use",
     ACTOR_ON_ITEM_TAKE = "actor_on_item_take",
     NPC_ON_ITEM_TAKE = "npc_on_item_take",
@@ -147,12 +147,12 @@ CAUSE_CATEGORY = {
 }
 
 --- Radiant cause callbacks (all radiant causes register on these).
---- X_SQUAD_ON_CHANGE is a synthetic callback shipped by xlibs (xcallbacks.script), fired
---- when a squad's observable state changed or its keepalive expired; the producer starts
---- it at on_game_start. It replaced the raw engine squad_on_update firehose (6624/min,
---- 99.94% discarded by the old gate chain).
+--- AP_SQUAD_ON_CHANGE is a synthetic callback declared in ap_core_callbacks.script, fired
+--- when a squad's observable state changed or its round-robin keepalive came due; the sweep
+--- installs itself at on_game_start. It supersedes polling the vanilla squad_on_update
+--- firehose (6624/min, 99.94% discarded by the old gate chain).
 RADIANT_CALLBACKS = {
-    CALLBACK.X_SQUAD_ON_CHANGE,
+    CALLBACK.AP_SQUAD_ON_CHANGE,
 }
 
 --- Reactive callback families (one logical event has multiple engine paths).
@@ -162,7 +162,7 @@ HARVEST_CALLBACKS = {
     CALLBACK.NPC_ON_ITEM_TAKE,
 }
 WOUNDED_CALLBACKS = {
-    CALLBACK.X_NPC_MEDKIT_USE,
+    CALLBACK.AP_NPC_MEDKIT_USE,
     CALLBACK.ACTOR_ON_ITEM_USE,
 }
 

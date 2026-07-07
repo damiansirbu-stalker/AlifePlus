@@ -1,10 +1,10 @@
 --- ap_core_producer: Dispatches cause predicates on callbacks.
---- Gate chains: radiant (BUDGET->PROTECTION->EVAL) on x_squad_on_change (the xlibs
---- xcallbacks squad sweep, started here at on_game_start; the sweep itself enforces
---- rate and current-level/background mix at production, so no ratio gate remains on
---- the radiant path), reactive (PACER->RATIO->EVAL) on engine event callbacks.
+--- Gate chains: radiant (BUDGET->PROTECTION->EVAL) on ap_squad_on_change (the
+--- ap_core_callbacks squad sweep, which enforces rate and current-level/background mix at
+--- production from cfg.alife_rate/alife_ratio, so no ratio gate remains on the radiant
+--- path), reactive (PACER->RATIO->EVAL) on engine event callbacks.
 local pairs, type, unpack = pairs, type, unpack
-local RegisterScriptCallback, xcallbacks = RegisterScriptCallback, xcallbacks
+local RegisterScriptCallback = RegisterScriptCallback
 local ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter = ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -29,11 +29,11 @@ local _always_on_map = {
     [CALLBACK.ACTOR_ON_ITEM_USE] = true,
     [CALLBACK.ACTOR_ON_ITEM_TAKE] = true,
     [CALLBACK.NPC_ON_ITEM_TAKE] = true,
-    [CALLBACK.X_NPC_MEDKIT_USE] = true,
+    [CALLBACK.AP_NPC_MEDKIT_USE] = true,
 }
 
 --- Weighted fair share counters for on-map vs off-map ratio enforcement (reactive only;
---- the radiant mix is enforced at production inside the xcallbacks sweep).
+--- the radiant mix is enforced at production inside the ap_core_callbacks sweep).
 local _reactive_ct = { on = 0, off = 0 }
 
 --- GATE: RATIO (reactive 2/3)
@@ -192,7 +192,7 @@ local function _eval_radiant_cascade(on_map, squad)
     end
 end
 
---- Radiant callback handler for x_squad_on_change, fired by the xlibs xcallbacks sweep
+--- Radiant callback handler for ap_squad_on_change, fired by the ap_core_callbacks sweep
 --- (the prev/curr payload args are not consumed here; generators receive the squad only;
 --- changed is read for fire-kind telemetry: array = change fire, nil = keepalive fire).
 --- Gates: BUDGET(1/2) -> is_protected(2/2) -> EVAL(cascade). Rate and level mix are
@@ -377,20 +377,9 @@ local function _on_first_update()
     _first_update_done = true
 end
 
--- Push the MCM intake knobs into the xcallbacks squad sweep. Policy values live here
--- (cfg.alife_rate = total fires per minute, cfg.alife_ratio = current-level vs
--- background mix); the mechanism lives in xlibs and ships dormant, so the producer
--- both starts it and feeds it. ap_core_debug is the injected logger: the sweep's
--- pass summaries and tick timings land in alifeplus.log, gated by AP's log level.
-local function _push_sweep_options()
-    xcallbacks.configure(CALLBACK.X_SQUAD_ON_CHANGE, {
-        rate_per_min = cfg.alife_rate,
-        level_bias = cfg.alife_ratio,
-        logger = ap_core_debug,
-    })
-end
-
---- on_game_start: reset state + register deferred init (no cross-module reads)
+--- on_game_start: reset state + register deferred init (no cross-module reads).
+--- The ap_squad_on_change sweep installs itself in ap_core_callbacks.on_game_start and reads
+--- cfg.alife_rate/alife_ratio live, so the producer only subscribes (via RADIANT_CALLBACKS).
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}
@@ -399,11 +388,5 @@ function on_game_start()
     _reactive_ct.off = 0
     _reactive_event_limiter = nil
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _push_sweep_options)
-    xcallbacks.start(CALLBACK.X_SQUAD_ON_CHANGE, {
-        rate_per_min = cfg.alife_rate,
-        level_bias = cfg.alife_ratio,
-        logger = ap_core_debug,
-    })
     ap_core_debug.info("[PRODUCER] Initialized")
 end

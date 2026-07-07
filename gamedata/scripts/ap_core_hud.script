@@ -13,12 +13,12 @@ local _debug_enabled = ap_core_debug.enabled
 local DUMP_INTERVAL_SEC = 10
 
 --- Radiant pipeline counters (stable reference, zeroed on reset)
---- Sweep fields (sweep_changes, sweep_keepalives) split received x_squad_on_change fires
+--- Sweep fields (sweep_changes, sweep_keepalives) split received ap_squad_on_change fires
 --- by kind (classified in producer _on_radiant: changed array vs nil keepalive).
 --- Gate fields (deny_budget, protected) hold BLOCK counts. events is input count
---- (x_squad_on_change fires received). Cause/csq filter fields hold BLOCK counts.
+--- (ap_squad_on_change fires received). Cause/csq filter fields hold BLOCK counts.
 --- causes, pub are pipeline-stage totals. No radiant ratio counter: the level mix is
---- enforced at production inside the xcallbacks sweep, not rejected in the pipeline.
+--- enforced at production inside the ap_core_callbacks sweep, not rejected in the pipeline.
 r = { sweep_changes = 0, sweep_keepalives = 0,
     events = 0, deny_budget = 0, protected = 0,
     causes = 0, pub = 0, consequences = 0,
