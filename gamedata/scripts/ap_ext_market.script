@@ -86,7 +86,6 @@ local _release_buf = {}
 local _view_log_next = {}
 
 local _subscribed = false
-local _use_restock_callback = false
 
 -- ============================================================================
 -- POLICY LOADING
@@ -424,7 +423,6 @@ end
 --- it via xevent.hook.
 local function _setup_restock()
     if trader_autoinject and type(trader_autoinject.update) == "function" then
-        _use_restock_callback = true
         RegisterScriptCallback(CALLBACK.TRADER_ON_RESTOCK, _on_restock)
         ap_core_debug.info("%s restock via Trader Destockifier callback", LOG)
     else
@@ -591,7 +589,6 @@ end
 
 function on_game_start()
     _subscribed = false
-    _use_restock_callback = false
     _market_goods = {}
     _ledger = {}
     _load_policy()

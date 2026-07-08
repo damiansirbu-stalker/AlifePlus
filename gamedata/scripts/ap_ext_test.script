@@ -722,8 +722,9 @@ local function _demo_fire_next()
     local demo_need = DEMO_NEEDS[_demo_need_idx]
 
     ap_ext_tracker.force_stalker_need(squad.id, demo_need.field)
-    SendScriptCallback(ap_core_const.CALLBACK.SQUAD_ON_AFTER_GAME_VERTEX_CHANGE,
-        squad, 1, squad.m_game_vertex_id, false)
+    -- Fire the radiant heartbeat directly (changed=nil, a keepalive-shaped turn); the demo
+    -- bypasses the sweep, so the forced need is evaluated on this squad immediately.
+    SendScriptCallback(ap_core_const.CALLBACK.AP_SQUAD_ON_CHANGE, squad)
 
     local interval_ms = DEMO_MIN_INTERVAL_MS
     _demo_next_fire = now + interval_ms
@@ -902,23 +903,3 @@ function needs_demo()
     ap_core_debug.debug("[TEST] needs_demo started squads=%d needs=hunger,job,social,sleep", #squads)
 end
 
-local FX_DEMO_SOURCE_ID = "test_actor"
-local FX_DEMO_RADIUS = 50
-local FX_DEMO_MAX_POWER = 0.7
-
---- Toggle a co-located horror source at the actor's position. Exercises ap_ext_fx end to end:
---- registers a source, queries it, prints source_count, and removes it on second press.
---- @export console
-function fx_demo()
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    if ap_ext_fx.has_source(FX_DEMO_SOURCE_ID) then
-        ap_ext_fx.remove_source(FX_DEMO_SOURCE_ID)
-        _tip(string_format("FX demo stopped (sources remaining: %d)", ap_ext_fx.source_count()))
-        ap_core_debug.debug("[TEST] fx_demo stopped count=%d", ap_ext_fx.source_count())
-        return
-    end
-    ap_ext_fx.add_source(FX_DEMO_SOURCE_ID, actor:position(), FX_DEMO_RADIUS, FX_DEMO_MAX_POWER)
-    _tip(string_format("FX demo started r=%dm max=%.2f", FX_DEMO_RADIUS, FX_DEMO_MAX_POWER))
-    ap_core_debug.debug("[TEST] fx_demo started count=%d", ap_ext_fx.source_count())
-end
