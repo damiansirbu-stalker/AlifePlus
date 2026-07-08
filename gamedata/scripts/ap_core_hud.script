@@ -238,7 +238,9 @@ local function _dump()
 end
 
 local function _on_dump_timer()
-    if not collecting() then return end
+    -- return true self-removes the time event: an expired event whose callback returns nil is
+    -- re-invoked every actor update (_g.script ProcessEventQueue). _start_collecting re-creates it.
+    if not collecting() then return true end
     _dump()
     ResetTimeEvent("ap_stats", "dump", DUMP_INTERVAL_SEC)
 end
