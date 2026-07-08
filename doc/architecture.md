@@ -208,7 +208,7 @@ Shuffling ensures fair distribution regardless of how many generators apply to a
 
 Reactive callbacks: squad_on_npc_death, ap_npc_medkit_use (synthetic; mechanism under Synthetic callbacks above), actor_on_item_take, npc_on_item_take, actor_on_item_use. Three gates:
 
-1. PACER. Token bucket with per-callback-type keys, 1 token/sec per type. Independent from the radiant pacer.
+1. PACER. Token bucket with per-callback-type keys: capacity 5 tokens, refill 1 token/sec per type. Capacity covers a same-frame burst (a grenade or anomaly wiping a squad fires several squad_on_npc_death in one frame; the events are one incident, not spam), so edge-triggered causes (squadkill's last-member death, alphakill) see their trigger and cluster causes (massacre, basekill) count every death; the refill still bounds the sustained average at 1/sec.
 2. RATIO. Same Bresenham as radiant with its own counter pair. Some reactive callbacks (actor_on_item_use, actor_on_item_take) are always on-map (require a game_object which only exists online).
 3. EVAL (per-handler walk). Iterates all reactive cause generators for this callback in registration order. Each generator self-gates its rate; the producer does not rate-check. All evaluate independently. A single death event can trigger MASSACRE, SQUADKILL, ALPHA generators in sequence. Reactive does NOT cascade-and-stop - every generator gets its chance to publish.
 
@@ -291,7 +291,7 @@ ap_core_limiter holds two limiter families. Pipeline limiter throttles event flo
 | Sweep level mix | Bresenham lane pick per credit (current level vs background) | sweep production split | +8 (~4:1 current level) | ap_core_callbacks (reads cfg live) | MCM alife_ratio |
 | Sweep refractory | per-squad os.clock spacing | per squad | 60s | ap_core_callbacks | constant |
 | BUDGET peek | non-consuming read of global radiant counter | radiant EVAL admission | 5 / 60s (shared window) | ap_core_producer gate 1 | MCM global_consequence_max_events |
-| Reactive PACER | token bucket | per callback type | 1 / sec | ap_core_producer | constant |
+| Reactive PACER | token bucket (burst 5) | per callback type | 1 / sec sustained | ap_core_producer | constant |
 | Per-squad MVT / Hull threshold | DTO last_<X>_at + arrival reset | per squad per cause | per cause | cause generator | MCM cause_<X>_threshold |
 
 Per-squad threshold (Hull / MVT). Owned by each cause generator. Reads last_<X>_at from a DTO (_ap_stalker_needs, _ap_mutant_instincts, _ap_squad_opportunities); arrival action resets the timestamp. Hull family (needs, instincts) is per-drive: multiple answers under one drive share the timestamp; any answer firing resets the drive's field. Score = weight * (elapsed/threshold)^2. MVT family (stash, area) is per-cause: each cause has its own threshold and timestamp. Gate is binary: elapsed > threshold.
