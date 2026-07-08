@@ -122,7 +122,7 @@ Multi-cause files (4): ap_ext_causes_area, ap_ext_causes_instincts, ap_ext_cause
 
 Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequences_alphakill, ap_ext_consequences_area, ap_ext_consequences_basekill, ap_ext_consequences_harvest, ap_ext_consequences_instincts, ap_ext_consequences_massacre, ap_ext_consequences_needs, ap_ext_consequences_squadkill, ap_ext_consequences_stash, ap_ext_consequences_wounded.
 
-### Ext: named modules (12 files)
+### Ext: named modules (11 files)
 
 | File | Role |
 |------|------|
@@ -135,7 +135,6 @@ Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequ
 | ap_ext_loot_claim | Three-way corpse loot ownership over one xttltable ledger (victim -> {killer, squad, death game_sec}; actor kills via npc_on_hit `from_death_callback`, NPC kills squad-owned via `get_object_squad` with lone-killer fallback). Half A (reserve own) and Flow C (npc-vs-npc) share a generic exclusion arbiter `_npc_loot_excluded` xevent-hooked at `xr_corpse_detection.near_actor`; Flow C's scanning-NPC identity comes from a `find_valid_target` wrapper (xevent on the global `evaluator_corpse` class), since near_actor receives only the corpse. Half B vetoes the actor opening a claimed kill at `on_before_key_press` (level.get_target_obj), with `ActorMenu_on_item_before_move` and Dot Marks backstops. Each flow carries its own MCM enable / radius / TTL; the death timestamp is aged per-flow at read, ledger retention capped at the max TTL. Squad claim holds while a living member sits within radius (`xsquad.iter_member_ids`); squad id validated against recycling via `xsquad.is_squad`. Warn and yield tips draw from three per-flow pools; two variants per pool carry a `#name#` slot (the news token convention) filled by the looter or owning-NPC name, variant 001 kept nameless as the fallback |
 | ap_ext_market | Faction market: observes `ap_ext_trade.trade` output into a per-faction bounded dedup FIFO of recently-sold sections, and at a curated faction trader's restock (one of two detection paths) injects a rank-gated (`xinventory.get_rank_chance`), role-fit, distribution-claimed, capped echo at an MCM-set condition, priced at an MCM premium via the engine `on_get_item_cost` hook, released on a window timer. Read-side of the loot/trade/market loop; no AP money path |
 | ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept). Subscribes to `npc_on_get_all_from_corpse` (per-item, fired before `corpse:transfer_item`), records the looted item ids, and runs one trim deferred to the next frame via `CreateTimeEvent` (idempotent per looter id). The trim reuses the xinventory kernel (`load_policy [ap_loot_policy]`, `classify`, `policy_key`, `get_cost`, `release_item`): per capped key it releases the cheapest looted members first until the whole-inventory count is at/under max, keeping the highest-value loot and leaving any standing excess to the AlifeBalance cull. Untouchable / equipped inherited from `get_category`. MCM `loot_select_enabled`; online only; skips unscriptable looters. No money path, no save state |
-| ap_ext_fx | Multi-source horror aggregator: composes xpp psy_antenna tint, xsound tinnitus, and level snd_volume ducking via max-across-sources factor; consumers call add_source / remove_source / clear; acquires xpp + xsound slots on first source, releases on last clear |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
 | ap_ext_test | In-game debug commands |
 
@@ -539,15 +538,15 @@ _update_scripted_squads runs every 20s via CreateTimeEvent. For each tracked squ
 
 ### Activity record
 
-ap_core_broker owns a 256-slot FIFO of dispatched consequences. Each record entry is one consequence dispatch on one squad. The substrate is shared by HUD markers, ap_ext_news compose, and external integrators (warfare).
+ap_core_record owns a 256-slot FIFO of dispatched consequences. Each record entry is one consequence dispatch on one squad. The substrate is shared by HUD markers, ap_ext_news compose, and external integrators (warfare).
 
 Write. ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts) is the single entry point; consequence handlers call it after script_squad / script_actor_target SUCCESS. add_record captures display keys via _capture_side for subject + optional other (engine community string for stalker / zombified-stalker squads → faction_key; "st_ap_macros_species_" + xcreature.get_mutant_species(squad) for mutant squads → species_key; xsquad.get_commander_name → name) and writes the entry. Squad-derived keys are eager so dead/unregistered squads remain renderable. Smart, level, and game-hour-at-write stay lazy ids resolved at render.
 
 Substrate. _ap_record (xttltable.fifo, capacity 256, on_evict callback) holds entries keyed by monotonic cons_id. _record_assigned[squad_id] indexes the live entry per squad. _record_seq is the cons_id counter. Writing a new entry for a squad flips the previous entry's assigned flag to false before assigning the new one. _on_record_evict nulls _record_assigned only if the evicted entry was the live one (a flipped predecessor leaves no index entry to clean).
 
-Lifecycle. broker registers SERVER_ENTITY_ON_UNREGISTER and clears the record's assigned flag on entity death. HUD has its own SERVER_ENTITY_ON_UNREGISTER for marker cleanup; the two callbacks fire independently. Records persist beyond unscripting (the squad may be released but the record stays for query) until either the squad dies (clear_record) or the FIFO evicts.
+Lifecycle. ap_core_record registers SERVER_ENTITY_ON_UNREGISTER and clears the record's assigned flag on entity death. HUD has its own SERVER_ENTITY_ON_UNREGISTER for marker cleanup; the two callbacks fire independently. Records persist beyond unscripting (the squad may be released but the record stays for query) until either the squad dies (clear_record) or the FIFO evicts.
 
-Query API (ap_core_broker, mirrored on ap_api):
+Query API (ap_core_record, mirrored on ap_api):
 
 | call | purpose |
 |------|---------|
@@ -566,7 +565,7 @@ Translation keys are directly translatable via `game.translate_string`. Capture 
 
 ### Save / load
 
-_ap_scripted_squads + ap_record_entries (walked from FIFO via :each into a sequential array) + ap_record_seq persist to m_data.ap_core_broker. Off-map session fields live on the scripted-squad entries themselves; there is no separate offmap save key. Engine-side scripted_target persists natively across save/load (sim_squad_scripted STATE_Write / STATE_Read). Arrival handler functions are transient - they are re-registered every load via consumer.register opts (the consumer wires on_arrive opts to broker.register_arrival_handler). On load, squads marked as arrived get release_at = 0 (immediate release on next scan); the FIFO rebuilds from the saved array via :set on each entry, and _record_assigned rebuilds from entries with assigned == true.
+_ap_scripted_squads persists to m_data.ap_core_broker; the activity record (FIFO entries walked via :each into a sequential array, plus the cons_id seq counter) persists separately to m_data.ap_core_record via ap_core_record's own SAVE_STATE / LOAD_STATE. Off-map session fields live on the scripted-squad entries themselves; there is no separate offmap save key. Engine-side scripted_target persists natively across save/load (sim_squad_scripted STATE_Write / STATE_Read). Arrival handler functions are transient - they are re-registered every load via consumer.register opts (the consumer wires on_arrive opts to broker.register_arrival_handler). On load, squads marked as arrived get release_at = 0 (immediate release on next scan); the FIFO rebuilds from the saved array via :set on each entry, and _record_assigned rebuilds from entries with assigned == true.
 
 ### Off-map track
 
@@ -668,13 +667,13 @@ Every consequence dispatch produces one record. Pacing is the compose interval +
 
 Composer tick fires on an MCM-randomized interval (defaults 60-200s via news_interval_min_sec / _max_sec, slider range 1-600). Each tick:
 
-1. Read ap_core_record.get_records() (full FIFO scan), filter to unreported entries (cons_id not in _reported_cons_ids ring) on the player's current level whose age is within news_max_age_game_hours.
+1. Read ap_core_record.get_records() (full FIFO scan), filter to unreported entries (entry.reported not set) on the player's current level whose age is within news_max_age_game_hours.
 2. Pick one at random (gossip, not sequential log).
 3. Pick a per-consequence template from the pool (st_ap_news_tpl_<consequence>_NNN), filter variants by required slots, random pick.
 4. Substitute slots.
 5. Pick a speaker via _pick_speaker.
 6. Dispatch via dynamic_news_manager:PushToChannel (or xpda.send during the cold-start window).
-7. Mark cons_id in _reported_cons_ids (capacity 512, FIFO eviction). Same record never narrated twice.
+7. Mark the entry via ap_core_record.mark_reported (sets entry.reported on the record; the flag persists with the entry across save/load). Same record never narrated twice.
 
 ### Slots
 
@@ -707,6 +706,10 @@ A random NPC is sampled from the filtered pool. Speaker's community becomes the 
 
 When dynamic_news_manager.get_dynamic_news() returns nil (~27s window after game load), _dispatch falls back to xpda.send (direct give_game_news). Documented exception in library/modding/anti-patterns.md - canonical pattern, not the bypass anti-pattern.
 
+### Chatter (send_chatter)
+
+Immediate, localized one-off lines a producer pushes the instant something happens, instead of drained from the record queue. The producer hands a template pool prefix, a slots table, and selection context ({ level_id, faction }); send_chatter owns voice + render + send. Gates in order: cfg.chatter_enabled; subject on the player's current level (chatter is local); subject faction not at war with the player; a real-sec throttle (one line per cfg.chatter_interval_sec, os.clock, ephemeral - concurrent producers in one tick yield one line, the rest drop); template pool + variant filter (same _filter_variants as news); speaker via the same _pick_speaker the radio uses, with nil channel_status (delivery is direct to the actor, so the speaker's radio channel need not be receivable). No speaker -> not said. Delivery is xpda.send (immediate give_game_news), never dynamic_news_manager - chatter does not ride the delayed radio schedule. Templates live in ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate per locale from the news pools. One consumer: ap_ext_market._try_chatter announces a notable restock (best injected section with cost >= CHATTER_MIN_COST, trader on the player's level) through pool st_ap_chatter_market. MCM: chatter_enabled (bool, default true), chatter_interval_sec (5-300, default 15), both under the news tab.
+
 ### MCM
 
 news_enabled (bool master), news_interval_min_sec / news_interval_max_sec (int 1-600), news_scope (own / allies / world; default allies), news_max_age_game_hours (int 1-72, default 12). The composer randomizes the next delay between min/max bounds after every tick.
@@ -722,7 +725,7 @@ NONE (disabled or no entries), NO_TEMPLATES, NO_MSG, NO_SENDER, SENT.
 ### Invariants
 
 - Squad-derived translation keys captured eagerly at add_record time. The engine value drives the slot: mutant squads get a species key (`st_ap_macros_species_<x>`), stalker / zombified-stalker squads get the raw community string (vanilla XML resolves). Smart / level / time stay lazy. Death-resilient: dead or unregistered squads remain renderable.
-- Storage is the broker activity record. _reported_cons_ids ring (512, FIFO) is session-lifetime; resets on load. Template pools rebuild on locale change.
+- Storage is the activity record (ap_core_record). Gossip dedup is the entry.reported flag set by mark_reported; it persists with the entry and lapses only when the FIFO evicts. Template pools rebuild on locale change.
 - Empty slots are nil-safe. Variant filter rejects, or slot substitutes to empty string and _clean_output collapses the gap.
 - Channel routing is speaker-driven: speaker's community = channel. No subject-faction channel mapping, no per-consequence routing rules.
 - Events pre-filtered to level.current() before random pick. Speaker pool db.OnlineStalkers (overwhelmingly the player's level).
@@ -875,7 +878,7 @@ cfg key layout:
 - cause_<answer>_enabled: per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
 - Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const (line 174-175). Applies uniformly to every personality roll.
 
-Used by ap_ext_causes_needs.script (9 drives, 16 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
+Used by ap_ext_causes_needs.script (9 drives, 17 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
 
 ---
 

@@ -103,7 +103,7 @@ When to use: a drive that has multiple alternative satisfactions (mutant slumber
 
 When NOT to use: state classifiers where the picker selects exactly one branch by inspecting world state (stash empty/full/trap pattern). Those use a state-by-state KEYS_BY_CAUSE picker, not Hull cascade.
 
-Used by: `ap_ext_causes_needs.script` (9 drives, 16 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
+Used by: `ap_ext_causes_needs.script` (9 drives, 17 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
 
 ---
 
@@ -198,7 +198,7 @@ Rules:
 |---------|------|---------|----------|
 | `log_level` | enum | WARN | Log verbosity (ERROR/WARN/INFO/DEBUG) |
 
-`log_level = DEBUG` enables tracing (xtrace), performance timing (xprofiler), and PDA map markers. When `log_level < DEBUG`, timers return null singletons (zero overhead), markers suppressed via `ap_debug.enabled()` gate.
+`log_level = DEBUG` enables tracing (xtrace) and performance timing (xprofiler). When `log_level < DEBUG`, timers return null singletons (zero overhead). PDA map markers are independent of log level: they gate on the MCM `map_markers` toggle only (`ap_core_map._update_markers`).
 
 ---
 
