@@ -5,7 +5,7 @@
 --- An off-map squad travels to its target, holds the gulag briefly, then settles there as a
 --- vanilla resident; the despawn safety net reclaims one that never settled.
 local pairs, next, tostring, type = pairs, next, tostring, type
-local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
+local table_remove, table_concat, RegisterScriptCallback, alife_release_id = table.remove, table.concat, RegisterScriptCallback, alife_release_id
 local xobject, xsquad, xsmart, xtime, xtable, xslice = xobject, xsquad, xsmart, xtime, xtable, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -408,6 +408,9 @@ end
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function script_actor_target(squad, opts)
     if not squad then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
+    if not xsquad.is_squad(squad) then
+        return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
+    end
     local entry = {
         is_chase = true,
         scripted_target = "actor",
@@ -889,6 +892,9 @@ local function _on_load_state(m_data)
     if type(saved) ~= "table" then saved = {} end
     local ss = saved.ap_scripted_squads
     _ap_scripted_squads = (type(ss) == "table") and ss or {}
+    -- Zero release_at on arrived entries deliberately: the gulag hold is not worth resuming
+    -- across a reload (the on_arrive action already ran at arrival), so the first post-load
+    -- scan releases the squad to vanilla AI instead of pinning it for the hold remainder.
     for _, data in pairs(_ap_scripted_squads) do
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end

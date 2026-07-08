@@ -1,5 +1,6 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
+local game_relations, get_actor_true_community = game_relations, get_actor_true_community
 local xbus, xsquad, xsmart, xconst, xlevel, xobject = xbus, xsquad, xsmart, xconst, xlevel, xobject
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
@@ -383,7 +384,4 @@ function evaluate_chase(squad, entry)
     if _is_target_in_base(entry) then return VERDICT.PAUSE, REASON.AT_BASE end
     if xlevel.is_surge() then return VERDICT.PAUSE, REASON.SURGE end
     return VERDICT.KEEP, nil
-end
-
-function on_game_start()
 end
