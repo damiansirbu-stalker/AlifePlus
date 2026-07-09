@@ -20,6 +20,17 @@ function get_version()
     return _VERSION
 end
 
+-- The demonized build this release is built and tested against - set to the LATEST demonized at
+-- every release (compatibility-standards.md "The target build"). The platform footer shows fully
+-- compatible only at or above it; older demonized builds and AOEngine (judged as its 2025.9.8
+-- fork base) show partially compatible.
+local TARGET_DEMONIZED = 20260706
+
+--- Spec consumed by xmcm.platform_status / xmcm.platform_functor (the shared MCM footer + boot line).
+function platform_spec()
+    return { mod = MOD_NAME, version = _VERSION, target_build = TARGET_DEMONIZED }
+end
+
 function on_game_start()
     assert(xlog,
         "\n\n! [" .. MOD_NAME .. "] xlibs is not installed.\n"..
@@ -62,10 +73,7 @@ function on_game_start()
         )
     end
 
-    local engine_tag = has_aoe
-        and ("AOEngine " .. tostring(get_aoe_version()))
-        or  ("demonized " .. tostring(demonized_build))
+    -- The boot platform line and the MCM footer come from the same builder, so they never drift.
     xlog.get_logger(MOD_NAME, { outfile = MOD_NAME:lower() .. ".log" })
-        .info("%s v%s (xlibs v%s, %s)",
-            MOD_NAME, _VERSION, xlibs.get_version(), engine_tag)
+        .info("%s", (xmcm.platform_status(platform_spec())))
 end

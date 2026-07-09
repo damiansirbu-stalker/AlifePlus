@@ -3,7 +3,7 @@ local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
-local xtime, xtable, xttltable, xcreature, xconst = xtime, xtable, xttltable, xcreature, xconst
+local xtable, xttltable, xcreature, xconst = xtable, xttltable, xcreature, xconst
 local ap_core_debug, ap_core_util = ap_core_debug, ap_core_util
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -178,21 +178,6 @@ function init_stalker_needs(squad_id, now)
     _ap_stalker_needs:set(squad_id, dto)
     ap_core_debug.debug("[TRACKER] init_stalker_needs: squad=%d", squad_id)
     return dto
-end
-
-function force_stalker_need(squad_id, field)
-    if not squad_id or not field then return end
-    local now = xtime.game_sec()
-    local dto = _ap_stalker_needs:get(squad_id)
-    if not dto then
-        dto = {}
-        _ap_stalker_needs:set(squad_id, dto)
-    end
-    for i = 1, #NEED_FIELDS do
-        dto[NEED_FIELDS[i]] = now
-    end
-    dto[field] = 0
-    ap_core_debug.debug("[TRACKER] force_stalker_need: squad=%d field=%s", squad_id, field)
 end
 
 function reset_stalker_need(squad_id, key, now)

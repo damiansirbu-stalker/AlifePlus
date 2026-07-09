@@ -1,14 +1,50 @@
---- ap_ext_test: MCM debug tools and demo harnesses
+--- ap_ext_test: console test harness. Actions seed real world state so pipeline scenarios
+--- happen through the real gates (trade sell/buy, stash loot, corpse loot trim, loot claim,
+--- faction market, wounded medkit use). Never AP internals: no DTO writes, no record seeding,
+--- no AP callbacks fired, no MCM flips. Radiant Hull/MVT thresholds are game-clock driven;
+--- raise the engine time factor to mature them during a soak.
+---
+--- Console:
+---   run_string ap_ext_test.run()      toggle the driver; it does everything on its own
+---   run_string ap_ext_test.status()   per-action run counts
+---
+--- The driver fires every action once on start, then keeps re-seeding on each action's
+--- interval: NPC item kits and cash every 5 min, stash fills and a hostile-squad spawn
+--- every 10, an artefact drop near the actor every 15. Nothing else to call.
+---
+--- The hostile spawn is what makes the reactive flows happen: a squad hostile to a random
+--- online stalker squad (enemy faction or aggressive mutants, alternating) is created at
+--- that squad's smart via SIMBOARD:create_squad. Real combat follows: deaths feed massacre /
+--- squadkill / basekill clusters, mutant kills promote alphas (then alphakill on their
+--- death), the injured burn the seeded medkits (wounded), and the corpses feed loot claim
+--- and the corpse loot trim. Capped at SPAWN_MAX_ALIVE spawned squads alive at once.
 
-local pairs, ipairs, pcall, table, tostring = pairs, ipairs, pcall, table, tostring
-local table_sort, table_remove, math_min = table.sort, table.remove, math.min
-local math_floor, math_huge = math.floor, math.huge
-local string_format, time_global = string.format, time_global
-local character_community, IsStalker, IsMonster = character_community, IsStalker, IsMonster
-local UnregisterScriptCallback, RegisterScriptCallback = UnregisterScriptCallback, RegisterScriptCallback
-local xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata, xinventory = xobject, xsquad, xmath, xactor, xcreature, xlevel, xslice, xdata, xinventory
-local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_mcm
-local ap_core_const, ap_ext_const, ap_ext_tracker = ap_core_const, ap_ext_const, ap_ext_tracker
+local pairs, string_format, os_clock, table_concat = pairs, string.format, os.clock, table.concat
+local xobject, xlevel, xslice, xdata, xmath = xobject, xlevel, xslice, xdata, xmath
+local xinventory, xstash, xcreature, ap_core_debug = xinventory, xstash, xcreature, ap_core_debug
+local xsquad, xsmart_spawn, game_relations, math_random = xsquad, xsmart_spawn, game_relations, math.random
+
+local MONEY_PER_NPC = 5000
+local STASH_MAX_DISTANCE = 600
+local STASH_MAX_COUNT = 4
+local RUNNER_TICK_SEC = 10
+local GIVE_ITEMS_STEP = 3
+local SPAWN_MAX_ALIVE = 4
+
+-- Aggressive, common species for the mutant half of the hostile spawn (safe generic sections).
+local HOSTILE_SPECIES = { "dog", "pseudodog", "snork", "boar" }
+
+-- Per-category kit. counts sit above every ap_trade_policy max (medkit 3, bandage 5; antirad,
+-- food, drink, unequipped ammo are sell-all bands), so each seeded category yields sell-phase
+-- surplus and the leftovers feed stash fill and the corpse loot trim.
+local KIT = {
+    { category = "medkit",  picks = 2, count = 3 },
+    { category = "bandage", picks = 1, count = 7 },
+    { category = "antirad", picks = 1, count = 3 },
+    { category = "food",    picks = 2, count = 3 },
+    { category = "drink",   picks = 1, count = 4 },
+    { category = "ammo",    picks = 1, count = 3 },
+}
 
 local ARTEFACTS = {
     "af_medusa", "af_cristall_flower", "af_fireball",
@@ -21,885 +57,267 @@ local function _tip(msg)
     if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
 end
 
--- Console harness for the n482 chase primitive (homing only; the evaluate_chase leash is
--- verified in-game, not by this harness). Commands:
---   chase(chaser_id, target_id) -- explicit: any squad pursues any squad. The workhorse.
---   chase_near()                -- nearest squad pursues 2nd-nearest (ONLINE homing smoke).
---   chase_far()                 -- farthest (likely OFFLINE) squad pursues the nearest, so the
---                                  get_current_task offline-movement hook is exercised; poll
---                                  chase_status to watch the off-screen chaser close (gvid/dist).
---   chase_status(chaser_id)     -- online?/level/gvid/assigned/current_action + target/dist.
---   chase_stop(chaser_id)       -- release.
--- Test surface: online homing (chase_near), offline homing (chase_far), online<->offline
--- transition (chase_near then walk away), target death (chase a hostile, let it die -> release),
--- save/load (chase then save+reload -> chase_status shows assigned still = target).
-
--- Pick the nearest (want_far=false) or farthest (want_far=true) squad to apos on level_id.
-local function _pick_squad(apos, level_id, exclude_id, want_far)
-    local best, best_dist = nil, nil
-    for squad in xsquad.iter_squads() do
-        if squad.id == exclude_id then goto continue end
-        if xlevel.get_level_id(squad) ~= level_id then goto continue end
-        local sep_dist = apos:distance_to(squad.position)
-        if not best_dist or (want_far and sep_dist > best_dist) or (not want_far and sep_dist < best_dist) then
-            best, best_dist = squad, sep_dist
-        end
-        ::continue::
-    end
-    return best
-end
-
---- @export console
-function chase(chaser_id, target_id)
-    local chaser = chaser_id and xobject.se(chaser_id)
-    local target = target_id and xobject.se(target_id)
-    if not (chaser and target) then return _tip("need valid chaser/target ids") end
-    local res = ap_core_broker.script_squad_target(chaser, target_id)
-    ap_core_debug.debug("[TEST] chase chaser=%d target=%d code=%s", chaser_id, target_id, tostring(res.code))
-    _tip(string_format("chase %d -> %d : %s", chaser_id, target_id, tostring(res.code)))
-end
-
---- @export console
-function chase_near()
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local level_id = xlevel.get_level_id(alife():actor())
-    local apos = actor:position()
-    local chaser = _pick_squad(apos, level_id, nil, false)
-    if not chaser then return _tip("No squad on level") end
-    local target = _pick_squad(apos, level_id, chaser.id, false)
-    if not target then return _tip("Need 2 squads on level") end
-    chase(chaser.id, target.id)
-end
-
---- @export console
-function chase_far()
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local level_id = xlevel.get_level_id(alife():actor())
-    local apos = actor:position()
-    local chaser = _pick_squad(apos, level_id, nil, true)
-    if not chaser then return _tip("No squad on level") end
-    local target = _pick_squad(apos, level_id, chaser.id, false)
-    if not target then return _tip("Need 2 squads on level") end
-    chase(chaser.id, target.id)
-    _tip(string_format("OFFLINE chase: far %d -> near %d (poll chase_status)", chaser.id, target.id))
-end
-
---- @export console
-function chase_status(chaser_id)
-    local chaser = chaser_id and xobject.se(chaser_id)
-    if not chaser then return _tip("No squad " .. tostring(chaser_id)) end
-    local entry = ap_core_broker.get_scripted_squads()[chaser_id]
-    local target_id = entry and entry.target_squad_id
-    local target = target_id and xobject.se(target_id)
-    local sep_dist = target and chaser.position:distance_to(target.position) or -1
-    ap_core_debug.debug("[TEST] chase_status chaser=%d online=%s lvl=%s gvid=%s assigned=%s act=%s | target=%s online=%s dist=%.1f",
-        chaser_id, tostring(chaser.online), tostring(xlevel.get_level_id(chaser)), tostring(chaser.m_game_vertex_id),
-        tostring(chaser.assigned_target_id), tostring(chaser.current_action),
-        tostring(target_id), target and tostring(target.online) or "nil", sep_dist)
-    _tip(string_format("c=%d on=%s assigned=%s act=%s dist=%.1f",
-        chaser_id, tostring(chaser.online), tostring(chaser.assigned_target_id), tostring(chaser.current_action), sep_dist))
-end
-
---- @export console
-function chase_stop(chaser_id)
-    local ok = chaser_id and ap_core_broker.release_squad(chaser_id)
-    _tip("chase_stop " .. tostring(chaser_id) .. " -> " .. tostring(ok))
-end
-
--- Automatic homing probe. chase_probe() / chase_probe_far() start a chase, then sample it on a
--- timer (no manual polling) and print a verdict in a news tip + [TEST] probe lines in alifeplus.log:
---   PASS         = lock held + distance closed (homing works).
---   LOCK LOST    = chaser dropped the (still-alive) target mid-chase (arrival machine misbehaves).
---   INCONCLUSIVE = no closing -- target stationary/blocked, re-run elsewhere.
--- chase_probe = nearest vs 2nd-nearest (online, ~30s). chase_probe_far = farthest (offline) chaser
--- vs nearest (exercises the get_current_task offline-movement hook, ~90s).
-local _probe = nil
-
--- One sample: advance tick, log dist/state, track start/last dist and first lock-loss.
-local function _probe_sample(probe)
-    local chaser = xobject.se(probe.chaser_id)
-    local target = xobject.se(probe.target_id)
-    probe.ticks = probe.ticks + 1
-    local sep_dist = (chaser and target) and chaser.position:distance_to(target.position) or -1
-    local assigned = chaser and chaser.assigned_target_id
-    ap_core_debug.debug("[TEST] probe t=%d dist=%.1f act=%s assigned=%s on=%s target_alive=%s",
-        probe.ticks, sep_dist, tostring(chaser and chaser.current_action),
-        tostring(assigned), tostring(chaser and chaser.online), tostring(target ~= nil))
-    if sep_dist >= 0 then
-        if probe.start_dist < 0 then probe.start_dist = sep_dist end
-        probe.last_dist = sep_dist
-    end
-    if assigned ~= probe.target_id and not probe.lost_at then
-        probe.lost_at = probe.ticks
-        if target then
-            probe.lost_members = target:npc_count()
-        else
-            probe.lost_members = 0
-        end
-    end
-end
-
-local function _probe_verdict(probe)
-    if probe.lost_at and (probe.lost_members or 0) <= 0 then
-        return string_format("TARGET DIED at t=%d (correct release)", probe.lost_at)
-    end
-    if probe.lost_at then
-        return string_format("LOCK LOST at t=%d (BUG: target had %d members)", probe.lost_at, probe.lost_members)
-    end
-    local closed_dist = probe.start_dist - probe.last_dist
-    if probe.start_dist >= 0 and closed_dist > 5 then
-        return string_format("PASS closed %.0f -> %.0f", probe.start_dist, probe.last_dist)
-    end
-    return string_format("INCONCLUSIVE dist %.0f -> %.0f (target stationary?)", probe.start_dist, probe.last_dist)
-end
-
-local function _probe_tick()
-    local probe = _probe
-    if not probe then return true end
-    -- Abort cleanly if the chase was released externally (e.g. chase_stop).
-    if not ap_core_broker.get_scripted_squads()[probe.chaser_id] then
-        ap_core_debug.debug("[TEST] probe aborted (chase released) chaser=%d", probe.chaser_id)
-        _probe = nil
-        return true
-    end
-    _probe_sample(probe)
-    if probe.ticks < probe.max then
-        ResetTimeEvent("ap_ext_test", "chase_probe", probe.interval)
-        return false
-    end
-    local verdict = _probe_verdict(probe)
-    ap_core_debug.debug("[TEST] probe verdict chaser=%d: %s", probe.chaser_id, verdict)
-    _tip("PROBE " .. verdict)
-    ap_core_broker.release_squad(probe.chaser_id)
-    _probe = nil
-    return true
-end
-
-local function _probe_start(chaser, target, max_ticks, interval_sec)
-    if _probe then return _tip("probe already running; wait or chase_stop") end
-    local res = ap_core_broker.script_squad_target(chaser, target.id)
-    if res.code ~= ap_core_const.RESULT.SUCCESS then
-        return _tip("probe dispatch failed: " .. tostring(res.reason))
-    end
-    _probe = {
-        chaser_id = chaser.id, target_id = target.id,
-        ticks = 0, max = max_ticks, interval = interval_sec,
-        start_dist = -1, last_dist = -1, lost_at = nil,
-    }
-    ap_core_debug.debug("[TEST] probe start chaser=%d target=%d max=%d interval=%d",
-        chaser.id, target.id, max_ticks, interval_sec)
-    _tip(string_format("PROBE start %d -> %d (~%ds)", chaser.id, target.id, max_ticks * interval_sec))
-    CreateTimeEvent("ap_ext_test", "chase_probe", interval_sec, _probe_tick)
-end
-
---- @export console
-function chase_probe()
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local level_id = xlevel.get_level_id(alife():actor())
-    local apos = actor:position()
-    local chaser = _pick_squad(apos, level_id, nil, false)
-    if not chaser then return _tip("No squad on level") end
-    local target = _pick_squad(apos, level_id, chaser.id, false)
-    if not target then return _tip("Need 2 squads on level") end
-    _probe_start(chaser, target, 10, 3)
-end
-
---- @export console
-function chase_probe_far()
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local level_id = xlevel.get_level_id(alife():actor())
-    local apos = actor:position()
-    local chaser = _pick_squad(apos, level_id, nil, true)
-    if not chaser then return _tip("No squad on level") end
-    local target = _pick_squad(apos, level_id, chaser.id, false)
-    if not target then return _tip("Need 2 squads on level") end
-    _probe_start(chaser, target, 18, 5)
-end
-
-local function _find_nearest_alpha()
+-- Online, alive, scriptable stalker NPC ids on the actor's level.
+local function _stalkers_on_level()
     local actor = db.actor
     if not actor then return nil, "Not in game" end
-    local sim = alife()
-    local actor_se = sim:actor()
+    local actor_se = alife():actor()
     if not actor_se then return nil, "No actor entity" end
     local actor_level = xlevel.get_level_id(actor_se)
-    local pos = actor:position()
-    local alphas = ap_ext_tracker.get_alphas()
-    local total, on_level = 0, 0
-    local best_id, best_data, best_dist, best_pos = nil, nil, math_huge, nil
-    for npc_id, data in pairs(alphas) do
-        total = total + 1
-        if data.level_id ~= actor_level then goto skip end
-        on_level = on_level + 1
-        local se = sim:object(npc_id)
-        if not se then goto skip end
-        local dist = pos:distance_to(se.position)
-        if dist < best_dist then
-            best_id = npc_id
-            best_data = data
-            best_dist = dist
-            best_pos = se.position
-        end
-        ::skip::
-    end
-    ap_core_debug.debug("[TEST] alpha_search total=%d on_level=%d level_id=%d", total, on_level, actor_level)
-    if not best_id then return nil, "No alphas on this level" end
-    local squad = xsquad.get_squad_by_member(best_id)
-    if not squad then
-        ap_core_debug.debug("[TEST] alpha_search no_squad npc_id=%d", best_id)
-        return nil, "Alpha squad not found"
-    end
-    return { id = best_id, data = best_data, dist = best_dist, pos = best_pos, squad = squad }
-end
-
---- @export console
-function pull_alpha()
-    ap_core_debug.debug("[TEST] pull_alpha pressed")
-    local result, reason = _find_nearest_alpha()
-    if not result then
-        ap_core_debug.debug("[TEST] pull_alpha SKIP %s", reason)
-        return _tip(reason)
-    end
-    local actor = db.actor
-    local pos = actor:position()
-    local tp = vector():set(pos.x + 10, pos.y, pos.z)
-    TeleportSquad(result.squad, tp, actor:level_vertex_id(), actor:game_vertex_id())
-    local name = xcreature.get_name(result.id) or "?"
-    ap_core_debug.debug("[TEST] pull_alpha OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
-        result.id, result.squad.id, result.data.level, name,
-        math_floor(result.dist), result.squad:get_squad_community())
-    _tip("Pulled alpha L" .. result.data.level .. " " .. name .. " from " .. math_floor(result.dist) .. "m")
-end
-
---- @export console
-function goto_alpha()
-    ap_core_debug.debug("[TEST] goto_alpha pressed")
-    local result, reason = _find_nearest_alpha()
-    if not result then
-        ap_core_debug.debug("[TEST] goto_alpha SKIP %s", reason)
-        return _tip(reason)
-    end
-    db.actor:set_actor_position(result.pos)
-    local name = xcreature.get_name(result.id) or "?"
-    ap_core_debug.debug("[TEST] goto_alpha OK npc_id=%d squad_id=%d level=%d name=%s dist=%d community=%s",
-        result.id, result.squad.id, result.data.level, name,
-        math_floor(result.dist), result.squad:get_squad_community())
-    _tip("Teleported to alpha L" .. result.data.level .. " " .. name .. " (" .. math_floor(result.dist) .. "m)")
-end
-
-local CONSEQUENCE = ap_core_const.CONSEQUENCE
-local NEEDS_ARRIVE_KEYS = {
-    [CONSEQUENCE.HUNGER_CAMPFIRE] = true, [CONSEQUENCE.SLEEP_CAMPFIRE] = true, [CONSEQUENCE.REST_CAMPFIRE] = true,
-    [CONSEQUENCE.HEAL_SHELTER] = true, [CONSEQUENCE.SHELTER_INDOOR] = true, [CONSEQUENCE.SHELTER_OUTDOOR] = true,
-    [CONSEQUENCE.MONEY_HARVEST] = true, [CONSEQUENCE.MONEY_HUNT] = true, [CONSEQUENCE.SUPPLY_TRADER] = true,
-    [CONSEQUENCE.JOB_OUTPOST] = true, [CONSEQUENCE.JOB_EXPLORE] = true, [CONSEQUENCE.JOB_RESEARCH] = true,
-    [CONSEQUENCE.SOCIAL_CAMPFIRE] = true, [CONSEQUENCE.SOCIAL_BASE] = true,
-}
-
---- @export console
-function goto_need()
-    ap_core_debug.debug("[TEST] goto_need pressed")
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local sim = alife()
-    local actor_community = db.actor:character_community()
-    local scripted = ap_core_broker.get_scripted_squads()
-    for squad_id, data in pairs(scripted) do
-        local rec = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
-        local cons = rec and rec.consequence
-        if not NEEDS_ARRIVE_KEYS[cons] then goto skip end
-        local squad = sim:object(squad_id)
-        if not squad then goto skip end
-        if game_relations.is_factions_enemies(actor_community, squad:get_squad_community()) then goto skip end
-        local cmd_se = xobject.se(squad:commander_id())
-        if not cmd_se then goto skip end
-        db.actor:set_actor_position(cmd_se.position)
-        local name = cmd_se:character_name()
-        ap_core_debug.debug("[TEST] goto_need OK squad=%d need=%s target=%s npc=%s",
-            squad_id, cons, data.scripted_target, name)
-        _tip("Teleported to " .. name .. " (" .. cons .. " -> " .. data.scripted_target .. ")")
-        do return end
-        ::skip::
-    end
-    _tip("No friendly squad filling a need right now")
-    ap_core_debug.debug("[TEST] goto_need SKIP no_friendly_need_squad")
-end
-
---- @export console
-function spawn_artefact()
-    ap_core_debug.debug("[TEST] spawn_artefact pressed")
-    local actor = db.actor
-    if not actor then
-        ap_core_debug.debug("[TEST] spawn_artefact SKIP no_actor")
-        return _tip("Not in game")
-    end
-    local sec = xmath.sample(ARTEFACTS)
-    local se = xinventory.create_item(sec, actor:id())
-    if se then
-        ap_core_debug.debug("[TEST] spawn_artefact OK sec=%s", sec)
-        _tip("Spawned " .. sec)
-    else
-        ap_core_debug.debug("[TEST] spawn_artefact FAIL sec=%s", sec)
-        _tip("Failed to spawn " .. sec)
-    end
-end
-
-local KIT_EQUIPMENT_ITEMS = {
-    -- weapon + ammo + knife
-    { sec = "wpn_mossberg590",       count = 1 },
-    { sec = "ammo_12x70_buck",       count = 180 },
-    { sec = "wpn_knife5",            count = 1 },
-    -- armor + backpack
-    { sec = "scientific_outfit",     count = 1 },
-    { sec = "equ_tourist_pack",      count = 1 },
-}
-
-local KIT_CONSUMABLES_ITEMS = {
-    -- meds (top-tier first)
-    { sec = "medkit_scientic",       count = 10 },
-    { sec = "medkit_army",           count = 20 },
-    { sec = "bandage",               count = 30 },
-    { sec = "drug_anabiotic",        count = 5 },
-    { sec = "drug_sleepingpills",    count = 30 },
-    { sec = "antirad",               count = 20 },
-    { sec = "drug_radioprotector",   count = 10 },
-    -- food + water
-    { sec = "kolbasa",               count = 10 },
-    { sec = "conserva",              count = 10 },
-    { sec = "bread",                 count = 10 },
-    { sec = "water_drink",           count = 20 },
-    { sec = "vodka_quality",         count = 5 },
-}
-
-local function _spawn_kit_items(items, label)
-    local id = db.actor:id()
-    local spawned, skipped = 0, 0
-    for i = 1, #items do
-        local item = items[i]
-        if not ini_sys:section_exist(item.sec) then
-            ap_core_debug.debug("[TEST] %s SKIP missing section=%s", label, item.sec)
-            skipped = skipped + 1
-            goto continue
-        end
-        for idx = 1, item.count do
-            xinventory.create_item(item.sec, id)
-        end
-        spawned = spawned + 1
-        ::continue::
-    end
-    return spawned, skipped
-end
-
---- Spawn playtest equipment (weapon, armor, backpack, money, fast travel, scorcher off)
---- @export console
-function kit_equipment()
-    ap_core_debug.debug("[TEST] kit_equipment pressed")
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local spawned, skipped = _spawn_kit_items(KIT_EQUIPMENT_ITEMS, "kit_equipment")
-    xcreature.give_money(actor, 500000)
-    ui_options.set("gameplay/fast_travel/state", 2)
-    game_fast_travel.update_settings()
-    xactor.give_info("drx_sl_brain_scorcher_switch_off")
-    _tip(string_format("Kit equipment: %d items, %d skipped + 500k + travel + scorcher off", spawned, skipped))
-    ap_core_debug.debug("[TEST] kit_equipment OK spawned=%d skipped=%d", spawned, skipped)
-end
-
---- Spawn playtest consumables (meds, food, water)
---- @export console
-function kit_consumables()
-    ap_core_debug.debug("[TEST] kit_consumables pressed")
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local spawned, skipped = _spawn_kit_items(KIT_CONSUMABLES_ITEMS, "kit_consumables")
-    _tip(string_format("Kit consumables: %d items, %d skipped", spawned, skipped))
-    ap_core_debug.debug("[TEST] kit_consumables OK spawned=%d skipped=%d", spawned, skipped)
-end
-
-local NPC_GIFT_ITEMS = {
-    -- meds (heal_shelter consume + trade sell)
-    { sec = "bandage",            count = 10 },
-    { sec = "medkit",             count = 5 },
-    { sec = "medkit_army",        count = 5 },
-    -- mutant parts (harvest cause + trade sell)
-    { sec = "meat_flesh_b",       count = 3 },
-    { sec = "meat_boar_b",        count = 3 },
-    { sec = "meat_dog_b",         count = 4 },
-    -- weapon + ammo (equipped-rifle ammo buy phase of trade + combat use)
-    { sec = "wpn_mossberg590",    count = 1 },
-    { sec = "ammo_12x70_buck",    count = 90 },
-}
-
-local GIFT_NPCS_QUEUE = "ap_test_gift_npcs"
-local GIFT_NPCS_STEP  = 3
-local _gift_npcs_state = nil
-
-local function _gift_one_npc(npc_id)
-    local items = _gift_npcs_state.items
-    for i = 1, #items do
-        local item = items[i]
-        for _ = 1, item.count do
-            xinventory.create_item(item.sec, npc_id)
-        end
-        _gift_npcs_state.items_spawned = _gift_npcs_state.items_spawned + item.count
-    end
-    _gift_npcs_state.npcs_done = _gift_npcs_state.npcs_done + 1
-end
-
---- Fill every online stalker NPC on the actor's level with a playtest inventory kit.
---- Primes item flows: bandages + medkits exercise the supply_trader consumable buy/sell
---- bands; mutant parts and ammo exercise the sell phase + harvest cause; the mossberg +
---- ammo make the equipped-slot detection non-trivial for the buy phase.
---- Frame-spread via xslice (step=3 NPCs/frame) so a fully-populated level does not stall
---- a frame. Re-press to cancel an in-flight queue.
---- @export console
-function gift_npcs()
-    ap_core_debug.debug("[TEST] gift_npcs pressed")
-    if xslice.is_active(GIFT_NPCS_QUEUE) then
-        xslice.cancel(GIFT_NPCS_QUEUE, true)
-        _gift_npcs_state = nil
-        _tip("Gift NPCs: cancelled")
-        ap_core_debug.debug("[TEST] gift_npcs cancelled")
-        return
-    end
-
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local actor_se = alife():actor()
-    if not actor_se then return _tip("No actor entity") end
-    local actor_level = xlevel.get_level_id(actor_se)
     local actor_id = actor:id()
-
-    local valid_items, missing = {}, {}
-    for i = 1, #NPC_GIFT_ITEMS do
-        local item = NPC_GIFT_ITEMS[i]
-        if ini_sys:section_exist(item.sec) then
-            valid_items[#valid_items + 1] = item
-        else
-            missing[#missing + 1] = item.sec
-        end
-    end
-    if #missing > 0 then
-        ap_core_debug.debug("[TEST] gift_npcs missing sections: %s", table.concat(missing, ","))
-    end
-    if #valid_items == 0 then return _tip("Gift NPCs: no valid item sections") end
-
-    local candidates = {}
+    local ids = {}
     for npc_id in pairs(db.storage) do
         if npc_id == actor_id then goto skip end
         local obj = xobject.go(npc_id)
-        if not obj then goto skip end
-        if not obj:alive() then goto skip end
-        if not IsStalker(obj) then goto skip end
+        if not obj or not obj:alive() or not IsStalker(obj) then goto skip end
         local se = xobject.se(npc_id)
-        if not se then goto skip end
-        if xlevel.get_level_id(se) ~= actor_level then goto skip end
+        if not se or xlevel.get_level_id(se) ~= actor_level then goto skip end
         if xdata.unscriptable_npcs[se:section_name()] then goto skip end
-        candidates[#candidates + 1] = npc_id
+        ids[#ids + 1] = npc_id
         ::skip::
     end
-    if #candidates == 0 then return _tip("No online stalker NPCs on this level") end
+    return ids
+end
 
-    _gift_npcs_state = { npcs_done = 0, items_spawned = 0, total = #candidates, items = valid_items }
-    ap_core_debug.debug("[TEST] gift_npcs start npcs=%d valid_secs=%d missing=%d step=%d",
-        #candidates, #valid_items, #missing, GIFT_NPCS_STEP)
+-- Append `picks` sampled sections from a category (repeats acceptable, pools are large).
+local function _sample_sections(out, category, picks)
+    local pool = xinventory.get_category_sections(category)
+    if #pool == 0 then return end
+    for _ = 1, picks do
+        out[#out + 1] = xmath.sample(pool)
+    end
+end
 
-    xslice.start(GIFT_NPCS_QUEUE, candidates, {
-        step = GIFT_NPCS_STEP,
-        func = function(npc_id) _gift_one_npc(npc_id) return true end,
+local function _push_repeated(out, sec, count)
+    for _ = 1, count do out[#out + 1] = sec end
+end
+
+-- Flat spawn list for one kit pass: each category contributes picks x count sections.
+local function _kit_sections()
+    local out = {}
+    for i = 1, #KIT do
+        local entry = KIT[i]
+        local picked = {}
+        _sample_sections(picked, entry.category, entry.picks)
+        for pick_index = 1, #picked do
+            _push_repeated(out, picked[pick_index], entry.count)
+        end
+    end
+    return out
+end
+
+local function _kit_one_npc(npc_id)
+    local sections = _kit_sections()
+    local spawned = 0
+    for i = 1, #sections do
+        if xinventory.create_item(sections[i], npc_id) then spawned = spawned + 1 end
+    end
+    return spawned
+end
+
+-- Per-category surplus kit to every online stalker on the actor's level (xslice, no frame spike).
+local function _give_items()
+    if xslice.is_active("ap_ext_test_items") then return _tip("give_items already running") end
+    local ids, err = _stalkers_on_level()
+    if not ids then return _tip(err) end
+    if #ids == 0 then return _tip("No online stalkers on this level") end
+    local total = { npcs = 0, items = 0 }
+    xslice.start("ap_ext_test_items", ids, {
+        step = GIVE_ITEMS_STEP,
+        func = function(npc_id)
+            total.items = total.items + _kit_one_npc(npc_id)
+            total.npcs = total.npcs + 1
+            return true
+        end,
         on_done = function()
-            local state = _gift_npcs_state
-            _tip(string_format("Gift NPCs: %d NPCs / %d items", state.npcs_done, state.items_spawned))
-            ap_core_debug.debug("[TEST] gift_npcs OK npcs=%d items=%d", state.npcs_done, state.items_spawned)
-            _gift_npcs_state = nil
+            _tip(string_format("give_items: %d NPCs / %d items", total.npcs, total.items))
+            ap_core_debug.debug("[TEST] give_items OK npcs=%d items=%d", total.npcs, total.items)
         end,
     })
-    _tip(string_format("Gift NPCs: queued %d NPCs (%d/frame)", #candidates, GIFT_NPCS_STEP))
 end
 
-local _test_marker_ids = {}
-local _test_marker_spots = {
-    "red_location", "green_location", "blue_location",
-    "circle_small_red", "circle_small_green", "circle_small_yellow", "circle_empty",
-    "crlc_mdl", "crlc_small", "crlc_squad_red", "crlc_squad_green",
-    "circle_target", "warfare_selected_target",
-    "warfare_friendly_spot_moving", "warfare_enemy_spot_moving", "warfare_neutral_spot_moving",
-    "alife_presentation_squad_friend", "alife_presentation_squad_enemy", "alife_presentation_squad_neutral",
-    "alife_presentation_squad_monster",
-    "alife_presentation_faction_stalker", "alife_presentation_faction_dolg",
-    "alife_presentation_faction_freedom", "alife_presentation_faction_bandit",
-    "alife_presentation_faction_killer", "alife_presentation_faction_monster",
-    "alife_combat", "alife_combat_fight",
-    "circle_stalker", "circle_dolg", "circle_freedom", "circle_bandit",
-    "circle_killer", "circle_monolith", "circle_army",
-}
-
---- @safety pcall required: map_add_object_spot crashes on invalid spot types (engine API)
-local function _try_add_spot(id, spot)
-    return pcall(level.map_add_object_spot, id, spot, spot)
+-- Cash to every online stalker on the actor's level (funds the trade buy phase).
+local function _give_money()
+    local ids, err = _stalkers_on_level()
+    if not ids then return _tip(err) end
+    local given = 0
+    for i = 1, #ids do
+        local obj = xobject.go(ids[i])
+        if obj then
+            xcreature.give_money(obj, MONEY_PER_NPC)
+            given = given + 1
+        end
+    end
+    _tip(string_format("give_money: %d NPCs x %d RU", given, MONEY_PER_NPC))
+    ap_core_debug.debug("[TEST] give_money OK npcs=%d amount=%d", given, MONEY_PER_NPC)
 end
 
---- @safety pcall required: map_remove_object_spot crashes on missing spots (engine API)
-local function _try_remove_spot(id, spot)
-    return pcall(level.map_remove_object_spot, id, spot)
-end
-
---- Place all map spot types on squads across the level so you can see what each looks like
---- @export console
-function show_markers()
-    ap_core_debug.debug("[TEST] show_markers pressed")
+-- Item batches into nearby unfilled stashes (real treasure_manager state; feeds stash_loot).
+local function _fill_stashes()
     local actor = db.actor
     if not actor then return _tip("Not in game") end
     local actor_se = alife():actor()
     if not actor_se then return _tip("No actor entity") end
-    local actor_level = xlevel.get_level_id(actor_se)
-
-    local ids = {}
-    for squad in xsquad.iter_squads() do
-        if xlevel.get_level_id(squad) == actor_level then
-            ids[#ids + 1] = squad.id
+    local stashes = xstash.find_stashes(actor:position(), {
+        max_distance = STASH_MAX_DISTANCE,
+        max_count = STASH_MAX_COUNT,
+        level_id = xlevel.get_level_id(actor_se),
+        filled = false,
+    })
+    if #stashes == 0 then return _tip("No unfilled stashes within " .. STASH_MAX_DISTANCE .. "m") end
+    local filled = 0
+    for i = 1, #stashes do
+        local items = {}
+        _sample_sections(items, "medkit", 2)
+        _sample_sections(items, "bandage", 2)
+        _sample_sections(items, "food", 2)
+        _sample_sections(items, "ammo", 2)
+        if #items > 0 and xstash.fill_stash(stashes[i].id, items) then
+            filled = filled + 1
+            ap_core_debug.debug("[TEST] fill_stashes stash=%d items=%d", stashes[i].id, #items)
         end
     end
-    if #ids == 0 then return _tip("No squads on level") end
-
-    _test_marker_ids = {}
-    local placed = 0
-    for i = 1, math_min(#_test_marker_spots, #ids) do
-        if _try_add_spot(ids[i], _test_marker_spots[i]) then
-            placed = placed + 1
-            _test_marker_ids[#_test_marker_ids + 1] = ids[i]
-        end
-    end
-
-    _tip(string_format("Placed %d/%d marker types across %d squads", placed, #_test_marker_spots, #ids))
-    ap_core_debug.debug("[TEST] show_markers OK placed=%d total=%d squads=%d", placed, #_test_marker_spots, #ids)
+    _tip(string_format("fill_stashes: %d/%d stashes", filled, #stashes))
 end
 
---- Clear all test markers placed by show_markers
---- @export console
-function clear_markers()
-    ap_core_debug.debug("[TEST] clear_markers pressed")
-    for _, sq_id in ipairs(_test_marker_ids) do
-        for _, spot in ipairs(_test_marker_spots) do
-            _try_remove_spot(sq_id, spot)
-        end
-    end
-    _test_marker_ids = {}
-    _tip("Cleared test markers")
-end
-
---- Spawn a mutant nearby and promote it to alpha for loot testing
---- @export console
-function spawn_alpha()
-    ap_core_debug.debug("[TEST] spawn_alpha pressed")
-    local actor = xobject.go(0)
+-- One artefact on the ground next to the actor; picking it up is a real actor_on_item_take.
+local function _drop_artefact()
+    local actor = db.actor
     if not actor then return _tip("Not in game") end
     local pos = actor:position()
-    local spawn_pos = vector():set(pos.x + 5, pos.y, pos.z + 5)
-    local lvid = actor:level_vertex_id()
-    local gvid = actor:game_vertex_id()
-    local section = "pseudodog_grey_strong"
-    if not ini_sys:section_exist(section) then section = "pseudodog_grey_weak" end
-    local se = alife():create(section, spawn_pos, lvid, gvid)
-    if not se then
-        ap_core_debug.debug("[TEST] spawn_alpha FAIL alife create")
-        return _tip("Failed to spawn mutant")
-    end
-    local npc_id = se.id
-    local test_level = 8
-    local test_kills = test_level * ap_core_mcm.cfg.cause_alpha_kills_per_level
-    ap_ext_tracker.update_alpha(npc_id, { kills = test_kills })
-    ap_core_debug.debug("[TEST] spawn_alpha OK id=%d section=%s level=%d kills=%d", npc_id, section, test_level, test_kills)
-    _tip(string_format("Spawned alpha L%d %s (id=%d)", test_level, section, npc_id))
+    local spawn_pos = vector():set(pos.x + 2, pos.y + 0.3, pos.z + 2)
+    local sec = xmath.sample(ARTEFACTS)
+    local se = alife():create(sec, spawn_pos, actor:level_vertex_id(), actor:game_vertex_id())
+    if not se then return _tip("Failed to spawn " .. sec) end
+    _tip("Dropped " .. sec .. " nearby")
+    ap_core_debug.debug("[TEST] drop_artefact OK sec=%s id=%d", sec, se.id)
 end
 
---- NEEDS DEMO: integration test - fires real needs pipeline for nearby squads
---- Forces specific observable leisure needs (eating, guitar, sleeping).
---- Full stack: alife_ratio -> event_limiter -> cause_rate -> predicate -> xbus ->
---- consumer -> consequence -> script_squad -> arrival -> PDA.
+-- Spawned hostile squad ids, pruned each run; caps concurrent test-driven combat.
+local _spawned_hostiles = {}
 
-local DEMO_MAX_SQUADS = 5
-local DEMO_MIN_INTERVAL_MS = 2000
-
-local DEMO_NEEDS = {
-    { need = "hunger", field = "last_hunger_at" },
-    { need = "job",    field = "last_job_at" },
-    { need = "social", field = "last_social_at" },
-    { need = "rest",   field = "last_rest_at" },
-}
-
-local _demo_queue = {}
-local _demo_next_fire = 0
-local _demo_active = false
-local _demo_need_idx = 0
-local _demo_saved_causes = nil
-
---- Check if online NPC is a valid demo candidate (alive, not actor, passes type predicate)
-local function _is_demo_candidate(npc_id, is_type)
-    local obj = xobject.go(npc_id)
-    if not obj then return false end
-    if not obj:alive() then return false end
-    if obj:id() == 0 then return false end
-    local type_ok = is_type(obj)
-    if not type_ok then return false end
-    return true, obj
+local function _prune_spawned()
+    local alive = {}
+    for i = 1, #_spawned_hostiles do
+        local id = _spawned_hostiles[i]
+        if xobject.se(id) then alive[#alive + 1] = id end
+    end
+    _spawned_hostiles = alive
+    return #alive
 end
 
---- Find nearby online squads sorted by distance. Alignment defaults to humans, type to IsStalker.
-local function _find_demo_squads(max_count, alignment, is_type)
-    alignment = alignment or ap_ext_const.alignment_human
-    is_type = is_type or IsStalker
-    local actor = db.actor
-    if not actor then return {} end
-    local actor_pos = actor:position()
-    local seen = {}
-    local candidates = {}
-    for npc_id in pairs(db.storage) do
-        local ok, obj = _is_demo_candidate(npc_id, is_type)
-        if not ok then goto skip end
-        local squad = xsquad.get_squad_by_member(npc_id)
-        if not squad then goto skip end
-        if seen[squad.id] then goto skip end
-        if not alignment[squad.player_id] then goto skip end
-        seen[squad.id] = true
-        candidates[#candidates + 1] = { squad = squad, dist = actor_pos:distance_to_sqr(obj:position()) }
-        ::skip::
-    end
-    table_sort(candidates, function(a, b) return a.dist < b.dist end)
-    local squads = {}
-    for i = 1, math_min(max_count, #candidates) do
-        squads[i] = candidates[i].squad
+-- Online stalker squads on the actor's level, deduped from the online NPC walk.
+local function _online_stalker_squads()
+    local ids, err = _stalkers_on_level()
+    if not ids then return nil, err end
+    local seen, squads = {}, {}
+    for i = 1, #ids do
+        local squad = xsquad.get_squad_by_member(ids[i])
+        if squad and not seen[squad.id] then
+            seen[squad.id] = true
+            squads[#squads + 1] = squad
+        end
     end
     return squads
 end
 
-local DEMO_COMPETING_KEYS = {
-    "cause_stash_loot_enabled", "cause_stash_ambush_enabled", "cause_stash_fill_enabled",
-    "cause_area_conquer_enabled", "cause_area_swarm_enabled", "cause_area_infest_enabled",
-}
-
-local function _demo_disable_competing_causes()
-    local mcm = ap_core_mcm.cfg
-    _demo_saved_causes = {}
-    for i = 1, #DEMO_COMPETING_KEYS do
-        local k = DEMO_COMPETING_KEYS[i]
-        _demo_saved_causes[k] = mcm[k]
-        mcm[k] = false
+-- A squad section hostile to the target faction: mutants half the time (they attack any
+-- stalker), else a random enemy faction's generic sim squad.
+local function _pick_hostile_section(target_faction)
+    if math_random() < 0.5 then
+        local species = xmath.sample(HOSTILE_SPECIES)
+        return xsmart_spawn.SQUADS_BY_SPECIES[species][1]
     end
-    ap_core_debug.debug("[TEST] needs_demo disabled competing causes")
-end
-
-local function _demo_restore_causes()
-    if not _demo_saved_causes then return end
-    local mcm = ap_core_mcm.cfg
-    for i = 1, #DEMO_COMPETING_KEYS do
-        local k = DEMO_COMPETING_KEYS[i]
-        mcm[k] = _demo_saved_causes[k]
-    end
-    ap_core_debug.debug("[TEST] needs_demo restored causes")
-    _demo_saved_causes = nil
-end
-
-local function _demo_fire_next()
-    if not _demo_active then return end
-    if #_demo_queue == 0 then
-        _demo_active = false
-        _demo_restore_causes()
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
-        _tip("Needs demo: complete")
-        ap_core_debug.debug("[TEST] needs_demo complete")
-        return
-    end
-    local now = time_global()
-    if now < _demo_next_fire then return end
-
-    local squad = table_remove(_demo_queue, 1)
-    _demo_need_idx = _demo_need_idx % #DEMO_NEEDS + 1
-    local demo_need = DEMO_NEEDS[_demo_need_idx]
-
-    ap_ext_tracker.force_stalker_need(squad.id, demo_need.field)
-    -- Fire the radiant heartbeat directly (changed=nil, a keepalive-shaped turn); the demo
-    -- bypasses the sweep, so the forced need is evaluated on this squad immediately.
-    SendScriptCallback(ap_core_const.CALLBACK.AP_SQUAD_ON_CHANGE, squad)
-
-    local interval_ms = DEMO_MIN_INTERVAL_MS
-    _demo_next_fire = now + interval_ms
-
-    ap_core_debug.debug("[TEST] needs_demo fired squad=%d faction=%s need=%s remaining=%d interval=%dms",
-        squad.id, squad.player_id, demo_need.need, #_demo_queue, math_floor(interval_ms))
-    _tip(string_format("Needs demo: squad %d -> %s (%d remaining)", squad.id, demo_need.need, #_demo_queue))
-end
-
---- NEWS DEMO: periodically seeds random activity records to exercise every consequence.
---- Tests the news composer in isolation: broker.record -> composer -> xpda. Bypasses the
---- pipeline so every seed lands. Mutant-subject consequences seed from nearby mutant squads
---- so #subject_species# populates.
---- Toggle on/off. Set MCM news_interval_min/max_sec low (e.g. 1-3) for rapid feedback.
-
-local NEWS_DEMO_SEED_INTERVAL_MS = 2000
-
--- Subject alignment overrides. Default is "human"; list mutant-subject consequences here.
-local NEWS_DEMO_SUBJECT_MUTANT = {
-    [CONSEQUENCE.ALPHA_PROMOTE]      = true,
-    [CONSEQUENCE.ALPHAKILL_TARGETED] = true,
-    [CONSEQUENCE.MASSACRE_SCAVENGE]  = true,
-    [CONSEQUENCE.WOUNDED_HUNT]       = true,
-    [CONSEQUENCE.HARVEST_HAUNT]      = true,
-    [CONSEQUENCE.AREA_SWARM]         = true,
-    [CONSEQUENCE.AREA_INFEST]        = true,
-    [CONSEQUENCE.FEED]               = true,
-    [CONSEQUENCE.SLUMBER_FIELD]      = true,
-    [CONSEQUENCE.SLUMBER_LAIR]       = true,
-    [CONSEQUENCE.SLUMBER_SURGE]      = true,
-    [CONSEQUENCE.ROAM]               = true,
-    [CONSEQUENCE.PACK]               = true,
-    [CONSEQUENCE.SCATTER]            = true,
-}
-
--- Other-side alignment. Absent = single-party (no other_squad).
-local NEWS_DEMO_OTHER_KIND = {
-    [CONSEQUENCE.MASSACRE_INVESTIGATE] = "human",
-    [CONSEQUENCE.MASSACRE_SCAVENGE]    = "human",
-    [CONSEQUENCE.MASSACRE_LOOT]        = "human",
-    [CONSEQUENCE.SQUADKILL_REVENGE]    = "human",
-    [CONSEQUENCE.BASEKILL_SUPPORT]     = "human",
-    [CONSEQUENCE.BASEKILL_FLEE]        = "human",
-    [CONSEQUENCE.ALPHAKILL_TARGETED]   = "human",
-    [CONSEQUENCE.WOUNDED_HUNT]         = "human",
-    [CONSEQUENCE.WOUNDED_HELP]         = "human",
-    [CONSEQUENCE.HARVEST_ROB]          = "human",
-    [CONSEQUENCE.HARVEST_HAUNT]        = "human",
-}
-
--- Walk CONSEQUENCE enum, resolve cause via consumer registry, attach kind/other.
--- Enum entries with no registration land in `unregistered` and trigger a warn.
-local _news_demo_events_cache = nil
-local function _news_demo_events()
-    if _news_demo_events_cache then return _news_demo_events_cache end
-    local events, unregistered = {}, {}
-    for _, cons in pairs(CONSEQUENCE) do
-        local cause = ap_core_consumer.cause_of(cons)
-        if cause then
-            events[#events + 1] = {
-                cause = cause,
-                cons  = cons,
-                kind  = NEWS_DEMO_SUBJECT_MUTANT[cons] and "mutant" or "human",
-                other = NEWS_DEMO_OTHER_KIND[cons],
-            }
-        else
-            unregistered[#unregistered + 1] = cons
+    local enemies = {}
+    for faction, sections in pairs(xsmart_spawn.SQUADS_BY_FACTION) do
+        if game_relations.is_factions_enemies(target_faction, faction) then
+            enemies[#enemies + 1] = sections
         end
     end
-    if #unregistered > 0 then
-        ap_core_debug.warn("[TEST] news_demo: %d enum entries unregistered with consumer: %s",
-            #unregistered, table.concat(unregistered, ","))
-    end
-    _news_demo_events_cache = events
-    return events
+    if #enemies == 0 then return nil end
+    return xmath.sample(xmath.sample(enemies))
 end
 
-local _news_demo_active = false
-local _news_demo_next_seed = 0
-
--- Resolve alignment set + type predicate for subject-squad search
-local function _news_demo_alignment(kind)
-    if kind == "mutant" then return ap_ext_const.alignment_mutant, IsMonster end
-    return ap_ext_const.alignment_human, IsStalker
-end
-
-local function _news_demo_pick_squad(kind)
-    if not kind then return nil end
-    local alignment, is_type = _news_demo_alignment(kind)
-    local squads = _find_demo_squads(20, alignment, is_type)
-    if #squads == 0 then return nil end
-    return xmath.sample(squads)
-end
-
--- Seed one activity record. Returns true on write, false if no squad available.
--- For two-party events, ensures other_squad has a different faction than subject so
--- templates don't render "Bandit vs Bandit"-style artifacts.
-local function _news_demo_seed_record(squad, cause, consequence, other_kind)
-    if not squad then return false end
-    local smart = xsquad.get_squad_smart(squad)
-    local level_id = xlevel.get_level_id(squad)
-    local other_squad = _news_demo_pick_squad(other_kind)
-    if other_squad and other_squad.player_id == squad.player_id then
-        other_squad = _news_demo_pick_squad(other_kind)
-        if other_squad and other_squad.player_id == squad.player_id then other_squad = nil end
-    end
-    ap_core_record.add_record(squad, cause, consequence, {
-        action_key  = (consequence:gsub("^consequence:", "action:")),
-        other_squad = other_squad,
-        smart       = smart,
-        level_id    = level_id,
-    })
-    return true
-end
-
-local function _news_demo_seed_one()
-    local events = _news_demo_events()
-    if #events == 0 then return nil end
-    local event = xmath.sample(events)
-    local squad = _news_demo_pick_squad(event.kind)
-    if not squad then return nil end
-    _news_demo_seed_record(squad, event.cause, event.cons, event.other)
-    return event
-end
-
-local function _news_demo_tick()
-    if not _news_demo_active then return end
-    local now = time_global()
-    if now < _news_demo_next_seed then return end
-    _news_demo_next_seed = now + NEWS_DEMO_SEED_INTERVAL_MS
-    local event = _news_demo_seed_one()
-    if event then
-        ap_core_debug.debug("[TEST] news_demo seeded cons=%s", event.cons)
-    end
-end
-
---- Toggle perpetual random-event seeder. Real composer dispatches based on MCM interval.
---- @export console
-function news_demo()
-    ap_core_debug.debug("[TEST] news_demo pressed")
-    if _news_demo_active then
-        _news_demo_active = false
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
-        _tip("News demo stopped")
-        ap_core_debug.debug("[TEST] news_demo stopped")
+-- Spawn one squad hostile to a random online stalker squad, at that squad's smart, so real
+-- combat and real deaths drive the reactive pipeline. xsquad.create_squad rides the vanilla
+-- board path (roster assignment + squad_on_npc_creation fire).
+local function _spawn_hostiles()
+    if _prune_spawned() >= SPAWN_MAX_ALIVE then
+        ap_core_debug.debug("[TEST] spawn_hostiles skip: %d spawned squads still alive", #_spawned_hostiles)
         return
     end
-    _news_demo_active = true
-    _news_demo_next_seed = 0
-    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _news_demo_tick)
-    _tip(string_format("News demo: seeding random event every %ds", NEWS_DEMO_SEED_INTERVAL_MS / 1000))
-    ap_core_debug.debug("[TEST] news_demo started interval_ms=%d events=%d",
-        NEWS_DEMO_SEED_INTERVAL_MS, #_news_demo_events())
-end
-
---- @export console
-function needs_demo()
-    if _demo_active then
-        _demo_active = false
-        _demo_queue = {}
-        _demo_restore_causes()
-        UnregisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
-        _tip("Needs demo stopped")
-        ap_core_debug.debug("[TEST] needs_demo stopped")
+    local squads, err = _online_stalker_squads()
+    if not squads then return _tip(err) end
+    if #squads == 0 then return end
+    local target = xmath.sample(squads)
+    local smart = xsquad.get_squad_smart(target)
+    if not smart then
+        ap_core_debug.debug("[TEST] spawn_hostiles skip: target squad %d has no smart", target.id)
         return
     end
-    local squads = _find_demo_squads(DEMO_MAX_SQUADS)
-    if #squads == 0 then return _tip("No stalker squads nearby") end
-    _demo_queue = squads
-    _demo_active = true
-    _demo_next_fire = 0
-    _demo_need_idx = 0
-    _demo_disable_competing_causes()
-    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_ON_UPDATE, _demo_fire_next)
-    _tip(string_format("Needs demo: %d squads queued (hunger/job/social/rest)", #squads))
-    ap_core_debug.debug("[TEST] needs_demo started squads=%d needs=hunger,job,social,sleep", #squads)
+    local section = _pick_hostile_section(target.player_id)
+    if not section then return end
+    local squad = xsquad.create_squad(smart, section)
+    if not squad then return end
+    local smart_name = smart:name()
+    _spawned_hostiles[#_spawned_hostiles + 1] = squad.id
+    _tip(string_format("Spawned %s vs %s at %s", section, target.player_id, smart_name))
+    ap_core_debug.debug("[TEST] spawn_hostiles OK squad=%d section=%s target=%d faction=%s smart=%s",
+        squad.id, section, target.id, target.player_id, smart_name)
 end
 
+-- The drive plan: every action fires on start, then re-seeds on its interval.
+local ACTIONS = {
+    { name = "give_items",    every = 300, action = _give_items },
+    { name = "give_money",    every = 300, action = _give_money },
+    { name = "fill_stashes",   every = 600, action = _fill_stashes },
+    { name = "spawn_hostiles", every = 600, action = _spawn_hostiles },
+    { name = "drop_artefact",  every = 900, action = _drop_artefact },
+}
+
+local _runner = nil
+
+local function _runner_tick()
+    if not _runner then return true end
+    ResetTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC)
+    local now = os_clock()
+    for i = 1, #ACTIONS do
+        local entry = ACTIONS[i]
+        local last = _runner.last[entry.name] or 0
+        if now - last >= entry.every then
+            _runner.last[entry.name] = now
+            _runner.runs[entry.name] = (_runner.runs[entry.name] or 0) + 1
+            entry.action()
+        end
+    end
+    return false
+end
+
+--- Toggle the driver. Start once; it does everything on its own until toggled off.
+--- @export console
+function run()
+    if _runner then
+        _runner = nil
+        _tip("Test driver stopped")
+        ap_core_debug.debug("[TEST] driver stopped")
+        return
+    end
+    _runner = { last = {}, runs = {} }
+    CreateTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC, _runner_tick)
+    _tip(string_format("Test driver on (%d actions)", #ACTIONS))
+    ap_core_debug.debug("[TEST] driver started actions=%d", #ACTIONS)
+end
+
+--- Runner state and per-action run counts.
+--- @export console
+function status()
+    if not _runner then return _tip("Test runner off") end
+    local parts = {}
+    for i = 1, #ACTIONS do
+        local entry = ACTIONS[i]
+        parts[#parts + 1] = string_format("%s=%d", entry.name, _runner.runs[entry.name] or 0)
+    end
+    local line = table_concat(parts, " ")
+    _tip("Runner on: " .. line)
+    ap_core_debug.debug("[TEST] status %s", line)
+end

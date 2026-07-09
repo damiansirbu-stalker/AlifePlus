@@ -645,10 +645,6 @@ function btn_reset_stateless(gui)
     _apply_profile(gui, stateless_overrides, "AlifePlus: stateless defaults applied.")
 end
 
-function set_version_text(_anchor, handlers)
-    handlers.desc:SetText(_ap_deps.get_version())
-end
-
 local function _slide(txt)
     return {
         id = "title", type = "slide", link = "ap_mcm_banner",
@@ -696,10 +692,11 @@ function on_mcm_load()
                     _track("global_consequence_max_events", 1, 20, 1),
                     _track("cause_max_per_causer", 1, 20, 1),
                     _check("allow_external_ownership"),
-                    { id = "div_version", type = "line" },
-                    { id = "version", type = "desc", text = "ui_mcm_ap_framework_title",
-                        ui_hook_functor = { ap_core_mcm.set_version_text }, clr = {255, 212, 201, 168} },
-                },
+
+                    -- Platform footer (shared builder: xmcm.platform_status)
+                    { id = "div_footer", type = "line" },
+                    { id = "platform", type = "desc", text = "ui_mcm_xmcm_footer",
+                        ui_hook_functor = { xmcm.platform_functor(_ap_deps.platform_spec()) }, clr = {255, 212, 201, 168} },                },
             },
             {
                 id = "world",
@@ -1479,6 +1476,7 @@ function on_mcm_load()
                     { id = "warn_reset", type = "desc", text = "ui_mcm_ap_development_reset_warning", clr = {255, 240, 200, 80} },
                     { id = "btn_reset_all", type = "button", functor_ui = { btn_reset_all } },
                     { id = "btn_reset_stateless", type = "button", functor_ui = { btn_reset_stateless } },
+
                 },
             },
         },
