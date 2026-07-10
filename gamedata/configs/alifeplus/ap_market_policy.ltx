@@ -1,20 +1,22 @@
-; AlifePlus faction market policy. The market injects a bounded echo of what a faction's
-; stalkers recently sold into that faction's hub traders at restock, rank-gated and priced at a
-; premium. Single source for: which item categories/sections may appear, how many, the ledger
-; memory depth, and the per-rank appearance gate. Price premium and spawn condition are MCM.
+; AlifePlus faction market policy, all rows in the TRADER's perspective (the counterpart file,
+; ap_trade_policy.ltx, is the visiting stalker's perspective). Two directions, one filter chain:
+; [ap_market_trader_buy] echoes what the faction's traders bought from stalkers onto the shelf at
+; restock, rank-gated and priced at a premium; [ap_market_trader_sell] removes a share of what
+; those traders sold to stalkers from the freshly respawned shelf at the same restock.
 ; DLTX-overridable. Categories are engine-derived (xinventory.get_section_category over Parse_ITM
 ; _ITM buckets + curated consumable sets); nothing here invents sections.
 ;
-; [ap_market_policy] specials (single numeric values, not category rows):
-;   ledger_max          distinct sections kept per faction (bounded dedup FIFO, oldest evicted)
+; [ap_market_trader_buy] specials (single numeric values, not category rows):
+;   fifo_max            distinct sections kept per faction (bounded dedup FIFO, oldest evicted;
+;                       one depth for both the bought and the sold FIFO)
 ; Price premium and spawn condition are MCM settings (Economy > Faction market), not here.
 ; Category/section rows: key = per-trader cap (max copies of that key at one trader).
-;   A key is a category (medkit, device, ...) or a single item section. A sold item uses its
+;   A key is a category (medkit, device, ...) or a single item section. An item uses its
 ;   section rule when listed, else its category rule; a key absent here is NEVER injected.
 ;   Cap 0 = listed-but-excluded (same as absent for injection). Ammo counts in rounds.
 
-[ap_market_policy]
-ledger_max          = 20
+[ap_market_trader_buy]
+fifo_max            = 20
 
 artefact            = 1
 device              = 2
@@ -30,6 +32,18 @@ grenade             = 2
 ;weapon             = 1
 ;outfit             = 1
 ;helmet             = 1
+
+; Trader-sell whitelist: which keys the sell-out may remove from a trader's fresh stock, value =
+; max sections of that key removed per restock (same row shape and filter chain as injection,
+; own scope). The sell-out mirrors what the faction's stalkers actually buy (ap_trade_policy),
+; so only the staples they consume are listed: ammo and medical supplies. A key absent here is
+; NEVER removed. ammo_not_equipped is the context-free ammo category every ammo section resolves
+; to. The removal share per section is the MCM trader sell-out slider (Economy > Faction market).
+[ap_market_trader_sell]
+ammo_not_equipped   = 4
+medkit              = 3
+bandage             = 3
+stim                = 2
 
 ; Hard rank floor: a category (or single section) here is blocked until the player reaches the
 ; named rank tier. Tier names per game_relations.ltx [game_relations] rating

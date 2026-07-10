@@ -37,7 +37,7 @@ Structural invariants make this possible:
 - Event-driven contract: nothing runs unless the engine says something happened.
 - Physical simulation guarantee: consequences use entities already in the simulation, never spawned, teleported, or fabricated.
 - Item transfer only: items move between carriers (NPCs, stashes, traders). AlifePlus never invents new section names. Every materialized item is a section the engine already knows from vanilla configs.
-- Money flows match vanilla: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only adds trader stock and sets its price, which you pay at the trader like any purchase.
+- Money flows match vanilla: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only moves trader stock and sets its price, which you pay at the trader like any purchase.
 
 The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.
 
@@ -264,7 +264,7 @@ The Zone runs one connected economy, and with the faction market it now comes fu
 
   Trade. At a trader a stalker sells his surplus and restocks ammo and gear by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
 
-  Market. A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders.
+  Market. A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders, and the ammo and medical supplies it keeps buying run short at them.
 
 Loot Claim
 
@@ -314,19 +314,21 @@ Market
 
   The market is the read side of the trade cycle. The trade cycle above moves items from stalkers into traders. The market records what passes through and stocks a rank-gated slice of it back at those traders for you to buy.
 
-  What you see. When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated to your rank, priced at a premium, and gone again after a short window.
+  What you see. When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated to your rank, priced at a premium, and gone again after a short window. The reverse also shows: the ammo and medical supplies those stalkers keep buying run short in his fresh stock.
 
-  The ledger. Every NPC sale at a trader is recorded by faction in a bounded list of recent sales. What a faction sells, that faction's traders may later carry. The list keeps only the most recent distinct items and drops the oldest as new ones come in, so the stock reflects recent sales. Nothing leaves the trade cycle to feed this. The market only reads it.
+  The ledgers. Every NPC trade at a trader is recorded by faction in two bounded lists: recent sales and recent purchases. What a faction sells, that faction's traders may later carry; what it buys, its traders run short of. Each list keeps only the most recent distinct items and drops the oldest as new ones come in. Nothing leaves the trade cycle to feed this. The market only reads it.
 
   The echo. A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
+
+  The sell-out. Only the staples stalkers actually buy run short: ammo and medical supplies, per the same policy file. At each restock a share of each such item is removed from the fresh stock, 30% by default, adjustable between 20% and 95%. The share rounds down, so the last few of anything always stay, and the next restock starts from the full list again. A restock never removes and adds the same item.
 
   Rank gate. What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive ones only as you rise. A rookie sees common consumables and parts, a veteran the high-value artefacts, devices, and medical a faction is losing. The gate, the allowed items, and their caps live in an editable policy file. Traders sell consumables, artefacts, devices, and grenades, so the market echoes those. Gear like outfits, helmets, and weapons is not stocked, since traders do not sell it.
 
   Price and condition. An item shows at one trader, once, for a short window, at several times its full value, five by default. Different traders of a faction carry different items. The premium and the spawn condition are sliders under Economy then Faction market.
 
-  Adds only. The market never takes money or items from anyone. It adds stock and sets the price, and you pay that premium through the normal trade window like any other purchase. Turn it off and traders carry only their vanilla stock. It ships on.
+  No money moves. The market never takes money from anyone. It adds stock, removes stock, and sets prices; the only rubles that move are yours, paid through the normal trade window like any other purchase. Turn it off and traders carry only their vanilla stock. It ships on.
 
-  What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never more than what that faction actually sells. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
+  What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never more than what that faction actually sells, and what the faction buys for itself runs short for you too. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
 
 Instincts
 

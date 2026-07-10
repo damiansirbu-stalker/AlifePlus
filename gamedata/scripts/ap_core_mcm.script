@@ -329,6 +329,7 @@ defaults = {
     market_window_hours = 12,
     market_premium = 5.0,
     market_item_condition = 0.9,
+    market_trader_sell_percent = 30,
 
     -- Development
     log_level = "WARN",
@@ -362,7 +363,7 @@ local stateless_overrides = {
     loot_block_npc_vs_npc_enabled = false,
     -- Corpse loot trim (NPC keeps only policy-allowed loot; deletes the rest)
     loot_select_enabled = false,
-    -- Faction market (trader stock injection)
+    -- Faction market (trader stock injection + sell-out removal; one flag gates both directions)
     market_enabled = false,
 }
 
@@ -403,6 +404,7 @@ local _key_to_tab = {
     market_window_hours = "economy/market",
     market_premium = "economy/market",
     market_item_condition = "economy/market",
+    market_trader_sell_percent = "economy/market",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
     cause_alphakill_enabled = "causes/reactions",
@@ -807,6 +809,7 @@ function on_mcm_load()
                             _track("market_window_hours", 1, 48, 1),
                             _track("market_premium", 1, 20, 0.5),
                             _track("market_item_condition", 0.05, 1, 0.05),
+                            _track("market_trader_sell_percent", 20, 95, 5),
                         },
                     },
                 },
