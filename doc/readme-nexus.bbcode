@@ -38,7 +38,7 @@ Structural invariants make this possible:
 [*][b]Event-driven contract[/b]: nothing runs unless the engine says something happened.
 [*][b]Physical simulation guarantee[/b]: consequences use entities already in the simulation, never spawned, teleported, or fabricated.
 [*][b]Item transfer only[/b]: items move between carriers (NPCs, stashes, traders). AlifePlus never invents new section names. Every materialized item is a section the engine already knows from vanilla configs.
-[*][b]Money flows match vanilla[/b]: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only adds trader stock and sets its price, which you pay at the trader like any purchase.
+[*][b]Money flows match vanilla[/b]: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only moves trader stock and sets its price, which you pay at the trader like any purchase.
 [/list]
 The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.
 
@@ -79,29 +79,21 @@ The economy follows the same logic. Real items move between real stalkers, and r
 
 [b]Trade and needs[/b]
 [list]
-[*]Stalkers visit supply traders to sell surplus and restock per a rank-tiered policy. Rookies carry basic ammo, medkits, and bandages. Veterans add premium ammo (AP, hollow-point, flechette), grenades, and larger consumable bands.
-[*]Squads loot a stash by per-category bands (ammo matching equipped pistols and rifles, medkits, bandages, food, drink, antirad, grenades). Quest items skip the whole stash. An MCM toggle skips stashes containing crafting items. The stash is cleared at the end of the loot pass.
-[*]Squads fill stashes with squad surplus above each category's max, capped per event. Quest items and equipped gear are never deposited.
-[*]Hunger, fatigue, heal, social, and outpost needs drive campfire and base behavior. Arrival satisfies the need. Inventory items are not destroyed.
+[*]Stalkers sell surplus and restock at traders by rank, rookies on basics, veterans on premium ammo and grenades.
+[*]Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 [/list]
 
 [b]Loot ownership[/b]
-Every kill belongs to whoever made it, the player and the stalkers alike. The two sides toggle independently in MCM.
 [list]
-[*]NPCs no longer strip the kills you made while you stand nearby. Walk away and scavengers may take them.
-[*]A body a living NPC killed will not open while that stalker is alive and near it. Walk off, or wait until he dies, and it opens up.
-[*]NPCs keep only useful loot from a body: ammo for their own weapon and a capped share of each supply, and the rest is destroyed, so bodies you reach later are not stripped bare.
-[*]These controls and the per-visit trade profit cap live under the Economy menu.
+[*]Every kill belongs to whoever made it. NPCs leave your fresh kills alone while you are near, and their own kills stay closed to you while the squad lives.
+[*]A looting NPC keeps only what fits its gear and a fair share of supplies, so the bodies you reach later are not stripped bare. The toggles sit under the Economy menu.
 [/list]
 
 [b]Day/night cycle[/b]
 [list]
-[*]Stalkers work and trade by day.
-[*]Stalkers rest and sleep at campfires by night.
-[*]Nocturnal predators hunt at night and retreat to lairs at dawn.
-[*]Diurnal mutants follow the opposite cycle.
-[*]Prey scatters when a predator moves through.
-[*]Prey returns once the predator dies.
+[*]Stalkers work and trade by day, then rest and sleep at campfires by night.
+[*]Nocturnal predators hunt after dark and hole up in lairs at dawn, while diurnal mutants run the opposite clock.
+[*]Prey scatters when a predator passes through and drifts back once it dies.
 [/list]
 
 [line]
@@ -120,29 +112,14 @@ Every kill belongs to whoever made it, the player and the stalkers alike. The tw
 [*]The player walked into something already in motion.
 [/list]
 
-[size=4][b]Example scenario (escalation chain)[/b][/size]
-[list]
-[*]An artefact spawns in an anomaly field. A loner needs money and heads there to pick it up ("needs" cause, "money" consequence).
-[*]He grabs the artefact and turns for the trader ("harvest" cause).
-[*]Outlaws catch the channel chatter and converge to rob him on the return ("rob" consequence).
-[*]A poltergeist senses the artefact and haunts the pickup site ("haunt" consequence).
-[*]The road back is already loud. Dogs and a flesh pack move on the noise. A chimera trailing them takes kills in the firefight and turns ("alpha promote" consequence).
-[*]The player kills the alpha. Another chimera on the same tier reads the kill and turns to pursue ("alphakill targeted" consequence).
-[*]A friendly stalker reports the alpha-down hours later as PDA news.
-[*]The surviving chimera with its pack takes a nearby smart terrain as a nest ("infest" consequence). The infestation overwrites the original spawns.
-[*]A bandit squad sees the ground empty around the lair and takes a neighboring smart ("area_conquer" consequence). Their spawns join the originals as a shared injection.
-[*]The cycle continues. The Zone does not care.
-[/list]
-
 [size=4][b]Example scenario (economy loop)[/b][/size]
 [list]
-[*]A loner squad finishes a hunt at an anomaly field ("needs" cause, "money" consequence). They have artefacts, mutant parts, and a spare PMM.
-[*]They are hungry now ("needs" cause). They stop at the nearest campfire to rest by the fire ("hunger" consequence).
-[*]They head for Sidorovich at Cordon to sell ("supply" consequence).
-[*]Sidorovich buys the artefacts, mutant parts, the spare PMM, and surplus at engine prices.
-[*]The loner restocks ammo for his AK74 and tops up his medkits and bandages, per his rank-tiered policy.
-[*]The squad has rubles and stocked ammo now. They walk back to the anomaly field for the next hunt.
-[*]The same loop the player walks, running for everyone.
+[*]A loner squad works an anomaly field and fights off the mutants the noise draws in ("needs" cause, "money" consequence). They strip the dead, but the loot policy lets each keep only ammo for his own gun and a fair share of supplies, so a body you reach later still holds its gear.
+[*]They walk out with artefacts, parts, and a spare PMM, hungry from the fight, and stop at the nearest campfire to rest by the fire ("hunger" consequence).
+[*]Then on to Sidorovich at Cordon ("supply" consequence). The trade policy has him buy their surplus while they restock AK74 ammo and medkits by rank, selling before buying so the artefact money pays for the bullets.
+[*]Every loner crew on Cordon lives by the same trade policy, all selling to Sidorovich and all buying rifle rounds and medkits from him.
+[*]Walk into Sidorovich yourself and the market policy makes it show: the artefacts and devices those crews sold him sit on his shelf at a premium, gated to your rank, while the ammo and medkits they keep buying have run thin.
+[*]Nothing here is scripted and nothing plays by special rules. The Loners answer to the same loot, trade, and market limits you do, so what they do to their trader is what you find waiting there.
 [/list]
 
 [line]
@@ -155,25 +132,15 @@ AlifePlus avoids these by construction. The framework subscribes to engine callb
 [line]
 
 [size=4][b]Decision system: nothing is purely random[/b][/size]
-Every consequence runs through range search, alignment, personality, and world state before it commits. Range search narrows the candidate pool. Alignment decides whether the action is allowed at all. Personality decides probability. World state confirms the action makes sense right now. A consequence fires only when all of them agree.
+Every consequence runs through four gates before it commits. Range narrows the candidates, alignment decides whether the action is allowed at all, personality decides how likely it is, and world state confirms it still makes sense right now. Only when all four agree does the squad move.
 
-[b]Range search.[/b] AlifePlus searches within the squad's awareness, not across the whole map.
-[list]
-[*][b]EyeRange[/b]: what the squad can see, like stashes and unclaimed territory.
-[*][b]RadioRange[/b]: what stalkers hear over the PDA, like massacres, base attacks, and trader locations.
-[*][b]ScentRange[/b]: what mutants smell, like corpses, wounded prey, and blood trails.
-[/list]
-Range tiers are grounded in GSC's PersonalEyeRange (EFC design docs) and validated against in-engine smart-terrain spacing across the Anomaly level set.
+[b]Range.[/b] AlifePlus searches within the squad's awareness, not across the whole map. A squad acts on what it can see, like a stash or empty ground, stalkers respond to what they hear over the PDA, like a massacre or a base attack, and mutants hunt what they smell, like corpses and wounded prey. The distances come from GSC's design documents, checked against real smart terrain spacing across the Anomaly maps.
 
-[b]Alignment (hard gate).[/b] Faction identity decides whether an action is even possible.
-Stalker factions follow GSC's principled / self-serving / unprincipled / outlaw axis. The bars are structural and cannot be tuned: military squads cannot flee, ecologists cannot conquer, renegades cannot investigate, and outlaws cannot help the wounded.
-Mutant species sit on independent behavioral and activity axes. Behavioral tiers: cowardly (flesh, zombie, rats), feral (dogs, boars, snork, gigant), predator (bloodsucker, chimera, lurker), and aberrant (controller, burer, poltergeist). Activity axis is binary: nocturnal (bloodsucker, lurker, chimera, zombie, fracture) versus diurnal. The tiers form a food chain in which lower tiers scatter from higher tiers, with aberrant species at the top.
+[b]Alignment.[/b] Faction identity decides what is even possible, and the bars are structural, not tunable. Military squads cannot flee, ecologists cannot conquer, renegades cannot investigate, and outlaws never help the wounded. Stalker factions follow GSC's principled, self-serving, unprincipled and outlaw axis. Mutants carry two axes of their own, a behavioral tier running cowardly (flesh, zombie, rats), feral (dogs, boars, snork, gigant), predator (bloodsucker, chimera, lurker) and aberrant (controller, burer, poltergeist), which doubles as the food chain, and a day and night axis where bloodsuckers, psysuckers, lurkers, chimeras, zombies and fractures hunt in the dark.
 
-[b]Personality (probability layer).[/b] Per-faction and per-species trait profiles, with values derived from GSC's AI design documents.
-Stalker profiles carry aggression, greed, survival, perception, territory, relation, and discipline. Mutant species carry the same set minus greed and discipline. Some traits (aggression, territory, discipline) have inverted variants for consequences that fire on low scores. A flee consequence reads inverted aggression so a low-aggression faction is the one most likely to flee. Each consequence binds to its relevant traits and averages them. The averaged value is clamped to a floor and ceiling tunable in MCM, and used as the probability of acting.
+[b]Personality.[/b] Every faction and species carries a trait profile drawn from GSC's AI design documents, aggression, greed, survival, perception, territory, relation and discipline for stalkers, a shorter set for mutants. Each consequence reads its relevant traits and turns them into a probability, clamped to a fixed floor and ceiling so even a reluctant faction acts sometimes and even an eager one sometimes holds back. Some traits read inverted, so fleeing keys on low aggression and the timid faction is the one that runs.
 
-[b]World state (scan layer).[/b] The scan phase queries live world state before the consequence acts.
-Smart terrain capacity, ownership, current engine-native squad control, recent activity, faction territory bookkeeping, time of day, online/offline status. Stale or contradictory state rejects the consequence. A squad already scripted by another mod is left alone. A full smart terrain rejects new arrivals. An emission or psi-storm suppresses the news queue.
+[b]World state.[/b] The last gate asks the live world. Smart terrain capacity, ownership, who already controls the squad, time of day, online or offline. Stale or contradictory state rejects the action, a squad another mod scripted is left alone, and a full smart terrain turns new arrivals away.
 
 [line]
 
@@ -182,19 +149,19 @@ Causes and consequences aggregate into hundreds of combinations.
 
 [b]Reactions[/b] - World events trigger responses.
 [list]
-[*][b]Massacre[/b] - Scavenge (cowardly mutants scavenge corpses), Investigate (the victims' faction sends nearby squads), Loot (outlaws strip the corpses for weapons and gear).
+[*][b]Massacre[/b] - Scavenge (cowardly mutants scavenge corpses at the massacre site), Investigate (the victims' faction sends nearby squads to investigate), Loot (outlaws strip the corpses for weapons and gear).
 [*][b]SquadKill[/b] - Revenge (same-faction squads pursue the killer as it moves).
-[*][b]BaseKill[/b] - Support (friendly squads rush to reinforce), Flee (squads at the base evacuate to the nearest friendly position).
-[*][b]Alpha[/b] - Promote (mutants accumulate kills and level up; the gate for AlphaKill hunters).
+[*][b]BaseKill[/b] - Support (nearby friendly squads rush to reinforce the base under attack), Flee (squads at the base evacuate to the nearest friendly position).
+[*][b]Alpha[/b] - Promote (mutants accumulate kills and level up; promotion is the gate for AlphaKill hunters).
 [*][b]AlphaKill[/b] - Targeted (same-species mutants on the same level hunt the killer).
-[*][b]Wounded[/b] - Hunt (predator and aberrant mutants sense weakness and close in), Help (same-faction squads rush to help the wounded).
-[*][b]Harvest[/b] - Rob (outlaws pursue whoever picked up the artefact), Haunt (aberrant mutants converge on the pickup site).
+[*][b]Wounded[/b] - Hunt (predator and aberrant mutants sense weakness and close in), Help (nearby same-faction squads rush to help the wounded).
+[*][b]Harvest[/b] - Rob (nearby outlaws pursue whoever picked up the artefact), Haunt (aberrant mutants converge on the artefact pickup site).
 [/list]
 
 [b]Opportunities[/b] - A squad sees what is nearby and acts on it. A per-squad drive cooldown prevents repeated firing.
 [list]
-[*][b]Stash[/b] - Loot (a stalker squad walks there and loots it), Ambush (an outlaw squad camps it as bait), Fill (a stalker squad hides supplies inside).
-[*][b]Territory[/b] - Area Conquer (stalker factions claim empty territory, Ecologists excluded; conquest adds spawns alongside the originals; decays over time). Area Swarm (mutant squads claim empty smart terrains; decay, cap, and spawn count tune independently). Area Infest (only squads carrying an alpha can infest; replaces original spawns with the infesting species; a per-level cap limits spread).
+[*][b]Stash[/b] - Loot (a stalker squad spots the stash, walks there, and loots it), Ambush (an outlaw squad camps it as bait), Fill (a stalker squad hides supplies inside).
+[*][b]Territory[/b] - Area Conquer (stalker factions claim empty territory, Ecologists excluded; the conqueror's squads start spawning alongside the originals; the claim decays over time, MCM configurable). Area Swarm (feral, predator, and aberrant mutant squads claim empty smart terrains the same way, their packs spawning alongside the originals; decay, cap, and spawn count tune independently). Area Infest (feral, predator, and aberrant mutants turn smart terrains into nests, only squads carrying an alpha can do it; a nest replaces the original spawns entirely until it decays; a per-level cap limits the spread).
 [/list]
 
 [b]Needs[/b] - Stalkers have human needs. Drives inspired by Maslow-Hull are scored by how long since each was last fulfilled. The most deprived need wins.
@@ -209,58 +176,39 @@ Causes and consequences aggregate into hundreds of combinations.
 [*][b]Job[/b] - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
 [*][b]Social[/b] - The stalker walks to a campfire or base for company.
 [/list]
-Cross-map sibling rows: Social, Supply Trader, and Job Explore each ship a paired off-map row. Peaceful sociable factions (Ecologists, Clear Sky, Freedom, Loners) visit other camps for company. Peaceful greedy factions cross to another map to restock when no on-map trader is reachable. Peaceful curious factions (Ecologists, Clear Sky) scout neighbor maps. Army, Monolith, and Zombified squads never travel off-map.
-Reach grows with player progression. Stalkers reach the next map once Yantar X-16 is shut down, the next after the Brain Scorcher is deactivated at Radar, and master-rank squad commanders push one map further. Each step is tunable under MCM > World > Off-map. Squads settle at the destination after a short stay; they do not return home. Travellers stuck off-map are released after a week. Dispatches are also capped per source map within a sliding two-day window so no level bleeds traffic forever.
-Arrival satisfies the need. Inventory items are not destroyed by the arrival itself. Engine-side combat behavior (medkit, bandage, stim usage in firefights) is independent and unchanged.
+Three of these needs reach across the map border. Sociable factions like Ecologists, Clear Sky, Freedom and Loners visit another smart terrain for company, greedy ones cross over to restock when no trader is reachable at home, and the curious Ecologists and Clear Sky scout neighboring maps; Army, Monolith and Zombified squads never leave their own. How far they reach grows as you clear the Zone, one map further once X-16 is shut down, another after the Brain Scorcher falls, and one more for master-rank commanders, all tunable under World > Off-map. A squad that travels settles where it lands and does not come home, and anything stuck out there is cleaned up after a week.
+Reaching the smart terrain is what satisfies the need; nothing in the squad's inventory is consumed, and combat use of medkits and stims in a firefight is the engine's own, untouched.
 
 [b]Economy[/b] - The Zone runs one connected economy, and with the faction market it now comes full circle. Four systems share a single set of category rules, so what a stalker loots, keeps, sells, and stashes all answer to the same limits, and a slice of what a faction sells eventually circles back to you.
 [list]
 [*][b]Loot claim.[/b] A kill belongs to whoever made it, held while the owner stays near the body. The same rule runs three ways, identical for every side: your kills against NPC looters, an NPC squad's kills against you, and rival squads against each other.
 [*][b]Loot policy.[/b] An NPC keeps ammo that fits its own weapons and the most valuable items in each class, then destroys the rest. Stalkers carry a working loadout, the bodies you reach are leaner, and long saves stay clear of the loot buildup that drags them down.
 [*][b]Trade.[/b] At a trader a stalker sells his surplus and restocks ammo and gear by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
-[*][b]Market.[/b] A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders.
+[*][b]Market.[/b] A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders, and the ammo and medical supplies it keeps buying run short at them.
 [/list]
 
-[b]Loot Claim.[/b] A kill is reserved for whoever made it, against every other looter, while the owner is present and the claim is fresh. An NPC kill belongs to the killer's squad: any living squadmate within range holds it, so dropping one stalker does not free the body while the rest of his squad stands over it. This is a three-way reservation, the same rule running in all three directions, each its own toggle, radius, and duration, all under Economy > Loot claim.
-[list]
-[*][b]You against NPCs.[/b] A body you killed is skipped by NPC looters while you stand within the reserve radius. The scavenger AI treats your kill as off-limits and walks past it. Step away and the reservation lapses, so a passing stalker may strip it like any other corpse.
-[*][b]NPCs against you.[/b] A body a stalker squad killed will not open while a living member of that squad is within range of it. Aim at it, press use, and nothing happens but a PDA tip naming the owner. When the squad is dead or beyond the radius, or the claim runs out its hour, the body opens and loots like any other. Companions, zombified killers, and story corpses never hold a claim against you.
-[*][b]NPCs against each other.[/b] A passing stalker will not strip a kill another squad made while a member of that squad is near the body. The killing squad collects its own. Bystanders walk past. The loot a squad earns stays with that squad until they leave or fall.
-[*][b]Radius and duration.[/b] Each side carries its own reserve distance and its own claim lifetime, all 150 m and 1 game hour by default, tunable under Economy > Loot claim. Beyond the radius, or once the lifetime elapses, the claim lapses. Turn all three off for plain vanilla looting in every direction.
-[/list]
+[b]Loot Claim.[/b] A kill is reserved for whoever made it, against every other looter, while the owner is near and the claim is fresh. An NPC kill belongs to the killer's whole squad, so dropping one stalker does not free the body while his squadmates stand over it.
+The same rule runs in all three directions. NPC looters skip a body you killed while you are near it, and once you walk away it becomes fair game. A body a stalker squad killed will not open for you while a living member is in range, only a PDA tip naming the owner; when the squad is dead or gone, or the claim runs out its hour, it opens like any other. And a passing stalker will not strip a kill another squad made while that squad is near, so the loot a squad earns stays with it until they leave or fall.
+Companions, zombified killers, and story corpses never hold a claim against you. Each direction has its own toggle, radius, and duration, 150 m and 1 game hour by default, under Economy > Loot claim. Turn all three off for plain vanilla looting.
 
-[b]Loot Policy.[/b] An NPC that loots a body keeps only what is useful to it and destroys the rest, so the bodies you reach later are leaner instead of picked clean by passing stalkers. Only the fresh pickup is bounded. The looter's standing gear is left alone.
-[list]
-[*][b]Kept:[/b] ammo that fits the looter's own pistol or rifle, plus a capped share of each supply class (a few medkits and bandages, some food and drink, one spare weapon, one outfit, and so on). Ammo for weapons the looter does not carry is dropped. When a class runs over its cap, the cheap surplus is what goes and the most valuable items stay.
-[*][b]Never touched:[/b] quest items, story gear, an item you gave a companion, and the looter's own equipped weapon and armour. Companions, traders, and named characters keep their loot untouched.
-[*]The caps live in an editable policy file, and the system toggles under Economy > Loot policy.
-[/list]
+[b]Loot Policy.[/b] An NPC that loots a body keeps only what is useful to it and destroys the rest, so the bodies you reach later are leaner instead of picked clean. Only the fresh pickup is bounded, the looter's standing gear is left alone.
+He keeps ammo that fits his own pistol or rifle and a capped share of each supply class, a few medkits and bandages, some food and drink, one spare weapon, one outfit and so on. Ammo for weapons he does not carry is dropped, and when a class runs over its cap the cheap surplus goes while the most valuable items stay.
+Quest items, story gear, gifts you gave a companion, and equipped weapons and armour are never touched, and companions, traders, and named characters are never trimmed at all. The caps live in an editable policy file, the toggle under Economy > Loot policy.
 
-[b]Trade.[/b] AlifePlus runs a category-based NPC buy/sell cycle on arrival at trader smarts. NPCs visit a trader, sell surplus from their inventory, and restock ammo, grenades, and consumables per a per-rank policy. All 20 vanilla trader smarts are covered, from Sidorovich at Cordon to the Monolith trader in Pripyat. Built on Alundaio's buy/sell core (2013, maintained by Tronex through 2019), modernized to accept extension instead of dirtying item files, and to carry depth the original row schema could not express.
-[b]Categories instead of items.[/b] Alundaio's row schema lived inside each tradeable item's LTX: every section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate in trade. AlifePlus declares categories in an editable policy file (DLTX-overridable). xinventory resolves any section to its category through the engine's own item buckets. A Boomsticks AP round, a GAMMA addon medkit, an EFP grenade all classify automatically through their existing kind and class fields. The modder adds the item, the mod ships, AlifePlus trades it. No per-modpack LTX maintenance, no item file edits.
-[b]Per-rank policy.[/b] Two blocks split policy by character rank: rookie (rank below 12000) and veteran (rank 12000 and above). Each block lists categories with a min, max band, plus per-slot ammo tiers. Entry order sets the buy priority.
-[b]Real equipped weapons drive ammo picks.[/b] The pistol's ammo class is read at runtime, sorted by k_ap, split into basic and premium tiers. The rifle's ammo class splits the same way. A veteran with an SVD gets basic and premium 7.62x54R. A rookie with a PM gets basic 9x18 only. Within a tier, the cheapest section is picked first so NPCs with limited cash actually fill their slot.
-[b]Sell phase.[/b] The stalker walks his inventory and drops anything whose category count exceeds the policy max. Equipped items, quest items, anim items, and money are never touched. Three runtime untouchables also bypass the policy: items carrying a story_id, items the player gave to a companion, and player-strapped weapons. Everything else sells at the engine's cost field, half-price by default.
-[b]Buy phase.[/b] The stalker walks the policy in declaration order and fills any category whose count falls below the min. Ammo resolves per equipped slot, consumables per category section set.
-[b]Rank gates.[/b] Rookies buy basic ammo and a baseline of medkits and bandages. Veterans add premium ammo (AP, EP, PBP, hot-load, hollow-point, steel-core, flechette across 18 cartridges), grenades (F1, RGD5), and larger consumable bands. Veteran shots hit the player with the real k_ap of premium rounds.
-[b]Profit cap.[/b] One cap limits the net cash an NPC gains per trade event, the same value for every rank, 5000 RU by default. Cash above the cap goes back to the trader so the till stays in business.
-[b]Sell before buy.[/b] The sell phase runs before the buy phase, so cash from selling spares funds restocks. Squads with high-value spares restock more rows per visit instead of walking in cash-poor and out half-empty.
-This closes the in-Zone economy loop. NPCs harvest at anomaly fields, kill mutants for parts, loot or fill stashes. The surplus turns into cash at the next trader visit. The cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.
+[b]Trade.[/b] AlifePlus runs a category-based buy and sell cycle at every vanilla trader smart terrain, from Sidorovich at Cordon to the Monolith trader in Pripyat. It is built on Alundaio's buy/sell core, maintained by Tronex for years, and modernized so that modpack items participate automatically, a Boomsticks round or a GAMMA medkit classifies through its existing engine fields, with no item file edits.
+The policy is a pair of rank blocks, rookie and veteran, each listing categories with a min and max band, and the entry order sets what gets bought first. Ammo follows the NPC's real equipped weapons, split into basic and premium grades, so a veteran with an SVD buys 7.62x54R while a rookie with a PM gets plain 9x18, always cheapest first so a poor NPC still fills his slot.
+On arrival the stalker first sells everything above his caps at half price, never touching equipped gear, quest items or player gifts, and then buys back up to his minimums with the cash he just made. Rookies stock basics, veterans add premium rounds and grenades, and their shots hit you with the real armor piercing of those rounds. A profit cap, 5000 RU by default, limits what an NPC can net per visit, and anything above it returns to the trader.
+This closes the in-Zone economy loop. NPCs harvest anomaly fields, hunt mutants, loot and fill stashes, the surplus turns into cash at the next trader visit, and the cash funds the ammo the next firefight burns through. The same loop the player walks, running for everyone.
 
-[b]Market.[/b] The market is the read side of the trade cycle. The trade cycle above moves items from stalkers into traders. The market records what passes through and stocks a rank-gated slice of it back at those traders for you to buy.
-[list]
-[*][b]What you see.[/b] When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated to your rank, priced at a premium, and gone again after a short window.
-[*][b]The ledger.[/b] Every NPC sale at a trader is recorded by faction in a bounded list of recent sales. What a faction sells, that faction's traders may later carry. The list keeps only the most recent distinct items and drops the oldest as new ones come in. Nothing leaves the trade cycle to feed this. The market only reads it.
-[*][b]The echo.[/b] A trader's stock is wiped and respawned at every restock, so the item a stalker sold him is already gone by the time the market acts. The market re-creates a bounded echo of that sale, never the original item. Nothing is duplicated and the trade economy is left untouched.
-[*][b]Rank gate.[/b] What appears is gated by your rank, not the NPC's. Cheap goods show up early, expensive ones only as you rise. A rookie sees common consumables and parts, a veteran the high-value artefacts, devices, and medical a faction is losing. The gate, the allowed items, and their caps live in an editable policy file. Traders sell consumables, artefacts, devices, and grenades, so the market echoes those. Gear like outfits, helmets, and weapons is not stocked, since traders do not sell it.
-[*][b]Price and condition.[/b] An item shows at one trader, once, for a short window, at several times its full value, five by default. Different traders of a faction carry different items. The premium and the spawn condition are sliders under Economy then Faction market.
-[*][b]Adds only.[/b] The market never takes money or items from anyone. It adds stock and sets the price, and you pay that premium through the normal trade window like any other purchase. Turn it off and traders carry only their vanilla stock. It ships on.
-[/list]
-What a faction loots it keeps by policy, what it keeps it carries and sells, and what it sells circles back through its traders to you. The stock is never more than what that faction actually sells. The coarse controls live under Economy then Faction market. The detail lives in the policy file.
+[b]Market.[/b] The market is the player-facing side of the NPC economy. Stalkers trade among themselves and never see it; the market takes what they sold and bought and shows it to you, on the shelves of their faction's traders.
+When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated by your rank, priced at a premium, and gone after a short window. The reverse shows too, because the ammo and medical supplies those stalkers keep buying run short in his fresh stock.
+Behind it sit two bounded lists per faction, recent sales and recent purchases, and the market only ever reads them. A trader's stock is wiped and respawned at every restock anyway, so what appears is a re-created echo of a sale, never the original item. Nothing is duplicated, and the stock is never more than what the faction actually sells.
+The sell-out touches only the staples stalkers actually buy, ammo and medical supplies, per the same policy file. Each restock removes a share of each such item, 30% by default and adjustable between 20% and 95%. The share rounds down so the last few of anything always stay, and a restock never removes and adds the same item.
+What appears is gated by your rank, so cheap goods show early and the expensive artefacts, devices, and medical only as you rise. An item shows at one trader, once, for a short window, at several times full value, five by default, and different traders of one faction carry different items. The allowed items and their caps live in an editable policy file, gear like outfits and weapons is never stocked since traders do not sell it, and the premium and spawn condition are sliders under Economy then Faction market. Turn the market off and traders carry their vanilla stock. It ships on.
 
 [b]Instincts[/b] - Mutants have instincts. Drives are scored by deprivation, the same way as stalker needs. Scatter is binary and triggered by predator proximity. The strongest unmet instinct wins.
 [list]
-[*][b]Scatter[/b] - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range. The food chain runs cowardly -> feral -> predator -> aberrant. Squads relocate to the nearest smart terrain with no higher-tier threats.
+[*][b]Scatter[/b] - Prey and lower-tier mutants scatter when they see a higher-tier predator within eye range. The food chain runs cowardly -> feral -> predator -> aberrant, with each tier fleeing all higher tiers. Squads relocate to the nearest smart terrain with no higher-tier threats.
 [*][b]Feed[/b] - Mutants move to open territory during active hours, where predators and prey meet on shared hunting grounds.
 [*][b]Sleep[/b] - Mutants return to rest locations during dormant hours: cowardly in fields, feral and predator in lairs, predator and aberrant in buildings.
 [*][b]Explore[/b] - Mutants wander to a different territory or lair during active hours.
@@ -268,14 +216,12 @@ What a faction loots it keeps by policy, what it keeps it carries and sells, and
 [/list]
 
 [b]News: PDA radio gossip from the simulation[/b]
-Squad activity is published as radio chatter on your PDA. Every consequence rolls a per-consequence chance to publish. On hit, the event is captured to a session queue with the squad commander, faction, species, and location frozen at that moment. A composer drains the queue on a randomized interval and broadcasts one entry through Anomaly's PDA news channel.
-Each consequence ships with a pool of voice variants: hearsay, eyewitness, survivor, tracker, and named report. The composer picks one at random, so the same consequence reads differently each time.
-Filters: only events on your current level pass; events older than the max-age window are dropped; scope is own faction, allies, or world; the speaker's faction is the radio channel (Monolith, Army, Greh, and ISG are member-only); emissions and psi-storms suppress the queue, the PDA must be charged, and the shared 3-message cap and faction-restricted channel rules apply.
+Squad activity turns into radio chatter on your PDA. Every dispatched consequence, a squad sent to investigate a massacre, to stake out a stash, to claim ground, is written to a session log with the commander, faction, species, and location frozen at that moment. On a randomized interval a composer picks one recent entry and broadcasts it through Anomaly's news channel, and no story is ever told twice.
+Every consequence ships with a pool of voices, hearsay, eyewitness, survivor, tracker, and a named report crediting the commander, so the same event reads differently each time it is told.
+Only events from your current level pass, old ones are dropped, and a scope setting picks whose stories you hear, your faction, allies, or the whole Zone. The speaker's faction is the radio channel, so Monolith, Army, Greh, and ISG chatter stays member-only, and the vanilla rules still hold, emissions and psi-storms silence the radio and the PDA message cap applies.
 Sample radio lines:
 [list]
 [*]Heard a Free stalkers crew bedded down at Rookie Village a few hours ago after a long march.
-[*]Tracks at Tent Camp show a Tushkanos pack ran out in every direction, and whatever drove them off is still there.
-[*]Saw a Free stalkers crew walk into Rookie Village to ID their Bandit wipe with Wild Dogs already on the bodies.
 [*]Heard a Bandit lost Trailer Camp to Military a few hours ago and the backup crew got there too late.
 [/list]
 
@@ -285,52 +231,47 @@ Sample radio lines:
 
 [size=4][b]For developers and advanced users[/b][/size]
 
-[b]Architecture.[/b]
+[b]Architecture.[/b] AlifePlus reworks the signal layer itself. Where Anomaly and the X-Ray engine offered no signal, AlifePlus added it, from a squad-change callback the engine never had, to a healing callback the vanilla scripts never fired, to engine additions contributed upstream to the modded exes. The result is a framework where every action begins with something that really happened in the world.
 [list]
-[*]Radiant pipeline subscribes to squad-state events. Each event passes a multi-gate chain (pacer, protection, ratio, budget) that admits a small handful per minute. Admitted events feed a cascade that shuffles registered radiant causes and stops on the first publish.
-[*]Reactive pipeline subscribes to engine events that already encode "something happened": deaths, hits, item use, anomaly contact. Each registered cause evaluates independently. A single event can publish to many consequences.
-[*]The simulation layer is the engine's own. The simulation board owns squad-to-smart routing. AlifePlus sets a one-shot destination override that replaces the target-picking step only, then clears on release.
-[*]Smart terrain mutations (territory conquest, mutant infestation) rebuild from LTX on load. A scanner re-applies them and decays expired conquests on smart-terrain events.
-[*]The runtime is xlibs, a reverse-engineered API wrapping the X-Ray engine source, built and validated against the C++ implementation.
+[*]The radiant pipeline fires on real squad events, not a timer. AlifePlus watches every squad in the Zone and reacts when one actually did something, moved, changed smart terrain, went online or offline; quiet squads only fill the spare slots so everyone still gets a turn. The A-Life Rate and Ratio settings decide how many events per minute and how they split between your map and the background maps. Each event passes a budget and protection gate, then the registered causes try it in shuffled order until one publishes.
+[*]The reactive pipeline listens to engine events that already mean something happened, a death, a healing, an item picked up or used. Every registered cause evaluates the event independently, so a single event can set off several consequences.
+[*]The simulation itself stays the engine's. The simulation board still owns squad routing and tracks who is where, while AlifePlus sets a single destination override for one squad and clears it on release.
+[*]Territory conquest and infestation rebuild from vanilla configs on every load. A scanner re-applies them and lets expired ones decay.
+[*]Underneath sits xlibs, an API wrapping the X-Ray engine, built and validated against the engine's C++ source.
 [/list]
-[b]Animations, Gulag, GOAP.[/b] AlifePlus picks a destination smart terrain for a squad and hands the squad to the engine. The gulag binds each arriving NPC to a job from the smart terrain's catalog, the scheme system loads the behavior module the job points to, and the GOAP action planner picks the action that fits the NPC's current goal world state. AlifePlus works with that pipeline instead of replacing it. Every cause and consequence is paired with a predicate that asks the engine which smart terrains can produce the corresponding activity, reading the same job catalog the gulag reads. If the engine cannot bind a job to every arriving squad member, the squad is released back into autonomous A-Life routing.
-[b]Off-map transit.[/b] Any cause can flag a destination as off-map. The engine carries the cross-level movement through its own routing slot, and the gulag at the destination binds jobs the same way as on-map arrivals. There is no return leg -- the squad holds the destination gulag for a short stay and then settles there as an ordinary resident. AlifePlus adds the protection layers: per-source rate cap over a sliding game-hour window, level adjacency, engine-exposed filtering, a despawn safety net for squads that never settle, a live squad-to-smart map, and release on bind-fail.
-[b]Vanilla fixes.[/b] AlifePlus corrects two long-standing vanilla Anomaly A-Life bugs, wrapped rather than replaced so they layer cleanly on any base game or modpack and go inert where a modpack already fixes the same thing. Squad chase: vanilla cannot point one offline squad at another as a moving target, so AlifePlus rebuilds the pursuit each tick and chases track the target's real position. Smart terrain headcount: when the engine moves a scripted squad between smart terrains, vanilla forgets to update that terrain's squad count, so capacity checks drift; AlifePlus keeps the count correct for every squad move, its own and the engine's. These patches are global; if another mod already patches the same engine scripts, disable ap_core_chase.script and ap_core_anomaly_fixes.script before installing.
-[b]Performance.[/b]
+
+[b]Animations, gulag, GOAP.[/b] AlifePlus chooses the destination and hands the squad to the engine. From there the engine's own chain takes over, with the gulag giving each arriving NPC a job from the smart terrain's catalog, the scheme system loading the behavior that job points to, and the GOAP planner running it tick by tick. AlifePlus works with that pipeline instead of replacing it.
+Before sending anyone, each cause asks the engine which smart terrains can actually host the activity, reading the same job catalog the gulag reads, with the same preconditions. Whatever jobs vanilla Anomaly or a modpack like GAMMA, EFP or Zona ships, the check covers them.
+Anomaly carries a deep animation catalog that vanilla rarely shows, because most smart terrains never get occupied. AlifePlus fills those smart terrains, and every animpoint, patrol path and smartcover the game ever shipped finally runs in play.
+
+[b]Off-map travel, under the hood.[/b] The trip itself is real. The engine walks the squad across the level border, and the smart terrain at the other end gives it work like any local squad. AlifePlus decides only who goes and where. While squads are on the road, every smart terrain keeps an accurate count of who is stationed there, so a destination never looks fuller or emptier than it really is. If a smart terrain turns out to have no work for the whole squad, at arrival or later, the squad simply returns to ordinary A-Life. When picking a smart terrain on another map, AlifePlus relies only on what the engine truly knows about distant places, which is who owns them and what kind of place they are.
+
+[b]Vanilla fixes.[/b] AlifePlus corrects two long-standing vanilla Anomaly A-Life bugs. Both are wrapped rather than replaced, so they layer cleanly on any base game or modpack and go inert where a modpack already fixes the same thing.
 [list]
-[*]Reactive. AlifePlus does no work when the engine fires no event.
-[*]Cheapest-first gates. A pure-Lua os.clock pacer rejects ~98% of the radiant ticks before any engine bridge runs.
-[*]Frame spreading. Long sweeps run through xslice across many frames via one shared driver, with deferred compaction.
-[*]Cached over scanned. ap_core_cache holds per-level indexes for smarts, stashes, and squads. Smart and stash buckets never invalidate. Squad buckets update incrementally.
-[*]Minimal engine write surface. AP writes one engine field: squad.scripted_target.
-[*]Dual-clock rate limiting. Ephemeral limits read os.clock. Balance limits read xtime.game_sec, persisted across save/load.
-[*]Hard budget. Every measured flow targets 0.1ms average per call and a 4ms ceiling per call.
-[*]Zero-overhead profiling. xprofiler and xtrace collapse to pre-allocated NOOP singletons below DEBUG.
+[*][b]Squad chase.[/b] Vanilla cannot point one offline squad at another as a moving target. AlifePlus rebuilds the pursuit each tick, so NPC-versus-NPC and NPC-versus-player chases track the target's real position instead of a stale one.
+[*][b]Smart terrain squad count.[/b] When the engine moves a scripted squad between smart terrains, vanilla forgets to update that terrain's squad count. Capacity checks then drift, and a terrain can read as full when it is not. AlifePlus keeps the count correct for every squad move, its own and the engine's.
 [/list]
+These patches are global and affect every squad, not only AlifePlus's. If another mod already patches the same engine scripts, disable [font=Courier New]ap_core_chase.script[/font] and [font=Courier New]ap_core_anomaly_fixes.script[/font] before installing.
+
+[b]Performance.[/b] AlifePlus does no work when the engine fires no event, and its own event stream costs the same whether the Zone holds fifty squads or eight hundred. You decide how much happens per minute, and that is exactly what it produces. Everything expensive is bounded by design. Long scans spread across frames, lookups hit per-level caches instead of walking the world, throttles run on the real clock while world limits run on game time and survive save and sleep, and every measured flow targets 0.1ms per call with a hard 2ms ceiling, cold start and level transitions included. The engine is touched as little as possible. AlifePlus writes a single engine field, the squad's destination, and everything underneath is xlibs, built and validated against the X-Ray C++ source. Below DEBUG, profiling and tracing collapse to no-ops and the hot path makes no allocations.
 
 [line]
 
 [size=4][b]Compatibility & Safety[/b][/size]
 [list]
-[*]Requires xlibs.
-[*]Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer.
-[*]The full feature set needs the latest demonized build. A feature that needs a newer build stays inactive on older exes.
-[*]AlifePlus is built and tested with GAMMA, and also tested with Zona and EFP.
-[*]The mod has no base script edits and no engine patches.
-[*]Squads are extended, not hijacked: AlifePlus uses the engine's job system without overwriting engine variables.
-[*]AlifePlus works mid-save.
-[*]Story NPCs, companions, task givers, and quest squads are never touched.
-[*]Squads owned by other mods (warfare, BAO) are excluded automatically via the ownership registry.
-[*]Scripted squads carry a TTL and auto-release, so AlifePlus never holds a squad permanently.
-[*]AlifePlus uses only engine-native mechanisms and does not need third-party "bridge" or "synergy" patches.
-[*]Unauthorized patches that claim compatibility are not endorsed and will cause instability and save corruption.
+[*]Requires xlibs and MCM.
+[*]Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build, and a feature that needs a newer one stays inactive on older exes.
+[*]Built and tested with GAMMA, also tested with Zona and EFP, and works mid-save.
+[*]No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). Squads are extended, never hijacked.
+[*]Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.
+[*]No third-party "bridge" or "synergy" patch is needed or endorsed; the ones claiming compatibility cause instability and save corruption.
 [*]See integration.md on the project site for API reference and examples.
 [/list]
 
 [b]Mod compatibility[/b]
 Superseded:
 [list]
-[*]NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions. Disable them, otherwise both intercept looting a claimed corpse and fight over it.
+[*]NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
 [*]Anti-loot addons (NPC Stop Looting Dead Bodies, BoltBeGone): the loot policy keeps NPC looting on and bounds what each looter keeps, so blocking the loot path is no longer needed. AlifeBalance's Inventory Balance does the same for standing inventory.
 [/list]
 Conflicts (critical):
@@ -358,34 +299,36 @@ Affects / coexists:
 [*]MCM
 [/list]
 
-[size=4][b]Install (MO2)[/b][/size]
-[list=1]
-[*]Install xlibs
-[*]Install AlifePlus
-[*]Load order does not matter
-[*]Configure via MCM
+[b]Install (MO2)[/b]
+[list]
+[*]1. Install xlibs
+[*]2. Install AlifePlus
+[*]3. Load order does not matter
+[*]4. Configure via MCM
 [/list]
 Note: press RESET in MCM when updating. Most upgrade issues come from stale MCM state or outdated xlibs.
 
-[size=4][b]Uninstall (MO2)[/b][/size]
+[b]Uninstall (MO2)[/b]
 Disable or remove in MO2.
 
-[line]
-
-[size=4][b]Configuration[/b][/size]
+[b]Configuration[/b]
 Each cause and consequence is a module you can enable or disable through MCM. Gameplay actions (trade, stash looting, supply trader visits) each have their own toggles and tunable values: chances, cooldowns, thresholds, quantities, rate limits, and budgets. Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
 Two reset buttons live under Development. Reset ALL to Defaults restores every setting to factory state and takes effect on the first click. Reset ALL to Stateless Defaults restores factory state and then disables trade, item consumption, stash fill, stash loot, and smart ownership. AlifePlus dispatch and travel still run. Use the stateless preset on installs where another mod owns those systems.
 Presets:
 [list]
-[*]Calm Zone: A-Life Interval 15-20, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
-[*]Vanilla+: A-Life Interval 12, Cause Budget 10, Consequence Budget 2, Global Rate Limit 5 (defaults)
-[*]Chaotic: A-Life Interval 2-4, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+
+[*]Calm Zone: A-Life Rate 4, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2
+[*]Vanilla+: A-Life Rate 5, Cause Budget 20, Consequence Budget 2, Global Rate Limit 5 (defaults)
+[*]Chaotic: A-Life Rate 20+, Cause Budget 30+, Consequence Budget 5+, Global Rate Limit 15+
 [/list]
+
+[line]
 
 [size=4][b]FAQ[/b][/size]
 [b]Do I need modded exes?[/b] Yes. AlifePlus needs themrdemonized modded exes (2025.9.10 or newer) or AOEngine (v0.55 or newer). Vanilla Anomaly does not expose the APIs the framework relies on.
 [b]Does it work with other A-Life mods?[/b] AlifePlus has no known incompatibilities with warfare or AI addons. It will conflict behavior-wise with mods that script squads heavily.
-[b]Do I need offline combat enabled?[/b] No. The engine setting (alife/general/offline_combat, default full) is independent of AlifePlus, which generates its events either way. Leave it at the default (full): that is what drives offscreen faction attrition, which most modpacks rely on. Reducing or disabling it produces fewer combat events, but the system keeps generating other events, so A-Life activity continues.
+[b]Do I need offline combat enabled?[/b] No. The engine setting (alife/general/offline_combat, default full) is independent of AlifePlus. Leave it at the default, since it drives the offscreen faction attrition most modpacks rely on; turning it down just produces fewer combat events while AlifePlus keeps generating the rest.
+
+[line]
 
 [size=4][b]Known Issues[/b][/size]
 Map markers are debug-only and may glitch on some versions. Each marker shows the squad commander, so the stalker actually running the action may be a different squad member.
@@ -401,6 +344,7 @@ The mod includes English and Russian translations.
 [*]Altogolik - support, ideas, source materials
 [*]Stalker_Boss - Russian translation
 [*]gwalls - English copyediting
+[*]Muratovnik - fixes and bug reports
 [/list]
 
 [size=4][b]Usage and License[/b][/size]
@@ -413,4 +357,4 @@ The mod includes English and Russian translations.
 
 [size=4][b]Reporting issues and suggestions[/b][/size]
 Open a bug report or a suggestion at [url=https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose]github.com/damiansirbu-stalker/AlifePlus/issues[/url]. Also discussed on the GAMMA, EFP, Anomaly, and Zona Discord servers.
-Before posting, read this readme and the MCM options. Include exact steps to reproduce, xray.log and the mod debug log (MCM log level DEBUG), plus engine build, modlist, load order.
+Before posting, read this readme and the MCM options. Include exact steps to reproduce (from a new game or a named save, with expected and actual result), xray.log and the mod debug log (MCM log level DEBUG), plus engine build, modlist, load order. With hundreds of mods and overrides, only the log shows whether this mod was involved and what caused it.

@@ -2,7 +2,7 @@
 
 Rules for writing AlifePlus code. Sits between `doc/standards/code-standards.md` (language-level) and `architecture.md` (system design).
 
-**Structural rules live in `architecture.md`.** The Cause/Consequence Structural Rules section there governs umbrella files, generator pattern, specific-causes-only, N:M cause-consequence mapping, `_set` naming, CONFIGS factory scope, and toggle requirements. This document covers naming details, signatures, log format, and similar micro-conventions only. If a rule appears in both, architecture.md wins.
+**Structural rules live in `architecture.md`.** The Rules section there governs umbrella files, generator pattern, specific-causes-only, cause-consequence mapping, `_set` naming, CONFIGS factory scope, and toggle requirements. This document covers naming details, signatures, log format, and similar micro-conventions only. If a rule appears in both, architecture.md wins.
 
 ---
 
@@ -53,21 +53,14 @@ CONSEQUENCE = CAUSE + VERB
 | Consequence value (radiant) | `"consequence:{name}"`; same noun as the cause | `"consequence:area_conquer"`, `"consequence:hunger_campfire"`, `"consequence:slumber_lair"` |
 | Consequence value (reactive) | `"consequence:{cause}_{verb}"` | `"consequence:massacre_scavenge"` |
 | Action ID | `action:{verb}` | `action:find_targets`, `action:move_squad` |
-| Lock (cause) | `lock:cause:{name}` | `lock:cause:massacre` |
-| Lock (consequence) | `lock:consequence:{name}` | `lock:consequence:massacre_scavenge` |
-| Lock (hit mod) | `lock:hit_modifier` | |
 | MCM cause enabled | `cause_{name}_enabled` | `cause_massacre_enabled` |
 | MCM cause setting | `cause_{name}_{setting}` | `cause_massacre_threshold` |
 | MCM consequence enabled | `consequence_{name}_enabled` | `consequence_massacre_scavenge_enabled` |
-| MCM consequence setting | `consequence_{name}_{setting}` | `consequence_massacre_scavenge_chance` |
-| MCM distributor | `distributor_{setting}` | `distributor_max_xray_events` |
-| MCM cause window | `cause_window_{setting}` | `cause_window_max_events` |
-| MCM consequence window | `consequence_window_{setting}` | `consequence_window_max_events` |
+| MCM consequence setting | `consequence_{name}_{setting}` | `consequence_supply_trader_rush` |
 | MCM mutator setting | `mutator_{name}_{setting}` | `mutator_area_conquest_spawn_num`, `mutator_area_infest_decay_hours` |
 | Script file (cause, single) | `ap_ext_cause_{family}.script`; generator publishes exactly one cause | `ap_ext_cause_massacre.script`, `ap_ext_cause_alpha.script` |
 | Script file (cause, multi) | `ap_ext_causes_{family}.script`; generator publishes multiple causes | `ap_ext_causes_area.script`, `ap_ext_causes_stash.script`, `ap_ext_causes_needs.script`, `ap_ext_causes_instincts.script` |
-| Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written N) doesn't affect the file name. | `ap_ext_consequences_alpha.script` (1 handler), `ap_ext_consequences_wounded.script` (2 handlers), `ap_ext_consequences_needs.script` (16 handlers) |
-| Community list | `community_{role}` | `community_stalker`, `community_predator` |
+| Script file (consequence) | `ap_ext_consequences_{family}.script`; holds every consequence subscribed to causes in the family. Internal shape (CONFIGS factory or hand-written `_set`) doesn't affect the file name. | `ap_ext_consequences_alpha.script`, `ap_ext_consequences_needs.script` |
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
 | MCM menu ID | `{name}` (lowercase) | `alpha_promote`, `massacre_scavenge` |
@@ -75,35 +68,14 @@ CONSEQUENCE = CAUSE + VERB
 | XML title (cause) | `ui_mcm_ap_causes_{name}_title` | `ui_mcm_ap_causes_massacre_title` |
 | XML title (consequence) | `ui_mcm_ap_consequences_{name}_title` | `ui_mcm_ap_consequences_massacre_scavenge_title` |
 | On-arrive handler key | consequence name | `stash_loot`, `squadkill_revenge` (radiant arrivals and chase recursion both use the consequence enum string) |
-| DTO table | `stalker_needs[squad_id]` | future: `mutant_needs[squad_id]` |
+| DTO table | `_ap_{owner}_{domain}[squad_id]` | `_ap_stalker_needs`, `_ap_mutant_instincts`, `_ap_squad_opportunities` (ap_ext_tracker) |
 | DTO field | `last_{short}_at` | `last_hunger_at`, `last_sleep_at` |
 
 ---
 
 ## Multi-answer drive (radiant generator pattern)
 
-Each answer is a separate first-class cause paired 1:1 with its own consequence (sharing the noun per the radiant naming rule). "Multi-answer drive" is a code-structure quirk: a Hull-scored drive can be satisfied by any of several answers depending on squad identity (faction, species). The drive itself owns only the Hull threshold and the DTO timestamp field; everything else (enable, alignment, personality traits, filter) belongs to the individual answers. Any answer firing resets the drive's timestamp.
-
-Two tables in the generator file:
-
-- **NEEDS / INSTINCTS** (one entry per drive); Hull weight, threshold cfg key, period gating, DTO field name.
-- **CAUSES** (one entry per answer); cause const, short name (cfg key suffix), parent drive name, alignment subset, personality, filter, optional `find_opts` builder.
-
-Picker flow: score every drive via Hull, sort overdue list by drive descending, walk overdue drives top-down. For each drive, walk CAUSES with matching parent drive, run RULES + SCAN per cause; first that publishes wins. Cap is enforced inside `_on_smart` (RADIANT_MAX_SCANS_PER_GENERATOR): a SCAN reach consumes a slot, RULES rejections are free.
-
-cfg key layout:
-- `cause_<drive>_threshold`; Hull threshold, one cfg key per drive (shared by every answer under that drive)
-- `cause_<answer>_enabled`; per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (`feed`, `roam`, `pack`, `scatter`), so the cfg key reads as `cause_<drive>_enabled` but it is conceptually per-answer.
-- `consequence_<answer>_enabled`; consequence enable
-- `consequence_<answer>_rush`; rush option
-
-Personality clamp is global, not per-cause. `PERSONALITY_FLOOR` / `PERSONALITY_CEILING` in `ap_ext_const` apply uniformly to every cause and consequence personality roll. No per-cause min/max cfg keys.
-
-When to use: a drive that has multiple alternative satisfactions (mutant slumber → field/lair/surge by species; future fear drive → flee/hide/freeze). Don't use for single-answer drives where the answer name would equal the drive name (`scatter` is one answer to scatter drive; no split needed; cfg keys collapse).
-
-When NOT to use: state classifiers where the picker selects exactly one branch by inspecting world state (stash empty/full/trap pattern). Those use a state-by-state KEYS_BY_CAUSE picker, not Hull cascade.
-
-Used by: `ap_ext_causes_needs.script` (9 drives, 17 answers), `ap_ext_causes_instincts.script` (5 drives, 7 answers, multi-answer slumber).
+Canonical description in architecture.md -> Causes -> Multi-answer drive (tables, picker flow, cfg key layout). Only the cfg-key consequence pair is a naming convention: `consequence_<answer>_enabled` and `consequence_<answer>_rush`, one per answer.
 
 ---
 
@@ -119,13 +91,13 @@ Causes are predicates. Return `{ cause = CAUSE.X, ...payload }` or `nil`.
 
 | Element | Owner | Purpose |
 |---------|-------|---------|
-| Rate limiter | Producer | Per-CATEGORY sliding window, checked pre-handler in `_eval_*` |
+| Rate limiter | Predicate | Self-gates the per-CAUSE_CATEGORY sliding window (`ap_core_limiter.check_cause_rate_limit` at the top, `increment_cause_counter` on publish); the producer does not rate-check |
 | Enabled gate | Predicate | MCM toggle (`cause_<name>_enabled`), early return |
 | World-state filter | Predicate | Business logic that decides whether to publish |
 
 ### Predicate Order
 
-enabled check -> world-state filter -> build payload -> self-observe (prof+trace:push+debug)
+enabled check -> rate self-gate -> world-state filter -> build payload -> self-observe (prof+trace:push+debug)
 
 Each predicate publishes exactly one specific cause. Umbrella cause files (`ap_ext_cause_<family>.script`) hold one predicate per cause; each predicate is independent.
 
@@ -168,29 +140,13 @@ Gate order within rules: alignment -> species -> personality -> match -> validat
 
 ### Result Codes
 
-Template phase outcomes. Each code names the phase that answered.
-
-| Code | Phase | Meaning |
-|------|-------|---------|
-| `SUCCESS` | action | Consequence executed, squad scripted, record written |
-| `FAILED_RULES` | rules | Business rules rejected (alignment, personality, validation) |
-| `FAILED_SCAN` | scan | World query found nothing (no squads, no smart, entity gone) |
-| `FAILED_ACTION` | action | Rules and scan passed but action failed (script_squad rejected) |
-| `DISABLED` | rules | Consumer pre-gate skipped this consequence because its MCM toggle is off. Semantically a FAILED_RULES sub-flavor; emitted by the consumer, the handler is not called. |
-
-Rules:
-- The handler returns SUCCESS, FAILED_RULES, FAILED_SCAN, or FAILED_ACTION when it runs
-- DISABLED is emitted by the consumer pre-gate (`ap_core_consumer.script:87`) when condition returns false
-- Consumer continues to next consequence on any non-SUCCESS result
-- Consumer stops loop only when global radiant budget is exhausted
-- On SUCCESS: consumer increments per-type counter, global radiant counter, sets `event_data._fired = true`
+Each code names the template phase that answered: SUCCESS (action), FAILED_RULES (rules), FAILED_SCAN (scan), FAILED_ACTION (action), plus the consumer-emitted DISABLED. Canonical definitions and dispatch semantics: architecture.md -> Dispatch Pipeline -> Per-handler dispatch.
 
 ### MCM Fields
 
 | Setting | Type | Default |
 |---------|------|---------|
 | `consequence_{name}_enabled` | bool | true |
-| `consequence_{name}_chance` | 0-100 | 10 |
 
 ### Development
 
@@ -223,15 +179,7 @@ Rules:
 
 ### Component Prefixes
 
-| Prefix | Scope |
-|--------|-------|
-| `CONSEQUENCE.{NAME}` | Consequence |
-| `CAUSE.{NAME}` | Cause handler |
-| `PRODUCER.REACTIVE` | Producer dispatch |
-| `DISPATCH` | Event publish (ap_utils) |
-| `CONSUMER` | Cause consumer routing |
-| `MUTATOR.SMART` | Territory conquest (ap_smart_mutator) |
-| `TEST` | MCM test tools (ap_test) |
+Pipeline labels are composed by `ap_core_debug.bracket(constant)` (uppercase, `:` -> `.`): `[CAUSE.{NAME}]`, `[CONSEQUENCE.{NAME}]`, `[CONSEQUENCE_PHASE.{NAME}]`, plus the family roots (`[NEEDS]`, `[STASH]`, ...). Non-pipeline modules carry a literal `LOG` prefix: `[EXT.MARKET]`, `[EXT.LOOT]`, `[EXT.LOOTSEL]`, `[CALLBACKS.SQUAD]`, `[PIPELINE]`, `[STATS]`. No hardcoded `[CAUSE.X]` literals in pipeline files; each caches its bracket strings at module load.
 
 ### Tracing
 
@@ -265,9 +213,9 @@ No spanId - path contains operation names with counters.
 
 | Rule | Detail |
 |------|--------|
-| observe() location | Lives in `ap_debug`. Guarded by `ap_debug.enabled()`. When debug off, straight pass-through with zero overhead. |
+| observe() location | Lives in `ap_core_debug`. Guarded by `ap_core_debug.enabled()`. When debug off, straight pass-through with zero overhead. |
 | Generic serializer | Inside `observe()`. Iterates result table pairs, logs all scalar fields as `k=v`. Skips userdata, table, function, nil. Skips `code`/`reason`. |
-| Result builders | `ap_debug.result_squads(squads, extra)`, `ap_debug.result_squad(squad, extra)`. Never manually collect IDs. |
+| Result builders | `ap_core_debug.result_squads(squads, extra)`, `ap_core_debug.result_squad(squad, extra)`. Never manually collect IDs. |
 | No engine calls for logging | Log only what's already computed. IDs over names. Never fetch names just for logging. |
 | Lazy name cache | Per-method in AlifePlus code. Uses xlib calls, never raw xray/luabind. |
 | Action closure returns | All closures must return standardized tables using result builders. |
@@ -284,7 +232,7 @@ No spanId - path contains operation names with counters.
 All events MUST include `level_id` from where the event occurred.
 
 **Cause responsibility:**
-- Extract `level_id` from the entity using `xworld.get_level_id(se_obj)`
+- Extract `level_id` from the entity using `xlevel.get_level_id(se_obj)`
 - Include `level_id` in the published event payload
 
 **Consequence responsibility:**

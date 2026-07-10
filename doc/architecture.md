@@ -17,12 +17,6 @@ Part of a three-mod alife family: **AlifePlus** extends A-Life with new behavior
 
 ---
 
-## Invariants
-
-- **No steady-state per-frame work.** Ongoing work runs on a throttled tick (a fixed interval) or on a discrete engine event (hit, shot, spawn, option change); it never runs continuously every frame. A per-frame engine callback (`npc_on_update`) is used only as a carrier that throttles before doing anything, and we never place our code on a path the engine runs every frame (a visibility or fire functor). Frame-spreading a bounded one-off batch (xslice, 1 item per frame) to avoid a single-frame spike is the one allowed use of the frame; it completes and stops. Full rule and rationale: `doc/standards/code-standards.md` "No Per-Frame Work".
-
----
-
 ## Decision model
 
 AlifePlus extends A-Life on the input side and replaces it on the output side. It consumes the same world the vanilla simulation runs on (engine callbacks, smart props, squad rosters) but writes a different kind of decision into it.
@@ -45,7 +39,7 @@ else self:generic_update() end
 
 ### AlifePlus: a per-squad stateful command
 
-`scripted_target` set -> `specific_update` (`sim_squad_scripted.script:276-331`): the squad walks straight to the assigned smart - no `evaluate_prior`, no top-5, no roll. The destination is computed from that squad's own accumulated state: its hunger and instinct timers, opportunity windows, personality roll, and post-scan tactics, all held in DTOs keyed by `squad_id` (`ap_ext_tracker.script:167-205`). AP suppresses the lottery for that squad until the broker releases `scripted_target`, after which the squad falls back into `generic_update`.
+`scripted_target` set -> `specific_update` (`sim_squad_scripted.script:276-331`): the squad walks straight to the assigned smart - no `evaluate_prior`, no top-5, no roll. The destination is computed from that squad's own accumulated state: its hunger and instinct timers, opportunity windows, personality roll, and post-scan tactics, all held in DTOs keyed by `squad_id` (`ap_ext_tracker.script`). AP suppresses the lottery for that squad until the broker releases `scripted_target`, after which the squad falls back into `generic_update`.
 
 The distinction is bias versus command. Vanilla writes a bias - faction-wide props that tilt a draw each squad makes for itself. AlifePlus writes a command - a concrete target id that overrides the draw for one squad.
 
@@ -65,11 +59,12 @@ Both systems decide at the squad level. AlifePlus adds no per-NPC targeting; the
 - RULES: business checks that need no world scan. Toggle, alignment, species, personality, payload field, threshold, tactics. Cheap. Always cheapest-first.
 - SCAN: world lookup. find_smart, find_squads, find_stashes. Two flavors: destination SCAN (locates a target smart) and responder SCAN (locates responder squads).
 - ACTION: the consequence's effect. script_squad / script_actor_target, state mutation, news add, on_arrive callback.
-- Hull(<drive>): Hull's drive reduction theory (1943). Score = weight * (elapsed / threshold)^2 (ap_ext_causes_needs.script:96-98). Squared exponent makes overdue drives compete strongly. Used by NEEDS (9 stalker drives) and INSTINCTS (5 mutant drives).
+- Hull(<drive>): Hull's drive reduction theory (1943). Score = weight * (elapsed / threshold)^2 (`_find_overdue_needs` in ap_ext_causes_needs.script). Squared exponent makes overdue drives compete strongly. Used by NEEDS (stalker drives) and INSTINCTS (mutant drives).
 - MVT(<cause>): Charnov's marginal value theorem (1976). Binary patch-recovery gate: elapsed > threshold. Used by stash and area causes (6 OPPORTUNITY fields).
 - personality(<TRAITS>): probability check on a faction or species. avg(traits) clamped to [PERSONALITY_FLOOR, PERSONALITY_CEILING], rolled per dispatch. Inverted traits resolve as 1 - base before averaging.
 - tactics(<reason>): post-SCAN soft check on radiant decisions. Score starts at 1.0; each tactical concern subtracts a weight. math_random() > score returns FAILED_RULES with reason LOW_TACTICS. Conditions: last-of-faction at source (-0.20), smart already targeted by another scripted squad (-0.20). Radiant only; reactive bypasses (event responses are not voluntary picks). Implemented in `ap_ext_util.is_tactically_eligible`.
 - Cross-DTO read: any cause generator may read any DTO; only the owning generator writes.
+- Consequence file shapes: _set (hand-written handlers, used for per-handler quirks) and CONFIGS factory (one CONFIGS table + one closure builder generates the handlers from a single body).
 - Producer (ap_core_producer): runs the gate chain, evaluates cause generators, publishes to xbus.
 - Consumer (ap_core_consumer): subscribes to xbus events, dispatches to consequence handlers.
 - xbus: pub/sub event bus from xlibs. Causes publish, consequences subscribe.
@@ -80,6 +75,7 @@ Both systems decide at the squad level. AlifePlus adds no per-NPC targeting; the
 
 Project-wide constraints that hold across all pipelines and modules.
 
+- **No steady-state per-frame work.** Ongoing work runs on a throttled tick (a fixed interval) or on a discrete engine event (hit, shot, spawn, option change); it never runs continuously every frame. A per-frame engine callback (`npc_on_update`) is used only as a carrier that throttles before doing anything, and we never place our code on a path the engine runs every frame (a visibility or fire functor). Frame-spreading a bounded one-off batch (xslice, 1 item per frame) to avoid a single-frame spike is the one allowed use of the frame; it completes and stops. Full rule and rationale: `doc/standards/code-standards.md` "No Per-Frame Work".
 - Core never imports ext. All ext modules reach core through registered function references at on_game_start.
 - Cross-DTO read, single-writer write. Any cause generator may read any DTO; only the owning generator writes.
 - Performance budget. Every measured flow (each bracketed `ap_core_debug.observe` label in the log: `[CONSEQUENCE_PHASE.FIND_TARGETS]`, `[CONSEQUENCE_PHASE.FIND_DESTINATION]`, `[STASH]`, ...) targets 0.1ms average per call and has a hard 2ms ceiling per call. No exceptions, including cold start, save load, and level transition. Any preload (index build, cache warm, registry walk) that would breach 2ms in a single tick must be frame-spread (xslice or equivalent), with the search path falling back to the un-indexed walk until the build completes. A flow that averages above 0.1ms, or that ever exceeds 2ms in a single call, is a regression and requires a perf task. See `doc/standards/code-standards.md` "Performance budget".
@@ -92,23 +88,24 @@ Project-wide constraints that hold across all pipelines and modules.
 
 Two layers. Core is the framework. Ext is the domain. Core never imports ext; all ext modules register with core via function references at on_game_start.
 
-### Core (15 files)
+### Core
 
 | File | Role |
 |------|------|
 | _ap_deps | Dependency gate: assert xlibs installed and version-compatible |
+| ap_api | Public integration facade over broker / record / consumer / producer: owner registry, script_squad / script_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
-| ap_core_cache | Per-level indexes over SIMBOARD.smarts_by_names (sync at actor_on_first_update), treasure_manager.caches (xslice step=3, ~2s warmup), and SIMBOARD.squads (sync at actor_on_first_update). Consumers fetch via smarts_on_level(level_id) / stashes_on_level(level_id) / squads_on_level(level_id) and pass as opts.source to xsmart.find_smart / xstash.find_stashes / xsquad.find_squads. Smarts and stashes never invalidate (LTX-baked positions). Squads update incrementally via squad_on_after_level_change (move between buckets) and server_entity_on_register / on_unregister (spawn / despawn); stale entries are a no-op cost because xsquad._squad_base_valid level gate is first. Also builds a standalone-role index keyed by smart_id (cross-level). Populated by xslice over the full alife pool via sim:iterate_objects with per-entity Stalker + Trader clsid class-gate. For each curated NPC (section in xdata.npc_roles with trader / medic / mechanic role) resolves the owning smart via smart.npc_info (engine roster) with find_smart-by-position fallback, then inserts the NPC into every applicable role bucket per xdata curation (multi-role NPCs land in trader AND mechanic when xdata declares both). Consumers: standalone_role_at_smart(smart_id, role) returns id-set, first_online_role_npc_at_smart(smart_id, role) returns first live game_object. Full rebuild per level transition (no incremental upkeep on this bucket; Lua VM reinit + actor_on_first_update fires fresh build). The earlier 1.7.1 approach using alife():iterate_level_objects_of_clsid walked graph().level().objects() (engine's switched-in registry, not the per-level alife pool) and silently dropped most offline curated NPCs |
+| ap_core_cache | Per-level smart / stash / squad indexes plus a cross-level standalone-role-NPC index, built frame-spread (xslice) at actor_on_first_update; finders take them as opts.source. Mechanism in the module header |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
-| ap_core_callbacks | Synthetic callbacks AP declares and fires: ap_squad_on_change (a staggered SIMBOARD.squads sweep producing a rate/mix-controlled squad heartbeat, reads cfg.alife_rate/alife_ratio live) and ap_npc_medkit_use (xevent.hook on xr_eat_medkit.consume_medkit). Both declared at module load, installed in on_game_start. Tracing complete but one-boolean-gated on ap_core_debug.enabled() |
+| ap_core_callbacks | Synthetic callbacks AP declares and fires: ap_squad_on_change (the radiant heartbeat sweep) and ap_npc_medkit_use. Canonical section: Pipeline -> Synthetic callbacks |
 | ap_core_producer | Event Pipeline: radiant gate chain on ap_squad_on_change (budget peek, protection), reactive gate chain on engine callbacks, cause generator cascade, xbus publish |
 | ap_core_consumer | Dispatch Pipeline: xbus subscribe, consequence iteration, result codes, rate gating |
 | ap_core_broker | Squad lifecycle: protection, ownership registry, scripting, 20s scan, arrival, release, transit balance |
-| ap_core_chase | Squad-target chase: two guarded sim_squad_scripted monkeypatches (get_current_task / get_script_target) that home an AP-scripted chaser on another squad by id, keyed on the broker registry; delegate to the captured original for non-chase squads (chain-safe with warfare) |
-| ap_core_anomaly_fixes | Vanilla Anomaly bugfixes. FIX 1: SIMBOARD roster desync -- wraps sim_squad_scripted specific_update / generic_update to call xsmart.reconcile_squad_roster after each (the roster-blind vanilla assign_smart leaves SIMBOARD.smarts[].squads / population stale). WRAP not replace; idempotent, so inert where a base already fixes it. `_patched` guard + class nil-guard |
+| ap_core_chase | Squad-target chase hooks homing an AP-scripted chaser on another squad by live coordinates. Canonical section: Consequences -> Chase pattern |
+| ap_core_anomaly_fixes | Vanilla Anomaly bugfix monkeypatches (wrap, never replace). Canonical section: Engine integration -> Vanilla fixes |
 | ap_core_record | Activity record: FIFO of dispatched consequences with denormalized display facts; HUD / news / external integrators read from it |
 | ap_core_map | PDA map markers rendered from activity record entries; 10s apply timer, 20s validate pass, 60s linger before unmark |
 | ap_core_hud | Pipeline statistics overlay (UIStatsHUD): counters, gate breakdown, periodic dump |
@@ -116,13 +113,13 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 
 ### Ext: cause and consequence files
 
-Single-cause files (7), one cause per family: ap_ext_cause_alpha, ap_ext_cause_alphakill, ap_ext_cause_basekill, ap_ext_cause_harvest, ap_ext_cause_massacre, ap_ext_cause_squadkill, ap_ext_cause_wounded.
+Single-cause files, one cause per family: ap_ext_cause_alpha, ap_ext_cause_alphakill, ap_ext_cause_basekill, ap_ext_cause_harvest, ap_ext_cause_massacre, ap_ext_cause_squadkill, ap_ext_cause_wounded.
 
-Multi-cause files (4): ap_ext_causes_area, ap_ext_causes_instincts, ap_ext_causes_needs, ap_ext_causes_stash.
+Multi-cause files: ap_ext_causes_area, ap_ext_causes_instincts, ap_ext_causes_needs, ap_ext_causes_stash.
 
-Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequences_alphakill, ap_ext_consequences_area, ap_ext_consequences_basekill, ap_ext_consequences_harvest, ap_ext_consequences_instincts, ap_ext_consequences_massacre, ap_ext_consequences_needs, ap_ext_consequences_squadkill, ap_ext_consequences_stash, ap_ext_consequences_wounded.
+Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequences_alphakill, ap_ext_consequences_area, ap_ext_consequences_basekill, ap_ext_consequences_harvest, ap_ext_consequences_instincts, ap_ext_consequences_massacre, ap_ext_consequences_needs, ap_ext_consequences_squadkill, ap_ext_consequences_stash, ap_ext_consequences_wounded.
 
-### Ext: named modules (11 files)
+### Ext: named modules
 
 | File | Role |
 |------|------|
@@ -131,10 +128,10 @@ Consequence files (11, always plural): ap_ext_consequences_alpha, ap_ext_consequ
 | ap_ext_common | Shared chase dispatch: move_actor_chasers (player target) / move_squad_chasers (squad target) |
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn) |
-| ap_ext_trade | NPC supply-trader orchestration: loads `configs/alifeplus/ap_trade_policy.ltx` per-rank blocks (`[ap_trade_policy_rookie]` / `[ap_trade_policy_veteran]` split by `RANK_VETERAN`) for per-category min / max; per-event net-profit cap is the MCM `trade_profit_max` override (economy > trade), applied to all ranks |
-| ap_ext_loot_claim | Three-way corpse loot ownership over one xttltable ledger (victim -> {killer, squad, death game_sec}; actor kills via npc_on_hit `from_death_callback`, NPC kills squad-owned via `get_object_squad` with lone-killer fallback). Half A (reserve own) and Flow C (npc-vs-npc) share a generic exclusion arbiter `_npc_loot_excluded` xevent-hooked at `xr_corpse_detection.near_actor`; Flow C's scanning-NPC identity comes from a `find_valid_target` wrapper (xevent on the global `evaluator_corpse` class), since near_actor receives only the corpse. Half B vetoes the actor opening a claimed kill at `on_before_key_press` (level.get_target_obj), with `ActorMenu_on_item_before_move` and Dot Marks backstops. Each flow carries its own MCM enable / radius / TTL; the death timestamp is aged per-flow at read, ledger retention capped at the max TTL. Squad claim holds while a living member sits within radius (`xsquad.iter_member_ids`); squad id validated against recycling via `xsquad.is_squad`. Warn and yield tips draw from three per-flow pools; two variants per pool carry a `#name#` slot (the news token convention) filled by the looter or owning-NPC name, variant 001 kept nameless as the fallback |
-| ap_ext_market | Faction market, both directions in trader perspective: observes `ap_ext_trade.trade` output into per-faction bounded dedup FIFOs of what the faction's traders bought from stalkers (`_trader_bought`) and sold to them (`_trader_sold`); at a curated faction trader's restock (one of two detection paths) runs one eligibility filter (per-direction policy whitelist, role fit, player-rank roll, distribution claim) both ways: the sell-out first releases a share of each picked trader-sold section and claims it, then inject spawns the trader-bought survivors at an MCM-set condition, priced at an MCM premium via the engine `on_get_item_cost` hook, released on a window timer. Read-side of the loot/trade/market loop; no AP money path |
-| ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept). Subscribes to `npc_on_get_all_from_corpse` (per-item, fired before `corpse:transfer_item`), records the looted item ids, and runs one trim deferred to the next frame via `CreateTimeEvent` (idempotent per looter id). The trim reuses the xinventory kernel (`load_policy [ap_loot_policy]`, `classify`, `policy_key`, `get_cost`, `release_item`): per capped key it releases the cheapest looted members first until the whole-inventory count is at/under max, keeping the highest-value loot and leaving any standing excess to the AlifeBalance cull. Untouchable / equipped inherited from `get_category`. MCM `loot_select_enabled`; online only; skips unscriptable looters. No money path, no save state |
+| ap_ext_trade | NPC supply-trader orchestration: sell surplus, buy up to per-rank policy bands, net-profit capped. Canonical row: Item flow -> Supply Trader |
+| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM enable / radius / TTL. Mechanism in the module header |
+| ap_ext_market | Faction market: the player-facing echo of NPC trading at a faction's hub traders, injection and sell-out in trader perspective. Canonical section: Item flow -> Faction market |
+| ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept): a looter keeps a policy-bounded, value-ranked share of what it just took from a body. Canonical row: Item flow -> Corpse Loot Trim |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
 | ap_ext_test | Console test harness: world-state seeders (per-category NPC item kits, NPC cash, stash fills, artefact drop) plus a periodic runner (run()) that re-seeds on intervals for soak sessions; seeds only real world state, never AP internals |
 
@@ -200,11 +197,11 @@ Two gates on each `ap_squad_on_change` fire; rate and level mix are enforced at 
 
 1. BUDGET peek. Non-consuming read of the global radiant dispatch counter (`ap_core_limiter.check_global_consequence_rate_limit`). Radiant is 1:1 publish-to-dispatch and the consumer refuses past `global_consequence_max_events` per window, so when the window is full every evaluation is provably wasted work and would violate the cause publish contract (universal rule 14). Window full -> return before any work. Self-tunes with the MCM cap; the counter only advances on dispatch SUCCESS, so failed consequences do not eat the window.
 2. is_protected. Full eligibility check via ap_core_broker.is_protected. Checks ownership, scripted, permanent, active_role, task_target. Short-circuits early.
-3. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget RADIANT_MAX_SCANS_PER_GENERATOR = 1 (`ap_core_const.script:147`); RULES rejections are free and the generator can cascade through all of its causes, but only the first cause that passes RULES and enters its world SCAN consumes the slot — any later cause that reaches SCAN in the same `_on_smart` call hits BUDGET_EXHAUSTED. Budget is a local Lua counter, resets every `_on_smart` call.
+3. EVAL (cascade). Shuffles registered cause generators in-place inside a reusable buffer, walks them in random order. Each generator self-gates the per-CAUSE_CATEGORY rate (check_cause_rate_limit at the top of the predicate); the producer does not rate-check. First generator to publish stops the cascade. Each generator's `_on_smart` carries its own internal SCAN budget `ap_core_const.RADIANT_MAX_SCANS_PER_GENERATOR` = 1; RULES rejections are free and the generator can cascade through all of its causes, but only the first cause that passes RULES and enters its world SCAN consumes the slot — any later cause that reaches SCAN in the same `_on_smart` call hits BUDGET_EXHAUSTED. Budget is a local Lua counter, resets every `_on_smart` call.
 
 Shuffling ensures fair distribution regardless of how many generators apply to a given squad's alignment. Per-squad fairness comes from the sweep's round-robin production: every squad gets its turn instead of winning a global pacer lottery. The turn guarantee is conditional, not absolute: pending changes preempt turns inside a lane, so it holds while change inflow stays under the pop capacity (8 x credits/min per lane); under sustained heavy transit, turns defer until the change queue drains.
 
-#### Reactive gate chain (ap_core_producer._on_reactive, line 259)
+#### Reactive gate chain (ap_core_producer._on_reactive)
 
 Reactive callbacks: squad_on_npc_death, ap_npc_medkit_use (synthetic; mechanism under Synthetic callbacks above), actor_on_item_take, npc_on_item_take, actor_on_item_use. Three gates:
 
@@ -224,8 +221,6 @@ Protection is applied at four layers, same guard set against different entities 
 | Squad | ap_core_broker.script_squad | no inline check; protection is upstream |
 
 Reactive causes skip the producer protection gate because the callback entity (e.g. dead victim in squad_on_npc_death) is not the entity AP would script. They check protection on the relevant entity inside the generator: alpha and alphakill guard the killer, wounded guards the patient, harvest guards the taker. Causes whose trigger is a dead victim (massacre, squadkill, basekill) need no in-cause guard - consequences find responders through find_squads which applies all exclusions.
-
-script_squad does not check protection. It assumes upstream layers verified the squad. Direct callers outside the pipeline must check is_protected themselves.
 
 #### Cause generator contract
 
@@ -264,7 +259,7 @@ Per consequence:
 4. Handler runs. Returns { code = RESULT.X, reason = "..." }. FAILED_RULES (business rules rejected: alignment, personality, species, validation), FAILED_SCAN (rules passed but world query empty), FAILED_ACTION (rules and scan passed but the action failed: script_squad could not route, registration call returned false), SUCCESS.
 5. On SUCCESS: increment per-consequence counter; for radiant only, increment global radiant counter; set event_data._fired = true. For radiant, also stop the loop (rule 5 below).
 
-DISABLED is the rules-layer skip for a consequence whose MCM toggle is off. Semantically equivalent to a FAILED_RULES with reason="disabled"; emitted by the consumer pre-gate (`ap_core_consumer.script:87`) so the handler is not called. The four phase codes are still what the handler returns when it runs.
+DISABLED is the rules-layer skip for a consequence whose MCM toggle is off. Semantically equivalent to a FAILED_RULES with reason="disabled"; emitted by the consumer pre-gate so the handler is not called. The four phase codes are still what the handler returns when it runs.
 
 #### Dispatch rules
 
@@ -298,7 +293,7 @@ Per-squad threshold (Hull / MVT). Owned by each cause generator. Reads last_<X>_
 
 Per-category cause budget is consumed inside the cause generator (self-gating). The producer does not gate cause budgets. A rate-blocked generator is skipped by the EVAL cascade so the slot frees for the next entry. ap_core_limiter.create_cooldown is a small helper for arbitrary timestamp-based cooldowns.
 
-Offmap balance counter. Backs the offmap cause family (SUPPLY_TRADER_OFFMAP, SOCIAL_OFFMAP, JOB_EXPLORE_OFFMAP). Single counter keyed by source level_id; faction-agnostic and destination-agnostic; shared across all offmap causes. Window OFFMAP_WINDOW_SEC (48 game-hours, hardcoded) mirrors the framework pattern where pipeline windows are const and only caps are MCM-exposed (cause_max_offmap, default 2). Clock is xtime.game_sec; bucket state round-trips through save/load via xttltable export / import in ap_core_limiter SAVE_STATE / LOAD_STATE. Off-map filters are prop-only (xsmart.is_base, _is_unclaimed) because smart.stalker_jobs is nil for off-actor-level smarts (smart_terrain.script:462 load_jobs early-exits when not on actor level); has_animated_stalker_jobs / has_stalker_jobs / has_anomaly cannot be used on off-level candidates.
+Offmap balance counter. Backs the offmap cause family (SUPPLY_TRADER_OFFMAP, SOCIAL_OFFMAP, JOB_EXPLORE_OFFMAP). Single counter keyed by source level_id; faction-agnostic and destination-agnostic; shared across all offmap causes. Window OFFMAP_WINDOW_SEC (48 game-hours, hardcoded) mirrors the framework pattern where pipeline windows are const and only caps are MCM-exposed (cause_max_offmap, default 2). Clock is xtime.game_sec; bucket state round-trips through save/load via xttltable export / import in ap_core_limiter SAVE_STATE / LOAD_STATE. The selection-side constraints (prop-only filters, adjacency narrowing) live in Squad Lifecycle -> Off-map track.
 
 Per-causer reaction counter. A second balance-family counter, parallel to the per-category REACTIONS budget. A causer is the source entity whose action fired a reactive event: the killer (massacre, basekill, squadkill, alphakill), the patient who healed (wounded), or the artefact taker (harvest). For an actor-triggered event the causer id is xconst.ACTOR_ENTITY_ID. Six of the seven reactive causes - all the ones that dispatch a squad at the causer - call check_causer_rate_limit(causer_id) before publishing and increment_causer_counter(causer_id) at publish. The alpha cause is deliberately excluded: alpha_promote only updates the alpha tracker (no squad dispatch), so it neither consumes the per-causer budget nor is blocked by it; gating it would let a promotion silence real reactions and vice versa, and it never keys on the actor anyway (mutant killer only). The counter is keyed by causer id alone (not by cause), so it is shared: once a single source has triggered cause_max_per_causer reactions of any kind within CAUSER_WINDOW_SEC (1 game-hour, hardcoded), every reactive cause attributed to that id is blocked until the window slides. This prevents one dominant source from saturating the reaction layer - the motivating case is a hostile map where the player is the only enemy (Radar), but it also smooths a lone predator clearing a lair or one squad on a long killing spree. Nil causer (unidentified killer) is always allowed; a cooldown cannot key on it. Clock is xtime.game_sec (so the window tracks game time across sleep / time-skip), but the counter is ephemeral - unlike the offmap counter it is NOT persisted; it resets on save load and on level transition (Lua VM reinit). A short throttle does not need to survive a reload. Default cap 1 (MCM cause_max_per_causer) makes the gate a strict one-reaction-per-source-per-game-hour cooldown; raising it admits more.
 
@@ -426,36 +421,13 @@ Roster desync. Vanilla `sim_squad_scripted:specific_update` (script:289) and `:g
 
 The chase override (`ap_core_chase`) also monkeypatches `sim_squad_scripted`, but to implement a feature (squad-target homing), not to fix a bug -- it patches different methods (`get_current_task` / `get_script_target`), so the two coexist without ordering concerns.
 
-### Off-map transit
-
-A cause can flag a destination as off-map. The flag changes selection rules and rate-limiting. The lifecycle machinery is shared with on-map dispatch.
-
-The engine handles the cross-level move through its own per-squad routing, including the offline/online transition machinery for the level swap. At the destination the gulag binds jobs identically to on-map arrivals.
-
-An off-map dispatch has no return leg. The squad travels to the destination, holds the gulag for the shortened off-map `PRE_RELEASE_GULAG` (`SUPPLY_TRADER_OFFMAP` / `JOB_EXPLORE_OFFMAP` / `SOCIAL_OFFMAP`, 600 game-sec = 10 in-zone minutes), then `_unscript_squad` settles it at the destination as an ordinary vanilla resident. The squad does not go back to where it came from; its bond becomes the destination smart. A squad that cannot bind a job at the destination (or loses one mid-hold) is released via `_release_to_dwell`, which keeps only `offmap` + `dispatched_at` so the despawn safety net reclaims it once offline.
-
-AlifePlus stacks safety layers on top of the engine capability. A per-source-level rate counter caps off-map dispatches over a sliding window, so no single level depopulates through repeated outflow. Adjacency narrowing restricts candidate smarts to BFS-reachable neighbor levels, with source level excluded. Cross-level filtering runs only on the data the engine still exposes for off-actor-level smarts. A per-session despawn budget (`offmap_despawn_hours`, default 168 game-hours) reclaims a squad that never settled, offline-only and respecting registered owners + permanent / active-role / task-target protections. SIMBOARD bookkeeping stays current via the dispatch + commit hook pair, so cross-level capacity and garrison queries return accurate counts.
-
-| Layer | Mechanism | Site |
-|-------|-----------|------|
-| Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap` (default 2), window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter.script:110-135` |
-| Adjacency narrowing | filter narrows to BFS neighbor set; source level excluded by `xlevel.get_neighbor_levels` removing `source_id` from visited; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script:151-166`, `xlevel.script:273-287` |
-| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`); `has_animated_stalker_jobs` omitted because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | `ap_ext_causes_needs.script:290-334` (offmap CAUSES entries) |
-| Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `xsmart.script`, via `ap_core_util.find_first_smart_observed` at `ap_ext_causes_needs.script:167` |
-| SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker.script` `script_squad` + `_commit_arrival` |
-| Settle terminal | after the gulag hold, `_unscript_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker.script` `_update_gulag` |
-| Despawn safety net | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` reclaims a squad that never settled at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker.script` `_check_offmap_despawn` |
-| Arrival check | shared `_commit_arrival` (`has_anchored_jobs` wrapping `xsmart.has_jobs_for`); check short-circuits for off-actor-level smarts so the gulag hold runs to expiry | `ap_core_broker.script` `_commit_arrival` |
-
-Save persistence: the offmap counter exports / imports via xttltable in `ap_core_limiter` SAVE_STATE / LOAD_STATE. The 48-hour window survives save/load and time-skip (game-time clock).
-
 ---
 
 ## Item flow
 
-Five AP flows touch items: Supply Trader (buy/sell on arrival), Stash Loot (squad takes from stash), Stash Fill (squad deposits surplus to stash), Corpse Loot Trim (an NPC keeps only a policy-bounded share of what it just looted from a body), and Faction Market (a faction's hub traders restock a bounded, rank-gated echo of what that faction's stalkers recently sold, minus a bounded share of what they recently bought). All five load their LTX via `xinventory.load_policy`, classify inventory via `xinventory.get_category(item, opts)` / `xinventory.get_section_category(sec)`, and resolve untouchables through the same categorizer. The first four move items between carriers on squad arrival. The market is the one read-side flow: it observes what the trade flow already did and re-materialises a slice of it for the player.
+The AP item flows: Supply Trader (buy/sell on arrival), Stash Loot (squad takes from stash), Stash Fill (squad deposits surplus to stash), Corpse Loot Trim (an NPC keeps only a policy-bounded share of what it just looted from a body), and Faction Market (a faction's hub traders restock a bounded, rank-gated echo of what that faction's stalkers recently sold, minus a bounded share of what they recently bought). All of them load their LTX via `xinventory.load_policy`, classify inventory via `xinventory.get_category(item, opts)` / `xinventory.get_section_category(sec)`, and resolve untouchables through the same categorizer. All but the market move items between carriers on squad arrival. The market is the one read-side flow: it observes what the trade flow already did and re-materialises a slice of it for the player.
 
-The unified category model is the modernization step over Alundaio's `items\trade\gulag_job_trade_buy_sell.ltx` (per-section keep counts inside each tradeable item's LTX). Per-section meant every tradeable section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate. AP's `xinventory.get_category` reads engine-baked `_ITM` Parse_ITM buckets (outfit, helmet, artefact, device, money, grenade_ammo, ammo, eatable filtered to food/drink) plus hand-set predicates for the medical 5 (medkit, bandage, antirad, stim, pill) and grenades. A modpack medkit section gets `medkit` category automatically when the engine binds it to `kind=i_medical`. No per-modpack LTX maintenance, no item file edits — the policy operates on categories, the engine assigns categories to sections.
+The unified category model is the modernization step over Alundaio's `items\trade\gulag_job_trade_buy_sell.ltx` (per-section keep counts inside each tradeable item's LTX). Per-section meant every tradeable section had to declare its own buy_sell row, and modpacks adding items had to dirty the item files to participate. AP's `xinventory.get_category` reads engine-baked `_ITM` Parse_ITM buckets (outfit, helmet, artefact, device, money, grenade_ammo, ammo, eatable filtered to food/drink) plus hand-set predicates for the medical set (medkit, bandage, antirad, stim, pill) and grenades. A modpack medkit section gets `medkit` category automatically when the engine binds it to `kind=i_medical`. No per-modpack LTX maintenance, no item file edits — the policy operates on categories, the engine assigns categories to sections.
 
 Runtime untouchable checks layered in 1.7.5 (`xinventory.get_category:632-637`): runtime `story_id` via `get_object_story_id` (vanilla quest-tracker convention, `release_npc_inventory.script:81` precedent), `axr_companions.is_assigned_item(opts.npc_id, item:id())` (companion-gifted, `axr_companions.script:1300,1360` precedent), `se_load_var(item_id, "", "strapped_item")` (player-strapped, `itms_manager.script:338` precedent). Section-level untouchable (quest / anim / blacklisted) gates first via `get_section_category`. Equipped check uses `opts.equipped_ids`. All three runtime checks centralized in `get_category` so every consumer (trade, stash loot, stash fill, corpse loot trim, AlifeBalance inventory-balance) respects them without per-consumer code.
 
@@ -575,7 +547,22 @@ _ap_scripted_squads persists to m_data.ap_core_broker; the activity record (FIFO
 
 ### Off-map track
 
+A cause can flag a destination as off-map; the flag changes selection rules and rate-limiting while the lifecycle machinery stays shared with on-map dispatch. The engine itself handles the cross-level move through its own per-squad routing, including the offline/online transition for the level swap; at the destination the gulag binds jobs identically to on-map arrivals. The off-map hold uses the shortened `PRE_RELEASE_GULAG` value (600 game-sec).
+
 Off-map sessions live on the same `_ap_scripted_squads` entries as regular scripted dispatches; the broker has one collection, one scan, one source of truth. An off-map dispatch is a regular `script_squad(squad, smart, { offmap = true })` call that additionally initialises the session fields `{ offmap = true, dispatched_at }` via `_init_offmap_session`. There is no return leg: the squad travels out, holds the gulag briefly, and settles at the destination. The 20s scripted-squad scan calls `_scan_offmap_entry` for any entry with `data.offmap`, which runs only the despawn safety-net check.
+
+AlifePlus stacks safety layers on top of the engine capability:
+
+| Layer | Mechanism | Site |
+|-------|-----------|------|
+| Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap`, window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter` offmap counter (see Rate limiting) |
+| Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
+| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`); `has_animated_stalker_jobs` omitted because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
+| Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart_observed` |
+| SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `script_squad` + `_commit_arrival` |
+| Settle terminal | after the gulag hold, `_unscript_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
+| Despawn safety net | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` reclaims a squad that never settled at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker` `_check_offmap_despawn` |
+| Arrival check | shared `_commit_arrival` (`has_anchored_jobs` wrapping `xsmart.has_jobs_for`); short-circuits for off-actor-level smarts so the gulag hold runs to expiry | `ap_core_broker` `_commit_arrival` |
 
 Registration. `_init_offmap_session(data, squad_id, now)` sets `offmap = true` and `dispatched_at = now` on a fresh `script_squad` entry. No home level is captured -- the squad's origin is not tracked because it never returns to it.
 
@@ -591,11 +578,11 @@ Despawn safety net. `_check_offmap_despawn` reclaims a squad that never settled:
 
 Save / load. The merged collection persists to `m_data.ap_core_broker.ap_scripted_squads`; session fields ride along on each entry. `dispatched_at` is an absolute game-second stamp, so it stays correct across save/load and time-skip. `SERVER_ENTITY_ON_UNREGISTER` clears the squad's entry. Two-phase recycled-id sweep: `_on_load_state` restores the dict from m_data (entities aren't loaded yet, no alife queries), and `_on_game_load` sweeps it via `xsquad.is_squad` to evict stale ids once `alife_object(id)` is valid. The engine recycles freed server-entity slots and SERVER_ENTITY_ON_UNREGISTER can be bypassed by some release paths (`alife_object_registry_inline.h:24-34` removes without firing on_unregister), so a saved squad_id may resolve to a different class (script_zone, item) after the original squad was released. The scan-time class check in `_update_scripted_squad` catches in-flight corruption that bypassed unregister mid-session.
 
-Broker-internal `is_offmap_dispatched(squad_id)` returns true when the squad's entry has `offmap = true`; the cause-side guard in `ap_ext_causes_needs.script:152-154` reads this to block off-map causes from re-publishing while the session is active.
+Broker-internal `is_offmap_dispatched(squad_id)` returns true when the squad's entry has `offmap = true`; the cause-side guard in `ap_ext_causes_needs.script` reads this to block off-map causes from re-publishing while the session is active.
 
 ### Protection (ap_core_broker.is_protected)
 
-Delegates to xsquad.is_protected with five guard categories (ap_core_broker.script:66-76, _protection_opts):
+Delegates to xsquad.is_protected with five guard categories (`ap_core_broker._protection_opts`):
 
 | Category | Sub-reasons |
 |----------|-------------|
@@ -613,7 +600,7 @@ Radiant cadence accumulates AP-scripted squads. Reactive events (massacre, wound
 
 Interruptable flag. script_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
 
-- `interruptable = true`: on-map needs (14 of 17), all instincts (7), and stash_ambush. Routine maintenance trips, deferrable.
+- `interruptable = true`: on-map needs, all instincts, and stash_ambush. Routine maintenance trips, deferrable.
 - `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase dispatch in ap_ext_common (move_actor_chasers, move_squad_chasers), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches are committed cross-map trips that lose their destination if preempted outbound.
 
 The broker default is `true` only as a safety net; no caller relies on it.
@@ -724,10 +711,6 @@ news_enabled (bool master), news_interval_min_sec / news_interval_max_sec (int 1
 
 NONE (disabled or no entries), NO_TEMPLATES, NO_MSG, NO_SENDER, SENT.
 
-### Constants in ap_ext_const
-
-(none for record display; capture is engine-direct in `ap_core_broker._capture_side`).
-
 ### Invariants
 
 - Squad-derived translation keys captured eagerly at add_record time. The engine value drives the slot: mutant squads get a species key (`st_ap_macros_species_<x>`), stalker / zombified-stalker squads get the raw community string (vanilla XML resolves). Smart / level / time stay lazy. Death-resilient: dead or unregistered squads remain renderable.
@@ -755,9 +738,9 @@ Domain state manager.
 | Killers | _ap_killers (kill counts per entity) | populated on squad_on_npc_death |
 | Alphas | _ap_alphas (level / kills / name) | only mutants become alphas; stalker rank handled natively by engine |
 | Alpha-dead grace | _ap_alpha_dead (xttltable TTL, 3600s) | is_alpha returns true during grace |
-| Stalker NEEDS DTO | _ap_stalker_needs (per squad, 9 timestamps) | NEED_FIELDS in ap_ext_const, line 281 |
-| Mutant INSTINCTS DTO | _ap_mutant_instincts (per squad, 5 timestamps) | INSTINCT_FIELDS in ap_ext_const, line 288 |
-| Squad OPPORTUNITY DTO | _ap_squad_opportunities (per squad, 6 timestamps) | OPPORTUNITY_FIELDS in ap_ext_const line 295: stash_loot, stash_ambush, stash_fill, area_conquer, area_swarm, area_infest |
+| Stalker NEEDS DTO | _ap_stalker_needs (per squad, one timestamp per drive) | NEED_FIELDS in ap_ext_const |
+| Mutant INSTINCTS DTO | _ap_mutant_instincts (per squad, one timestamp per drive) | INSTINCT_FIELDS in ap_ext_const |
+| Squad OPPORTUNITY DTO | _ap_squad_opportunities (per squad, one timestamp per cause) | OPPORTUNITY_FIELDS in ap_ext_const: stash_loot, stash_ambush, stash_fill, area_conquer, area_swarm, area_infest |
 
 DTO ownership: only the owning generator writes; any cause generator may read (Cross-DTO read pattern). Save/load: m_data.ap_ext_tracker holds killers and alphas only. The three DTOs (NEEDS, INSTINCTS, OPPORTUNITY) are session-only - they reset to empty fifo_caches (capacity 100 each) on game start and on load, populated lazily by cause generators on first squad reference.
 
@@ -824,7 +807,7 @@ Interaction with conquest and swarm. If a smart is infested AND conquered or swa
 
 ## Causes
 
-Per-cause inventory: see `ap_core_const.CAUSE` (canonical enum) and `ap_ext_cause_*.script` / `ap_ext_causes_*.script`. Cause generator contract: takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate (ap_core_limiter.check_cause_rate_limit + increment_cause_counter). Generators self-observe under the picked cause name. Generators are pure - no rate-limit awareness from outside, no counter manipulation, no side effects beyond the published payload.
+Per-cause inventory: see `ap_core_const.CAUSE` (canonical enum) and `ap_ext_cause_*.script` / `ap_ext_causes_*.script`. The generator contract (signature, self-gating, purity) is defined once under Pipeline -> Cause generator contract.
 
 ### Cause classification
 
@@ -852,7 +835,7 @@ Reactive expands over witnesses (consequence-side). Radiant expands over the wor
 
 Radiant causes split by what the threshold MEANS, not by how it is implemented. Both shapes use the same architectural pattern (DTO timestamp + threshold gate + arrival reset) but encode different theories.
 
-Hull's drive reduction theory (1943). Behavior is driven by deprivation of a biological need. The longer the deprivation, the stronger the drive. Score formula (ap_ext_causes_needs.script:96-98): drive = weight * (elapsed / threshold)^2. Squared exponent makes overdue drives compete strongly against marginal ones. Used by NEEDS (9 stalker drives) and INSTINCTS (5 mutant drives). Threshold encodes how long the squad can tolerate the deprivation before the drive becomes urgent. Arrival action satisfies the drive and resets the timestamp.
+Hull's drive reduction theory (1943). Behavior is driven by deprivation of a biological need. The longer the deprivation, the stronger the drive. Score formula (`_find_overdue_needs` in ap_ext_causes_needs.script): drive = weight * (elapsed / threshold)^2. Squared exponent makes overdue drives compete strongly against marginal ones. Used by NEEDS (stalker drives) and INSTINCTS (mutant drives). Threshold encodes how long the squad can tolerate the deprivation before the drive becomes urgent. Arrival action satisfies the drive and resets the timestamp.
 
 Charnov's marginal value theorem (1976), optimal foraging theory. A forager exploits a patch, moves on, and the patch recovers before the next visit becomes worthwhile. Gate is binary: elapsed > threshold. No drive scoring; the squad either revisits the patch or doesn't. Used by stash (fill, loot, ambush) and area (conquer, swarm, infest). Threshold encodes patch handling time + travel time + recovery time between visits. Arrival action resets the timestamp.
 
@@ -882,9 +865,9 @@ cfg key layout:
 
 - cause_<drive>_threshold: Hull threshold, one cfg key per drive (shared by every answer under that drive).
 - cause_<answer>_enabled: per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
-- Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const (line 174-175). Applies uniformly to every personality roll.
+- Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const. Applies uniformly to every personality roll.
 
-Used by ap_ext_causes_needs.script (9 drives, 17 answers) and ap_ext_causes_instincts.script (5 drives, 7 answers, multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
+Used by ap_ext_causes_needs.script and ap_ext_causes_instincts.script (multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
 
 ---
 
@@ -956,14 +939,14 @@ Human factions follow GSC's moral axis (Ai.doc:65-76, тип характера)
 | alignment_selfserving | stalker, csky, ecolog, freedom, killer | Self-serving: independent, own goals |
 | alignment_unprincipled | stalker, freedom, killer, csky | Chaotic neutral: own rules, not criminal |
 | alignment_outlaw | bandit, renegade, greh | Chaotic evil: criminals |
-| alignment_human | all 12, no zombied | Union of principled + selfserving + outlaw |
+| alignment_human | every human faction, no zombied | Union of principled + selfserving + outlaw |
 | alignment_naturalist | stalker, csky, freedom, ecolog | AP subset: zone dwellers |
 
 Mutant species alignments follow GSC's creature groups (monstry.doc:4). Keyed by species string (xcreature.get_mutant_species), not engine faction:
 
 | Table | Species | GSC origin |
 |-------|---------|------------|
-| alignment_mutant | all 7 monster factions | Fast gate for find_squads (engine player_id) |
+| alignment_mutant | all monster factions | Fast gate for find_squads (engine player_id) |
 | alignment_mutant_cowardly | flesh, zombie, tushkano, rat, karlik | Timid, flees danger, bottom of food chain |
 | alignment_mutant_feral | dog, pseudodog, boar, snork, cat, gigant | Pack / herd, reactive aggression, brute apex |
 | alignment_mutant_predator | lurker, bloodsucker, psysucker, chimera, fracture | Solitary hunters, ambush, pursue wounded |
@@ -989,11 +972,11 @@ Consequences compose tables with xtable.merge (set union) and xtable.subtract (s
 
 Probability layer: how likely is an eligible faction / species to act. Runs only after alignment passes. All checks happen in ext consequence code via ap_ext_util.check_personality, never in core.
 
-Stalker factions have 7 traits: aggression, greed, survival, perception, territory, relation, discipline. Mutant species have 5: aggression, survival, territory, perception, relation. Each consequence declares at most 2 relevant traits. The check averages those traits for the faction / species and rolls math.random() against the result, clamped to [PERSONALITY_FLOOR, PERSONALITY_CEILING].
+Stalker factions carry the traits aggression, greed, survival, perception, territory, relation, discipline; mutant species carry aggression, survival, territory, perception, relation. Each consequence declares at most 2 relevant traits. The check averages those traits for the faction / species and rolls math.random() against the result, clamped to [PERSONALITY_FLOOR, PERSONALITY_CEILING].
 
-Formula: chance = clamp(avg(relevant_traits), PERSONALITY_FLOOR, PERSONALITY_CEILING). PERSONALITY_FLOOR = 0.10, PERSONALITY_CEILING = 0.70 (ap_ext_const.script:174-175). No per-consequence weight. Floor ensures even unfavorable factions act occasionally; ceiling ensures even favorable factions fail sometimes.
+Formula: chance = clamp(avg(relevant_traits), PERSONALITY_FLOOR, PERSONALITY_CEILING). PERSONALITY_FLOOR = 0.10, PERSONALITY_CEILING = 0.70 (ap_ext_const). No per-consequence weight. Floor ensures even unfavorable factions act occasionally; ceiling ensures even favorable factions fail sometimes.
 
-Inverted traits: traits prefixed with INV_ resolve as 1 - base_value before averaging. Used for behaviors driven by absence of a quality (fleeing gated by INV_DISCIPLINE + INV_TERRITORY: low discipline and low territorial attachment = more likely to flee). Only INV_AGGRESSION, INV_DISCIPLINE, INV_TERRITORY are defined (ap_ext_const.script:167-169).
+Inverted traits: traits prefixed with INV_ resolve as 1 - base_value before averaging. Used for behaviors driven by absence of a quality (fleeing gated by INV_DISCIPLINE + INV_TERRITORY: low discipline and low territorial attachment = more likely to flee). Only INV_AGGRESSION, INV_DISCIPLINE, INV_TERRITORY are defined (ap_ext_const).
 
 Trait value design: tiered values in 0.10 steps (0.10, 0.20, ..., 0.90) to ensure clean math. Survival is a flat band (0.40-0.60) for all factions and species. Biological needs are universal drives, not faction differentiators. Each value is a direct probability grounded in GSC lore (monstry.doc, Ai.doc).
 
@@ -1063,15 +1046,7 @@ Opportunities (no per-cause flag, all implicit active_period):
 
 ## Rules
 
-Reference vocabulary first, then the rule set split into universal, radiant, and reactive.
-
-### Reference vocabulary
-
-Two cause types: REACTIVE (triggered by an engine event, fans out 1:N to consequences) and RADIANT (triggered by the squad tick, 1:1 with its consequence).
-
-Two consequence file shapes: _set (hand-written N handlers, used for per-handler quirks) and CONFIGS factory (one CONFIGS table + one closure builder generates N handlers from a single body).
-
-Five result codes: SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION, DISABLED. The handler (`entry.handler` in `ap_core_consumer`) returns one of the first four when it runs. DISABLED is a rules-layer skip emitted by the consumer pre-gate when a consequence's MCM toggle is off; the handler is not called.
+The rule set split into universal, radiant, and reactive. Terms (cause types, file shapes, result codes) are defined in Vocabulary and the Dispatch Pipeline.
 
 ### Universal rules
 

@@ -1,6 +1,6 @@
 # AlifePlus Integration
 
-This file is for mods that want to react to AlifePlus, drive squads through it, or add their own causes and consequences. Everything you call goes through *ap_api*. *ap_core_\** modules are internal. Using them directly is not supported across versions.
+This file is for mods that want to react to AlifePlus, drive squads through it, or add their own causes and consequences. Everything you call goes through *ap_api*, plus two supported read-only surfaces for pipeline participants: the enums in *ap_core_const* (*CAUSE_CATEGORY*, *CAUSE_TYPE*, *RESULT*, *REASON*, *CALLBACK*) and the self-gating pair in *ap_core_limiter* (*check_cause_rate_limit* / *increment_cause_counter*). Every other *ap_core_\** module is internal; using it directly is not supported across versions.
 
 > [!IMPORTANT]
 > Always feature-detect. *ap_api* may exist but lack a specific function; check the function before calling it. Every example below follows this convention.
@@ -17,8 +17,8 @@ This file is for mods that want to react to AlifePlus, drive squads through it, 
 | *get_scripted_squads* | none | table | Shallow-copy map keyed by squad id. Fresh per call. |
 | *get_scripted_squad* | *squad_id*: number | table \| nil | Shallow copy of one entry. |
 | *release_squad* | *squad_id*: number | bool | *false* if AP wasn't scripting it. |
-| *script_squad* | *squad*: userdata; *smart*: userdata; *opts*: { *rush*, *on_arrive*, *on_arrive_args*, *pre_release_gulag* } | { code, id, dst, dst_id } | Full lifecycle: engine target + reassert + marker + TTL + gulag. |
-| *script_actor_target* | *squad*: userdata | { code, id, dst, dst_id } | Pursue the player; no arrival detection. |
+| *script_squad* | *squad*: userdata; *smart*: userdata; *opts*: { *rush*, *on_arrive*, *on_arrive_args*, *pre_release_gulag*, *interruptable* } | { code, id, dst, dst_id } | Full lifecycle: engine target + reassert + marker + TTL + gulag. |
+| *script_actor_target* | *squad*: userdata; *opts*: { *check_relation*, *interruptable* } | { code, id, dst, dst_id } | Pursue the player; no arrival detection. Refused unless the chase leash verdict is KEEP. |
 | *add_record* | *subject_squad*: userdata; *cause_key*, *consequence_key*: string; *opts*: { *action_key*, *other_squad*, *smart*, *level_id*, *cause_id* } | number \| nil | *cons_id*. Call after every script_\* SUCCESS or your dispatch is invisible. |
 | *get_record* | *opts*: { *squad_id*, *assigned*, ... } | table \| nil | Newest match. O(1) for *{squad_id, assigned=true}*. |
 | *get_records* | *opts*: table \| nil | table | Every match (array). |
@@ -174,16 +174,22 @@ When your mod wants AP's full lifecycle (PDA marker, TTL, pre-release gulag, tar
 ```lua
 if not (ap_api and ap_api.script_squad and ap_api.add_record) then return end
 
+-- Your own string constants (AP's CAUSE/CONSEQUENCE/ACTION enums are AP's; foreign mods
+-- define namespaced strings of the same shape, see "Add a cause and consequence" below):
+local CAUSE_THREAT        = "cause:my_mod:threat"
+local CONSEQUENCE_ESCORT  = "consequence:my_mod_escort"
+local ACTION_ESCORT       = "action:my_mod_escort"
+
 local res = ap_api.script_squad(squad, smart, {
     rush              = true,
-    on_arrive         = CONSEQUENCE.MY_MOD_ESCORT,  -- if you registered an arrival handler
+    on_arrive         = CONSEQUENCE_ESCORT,  -- if you registered an arrival handler
     on_arrive_args    = { target_id = target.id },
     pre_release_gulag = 1800,
 })
 
 if res.code == ap_core_const.RESULT.SUCCESS then
-    ap_api.add_record(squad, CAUSE.MY_MOD_THREAT, CONSEQUENCE.MY_MOD_ESCORT, {
-        action_key = ACTION.MY_MOD_ESCORT,
+    ap_api.add_record(squad, CAUSE_THREAT, CONSEQUENCE_ESCORT, {
+        action_key = ACTION_ESCORT,
         smart      = smart,
         level_id   = squad.level_id,
     })
@@ -193,8 +199,12 @@ end
 To pursue the player instead of a smart:
 
 ```lua
-local res = ap_api.script_actor_target(squad)
--- script_actor_target has no opts; it sets scripted_target = "actor" and bypasses arrival detection.
+local res = ap_api.script_actor_target(squad, {
+    check_relation = true,   -- release the chase when the squad stops being hostile to the player
+    interruptable  = false,  -- reactive AP dispatches may not take this squad over (default true)
+})
+-- Sets scripted_target = "actor" and bypasses arrival detection. The chase leash applies:
+-- the call is refused when the target is sheltered, off-map, or a surge is running.
 ```
 
 > [!IMPORTANT]
@@ -207,6 +217,7 @@ rush               -- run + danger anim when online
 on_arrive          -- dispatch key; must match a consequence registered with on_arrive_fn
 on_arrive_args     -- table passed to the arrival handler
 pre_release_gulag  -- seconds held after arrival (default from const)
+interruptable      -- false = reactive AP dispatches may not take this squad over (default true)
 ```
 
 *add_record* opts:
