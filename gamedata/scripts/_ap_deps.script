@@ -1,6 +1,6 @@
 --- _ap_deps: AlifePlus dependency gate and version metadata
 
-local assert, tostring, type = assert, tostring, type
+local assert, tostring, type, math_floor = assert, tostring, type, math.floor
 
 local MOD_NAME = "AlifePlus"
 local _VERSION = "1.8.1"
@@ -26,9 +26,56 @@ end
 -- fork base) show partially compatible.
 local TARGET_DEMONIZED = 20260706
 
---- Spec consumed by xmcm.platform_status / xmcm.platform_functor (the shared MCM footer + boot line).
-function platform_spec()
-    return { mod = MOD_NAME, version = _VERSION, target_build = TARGET_DEMONIZED }
+-- xray-monolith build (YYYYMMDD) as the themrdemonized tag style, no zero padding (20260706 -> "2026.7.6").
+local function _build_tag(build)
+    return math_floor(build / 10000) .. "." .. (math_floor(build / 100) % 100) .. "." .. (build % 100)
+end
+
+-- AOEngine v0.55 is cut from the 2025-09-08 xray-monolith fork state (compatibility-standards.md), so
+-- AOE is judged as an engine frozen at this build: any newer target reads partially compatible on AOE.
+local AOE_BASELINE_BUILD = 20250908
+
+-- Platform status line + verdict for the boot log and the MCM footer. Self-contained here (not in xlibs)
+-- so it renders even when xlibs is missing or too old - the case the deps asserts exist to report. The
+-- xlibs version is read defensively for the same reason: the reporter must survive a bad xlibs.
+function platform_status()
+    local xver = (xlibs and xlibs.get_version and xlibs.get_version()) or "?"
+    local line = MOD_NAME .. " " .. _VERSION .. ", xlibs " .. xver
+    local has_build = type(get_modded_exes_version) == "function"
+    local effective
+    if type(get_aoe_version) == "function" then
+        line = line .. ", AOEngine " .. tostring(get_aoe_version())
+        if has_build then line = line .. ", xray-monolith " .. _build_tag(get_modded_exes_version()) end
+        effective = AOE_BASELINE_BUILD
+    elseif has_build then
+        local build = get_modded_exes_version()
+        line = line .. ", xray-monolith " .. _build_tag(build)
+        effective = build
+    else
+        return line .. " (incompatible)", "blocked"
+    end
+    if effective < TARGET_DEMONIZED then
+        return line .. " (partially compatible)", "fallback"
+    end
+    return line .. " (fully compatible)", "full"
+end
+
+-- MCM ui_hook_functor for the footer row: writes platform_status into the desc widget, colored by
+-- verdict. Colors build lazily (GetARGB is absent under the static validator).
+local _footer_clr = nil
+function platform_functor()
+    return function(_anchor, handlers)
+        if not _footer_clr then
+            _footer_clr = {
+                full     = GetARGB(255, 170, 220, 170),
+                fallback = GetARGB(255, 230, 210, 120),
+                blocked  = GetARGB(255, 220, 120, 120),
+            }
+        end
+        local line, level = platform_status()
+        handlers.desc:SetText(line)
+        handlers.desc:SetTextColor(_footer_clr[level])
+    end
 end
 
 function on_game_start()
@@ -75,5 +122,5 @@ function on_game_start()
 
     -- The boot platform line and the MCM footer come from the same builder, so they never drift.
     xlog.get_logger(MOD_NAME, { outfile = MOD_NAME:lower() .. ".log" })
-        .info("%s", (xmcm.platform_status(platform_spec())))
+        .info("%s", (platform_status()))
 end

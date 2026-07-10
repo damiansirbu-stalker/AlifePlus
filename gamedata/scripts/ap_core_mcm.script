@@ -693,10 +693,10 @@ function on_mcm_load()
                     _track("cause_max_per_causer", 1, 20, 1),
                     _check("allow_external_ownership"),
 
-                    -- Platform footer (shared builder: xmcm.platform_status)
+                    -- Platform footer (self-contained builder in _ap_deps, not xlibs)
                     { id = "div_footer", type = "line" },
                     { id = "platform", type = "desc", text = "ui_mcm_xmcm_footer",
-                        ui_hook_functor = { xmcm.platform_functor(_ap_deps.platform_spec()) }, clr = {255, 212, 201, 168} },                },
+                        ui_hook_functor = { _ap_deps.platform_functor() }, clr = {255, 212, 201, 168} },                },
             },
             {
                 id = "world",
