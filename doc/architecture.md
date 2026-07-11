@@ -775,7 +775,7 @@ Volatility. Engine rebuilds respawn_params from LTX on every load (STATE_Read ca
 
 Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner checks xtime.game_sec() - conquered_at and calls clear_shared_spawn on expired entries. Original LTX spawns never interrupted - decay just removes the extra entry.
 
-Per-level cap. can_conquest_on_level(level_id) counts conquered smarts with matching level_id. Rejects if count >= cfg.mutator_area_conquest_max_per_level (default 3, MCM 1-5). Same-faction re-conquest refreshes the timestamp without consuming a slot. Different-faction overwrite on an existing entry also bypasses the cap.
+Per-faction presence cap. Enforced at cause time, not in the mutator: _eligible_conquer rejects with reason max_faction_smarts when xsmart.get_faction_smart_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level (default 3, MCM 1-6). The count is smarts on the level where a squad of the faction is stationed - vanilla bases and spawns included, not only AP conquests - so a dominant faction stops expanding while a faction with no presence always passes. conquer_smart carries no cap of its own; same-faction re-conquest refreshes the timestamp. Restore does not re-check the cap (SIMBOARD occupancy is not meaningful that early in load); injections above a lowered cap stop renewing and decay out.
 
 #### Swarm (shared spawn, mutants)
 
@@ -785,7 +785,7 @@ Independence from conquest. _swarmed_smarts is a separate table from _conquered_
 
 Decay. cfg.mutator_area_swarm_decay_hours (default 48). Scanner checks xtime.game_sec() - swarmed_at and calls clear_shared_spawn on expired entries.
 
-Per-level cap. can_swarm_on_level(level_id) counts swarmed smarts with matching level_id. Rejects if count >= cfg.mutator_area_swarm_max_per_level (default 3, MCM 1-5). Same-species re-swarm refreshes the timestamp without consuming a slot. Different-species overwrite on an existing entry also bypasses the cap.
+Per-bloc presence cap. Enforced at cause time: _eligible_swarm rejects with reason max_faction_smarts when xsmart.get_faction_smart_count(ap_ext_const.alignment_mutant, level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level (default 5, MCM 1-8). All mutant communities count as one side (per-community caps would let 7 monster_* communities each fill their own quota on one level). swarm_smart carries no cap of its own; same-species re-swarm refreshes the timestamp. Restore does not re-check the cap, same rationale as conquest.
 
 Volatility. Same as conquest: engine rebuilds respawn_params on STATE_Read. Two-phase restore via _swarmed_pending. 60s scanner re-applies via set_shared_spawn.
 
@@ -795,7 +795,9 @@ infest_smart(smart_id, faction, level_id) calls xsmart_spawn.set_exclusive_spawn
 
 Faction re-apply. check_smart_faction runs every tick on online smarts and counts only IsStalker NPCs - monsters invisible. When only mutants occupy an online smart, self.faction reverts to default_faction, breaking the faction gate match. 60s periodic scanner re-applies smart.faction via set_exclusive_spawn for all infested smarts.
 
-Per-level cap. can_infest_on_level(level_id) counts infested smarts with matching level_id. Rejects if count >= cfg.mutator_area_infest_max_per_level (default 3, MCM 1-5).
+Per-level cap. can_infest_on_level(level_id) counts infested smarts with matching level_id. Rejects if count >= cfg.mutator_area_infest_max_per_level (default 3, MCM 1-5). The registry stays the meter here (unlike conquest/swarm): an infestation persists after its alpha squad leaves or dies, so stationed-squad occupancy would undercount it.
+
+Last-smart floor. Every area target filter in ap_ext_causes_area (conquer, swarm, all infest variants) rejects a smart when ap_ext_util.is_last_faction_smart(smart) is true - a community stationed there holds no other smart on that level, and taking it would erase that community's presence. For conquer and swarm the is_smart_empty gate already excludes held smarts; the explicit check makes the invariant hold on its own instead of depending on that filter shape. Infest is where it does live work, since infest targets can be occupied.
 
 Volatility. Same as conquest: engine rebuilds faction_controlled, faction, respawn_params from LTX on every load. Two-phase restore re-applies all three in _on_game_load. 60s scanner handles ongoing faction reversion for online smarts.
 

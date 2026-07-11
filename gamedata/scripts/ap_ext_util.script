@@ -120,3 +120,20 @@ function is_wild_smart(smart)
     return not xsmart.is_base(smart) and not xsmart.has_stalker_jobs(smart, xsmart.JOB_TYPE_TRADER)
 end
 
+--- Last-smart floor: true when a community stationed at the smart holds no other smart on
+--- that level, i.e. taking this one would erase its presence there. Target-side guard for
+--- consequences whose targets can be occupied (infest); conquer/swarm targets are empty by filter.
+--- @safety SAFE - false on nil smart or unresolved level_id
+--- @cost O(min(n,5)) stationed squads x xsmart.get_faction_smart_count (pure Lua on cache hit)
+--- @param smart smart_terrain Candidate target
+--- @return boolean
+function is_last_faction_smart(smart)
+    if not smart then return false end
+    local level_id = xlevel.get_level_id(smart)
+    if not level_id then return false end
+    for se in xsmart.iter_stationed_squads(smart.id) do
+        if xsmart.get_faction_smart_count(se.player_id, level_id) <= 1 then return true end
+    end
+    return false
+end
+

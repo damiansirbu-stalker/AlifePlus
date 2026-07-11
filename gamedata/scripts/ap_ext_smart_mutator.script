@@ -23,19 +23,6 @@ local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
---- Check if per-level conquest cap allows more conquests
-function can_conquest_on_level(level_id)
-    if not level_id then return false end
-    local count = 0
-    for _, data in pairs(_conquered_smarts) do
-        if data.level_id == level_id then
-            count = count + 1
-            if count >= cfg.mutator_area_conquest_max_per_level then return false end
-        end
-    end
-    return true
-end
-
 function conquer_smart(smart_id, faction, level_id)
     if not smart_id or not faction or not level_id then return false end
     if not cfg or not cfg.mutator_area_conquest_mutate_smart then return false end
@@ -48,26 +35,12 @@ function conquer_smart(smart_id, faction, level_id)
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
         return true
     end
-    if not existing and not can_conquest_on_level(level_id) then return false end
     if not xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.mutator_area_conquest_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
         return false
     end
     _conquered_smarts[smart_id] = { faction = faction, level_id = level_id, conquered_at = now }
     ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s level=%d", smart_id, faction, level_id)
-    return true
-end
-
---- Check if per-level swarm cap allows more swarms
-function can_swarm_on_level(level_id)
-    if not level_id then return false end
-    local count = 0
-    for _, data in pairs(_swarmed_smarts) do
-        if data.level_id == level_id then
-            count = count + 1
-            if count >= cfg.mutator_area_swarm_max_per_level then return false end
-        end
-    end
     return true
 end
 
@@ -83,7 +56,6 @@ function swarm_smart(smart_id, species, level_id)
         ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s (refresh)", smart_id, species)
         return true
     end
-    if not existing and not can_swarm_on_level(level_id) then return false end
     if not xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
         ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s FAILED (unknown species)", smart_id, species)
         return false
@@ -161,7 +133,7 @@ local function _check_infest_respawn(smart_id, data)
 end
 
 --- Update all conquered smarts: re-apply injection, decay expired entries.
--- @cost O(n) conquered smarts (max mutator_area_conquest_max_per_level * ~14 levels)
+-- @cost O(n) conquered smarts (bounded by the cause-side per-faction presence cap + decay)
 local function _update_conquered(now)
     if not cfg or not cfg.mutator_area_conquest_mutate_smart then return end
     local decay_sec = cfg.mutator_area_conquest_decay_hours * 3600
@@ -181,7 +153,7 @@ local function _update_conquered(now)
 end
 
 --- Update all swarmed smarts: re-apply injection, decay expired entries.
--- @cost O(n) swarmed smarts (max mutator_area_swarm_max_per_level * ~14 levels)
+-- @cost O(n) swarmed smarts (bounded by the cause-side per-faction presence cap + decay)
 local function _update_swarmed(now)
     if not cfg or not cfg.mutator_area_swarm_mutate_smart then return end
     local decay_sec = cfg.mutator_area_swarm_decay_hours * 3600
@@ -292,21 +264,19 @@ local function _restore_conquered(now)
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
         return
     end
-    local restored, skipped = 0, 0
+    local restored = 0
     for smart_id, data in pairs(_conquered_pending) do
         if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
-        -- Enforce the per-level cap on restore too. The cap can be lowered in MCM between sessions
-        -- (e.g. switching presets Chaotic -> Calm); without this, every saved conquest is reinstated
-        -- and the new cap is permanently exceeded (the scan loop never re-checks it).
-        -- can_conquest_on_level counts the entries already restored in this pass.
-        if not can_conquest_on_level(data.level_id) then skipped = skipped + 1; goto continue end
+        -- No cap re-check on restore: the per-faction presence cap is enforced at cause time
+        -- (ap_ext_causes_area) against live SIMBOARD occupancy, which is not meaningful this
+        -- early in load. Saved injections above a lowered cap stop renewing and decay out.
         _conquered_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, conquered_at = data.conquered_at or now }
         restored = restored + 1
         ::continue::
     end
     _conquered_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d skipped=%d", restored, skipped)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d", restored)
 end
 
 local function _restore_swarmed(now)
@@ -316,19 +286,17 @@ local function _restore_swarmed(now)
         ap_core_debug.info("[MUTATOR.SMART] on_game_load: swarm disabled, skipped restore")
         return
     end
-    local restored, skipped = 0, 0
+    local restored = 0
     for smart_id, data in pairs(_swarmed_pending) do
         if type(data) ~= "table" then goto continue end
         if not data.faction or not data.level_id then goto continue end
-        -- Enforce the per-level cap on restore (cap can be lowered in MCM between sessions).
-        -- can_swarm_on_level counts the entries already restored in this pass.
-        if not can_swarm_on_level(data.level_id) then skipped = skipped + 1; goto continue end
+        -- No cap re-check on restore: same rationale as _restore_conquered.
         _swarmed_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, swarmed_at = data.swarmed_at or now }
         restored = restored + 1
         ::continue::
     end
     _swarmed_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d skipped=%d", restored, skipped)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d", restored)
 end
 
 local function _restore_infested(now)

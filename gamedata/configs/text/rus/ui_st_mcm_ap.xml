@@ -468,10 +468,10 @@
   </string>
   <!-- ==================== CAUSES / AREA ==================== -->
   <string id="ui_mcm_ap_causes_area_conquer_tag">
-    <text>Причина: Доступен захват территории\nОписание: Отряд сталкеров заявляет права на пустую смарт-локацию.\nПравила: визуальный диапазон; активный период; сталкеры (не экологи); личность(территория, агрессия); пустая локация; не на базе; тактика; MVT</text>
+    <text>Причина: Доступен захват территории\nОписание: Отряд сталкеров заявляет права на пустую смарт-локацию.\nПравила: визуальный диапазон; активный период; сталкеры (не экологи); личность(территория, агрессия); пустая локация; не на базе; максимум смартов фракции на локации; тактика; MVT</text>
   </string>
   <string id="ui_mcm_ap_causes_area_swarm_tag">
-    <text>Причина: Доступен захват мутантами\nОписание: Стая мутантов заявляет права на пустую смарт-локацию.\nПравила: визуальный диапазон; активный период; не-робкие мутанты; личность(территория, агрессия); пустая локация; не на базе; тактика; MVT</text>
+    <text>Причина: Доступен захват мутантами\nОписание: Стая мутантов заявляет права на пустую смарт-локацию.\nПравила: визуальный диапазон; активный период; не-робкие мутанты; личность(территория, агрессия); пустая локация; не на базе; максимум смартов фракции на локации; тактика; MVT</text>
   </string>
   <string id="ui_mcm_ap_causes_area_infest_tag">
     <text>Причина: Доступно заселение территории\nОписание: Мутант заявляет права на логово или укрытие от выброса.\nПравила: визуальный диапазон; активный период; не-робкие мутанты; личность(территория, выживание); видоспецифичное укрытие; не на базе; не заселено; есть альфа; лимит на уровень; тактика; MVT</text>
@@ -488,6 +488,12 @@
   <string id="ui_mcm_ap_causes_opportunities_cause_area_conquer_threshold_desc">
     <text>Игровых часов на отряд до следующей попытки захвата. Время восстановления MVT.</text>
   </string>
+  <string id="ui_mcm_ap_causes_opportunities_cause_area_conquer_max_faction_smarts_per_level">
+    <text>Максимум смартов фракции на локации</text>
+  </string>
+  <string id="ui_mcm_ap_causes_opportunities_cause_area_conquer_max_faction_smarts_per_level_desc">
+    <text>Фракция прекращает захваты на локации, когда её отряды удерживают столько смарт-локаций. Считается каждая занятая фракцией локация, а не только захваченные, поэтому доминирующие фракции останавливаются, а новички свободно расширяются.</text>
+  </string>
   <string id="ui_mcm_ap_causes_opportunities_cause_area_swarm_enabled">
     <text>Включено</text>
   </string>
@@ -499,6 +505,12 @@
   </string>
   <string id="ui_mcm_ap_causes_opportunities_cause_area_swarm_threshold_desc">
     <text>Игровых часов на отряд до следующей попытки захвата мутантами. Время восстановления MVT.</text>
+  </string>
+  <string id="ui_mcm_ap_causes_opportunities_cause_area_swarm_max_faction_smarts_per_level">
+    <text>Максимум смартов мутантов на локации</text>
+  </string>
+  <string id="ui_mcm_ap_causes_opportunities_cause_area_swarm_max_faction_smarts_per_level_desc">
+    <text>Мутанты прекращают захваты на локации, когда стаи любых видов удерживают столько смарт-локаций. Все виды мутантов считаются одной стороной.</text>
   </string>
   <string id="ui_mcm_ap_causes_opportunities_cause_area_infest_enabled">
     <text>Включено</text>
@@ -1388,12 +1400,6 @@
   <string id="ui_mcm_ap_mutators_conquest_mutator_area_conquest_mutate_smart_desc">
     <text>Захваченные области спавнят отряды захватчика рядом с оригинальными спавнами. Отключите, чтобы оставить движение отрядов без изменений спавна.</text>
   </string>
-  <string id="ui_mcm_ap_mutators_conquest_mutator_area_conquest_max_per_level">
-    <text>Макс. захваченных на уровень</text>
-  </string>
-  <string id="ui_mcm_ap_mutators_conquest_mutator_area_conquest_max_per_level_desc">
-    <text>[1-5]\nМаксимальное число захваченных смарт-локаций на уровень. По умолчанию: 3.</text>
-  </string>
   <string id="ui_mcm_ap_mutators_conquest_mutator_area_conquest_spawn_num">
     <text>Спавн отрядов на область</text>
   </string>
@@ -1417,12 +1423,6 @@
   </string>
   <string id="ui_mcm_ap_mutators_swarm_mutator_area_swarm_mutate_smart_desc">
     <text>Подвергшиеся нашествию области спавнят отряды нашествующего вида рядом с оригинальными спавнами. Отключите, чтобы оставить движение отрядов без изменений спавна.</text>
-  </string>
-  <string id="ui_mcm_ap_mutators_swarm_mutator_area_swarm_max_per_level">
-    <text>Макс. подвергшихся нашествию на уровень</text>
-  </string>
-  <string id="ui_mcm_ap_mutators_swarm_mutator_area_swarm_max_per_level_desc">
-    <text>[1-5]\nМаксимальное число подвергшихся нашествию смарт-локаций на уровень. По умолчанию: 3.</text>
   </string>
   <string id="ui_mcm_ap_mutators_swarm_mutator_area_swarm_spawn_num">
     <text>Спавн отрядов на область</text>
@@ -1829,7 +1829,6 @@
   <string id="ui_mcm_ap_world_offmap_cause_max_offmap_desc">
     <text>[1-10]\nМаксимум отправок вне карты от исходного уровня в окне 48 игровых часов. Не зависит от фракции и точки назначения; общий счётчик для всех причин вне карты. По умолчанию 2.</text>
   </string>
-  <stringNEW/>
   <string id="ui_mcm_ap_world_offmap_offmap_base_hops">
     <text>Базовая дальность отправок</text>
   </string>
