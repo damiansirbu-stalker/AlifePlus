@@ -26,8 +26,9 @@
 --- window, so a sibling faction trader restocking inside that window acts on different sections
 --- (_claimed).
 ---
---- Integration-first, one path. If the Trader Destockifier is present we ride its trader_on_restock
---- callback; otherwise we hook trade_manager.update and detect the restock ourselves. Exactly one.
+--- One restock path: a hook over trade_manager.update, which every restock advances resupply_time
+--- through on every install (vanilla writes it directly; the Trader Destockifier variant monkeypatches
+--- the same function, so its restock is visible through the wrapper chain too).
 ---
 --- Premium pricing is applied by the engine's on_get_item_cost script callback (utils_item.script:995)
 --- for tagged goods only: full base cost x premium, the condition discount bypassed.
@@ -50,10 +51,6 @@ local TRADER_SELL_SECTION = "ap_market_trader_sell"
 local FLOOR_SECTION = "ap_market_rank_floor"
 local CHANCE_SECTION = "ap_market_rank_chance"
 local SPECIALS = { fifo_max = true }
--- Sections the market never touches, in either direction, regardless of policy or category cap.
--- grenade_smoke is bugged, so the market must never echo it even though the grenade category is
--- otherwise sold.
-local _EXCLUDED_SECTIONS = { grenade_smoke = true }
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
 local VIEW_LOG_INTERVAL_SEC = 3
@@ -91,12 +88,15 @@ local _trader_sold = {}
 -- trader is claimed so sibling faction traders act on different items and injection never re-adds
 -- what the sell-out removed inside the window. Reset on load; harmless.
 local _claimed = nil
--- item_id -> { trader_id, inject_time(game_sec) } for tagged market goods. Persisted across
+-- item_id -> { trader_id, inject_time(game_sec), section } for tagged market goods. Persisted across
 -- save/load: the items are real alife objects that survive the save, and this tag table is saved
 -- alongside _trader_bought, so the premium price and the timed release survive a reload (a player reloads
 -- inside the goods window routinely). Validated at first update: any entry whose item the engine
 -- purged on an offline restock between save and load is dropped; a recycled id that slips through is
--- still caught at pricing time by the parent==trader guard in _on_get_item_cost.
+-- still caught at pricing time by the parent==trader guard in _on_get_item_cost, and at release time
+-- by the parent==trader + section guard in _release_one (so a bought good is never released from the
+-- buyer). section is absent on tags restored from a pre-fix save; the release guard treats a missing
+-- section as "cannot confirm identity" and leaves the good to the engine purge.
 local _market_goods = {}
 -- Reused collector for expired ids, so _release_expired never mutates _market_goods mid-iteration.
 local _release_buf = {}
@@ -213,10 +213,9 @@ end
 --- @param orig function The original ap_ext_trade.trade
 --- @param npc game_object The visiting NPC who traded with the trader
 --- @param seller game_object The trader (unused here)
---- @param opts table|nil Passed through
 --- @return table The original { sold, bought }
-local function _observe_trade(orig, npc, seller, opts)
-    local result = orig(npc, seller, opts)
+local function _observe_trade(orig, npc, seller)
+    local result = orig(npc, seller)
     if not cfg.market_enabled then return result end
     if not (npc and result) then return result end
     local sold, bought = result.sold or {}, result.bought or {}
@@ -267,7 +266,6 @@ end
 --- and the sell-out run it identically, each against its own whitelist rules ([ap_market_trader_buy]
 --- vs [ap_market_trader_sell]). Traces the rejection reason when debug is on.
 local function _eligible_section(section, faction, role_info, rules, dir)
-    if _EXCLUDED_SECTIONS[section] then return _skip(dir, section, "excluded (bugged)") end
     if _claimed:has(faction .. "|" .. section) then return _skip(dir, section, "claimed") end
     local category = xinventory.get_section_category(section)
     local _, rule = _rule_for(section, category, rules)
@@ -319,7 +317,7 @@ local function _try_inject_section(ctx, sec)
         if ap_core_debug.enabled() then ap_core_debug.debug("%s inject spawn-fail %s", LOG, sec) end
         return false
     end
-    _market_goods[item_se.id] = { trader_id = ctx.trader_id, inject_time = ctx.now }
+    _market_goods[item_se.id] = { trader_id = ctx.trader_id, inject_time = ctx.now, section = sec }
     _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
     ctx.cat_count[key] = used + 1
     if ap_core_debug.enabled() then
@@ -584,16 +582,9 @@ end
 -- RESTOCK DETECTION (exactly one path)
 -- ============================================================================
 
---- Trader Destockifier path: it fires trader_on_restock after its own cull + respawn, so the new
---- stock is already registered; sell out then inject immediately.
-local function _on_restock(trader)
-    _sellout_at_trader(trader)
-    _inject_at_trader(trader)
-end
-
---- Self-patched path: detect a real restock by trade_manager.update advancing resupply_time (it
---- replaces the table only when the restock gate passes; an unchanged reference means no restock).
---- Defer the inject 0.1s so the freshly spawned stock registers.
+--- Detect a real restock by trade_manager.update advancing resupply_time (it replaces the table only
+--- when the restock gate passes; an unchanged reference means no restock). Defer the inject 0.1s so
+--- the freshly spawned stock registers.
 local function _update_wrapper(orig, npc, force_refresh)
     if not (npc and npc.alive and npc:alive()) then return orig(npc, force_refresh) end
     local id = npc:id()
@@ -606,19 +597,18 @@ local function _update_wrapper(orig, npc, force_refresh)
     end
 end
 
---- Wire exactly one restock path. Referencing trader_autoinject triggers auto-load: present ->
---- module table (and its trader_on_restock callback is registered); absent -> nil (auto_load
---- no-ops on a missing file, no error). Touch trade_manager first so the self-patch path can rawget
---- it via xevent.hook.
+--- Wire the single restock path: a hook over trade_manager.update. Every restock advances
+--- resupply_time through that function on every install -- vanilla performs the write directly, and
+--- the Trader Destockifier variant monkeypatches trade_manager.update, so the reference change is
+--- visible through the wrapper chain either way. No capability probe: there is no public query for a
+--- declared callback name, and RegisterScriptCallback on an undeclared name (e.g. trader_on_restock
+--- when the winning trader_autoinject variant is not the Destockifier one) silently drops the
+--- registration, which would be a silent feature kill. Touch trade_manager first so xevent.hook can
+--- rawget it.
 local function _setup_restock()
-    if trader_autoinject and type(trader_autoinject.update) == "function" then
-        RegisterScriptCallback(CALLBACK.TRADER_ON_RESTOCK, _on_restock)
-        ap_core_debug.info("%s restock via Trader Destockifier callback", LOG)
-    else
-        local _ = trade_manager
-        xevent.hook("trade_manager", "update", _update_wrapper)
-        ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
-    end
+    local _ = trade_manager
+    xevent.hook("trade_manager", "update", _update_wrapper)
+    ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
 end
 
 -- ============================================================================
@@ -690,11 +680,18 @@ end
 -- WINDOW RELEASE
 -- ============================================================================
 
---- Release one market good if it is online. Offline goods are left to the engine restock purge; the
---- tag is dropped either way (below), so an offline trader's stale good simply loses its premium.
-local function _release_one(id)
+--- Release one market good, but only if it is still the injected item sitting in its injecting
+--- trader: online, parent == trader_id, and section matching the tag. A good the player bought (or
+--- that was sold on, purged, or whose id the engine recycled) fails identity and is left untouched --
+--- the tag is dropped by the caller either way. Offline goods resolve to no game object and are left
+--- to the engine restock purge. This is the release-time backstop the tag-drop comment defers to.
+local function _release_one(id, tag)
     local obj = xobject.go(id)
-    if obj then xinventory.release_item(obj) end
+    if not obj then return end
+    local parent = obj:parent()
+    if not (parent and parent:id() == tag.trader_id) then return end
+    if tag.section and obj:section() ~= tag.section then return end
+    xinventory.release_item(obj)
 end
 
 --- Release market goods past their window. Repeating timer (re-armed each fire). The engine restock
@@ -713,7 +710,7 @@ local function _release_expired()
     end
     for i = 1, count do
         local id = _release_buf[i]
-        _release_one(id)
+        _release_one(id, _market_goods[id])
         _market_goods[id] = nil
         _release_buf[i] = nil
     end
@@ -739,11 +736,12 @@ local function _on_load(m_data)
     -- validation is deferred to _on_first_update via _validate_market_goods.
     local data = m_data and m_data[SAVE_KEY]
     if not data then return end
-    -- 1.8.0 saves stored the bought FIFO under "ledger"; accept it as a fallback.
-    local bought = data.trader_bought or data.ledger
-    if bought then _trader_bought = bought end
-    if data.trader_sold then _trader_sold = data.trader_sold end
-    if data.market_goods then _market_goods = data.market_goods end
+    -- Type-guarded loads: a corrupt shape is dropped, not assigned, so a later _fifo_add / release
+    -- walk cannot crash on it. Each FIFO is ambient state that repopulates within one trade cycle,
+    -- so no cross-version data migration is carried (code-standards Save Data Migrations).
+    if type(data.trader_bought) == "table" then _trader_bought = data.trader_bought end
+    if type(data.trader_sold) == "table" then _trader_sold = data.trader_sold end
+    if type(data.market_goods) == "table" then _market_goods = data.market_goods end
 end
 
 --- Drop restored goods whose item no longer exists (a trader purged its ruck on an offline restock

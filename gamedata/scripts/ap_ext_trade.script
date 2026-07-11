@@ -182,9 +182,8 @@ end
 --- @cost O(n inventory) | 2 iterate walks + buy loop per policy entry with cash check
 --- @param npc game_object Trading NPC (gains money from sales, spends money on buys)
 --- @param seller game_object Trader receiving items + paying for ammo
---- @param _opts table|nil unused (kept for caller compatibility; cap is MCM trade_profit_max)
 --- @return table { sold = { sec, ... }, bought = { sec, ... } }
-function trade(npc, seller, _opts)
+function trade(npc, seller)
     local sold, bought = {}, {}
     if not npc or not seller then return { sold = sold, bought = bought } end
 
