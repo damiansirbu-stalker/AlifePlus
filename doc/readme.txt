@@ -165,7 +165,8 @@ Opportunities
   Territory
     - Area Conquer - Stalker factions claim empty territory (Ecologists excluded; mutants use Area Swarm).
       The conqueror's squads start spawning there alongside the original ones, and the claim decays over time (MCM configurable).
-    - Area Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains the same way, their packs spawning alongside the originals. Decay, cap, and spawn count tune independently from Area Conquer in MCM.
+      A faction that already holds several smart terrains on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last smart terrain on a level.
+    - Area Swarm - Feral, predator, and aberrant mutant squads claim empty smart terrains the same way, their packs spawning alongside the originals. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per map.
     - Area Infest - Feral, predator, and aberrant mutants turn smart terrains into nests, and only squads carrying an alpha can do it. A nest replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
 
 Needs
