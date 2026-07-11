@@ -227,15 +227,13 @@ Trade
 
 Market
 
-  The market is the player-facing side of the NPC economy. Stalkers trade among themselves and never see it; the market takes what they sold and bought and shows it to you, on the shelves of their faction's traders.
+  Traders are no longer static. What a faction's stalkers sell and buy at their own traders shapes what you find on the shelf, both directions, within bounds.
 
-  When a faction's hub trader restocks, a few of the items that faction's stalkers recently sold appear in his stock, gated by your rank, priced at a premium, and gone after a short window. The reverse shows too, because the ammo and medical supplies those stalkers keep buying run short in his fresh stock.
+  Sell it and it surfaces: when a hub trader restocks, the items his faction's stalkers recently sold turn up in stock, rank-gated and premium-priced, gone after a short window. Buy it and it thins: the ammo and medical those stalkers keep purchasing run short in his fresh stock.
 
-  Behind it sit two bounded lists per faction, recent sales and recent purchases, and the market only ever reads them. A trader's stock is wiped and respawned at every restock anyway, so what appears is a re-created echo of a sale, never the original item. Nothing is duplicated, and the stock is never more than what the faction actually sells.
+  It is an echo, never a transfer. The ruck is wiped and respawned each restock, so what appears is re-created, never the original item, and never more than the faction really trades. The market reads two bounded lists per faction, recent sales and recent buys, and moves no goods of its own.
 
-  The sell-out touches only the staples stalkers actually buy, ammo and medical supplies, per the same policy file. At each restock a random share of each is removed, 30% by default and up to 70%, but at least 30% of any stock always stays on the shelf so nothing is wiped. A nearby stalker may remark on the PDA when a trader runs short, and one restock never both adds and removes the same item.
-
-  What appears is gated by your rank, so cheap goods show early and the expensive artefacts, devices, and medical only as you rise. An item shows at one trader, once, for a short window, at several times full value, five by default, and different traders of one faction carry different items. The allowed items and their caps live in an editable policy file, gear like outfits and weapons is never stocked since traders do not sell it, and the premium and spawn condition are sliders under Economy then Faction market. Turn the market off and traders carry their vanilla stock. It ships on.
+  The sell-out pulls a share of the drained ammo and medical, 30% by default; at the default the last few of anything survive, and at maximum a trader is stripped bare. Rookies see common goods, veterans the artefacts and devices a faction is bleeding. Each item shows once, at one trader, at several times value, five by default, and different traders carry different stock. A nearby stalker may call it out on the PDA when a trader takes in something rich or runs dry. Premium, condition, sell-out share, and the item lists sit under Economy then Faction market; off restores vanilla stock.
 
 Instincts
 
