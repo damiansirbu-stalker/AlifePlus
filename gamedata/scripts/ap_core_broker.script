@@ -5,7 +5,7 @@
 --- An off-map squad travels to its target, holds the gulag briefly, then settles there as a
 --- vanilla resident; the despawn safety net reclaims one that never settled.
 local pairs, next, tostring, type = pairs, next, tostring, type
-local table_remove, table_concat, RegisterScriptCallback, alife_release_id = table.remove, table.concat, RegisterScriptCallback, alife_release_id
+local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
 local xobject, xsquad, xsmart, xtime, xtable, xslice = xobject, xsquad, xsmart, xtime, xtable, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -297,7 +297,10 @@ local function _check_offmap_despawn(squad_id, squad, data, now)
         return true
     end
     ap_core_debug.debug("[SQUAD.OFFMAP] despawn: squad=%d age=%dh", squad_id, age / 3600)
-    alife_release_id(squad_id)
+    -- Whole-squad delete via the board path: releases each member before destroying the group, so
+    -- members are not orphaned. A bare alife_release_id on the group only detaches them (engine group
+    -- destructor never releases members).
+    xsquad.remove_squad(squad)
     return true
 end
 
