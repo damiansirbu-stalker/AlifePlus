@@ -58,7 +58,7 @@ Alpha mutants:
 - Killing an alpha draws same-species hunters.
 
 Trade and needs:
-- Stalkers sell surplus and restock at traders by rank, rookies on basics, veterans on premium ammo and grenades.
+- Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies. Weapons, armor, and helmets never trade.
 - Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
 Loot ownership:
@@ -195,7 +195,7 @@ The Zone runs one connected economy, and with the faction market it now comes fu
 
   Loot policy. An NPC keeps ammo that fits its own weapons and the most valuable items in each class, then destroys the rest. Stalkers carry a working loadout, the bodies you reach are leaner, and long saves stay clear of the loot buildup that drags them down.
 
-  Trade. At a trader a stalker sells his surplus and restocks ammo and gear by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
+  Trade. At a trader a stalker sells his surplus and restocks ammo and supplies by rank, under a profit cap. The same category limits decide what he offloads and what he buys. Weapons, armor, and helmets never trade in either direction.
 
   Market. A faction's hub traders briefly stock a bounded echo of what that faction's stalkers recently sold, gated to your rank and priced at a premium. The surplus a faction sells reaches you through its own traders, and the ammo and medical supplies it keeps buying run short at them.
 
