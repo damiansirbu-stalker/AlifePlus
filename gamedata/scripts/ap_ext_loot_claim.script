@@ -483,8 +483,11 @@ function on_game_start()
     _reserve_yield_n = _count_pool(RESERVE_YIELD_PREFIX, MAX_YIELD_VARIANTS)
     _npcvnpc_yield_n = _count_pool(NPCVNPC_YIELD_PREFIX, MAX_YIELD_VARIANTS)
 
-    -- on_game_start re-runs on every save load; the hook persists across loads (xevent state is
-    -- not reset), so re-hooking returns false. is_hooked distinguishes that from a real failure.
+    -- on_game_start re-runs on every save load, each time in a fresh Lua VM: a load reinits the VM
+    -- and wipes all module locals, xevent hook state included (proof chain in ap_core_cache: a
+    -- M_CHANGE_LEVEL packet -> CScriptStorage::reinit). So is_hooked is false here and the hook
+    -- installs cleanly every load. is_hooked only separates an already-installed hook (a repeat call
+    -- within one VM) from a real hook failure; it is not a cross-load persistence check.
     if xevent.is_hooked("xr_corpse_detection", "near_actor")
         or xevent.hook("xr_corpse_detection", "near_actor", _npc_loot_excluded) then
         ap_core_debug.info("%s hooked xr_corpse_detection.near_actor", LOG)
@@ -495,7 +498,9 @@ function on_game_start()
     -- Flow C needs the scanning NPC's identity, which near_actor (corpse-only) lacks; the wrapper
     -- publishes it. evaluator_corpse is NOT a _G global -- it is a member of the xr_corpse_detection
     -- module table (a luabind class userdata), so xevent's rawget(_G, name) cannot reach it. Reassign
-    -- the method through the module member directly, guarded against the on_game_start re-run per load.
+    -- the method through the module member directly. In a fresh VM after a load, find_valid_target is
+    -- the vanilla method again and _fvt_hooked is reset, so the hook re-installs; the guard only
+    -- prevents a repeat hook within one VM.
     local cd = rawget(_G, "xr_corpse_detection")
     local cls = cd and cd.evaluator_corpse
     if _fvt_hooked then
