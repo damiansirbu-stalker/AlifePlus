@@ -58,8 +58,8 @@
 --- correct during the warmup window at the cost of one slow scan until the bucket fills.
 
 local pairs, tostring, RegisterScriptCallback = pairs, tostring, RegisterScriptCallback
-local xdata, xlevel, xsmart, xsquad, xobject, xslice =
-    xdata, xlevel, xsmart, xsquad, xobject, xslice
+local xdata, xlevel, xsmart, xsquad, xobject, xslice, xprofiler =
+    xdata, xlevel, xsmart, xsquad, xobject, xslice, xprofiler
 local IsStalker, IsTrader = IsStalker, IsTrader
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -420,9 +420,19 @@ local function _build_standalone_role_bucket()
     _build_exclusive_owner_map()
     _standalone_role_npcs = {}
     local queue = {}
+    -- The snapshot is the one un-spread step: a single iterate_objects walk over the full CSE pool
+    -- (~40k on heavy GAMMA saves), building the id queue before the frame-spread xslice fill. It runs
+    -- once at actor_on_first_update. Timed only when debug is on (null profiler = zero overhead
+    -- otherwise) so a real breach of the frame budget surfaces in the log instead of staying unmeasured.
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
     sim:iterate_objects(function(se)
         if se then queue[#queue + 1] = se.id end
     end)
+    prof:stop()
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[CORE.CACHE] standalone snapshot: %d CSEs in %.2fms", #queue, prof:get_ms())
+    end
     xslice.start(STANDALONE_BUILD_QUEUE, queue, {
         step = STANDALONE_BUILD_STEP,
         func = _bucket_one_stalker,
