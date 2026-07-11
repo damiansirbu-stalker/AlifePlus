@@ -58,13 +58,21 @@ end
 -- create_item failure, breaks inner loop so the outer for can try the next section. Cheaper
 -- alternative usually fails the same way (cost is monotonic across sorted sections), but
 -- create_item failures on the cheapest are recoverable by falling through.
+-- Vanilla weapon ammo_class lists the degraded _bad / _verybad rounds so the weapon can chamber
+-- jammed ammo the player scavenges (w_pm.ltx, w_ak74.ltx). They are also the cheapest sections, so
+-- cheapest-first otherwise stocks every NPC with jammed trash. An NPC restocking at a trader never
+-- buys jammed ammo, so these variants are dropped from the buy candidates.
+local function _is_degraded_ammo(sec)
+    return sec:sub(-4) == "_bad" or sec:sub(-8) == "_verybad"
+end
+
 local function _buy_ammo_tier(npc, seller, weapon_sec, tier_num, target_rounds, bought)
     if not weapon_sec or target_rounds <= 0 then return 0 end
     local tier_map = xinventory.get_ammo_tier_map(weapon_sec, 2)
 
     local tier_sections = {}
     for sec, tier in pairs(tier_map) do
-        if tier == tier_num then tier_sections[#tier_sections + 1] = sec end
+        if tier == tier_num and not _is_degraded_ammo(sec) then tier_sections[#tier_sections + 1] = sec end
     end
     if #tier_sections == 0 then return 0 end
     tier_sections = _sorted_by_cost(tier_sections)

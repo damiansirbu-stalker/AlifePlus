@@ -35,8 +35,8 @@
 --- Policy: configs/alifeplus/ap_market_policy.ltx. Online only (script_trader hub traders).
 
 local RegisterScriptCallback = RegisterScriptCallback
-local math_random, math_floor = math.random, math.floor
-local pairs, tonumber, type, tostring = pairs, tonumber, type, tostring
+local math_random, math_floor, math_ceil = math.random, math.floor, math.ceil
+local pairs, tonumber, type, tostring, next = pairs, tonumber, type, tostring, next
 local table_remove, table_concat, table_sort = table.remove, table.concat, table.sort
 local xinventory, xsquad, xtime, xevent, xttltable, xobject =
     xinventory, xsquad, xtime, xevent, xttltable, xobject
@@ -54,6 +54,10 @@ local SPECIALS = { fifo_max = true }
 -- grenade_smoke is bugged, so the market must never echo it even though the grenade category is
 -- otherwise sold.
 local _EXCLUDED_SECTIONS = { grenade_smoke = true }
+-- The sell-out never removes so much of a bullet type that less than this share of the trader's
+-- fresh stock remains. Ceil so a stock of 2 keeps at least 1 (removing 1 leaves 50%), and a single
+-- item is never touched. Independent of the removal percent slider.
+local MIN_REMAIN_PCT = 30
 local RELEASE_EV = "ap_market_release"
 local RELEASE_PERIOD_MS = 60000
 local VIEW_LOG_INTERVAL_SEC = 3
@@ -347,64 +351,106 @@ end
 -- TRADER SELL-OUT (removal at restock)
 -- ============================================================================
 
---- Walk the trader's freshly respawned stock once and collect, per wanted section, the item
---- game_objects that may be removed. Skips tagged market goods (the sell-out never eats the
---- injected echo) and the trader's equipped items (its own weapon).
+--- Strip an ammo section's condition suffix so every degraded variant of the same round collapses
+--- to one bullet type: ammo_9x18_fmj_verybad -> ammo_9x18_fmj. NPCs buy the cheapest (degraded)
+--- variant, traders restock the clean one; matching on bullet type is what lets the two meet.
+local function _ammo_bullet_type(sec)
+    return (sec:gsub("_verybad$", ""):gsub("_bad$", ""))
+end
+
+--- The grouping key the sell-out matches demand to stock on. Ammo groups by bullet type (any
+--- condition variant of the same round counts together, but 9x18 fmj and 9x18 ap stay separate);
+--- everything else groups by its whitelist rule key (the category, e.g. medkit).
+local function _sellout_class(sec, rules)
+    local category = xinventory.get_section_category(sec)
+    if category == "ammo_not_equipped" then return _ammo_bullet_type(sec) end
+    local key = _rule_for(sec, category, rules)
+    return key
+end
+
+--- Walk the trader's freshly respawned stock once and bucket the removable items by sell-out class
+--- (bullet type / category), keeping only the classes the demand FIFO wants. Skips tagged market
+--- goods (the sell-out never eats the injected echo) and the trader's equipped items (its weapon).
 --- @cost O(items) | 1 iterate_inventory walk, O(1) per item
 --- @param trader game_object Online trader
---- @param wanted table { [section] = true } sections to collect
---- @return table { [section] = { item_go, ... } } wanted sections actually present in stock
-local function _collect_trader_sold_stock(trader, wanted)
+--- @param wanted table { [class] = true } sell-out classes to collect
+--- @param rules table Trader-sell whitelist (for class resolution)
+--- @return table { [class] = { item_go, ... } } wanted classes actually present in stock
+local function _collect_trader_sold_stock(trader, wanted, rules)
     local stock = {}
     local equipped = xinventory.get_equipped_ids(trader)
     xinventory.iterate_inventory(trader:id(), function(_, item)
-        local sec = item:section()
-        if wanted[sec] and not _market_goods[item:id()] and not equipped[item:id()] then
-            local list = stock[sec]
-            if not list then list = {}; stock[sec] = list end
-            list[#list + 1] = item
+        if not (_market_goods[item:id()] or equipped[item:id()]) then
+            local cls = _sellout_class(item:section(), rules)
+            if wanted[cls] then
+                local list = stock[cls]
+                if not list then list = {}; stock[cls] = list end
+                list[#list + 1] = item
+            end
         end
     end)
     return stock
 end
 
---- Try to sell out one section from the trader's stock, honouring its per-category cap: release
---- floor(held * percent / 100) items and claim the section for the goods window, so injection
---- (this restock or a sibling trader inside the window) never re-adds what was just removed.
---- The floor is deliberately conservative: scarce stock (held 1-3 at 30 percent) removes 0 and the
---- section does not count against the caps. Mirror of _try_inject_section.
---- ctx = { trader_id, faction, rules, cat_count, pct, window }. Returns true on a removal.
-local function _try_sellout_section(ctx, sec, items)
+--- Sell out one class (bullet type / category) from the trader's stock. Removes at most the removal
+--- percent of the held count, hard-capped so at least MIN_REMAIN_PCT of the class stays (from 2 it
+--- removes 1, leaving 50%; a single item is never touched). The victims are picked at random across
+--- the variants held, and each distinct removed section is claimed for the goods window so injection
+--- never re-adds it. Returns (removed_count, representative_section); (0, nil) on no removal.
+--- ctx = { trader_id, faction, pct, window }.
+local function _try_sellout_class(ctx, cls, items)
     local held = items and #items or 0
+    local max_removable = held - math_ceil(held * MIN_REMAIN_PCT / 100)
     local remove = math_floor(held * ctx.pct / 100)
-    if remove == 0 then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s sellout skip %s held=%d below-floor", LOG, sec, held) end
-        return false
+    if remove > max_removable then remove = max_removable end
+    if remove <= 0 then
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s sellout skip %s held=%d floor", LOG, cls, held) end
+        return 0
     end
-    local category = xinventory.get_section_category(sec)
-    local key, rule = _rule_for(sec, category, ctx.rules)
-    local used = ctx.cat_count[key] or 0
-    if used >= rule.max then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s sellout skip %s cat-cap %s full", LOG, sec, key) end
-        return false
+    _shuffle(items)
+    local removed_secs = {}
+    for j = 1, remove do
+        local item = items[j]
+        removed_secs[item:section()] = true
+        xinventory.release_item(item)
     end
-    for j = 1, remove do xinventory.release_item(items[j]) end
-    _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
-    ctx.cat_count[key] = used + 1
+    for sec in pairs(removed_secs) do
+        _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
+    end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s sellout trader=%d sec=%s removed=%d/held=%d", LOG, ctx.trader_id, sec, remove, held)
+        ap_core_debug.debug("%s sellout trader=%d class=%s removed=%d/held=%d", LOG, ctx.trader_id, cls, remove, held)
     end
-    return true
+    return remove, next(removed_secs)
+end
+
+--- Push one chatter line when a trader has just run short of a staple, the sell-out mirror of the
+--- restock chatter (_try_chatter). The channel (ap_ext_news.send_chatter) owns speaker + throttle +
+--- level + non-hostile-faction gates; this only names the trader, the depleted item, and where.
+--- Silent if the trader's level cannot be resolved.
+--- @param trader game_object The trader that ran short
+--- @param section string Representative section of the most-depleted class
+--- @param faction string The trader's faction
+local function _try_sellout_chatter(trader, section, faction)
+    local se = xobject.se(trader:id())
+    local level_id = se and xlevel.get_level_id(se)
+    if not level_id then return end
+    ap_ext_news.send_chatter("st_ap_chatter_market_short", {
+        trader   = trader:character_name() or "",
+        item     = xinventory.get_item_name(section),
+        location = xlevel.get_level_name(level_id) or "",
+    }, { level_id = level_id, faction = faction })
 end
 
 --- Sell out at one online trader what he recently sold to his faction's stalkers: the exact mirror
---- of _inject_at_trader over the _trader_sold FIFO. Same guards, same eligibility chain
---- (_eligible_section: whitelist, role fit, player-rank roll, distribution claim), same shuffle,
---- same per-trader and per-category caps -- removal instead of injection. The whitelist is the
---- [ap_market_trader_sell] block (ammo + medical staples NPCs actually buy), so the sell-out
---- touches nothing else. Runs before _inject_at_trader on both restock paths; the claims it sets
---- keep injection off the sold-out sections for the goods window. The engine restock respawns the
---- full config list next cycle, so removal never permanently damages a trader.
+--- of _inject_at_trader over the _trader_sold FIFO, but matched by sell-out class (bullet type for
+--- ammo, category for medical) so the degraded variants NPCs buy meet the clean stock traders
+--- restock. Same guards and eligibility chain (_eligible_section: whitelist, role fit, player-rank
+--- roll, distribution claim); the demanded sections are grouped into classes, at most the per-trader
+--- cap of classes is sold out, each removes a random share bounded by MIN_REMAIN_PCT. The whitelist
+--- is the [ap_market_trader_sell] block (ammo + medical staples NPCs actually buy). Runs before
+--- _inject_at_trader on both restock paths; the claims it sets keep injection off the sold-out
+--- sections for the goods window. The engine restock respawns the full config list next cycle, so
+--- removal never permanently damages a trader.
 --- @safety SAFE - bails on disabled, zero percent, dead trader, unresolved role/faction, nil policy
 --- @param trader game_object Online trader at its restock
 local function _sellout_at_trader(trader)
@@ -428,27 +474,31 @@ local function _sellout_at_trader(trader)
             trader_id, tname, faction, pct, cap, #eligible)
     end
     if #eligible == 0 then return end
-    _shuffle(eligible)
 
+    -- Map the eligible demanded sections to their sell-out classes, then bucket the trader's fresh
+    -- stock by the same class so degraded-variant demand meets clean-variant stock.
     local wanted = {}
-    for i = 1, #eligible do wanted[eligible[i]] = true end
-    local stock = _collect_trader_sold_stock(trader, wanted)
+    for i = 1, #eligible do wanted[_sellout_class(eligible[i], rules)] = true end
+    local stock = _collect_trader_sold_stock(trader, wanted, rules)
+    local classes = {}
+    for cls in pairs(stock) do classes[#classes + 1] = cls end
+    _shuffle(classes)
 
-    local ctx = {
-        trader_id = trader_id, faction = faction, rules = rules,
-        cat_count = {}, pct = pct, window = _goods_window_sec(),
-    }
-    local sold_out = 0
-    for i = 1, #eligible do
+    local ctx = { trader_id = trader_id, faction = faction, pct = pct, window = _goods_window_sec() }
+    local sold_out, best_removed, best_sec = 0, 0, nil
+    for i = 1, #classes do
         if sold_out >= cap then break end
-        if _try_sellout_section(ctx, eligible[i], stock[eligible[i]]) then
+        local removed, sec = _try_sellout_class(ctx, classes[i], stock[classes[i]])
+        if removed > 0 then
             sold_out = sold_out + 1
+            if removed > best_removed then best_removed, best_sec = removed, sec end
         end
     end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s sellout trader=%d(%s) faction=%s sold_out=%d/%d", LOG,
             trader_id, tname, faction, sold_out, cap)
     end
+    if best_sec then _try_sellout_chatter(trader, best_sec, faction) end
 end
 
 --- Push one chatter line about a notable item this trader just took in, but only when the trader is
