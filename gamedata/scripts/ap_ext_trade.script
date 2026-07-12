@@ -12,13 +12,14 @@
 
 local floor, pairs, ipairs, tonumber = math.floor, pairs, ipairs, tonumber
 local string_match, string_sub = string.match, string.sub
-local table_sort = table.sort
-local xinventory, xcreature = xinventory, xcreature
+local table_sort, table_concat = table.sort, table.concat
+local xinventory, xcreature, ap_core_debug = xinventory, xcreature, ap_core_debug
 
 local SELL_MULT = 0.5
 local BUY_MULT  = 1.0
 local DEFAULT_COST = ap_core_const.DEFAULT_TRADE_COST
 local POLICY_PATH = "alifeplus\\ap_trade_policy.ltx"
+local LOG = "[EXT.TRADE]"
 local cfg = ap_core_mcm.cfg
 
 -- Populated by _load_trade_policy at on_game_start. Shape:
@@ -173,7 +174,8 @@ end
 
 --- Run a sell + buy trade between NPC and trader, per the NPC's rank-tier policy.
 --- Phase 1: scan inventory, aggregate counts per category. Phase 2: SELL pass — iterate
---- inventory, drop anything whose category count > max; transfer to seller, credit NPC.
+--- inventory, release anything whose category count > max, credit NPC (the item is not handed
+--- to the trader; the market echo rebuilds the player shelf from the sold-section list).
 --- Phase 3: walk policy entries in declaration order (= BUY priority) and fill any whose
 --- count < min using post-sell counts + cash; ammo via tier-aware per-slot section pick,
 --- consumables via cheapest-first walk over the category set.
@@ -181,7 +183,7 @@ end
 --- @safety SAFE - nil-guarded npc/seller; iterate_inventory tolerant of nil items
 --- @cost O(n inventory) | 2 iterate walks + buy loop per policy entry with cash check
 --- @param npc game_object Trading NPC (gains money from sales, spends money on buys)
---- @param seller game_object Trader receiving items + paying for ammo
+--- @param seller game_object Trader paying for the NPC's ammo/consumable buys
 --- @return table { sold = { sec, ... }, bought = { sec, ... } }
 function trade(npc, seller)
     local sold, bought = {}, {}
@@ -206,7 +208,11 @@ function trade(npc, seller)
         rules = policy.rules,
         counts = counts,
         on_surplus = function(item, _cat, sec, _unit)
-            xinventory.transfer_item(npc, item, seller)
+            -- Release the item, do NOT hand it to the trader. The player-facing shelf is rebuilt by
+            -- ap_ext_market from the sold-section list (create_item echo), so a transferred item is
+            -- dead weight -- and in vanilla it would sit buyable at the trader until restock.
+            -- transfer_item is reserved for NPC-to-NPC barter, never a trader sale.
+            xinventory.release_item(item)
             xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))
             sold[#sold + 1] = sec
         end,
@@ -227,6 +233,12 @@ function trade(npc, seller)
     local delta = xcreature.get_money(npc) - cash_before
     if delta > cap then
         xcreature.transfer_money(npc, delta - cap, seller)
+    end
+
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s npc=%d tier=%s sold=%d[%s] bought=%d[%s] cash=%d->%d",
+            LOG, npc:id(), tier_name, #sold, table_concat(sold, ","),
+            #bought, table_concat(bought, ","), cash_before, xcreature.get_money(npc))
     end
 
     return { sold = sold, bought = bought }
