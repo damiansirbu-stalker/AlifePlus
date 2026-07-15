@@ -1,12 +1,14 @@
 --- ap_ext_test: console test harness. Actions seed real world state so pipeline scenarios
 --- happen through the real gates (trade sell/buy, stash loot, corpse loot trim, loot claim,
 --- faction market, wounded medkit use). Never AP internals: no DTO writes, no record seeding,
---- no AP callbacks fired, no MCM flips. Radiant Hull/MVT thresholds are game-clock driven;
---- raise the engine time factor to mature them during a soak.
+--- no AP callbacks fired, no MCM flips. Radiant Hull/MVT thresholds are game-clock driven; use
+--- time() to advance the clock and mature them.
 ---
 --- Console:
----   run_string ap_ext_test.run()      toggle the driver; it does everything on its own
+---   run_string ap_ext_test.drive()    start/stop the driver; leave it on and it seeds the world for you
 ---   run_string ap_ext_test.status()   per-action run counts
+---   run_string ap_ext_test.rank(n)    set the player's rank (no arg = expert, opens the market bands)
+---   run_string ap_ext_test.time(h)    advance the game clock h hours (no arg = 24, forces trader restocks)
 ---
 --- The driver fires every action once on start, then keeps re-seeding on each action's
 --- interval: NPC item kits and cash every 5 min, stash fills and a hostile-squad spawn
@@ -186,6 +188,35 @@ local function _give_money()
     ap_core_debug.debug("[TEST] give_money OK npcs=%d amount=%d", given, MONEY_PER_NPC)
 end
 
+-- Default rank() jump: expert (30000) opens the veteran/expert market bands so the injected echo
+-- shows high-value goods (artefacts, devices). Engine clamps character rank to [0, 56000].
+local RANK_DEFAULT = 30000
+
+--- Set the player's character rank. run_string ap_ext_test.rank(25000). With no arg it jumps to
+--- expert, which opens the top market rank bands so the echo carries high-value goods.
+--- @export console
+function rank(value)
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local target = value or RANK_DEFAULT
+    local before = actor:character_rank()
+    actor:set_character_rank(target)
+    local after = actor:character_rank()
+    _tip(string_format("Rank %d -> %d", before, after))
+    ap_core_debug.debug("[TEST] rank target=%d before=%d after=%d", target, before, after)
+end
+
+--- Advance the game clock. run_string ap_ext_test.time(48). With no arg it advances 24 h, one
+--- default restock cycle, so traders resupply and the market injects and sells out; it also matures
+--- the radiant Hull/MVT windows during a soak.
+--- @export console
+function time(hours)
+    local delta_hours = hours or 24
+    level.change_game_time(0, delta_hours, 0)
+    _tip(string_format("Advanced %d h", delta_hours))
+    ap_core_debug.debug("[TEST] time advanced hours=%d", delta_hours)
+end
+
 -- Item batches into nearby unfilled stashes (real treasure_manager state; feeds stash_loot).
 local function _fill_stashes()
     local actor = db.actor
@@ -327,9 +358,14 @@ local function _runner_tick()
     return false
 end
 
---- Toggle the driver. Start once; it does everything on its own until toggled off.
+--- Start or stop the driver. While on it re-seeds live world state on a timer so the real AP pipeline
+--- runs with no further input: every 5 min each online stalker on your level gets a surplus kit (items
+--- above the trade/loot caps) plus cash; every 10 min nearby stashes are filled and one squad hostile
+--- to a random stalker squad is spawned; every 15 min an artefact drops by you. The surplus and cash
+--- drive trade and the faction market at traders; the hostile squad drives combat, and the deaths that
+--- follow drive the massacre / squadkill / loot / wounded reactions. Call again to stop.
 --- @export console
-function run()
+function drive()
     if _runner then
         _runner = nil
         _tip("Test driver stopped")
