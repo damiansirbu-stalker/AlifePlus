@@ -1,4 +1,13 @@
---- ap_ext_market: faction market. A faction's hub traders briefly stock a bounded echo of what
+--- ap_ext_market: faction market. THE BRIDGE vanilla does not have between NPC trading and the
+--- player's trader shelf. In vanilla the two are disjoint: a trader's player-facing stock is his
+--- config [supplies] alone, wiped and respawned every restock by buy_supplies (trade_manager.script:154);
+--- what NPCs sell him (vanilla axr_trade_manager transfer_item) is deleted by that same restock and
+--- never reaches the player's buy panel. This module records what a faction's stalkers trade (an
+--- xevent hook on ap_ext_trade.trade, observe-only) and reshapes that faction's trader stock right
+--- after the restock, so NPC trading finally decides part of what the player buys. It changes no
+--- vanilla trade code and adds no trade UI; it only adds/removes stock in the post-restock window.
+---
+--- A faction's hub traders briefly stock a bounded echo of what
 --- that faction's stalkers have recently sold, injected at the trader's restock, rank-gated to the
 --- player, sold at a premium, and removed after a short window. The sell-out is the mirror: what
 --- the trader recently sold to that faction's stalkers is removed from his freshly respawned stock

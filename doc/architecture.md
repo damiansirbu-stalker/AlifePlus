@@ -129,7 +129,7 @@ Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequence
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn) |
 | ap_ext_trade | NPC supply-trader orchestration: sell surplus, buy up to per-rank policy bands, net-profit capped. Canonical row: Item flow -> Supply Trader |
-| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM enable / radius / TTL. Mechanism in the module header |
+| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM enable / radius / TTL. Canonical section: Corpse loot ownership |
 | ap_ext_market | Faction market: the player-facing echo of NPC trading at a faction's hub traders, injection and sell-out in trader perspective. Canonical section: Item flow -> Faction market |
 | ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept): a looter keeps a policy-bounded, value-ranked share of what it just took from a body. Canonical row: Item flow -> Corpse Loot Trim |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
@@ -273,7 +273,7 @@ DISABLED is the rules-layer skip for a consequence whose MCM toggle is off. Sema
 
 ### Rate limiting
 
-ap_core_limiter holds two limiter families. Pipeline limiter throttles event flow so the engine doesn't churn (real-sec clock, ephemeral). Balance limiter caps in-world impact so the world doesn't drift (game-sec clock, persisted across save/load). The other layers live in producer or in cause generators.
+ap_core_limiter holds two limiter families. Pipeline limiter throttles event flow so the engine doesn't thrash (real-sec clock, ephemeral). Balance limiter caps in-world impact so the world doesn't drift (game-sec clock, persisted across save/load). The other layers live in producer or in cause generators.
 
 | Layer | Mechanism | Scope | Default | Lives in | Config |
 |-------|-----------|-------|---------|----------|--------|
@@ -448,7 +448,35 @@ The fifth flow, the faction market, is not a squad-arrival move and has its own 
 
 Money moves only inside `ap_ext_trade.trade` (via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow at `script_game_object_inventory_owner.cpp:693`). See todo-demonized-exes.md n015 for the engine PR. The faction market moves no money of its own: it adds stock to a trader and overrides the engine's *displayed* price for tagged goods (`on_get_item_cost`); the player pays that premium through the normal engine buy, the same path as any other trader purchase.
 
+### Corpse loot ownership (ap_ext_loot_claim)
+
+A protection layer over vanilla corpse looting: a kill is reserved for its owner, enforced symmetrically in three directions. Distinct from loot_select; claim decides WHO may loot, select decides WHAT is kept. It moves no items and touches no money, only vetoing the vanilla loot path.
+
+The seam. Two hook points, no base-script edits:
+- `xr_corpse_detection.near_actor` (xevent hook), the per-corpse gate the engine calls inside every NPC's loot scan (`find_valid_target`). Half A and Flow C run here as one exclusion arbiter; when neither claims the corpse the wrapper falls through to the vanilla `npc_loot_distance` radius.
+- The actor's own input. Half B vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
+
+The three flows, each with its own MCM enable, radius, and TTL, no master switch (recording gates on any flow being enabled):
+- Half A (loot_reserve_own): NPC looters skip a body the actor killed while the actor is near it.
+- Half B (loot_block_npc): the actor cannot open a living NPC squad's kill; a PDA tip names the owner instead.
+- Flow C (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is near.
+
+The ledger. `_owner` maps victim id to { killer, squad, death game_sec }. An NPC kill is owned by the killer's SQUAD (any living member within radius holds the claim); a lone killer or the actor falls back to individual ownership. A ttl_table swept at 6 game hours, each flow honouring it only within its own freshness window (1 game hour default). Saved and loaded, with the game-clock import deferred to first update since `game_sec` AVs during load_state.
+
+Invariants:
+- One rule, three directions, identical logic per side.
+- Ownership is the killer's squad, not the individual; dropping one member never frees the body.
+- Companions, zombified killers, and story corpses never hold a claim against the actor.
+- Relation is read at block time, so a faction turning hostile lapses its claim live.
+- Pure veto: no item transfer, no money, no save-side effect beyond the ledger.
+
+Release (current). A claim ends by time (per-flow freshness, then the 6h sweep) or by proximity (the owner squad or the actor leaving the radius). It does not end when the body is looted, so an emptied corpse stays claimed for the freshness window. The fair-release rework (todo-alifeplus-next.md) changes this to clear-on-loot and makes the near_actor wrapper authoritative over the vanilla radius; not yet implemented.
+
 ### Faction market (ap_ext_market)
+
+In vanilla, what a trader sells the player and what NPCs sell a trader never meet. The player-facing stock is the trader's config alone: at each restock `trade_manager.update` calls `npc:buy_supplies(config, "[trader] buy_supplies")` (`trade_manager.script:154`), and the engine wipes the trader's whole inventory and respawns the `[supplies]` list. What NPCs sell a trader (vanilla `axr_trade_manager`, `transfer_item`) lands in that same inventory and is deleted by the very next `buy_supplies`, so it never reaches the player's buy panel. Player-facing trader stock and NPC trading are disjoint; nothing in vanilla connects them.
+
+ap_ext_market is the deliberate bridge that connects them, behavior vanilla does not have. It records what a faction's stalkers trade, then reshapes that faction's trader stock immediately after the restock: it injects a bounded, curated echo of what they sold and sells out a share of what they bought, so NPC trading finally decides part of what the player finds on the shelf. It changes no vanilla trade code and adds no trade UI; it only adds and removes stock in the window after each restock.
 
 The market is the read side of the trade flow. It moves no squad and no money. NPC stalkers use only the trade flow; the player uses only the market. Both market directions are named from the trader's perspective, the one party present in every event at his counter: what the trader bought from stalkers appears on his shelf for the player; what he sold to stalkers sells out of it. The sell-out is the exact mirror of injection: the same pipeline runs over the trader-sold FIFO and removes from the fresh stock instead of adding to it.
 

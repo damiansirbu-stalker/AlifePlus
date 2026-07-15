@@ -1,5 +1,11 @@
 --- ap_ext_trade: AlifePlus NPC trade orchestration. LTX-driven per-rank policy.
 ---
+--- NPC-facing only. This changes what an NPC carries and his money; it never touches the trader's
+--- player-facing stock, which in vanilla is config-driven ([trader] buy_supplies, wiped and
+--- respawned every restock) and unrelated to what NPCs sell him. The one bridge that makes NPC
+--- trades shape the player's shelf is ap_ext_market, which only observes this function's
+--- { sold, bought } return value.
+---
 --- Policy loaded from `configs/alifeplus/ap_trade_policy.ltx`. Two tiers split by
 --- RANK_VETERAN (12000). Each tier block lists every reachable category with {min, max}.
 --- Entry declaration order in the LTX = BUY priority (top fills first; stops when cash
@@ -208,9 +214,10 @@ function trade(npc, seller)
         rules = policy.rules,
         counts = counts,
         on_surplus = function(item, _cat, sec, _unit)
-            -- Release the item, do NOT hand it to the trader. The player-facing shelf is rebuilt by
-            -- ap_ext_market from the sold-section list (create_item echo), so a transferred item is
-            -- dead weight -- and in vanilla it would sit buyable at the trader until restock.
+            -- Release the item; do NOT hand it to the trader. Handing it over changes nothing the
+            -- player sees: a trader's player-facing stock is his config, respawned each restock, so a
+            -- transferred item is deleted at the next restock anyway (it would only sit buyable until
+            -- then). The one player-facing path is the ap_ext_market echo, rebuilt from this sold list.
             -- transfer_item is reserved for NPC-to-NPC barter, never a trader sale.
             xinventory.release_item(item)
             xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))

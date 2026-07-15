@@ -60,8 +60,10 @@ Alpha mutants:
 Trade and needs:
 - Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.- Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
-Loot ownership:
+Loot claim (protection):
 - Every kill belongs to whoever made it. NPCs leave your fresh kills alone while you are near, and their own kills stay closed to you while the squad lives.
+
+Loot policy (what a looter keeps):
 - A looting NPC keeps only what fits its gear and a fair share of supplies, so the bodies you reach later are not stripped bare. The toggles sit under the Economy menu.
 
 Day/night cycle:
@@ -226,7 +228,7 @@ Trade
 
 Market
 
-  Traders are no longer static. What a faction's stalkers sell and buy at their own traders shapes what you find on the shelf, both directions, within bounds.
+  In vanilla a trader's stock is fixed. It is set by his own config and refilled to that same list every restock, and nothing his faction's stalkers do at his counter ever changes what you can buy. The faction market connects the two for the first time: what a faction's stalkers sell and buy at their own traders now shapes what you find on his shelf, both directions, within bounds.
 
   Sell it and it surfaces: when a hub trader restocks, the items his faction's stalkers recently sold turn up in stock, rank-gated and premium-priced, gone after a short window. Buy it and it thins: the ammo and medical those stalkers keep purchasing run short in his fresh stock.
 
@@ -325,6 +327,8 @@ Mod compatibility:
   Superseded:
   - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
   - Anti-loot addons (NPC Stop Looting Dead Bodies, BoltBeGone): the loot policy keeps NPC looting on and bounds what each looter keeps, so blocking the loot path is no longer needed. AlifeBalance's Inventory Balance does the same for standing inventory.
+  - Useful Idiots: turn its "no NPC looting" option OFF (defaults ON on GAMMA). It blocks all non-companion looting, so nothing feeds trade or the market.
+  - Vanilla "NPC loot distance" (Options > Gameplay > General, GAMMA sets 12 m): the loot claim replaces this radius, so set it to 0, or console run_string ui_options.set("gameplay/general/npc_loot_distance", 0).
 
   Conflicts (critical):
   - Unauthorized "synergy" / "bridge" patches claiming to connect AlifePlus to another mod: instability, save corruption.
