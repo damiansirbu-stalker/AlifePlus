@@ -7,7 +7,7 @@
 --- (medkit / bandage / stim usage in combat) is independent and untouched.
 
 local table_concat = table.concat
-local xobject, xtime = xobject, xtime
+local xobject, xtime, xcreature = xobject, xtime, xcreature
 local ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
     ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
 local ap_ext_trade, ap_ext_barter, ap_ext_tracker = ap_ext_trade, ap_ext_barter, ap_ext_tracker
@@ -48,13 +48,14 @@ end
 
 --- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
 --- Counterpart of _arrive_action_trade -- delegates to ap_ext_barter.barter, which moves items both
---- ways with no money via the per-rank ap_barter_policy.ltx. args.squad_id excludes the arriving
---- squad's own members from the peer pick. No peer online -> NONE (mirrors NO_TRADER). One PHASE.ARRIVE entry.
+--- ways with no money via the per-rank ap_barter_policy.ltx. The peer pick excludes the arriving
+--- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
+--- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER). One PHASE.ARRIVE entry.
 local function _arrive_action_barter(trace, visitor_go, args)
     ap_core_debug.observe(trace, PHASE.ARRIVE, function()
         local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
         if not smart_se then return { code = TRACE.NONE, reason = REASON.NO_SMART } end
-        local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id)
+        local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id, xcreature.community(visitor_go))
         if not peer_go then
             ap_core_debug.debug(args.log_prefix .. " arrive barter: no stalker peer online at smart=%d", args.dst_smart_id)
             return { code = TRACE.NONE, reason = REASON.NO_PEER }

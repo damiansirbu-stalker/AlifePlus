@@ -304,20 +304,26 @@ function has_peer_squad_at_smart(smart)
     return not xsmart.is_smart_empty(smart.id)
 end
 
---- Resolve a stalker peer to barter with at a smart: first alive, scriptable stalker in the smart's
---- npc_info roster whose squad is not the arriving squad. Mirrors get_service_npc_at_smart's roster
---- walk (smart.npc_info -> xobject.go), swapping the role test for stalker + scriptable and adding
+--- Resolve a stalker peer to barter with at a smart: first alive, scriptable, same-faction stalker in
+--- the smart's npc_info roster whose squad is not the arriving squad. Mirrors get_service_npc_at_smart's
+--- roster walk (smart.npc_info -> xobject.go), swapping the role test for stalker + scriptable and adding
 --- the own-squad exclusion so a squad never barters with itself. is_unscriptable drops companions,
---- story, traders, and named NPCs (same gate ap_ext_loot_select uses).
+--- story, traders, and named NPCs (same gate ap_ext_loot_select uses). The community gate enforces the
+--- own-faction rule at arrival: routing's exclude_enemy only rejects hostile smarts and the roster can
+--- churn between routing and arrival, so the precise same-faction check lives here. is_factions_friends
+--- would miss same-faction (the community_relation diagonal is neutral, not >= FRIENDS), so this is a
+--- direct community-string equality, not a relation call.
 --- @param smart smart_terrain
 --- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
---- @return game_object|nil Online stalker peer, or nil if none present
-function get_peer_stalker_at_smart(smart, exclude_squad_id)
+--- @param community string|nil Arriving squad community; nil skips the faction gate (any non-enemy peer)
+--- @return game_object|nil Online same-faction stalker peer, or nil if none present
+function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
     if not smart or not smart.npc_info then return nil end
     for npc_id in pairs(smart.npc_info) do
         local squad = xsquad.get_squad_by_member(npc_id)
         local npc = not (squad and squad.id == exclude_squad_id) and xobject.go(npc_id)
-        if npc and npc:alive() and xcreature.is_stalker(npc) and not xcreature.is_unscriptable(npc) then
+        if npc and npc:alive() and xcreature.is_stalker(npc) and not xcreature.is_unscriptable(npc)
+            and (not community or xcreature.community(npc) == community) then
             return npc
         end
     end
