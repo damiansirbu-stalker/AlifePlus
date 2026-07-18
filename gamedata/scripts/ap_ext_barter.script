@@ -15,7 +15,9 @@
 ---      item moves A -> B only when its xinventory.get_cost beats the cost of B's equipped item of
 ---      that kind -- the same get_cost comparison trade (_sorted_by_cost) and market (get_rank_chance)
 ---      use. Weapons are weighed against the receiver's most valuable equipped gun, so only a genuine
----      upgrade over everything it carries changes hands; the receiver keeps its old gun.
+---      upgrade over everything it carries changes hands; the receiver keeps its old gun. The "weapon"
+---      spare is restricted to firearms (non-empty ammo_class) so a spare knife / binocular / bolt --
+---      all WP_-class, all category "weapon" -- never counts as a gun upgrade for an unarmed peer.
 ---
 --- Total items moved per barter is capped by MCM barter_max_items (economy > barter). barter(visitor,
 --- peer) runs both directions and returns { given, received } section lists (visitor's perspective),
@@ -46,23 +48,22 @@ end
 -- them); on_surplus transfers only when the receiver is short on that category, tracking the
 -- receiver's live count so it never overshoots the floor, and decrements the shared budget so the
 -- total across both passes and both directions stays under barter_max_items. Returning true stops
--- the walk once the budget is spent. The receiver key is resolved against the RECEIVER's rules
--- (section override else category), matching how the receiver was classified.
-local function _transfer_surplus(giver, giver_policy, receiver, receiver_policy, budget, out)
+-- the walk once the budget is spent. Both stalkers classify against the same shared `rules` (one
+-- uniform barter block), so the receiver key resolves section-override-else-category the same way.
+-- Per-NPC opts are computed once in barter() and threaded in (equipped slots never change mid-call).
+local function _transfer_surplus(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
-    local giver_opts = xinventory.get_category_opts(giver)
-    local giver_counts = xinventory.classify(giver, giver_opts, giver_policy.rules)
-    local receiver_opts = xinventory.get_category_opts(receiver)
-    local receiver_counts = xinventory.classify(receiver, receiver_opts, receiver_policy.rules)
-    local r_rules = receiver_policy.rules
+    local rules = BARTER_POLICY.rules
+    local giver_counts = xinventory.classify(giver, giver_opts, rules)
+    local receiver_counts = xinventory.classify(receiver, receiver_opts, rules)
 
     xinventory.iterate_surplus(giver, giver_opts, {
-        rules = giver_policy.rules,
+        rules = rules,
         counts = giver_counts,
         on_surplus = function(item, cat, sec, unit)
             if budget.remaining <= 0 then return true end
-            local key = (r_rules[sec] and sec) or cat
-            local rrule = r_rules[key]
+            local key = (rules[sec] and sec) or cat
+            local rrule = rules[key]
             local rmin = (rrule and rrule.min) or 0
             local have = receiver_counts[key] or 0
             if have >= rmin then return end
@@ -74,15 +75,15 @@ local function _transfer_surplus(giver, giver_policy, receiver, receiver_policy,
     })
 end
 
--- Cost floor per gear kind the receiver already carries: weapons must beat the receiver's most
--- valuable equipped gun (so only a genuine upgrade over everything it holds moves), outfit and helmet
--- the equipped one of that kind. An empty slot reads 0, so any spare clears it.
-local function _equipped_baseline(receiver)
-    local ropts = xinventory.get_category_opts(receiver)
-    local eq_pistol = ropts.equipped_pistol_sec and (xinventory.get_cost(ropts.equipped_pistol_sec) or 0) or 0
-    local eq_rifle  = ropts.equipped_rifle_sec  and (xinventory.get_cost(ropts.equipped_rifle_sec)  or 0) or 0
-    local outfit = xinventory.get_equipped_outfit(receiver)
-    local helmet = xinventory.get_equipped_helmet(receiver)
+-- Cost floor per gear kind the npc already carries: weapons the npc's most valuable equipped gun (so
+-- only a genuine upgrade over everything it holds moves as recv_base, and the giver's own equipped as
+-- give_base), outfit and helmet the equipped one of that kind. An empty slot reads 0, so any spare
+-- clears it. opts is threaded from barter() (get_category_opts computed once per stalker).
+local function _equipped_baseline(npc, opts)
+    local eq_pistol = opts.equipped_pistol_sec and (xinventory.get_cost(opts.equipped_pistol_sec) or 0) or 0
+    local eq_rifle  = opts.equipped_rifle_sec  and (xinventory.get_cost(opts.equipped_rifle_sec)  or 0) or 0
+    local outfit = xinventory.get_equipped_outfit(npc)
+    local helmet = xinventory.get_equipped_helmet(npc)
     return {
         weapon = math_max(eq_pistol, eq_rifle),
         outfit = outfit and (xinventory.get_cost(outfit:section()) or 0) or 0,
@@ -94,7 +95,9 @@ end
 -- marks equipped items "equipped" and drops them, so only spares reach here. A spare is giftable only
 -- when its cost does NOT exceed the giver's own equipped of that kind (give_base): a spare better than
 -- what the giver carries is the giver's own upgrade, kept -- this is what "an EXTRA weapon" means, and
--- it also stops a top gun ping-ponging between the two squads across the return pass.
+-- it also stops a top gun ping-ponging between the two squads across the return pass. A "weapon" spare
+-- with no ammo_class (knife / binocular / bolt -- WP_-class but not a firearm) is skipped: it is never
+-- a gun upgrade, and without this an unarmed peer (recv_base.weapon 0) would take a spare knife.
 local function _best_spares(giver, giver_opts, give_base)
     local best = {}
     xinventory.iterate_inventory(giver:id(), function(_, item)
@@ -102,6 +105,7 @@ local function _best_spares(giver, giver_opts, give_base)
         local cat = xinventory.get_category(item, giver_opts)
         if cat ~= "weapon" and cat ~= "outfit" and cat ~= "helmet" then return end
         local sec = item:section()
+        if cat == "weapon" and #xinventory.get_ammo_sections(sec) == 0 then return end
         local cost = xinventory.get_cost(sec) or 0
         if cost > give_base[cat] then return end
         local cur = best[cat]
@@ -114,11 +118,10 @@ end
 -- it beats what the receiver has equipped, by xinventory.get_cost. The best spare per kind is picked
 -- in a single walk (no mid-iterate transfer), then moved if it clears the receiver's baseline and the
 -- budget allows.
-local function _transfer_upgrades(giver, receiver, budget, out)
+local function _transfer_upgrades(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
-    local giver_opts = xinventory.get_category_opts(giver)
-    local recv_base = _equipped_baseline(receiver)
-    local best = _best_spares(giver, giver_opts, _equipped_baseline(giver))
+    local recv_base = _equipped_baseline(receiver, receiver_opts)
+    local best = _best_spares(giver, giver_opts, _equipped_baseline(giver, giver_opts))
 
     for cat, cand in pairs(best) do
         if budget.remaining <= 0 then break end
@@ -134,7 +137,8 @@ end
 --- peer -> visitor fills `received`. No money moves; items change hands via xinventory.transfer_item
 --- only. Total moved capped by MCM barter_max_items.
 --- @safety SAFE - nil-guarded visitor/peer; classify / iterate_* tolerant of nil items
---- @cost O(n inventory) | per direction: 2 classify + 1 iterate_surplus + 1 iterate_inventory walk
+--- @cost O(n inventory) | get_category_opts x2 (once per stalker, threaded into both directions);
+---       per direction: 2 classify + 1 iterate_surplus + 1 iterate_inventory (spares) + 2 baselines
 --- @param visitor game_object Arriving squad's commander
 --- @param peer game_object Stalker peer at the destination smart
 --- @return table { given = { sec, ... }, received = { sec, ... } } (visitor's perspective)
@@ -146,10 +150,13 @@ function barter(visitor, peer)
     local budget = { remaining = cfg.barter_max_items }
     if budget.remaining <= 0 then return { given = given, received = received } end
 
-    _transfer_surplus(visitor, BARTER_POLICY, peer, BARTER_POLICY, budget, given)
-    _transfer_upgrades(visitor, peer, budget, given)
-    _transfer_surplus(peer, BARTER_POLICY, visitor, BARTER_POLICY, budget, received)
-    _transfer_upgrades(peer, visitor, budget, received)
+    local visitor_opts = xinventory.get_category_opts(visitor)
+    local peer_opts = xinventory.get_category_opts(peer)
+
+    _transfer_surplus(visitor, visitor_opts, peer, peer_opts, budget, given)
+    _transfer_upgrades(visitor, visitor_opts, peer, peer_opts, budget, given)
+    _transfer_surplus(peer, peer_opts, visitor, visitor_opts, budget, received)
+    _transfer_upgrades(peer, peer_opts, visitor, visitor_opts, budget, received)
 
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s visitor=%d peer=%d given=%d[%s] received=%d[%s]",
