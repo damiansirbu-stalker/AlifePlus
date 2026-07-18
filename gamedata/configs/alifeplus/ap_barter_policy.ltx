@@ -1,0 +1,37 @@
+; AlifePlus barter policy. NPC-to-NPC item swap, no money (the counterpart of ap_trade_policy.ltx,
+; which is the visiting stalker vs a service trader with cash). One uniform block, no rank tiers, same
+; shape as ap_stash_policy.ltx and ap_loot_policy.ltx. DLTX-overridable.
+;
+; Same category system as trade: keys are engine-derived (xinventory.get_category / get_category_opts
+; resolves ammo_slot_2/3_tN per the NPC's equipped pistol/rifle, ammo_not_equipped, grenades,
+; medical/food/drink). Each row is a category band in the HOLDER's perspective: min = keep at least
+; this many, max = give away above this. An item moves from A to B when A holds it above A's max
+; (surplus) AND B holds it below B's min (deficit). Ammo counts in rounds; items otherwise. Total
+; items moved per barter event is capped by MCM barter_max_items (economy > barter).
+;
+; Weapons, outfits, and helmets are NOT count-band rows here -- the barter orchestrator handles them on
+; a separate cost-upgrade pass (a spare moves only when its get_cost beats the receiver's equipped one),
+; so they are absent from this block. Untouchable and equipped items are dropped by
+; xinventory.get_category before any policy lookup.
+
+[ap_barter_policy]
+ammo_slot_3_t1    = 15, 45
+ammo_slot_2_t1    = 16, 48
+ammo_slot_3_t2    = 15, 45
+ammo_slot_2_t2    = 16, 48
+ammo_not_equipped = 0, 0
+grenade_f1        = 1, 3
+grenade_rgd5      = 1, 3
+grenade_gd-05     = 1, 3
+grenade_ammo      = 0, 0
+medkit            = 1, 3
+bandage           = 1, 4
+stim              = 0, 2
+antirad           = 1, 2
+pill              = 0, 3
+food              = 1, 2
+drink             = 1, 2
+artefact          = 0, 0
+device            = 0, 0
+crafting          = 0, 3
+other             = 0, 0

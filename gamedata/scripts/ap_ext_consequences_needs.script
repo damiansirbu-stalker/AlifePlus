@@ -10,7 +10,7 @@ local table_concat = table.concat
 local xobject, xtime = xobject, xtime
 local ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
     ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
-local ap_ext_trade, ap_ext_tracker = ap_ext_trade, ap_ext_tracker
+local ap_ext_trade, ap_ext_barter, ap_ext_tracker = ap_ext_trade, ap_ext_barter, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
@@ -46,6 +46,27 @@ local function _arrive_action_trade(trace, visitor_go, args)
     end)
 end
 
+--- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
+--- Counterpart of _arrive_action_trade -- delegates to ap_ext_barter.barter, which moves items both
+--- ways with no money via the per-rank ap_barter_policy.ltx. args.squad_id excludes the arriving
+--- squad's own members from the peer pick. No peer online -> NONE (mirrors NO_TRADER). One PHASE.ARRIVE entry.
+local function _arrive_action_barter(trace, visitor_go, args)
+    ap_core_debug.observe(trace, PHASE.ARRIVE, function()
+        local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
+        if not smart_se then return { code = TRACE.NONE, reason = REASON.NO_SMART } end
+        local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id)
+        if not peer_go then
+            ap_core_debug.debug(args.log_prefix .. " arrive barter: no stalker peer online at smart=%d", args.dst_smart_id)
+            return { code = TRACE.NONE, reason = REASON.NO_PEER }
+        end
+        local result = ap_ext_barter.barter(visitor_go, peer_go)
+        local given, received = result.given, result.received
+        local fired = (#given > 0) or (#received > 0)
+        return { code = fired and TRACE.OK or TRACE.NONE,
+            given = table_concat(given, ","), received = table_concat(received, ",") }
+    end)
+end
+
 local CONFIGS = {
     { consequence = CONSEQUENCE.HUNGER_CAMPFIRE, action = ACTION.HUNGER_CAMPFIRE,   event = CAUSE.HUNGER_CAMPFIRE,  name = "hunger_campfire",
       pre_release_gulag = PRE_RELEASE_GULAG.HUNGER_CAMPFIRE },
@@ -63,6 +84,10 @@ local CONFIGS = {
       arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
     { consequence = CONSEQUENCE.SUPPLY_TRADER_OFFMAP, action = ACTION.SUPPLY_TRADER_OFFMAP, event = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap",
       arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
+    { consequence = CONSEQUENCE.BARTER, action = ACTION.BARTER,                       event = CAUSE.BARTER,           name = "barter",
+      arrive_action = _arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER },
+    { consequence = CONSEQUENCE.BARTER_OFFMAP, action = ACTION.BARTER_OFFMAP,         event = CAUSE.BARTER_OFFMAP,    name = "barter_offmap",
+      arrive_action = _arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,       event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
     { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,             event = CAUSE.MONEY_HUNT,       name = "money_hunt",
@@ -133,7 +158,7 @@ local function _make_handler(entry)
                     on_arrive = entry.consequence,
                     on_arrive_args = { dto_field = event_data.dto_field,
                         dst_name = smart:name(), dst_smart_id = smart.id,
-                        log_prefix = entry.log_prefix },
+                        squad_id = event_data.squad_id, log_prefix = entry.log_prefix },
                     pre_release_gulag = entry.pre_release_gulag,
                     offmap = entry.offmap,
                     interruptable = not entry.offmap,

@@ -1,0 +1,165 @@
+--- ap_ext_barter: AlifePlus NPC-to-NPC barter orchestration. LTX-driven uniform policy.
+---
+--- Counterpart of ap_ext_trade. Trade moves money against a service NPC; barter moves items only,
+--- both ways, between two stalkers -- no money, no create/release, just xinventory.transfer_item
+--- (the one primitive trade reserves for exactly this path). Same category system as trade: keys are
+--- resolved by xinventory.get_category / get_category_opts (equipped-weapon ammo tiers, medical,
+--- grenades, ...); nothing here reads engine configs.
+---
+--- Two mechanisms, both cost-driven the same way trade / market are:
+---   1. Count bands (ap_barter_policy.ltx, one uniform block like stash / loot). An item of a category
+---      moves A -> B when A holds it above A's `max` (surplus) AND B holds it below B's `min`
+---      (deficit). Reuses xinventory.iterate_surplus, exactly like trade's SELL pass, but the action
+---      is a transfer to the peer instead of a sale.
+---   2. Gear upgrade (weapon / outfit / helmet, absent from the count bands). A spare (unequipped)
+---      item moves A -> B only when its xinventory.get_cost beats the cost of B's equipped item of
+---      that kind -- the same get_cost comparison trade (_sorted_by_cost) and market (get_rank_chance)
+---      use. Weapons are weighed against the receiver's most valuable equipped gun, so only a genuine
+---      upgrade over everything it carries changes hands; the receiver keeps its old gun.
+---
+--- Total items moved per barter is capped by MCM barter_max_items (economy > barter). barter(visitor,
+--- peer) runs both directions and returns { given, received } section lists (visitor's perspective),
+--- the same shape as ap_ext_trade's { sold, bought }, for the arrival record / news.
+
+local pairs, table_concat, math_max = pairs, table.concat, math.max
+local xinventory, ap_core_debug = xinventory, ap_core_debug
+
+local POLICY_PATH = "alifeplus\\ap_barter_policy.ltx"
+local LOG = "[EXT.BARTER]"
+local cfg = ap_core_mcm.cfg
+
+-- Populated by _load_barter_policy at on_game_start. Shape: { rules }. One uniform block, no rank
+-- tiers (same as ap_stash_policy / ap_loot_policy); both stalkers classify against the same bands.
+local BARTER_POLICY = nil
+
+-- Load barter policy via the shared xinventory.load_policy kernel (same LTX shape as stash / loot).
+-- Only the per-category `rules` hash is used; barter has no declaration-order priority (surplus is
+-- surfaced by walking inventory, not filled top-down like trade's BUY pass).
+local function _load_barter_policy()
+    local blocks = xinventory.load_policy(POLICY_PATH, { "ap_barter_policy" })
+    BARTER_POLICY = { rules = blocks.ap_barter_policy.rules }
+end
+
+-- Count-band direction: hand the giver's per-category surplus to the receiver where the receiver is
+-- below its own floor. iterate_surplus surfaces every giver item above its category max (weapon /
+-- outfit / helmet are absent from the policy, so they never surface here -- the upgrade pass owns
+-- them); on_surplus transfers only when the receiver is short on that category, tracking the
+-- receiver's live count so it never overshoots the floor, and decrements the shared budget so the
+-- total across both passes and both directions stays under barter_max_items. Returning true stops
+-- the walk once the budget is spent. The receiver key is resolved against the RECEIVER's rules
+-- (section override else category), matching how the receiver was classified.
+local function _transfer_surplus(giver, giver_policy, receiver, receiver_policy, budget, out)
+    if budget.remaining <= 0 then return end
+    local giver_opts = xinventory.get_category_opts(giver)
+    local giver_counts = xinventory.classify(giver, giver_opts, giver_policy.rules)
+    local receiver_opts = xinventory.get_category_opts(receiver)
+    local receiver_counts = xinventory.classify(receiver, receiver_opts, receiver_policy.rules)
+    local r_rules = receiver_policy.rules
+
+    xinventory.iterate_surplus(giver, giver_opts, {
+        rules = giver_policy.rules,
+        counts = giver_counts,
+        on_surplus = function(item, cat, sec, unit)
+            if budget.remaining <= 0 then return true end
+            local key = (r_rules[sec] and sec) or cat
+            local rrule = r_rules[key]
+            local rmin = (rrule and rrule.min) or 0
+            local have = receiver_counts[key] or 0
+            if have >= rmin then return end
+            if not xinventory.transfer_item(giver, item, receiver) then return end
+            receiver_counts[key] = have + unit
+            budget.remaining = budget.remaining - 1
+            out[#out + 1] = sec
+        end,
+    })
+end
+
+-- Cost floor per gear kind the receiver already carries: weapons must beat the receiver's most
+-- valuable equipped gun (so only a genuine upgrade over everything it holds moves), outfit and helmet
+-- the equipped one of that kind. An empty slot reads 0, so any spare clears it.
+local function _equipped_baseline(receiver)
+    local ropts = xinventory.get_category_opts(receiver)
+    local eq_pistol = ropts.equipped_pistol_sec and (xinventory.get_cost(ropts.equipped_pistol_sec) or 0) or 0
+    local eq_rifle  = ropts.equipped_rifle_sec  and (xinventory.get_cost(ropts.equipped_rifle_sec)  or 0) or 0
+    local outfit = xinventory.get_equipped_outfit(receiver)
+    local helmet = xinventory.get_equipped_helmet(receiver)
+    return {
+        weapon = math_max(eq_pistol, eq_rifle),
+        outfit = outfit and (xinventory.get_cost(outfit:section()) or 0) or 0,
+        helmet = helmet and (xinventory.get_cost(helmet:section()) or 0) or 0,
+    }
+end
+
+-- Best giftable spare per gear kind in the giver's inventory. get_category (with the giver's opts)
+-- marks equipped items "equipped" and drops them, so only spares reach here. A spare is giftable only
+-- when its cost does NOT exceed the giver's own equipped of that kind (give_base): a spare better than
+-- what the giver carries is the giver's own upgrade, kept -- this is what "an EXTRA weapon" means, and
+-- it also stops a top gun ping-ponging between the two squads across the return pass.
+local function _best_spares(giver, giver_opts, give_base)
+    local best = {}
+    xinventory.iterate_inventory(giver:id(), function(_, item)
+        if not item then return end
+        local cat = xinventory.get_category(item, giver_opts)
+        if cat ~= "weapon" and cat ~= "outfit" and cat ~= "helmet" then return end
+        local sec = item:section()
+        local cost = xinventory.get_cost(sec) or 0
+        if cost > give_base[cat] then return end
+        local cur = best[cat]
+        if not cur or cost > cur.cost then best[cat] = { item = item, cost = cost, sec = sec } end
+    end)
+    return best
+end
+
+-- Gear-upgrade direction: hand the giver's best giftable spare of each kind to the receiver only when
+-- it beats what the receiver has equipped, by xinventory.get_cost. The best spare per kind is picked
+-- in a single walk (no mid-iterate transfer), then moved if it clears the receiver's baseline and the
+-- budget allows.
+local function _transfer_upgrades(giver, receiver, budget, out)
+    if budget.remaining <= 0 then return end
+    local giver_opts = xinventory.get_category_opts(giver)
+    local recv_base = _equipped_baseline(receiver)
+    local best = _best_spares(giver, giver_opts, _equipped_baseline(giver))
+
+    for cat, cand in pairs(best) do
+        if budget.remaining <= 0 then break end
+        if cand.cost > recv_base[cat] and xinventory.transfer_item(giver, cand.item, receiver) then
+            budget.remaining = budget.remaining - 1
+            out[#out + 1] = cand.sec
+        end
+    end
+end
+
+--- Run a two-way barter between two stalkers against the shared uniform policy.
+--- Each direction runs the count-band pass then the gear-upgrade pass; visitor -> peer fills `given`,
+--- peer -> visitor fills `received`. No money moves; items change hands via xinventory.transfer_item
+--- only. Total moved capped by MCM barter_max_items.
+--- @safety SAFE - nil-guarded visitor/peer; classify / iterate_* tolerant of nil items
+--- @cost O(n inventory) | per direction: 2 classify + 1 iterate_surplus + 1 iterate_inventory walk
+--- @param visitor game_object Arriving squad's commander
+--- @param peer game_object Stalker peer at the destination smart
+--- @return table { given = { sec, ... }, received = { sec, ... } } (visitor's perspective)
+function barter(visitor, peer)
+    local given, received = {}, {}
+    if not visitor or not peer then return { given = given, received = received } end
+    if not BARTER_POLICY then return { given = given, received = received } end
+
+    local budget = { remaining = cfg.barter_max_items }
+    if budget.remaining <= 0 then return { given = given, received = received } end
+
+    _transfer_surplus(visitor, BARTER_POLICY, peer, BARTER_POLICY, budget, given)
+    _transfer_upgrades(visitor, peer, budget, given)
+    _transfer_surplus(peer, BARTER_POLICY, visitor, BARTER_POLICY, budget, received)
+    _transfer_upgrades(peer, visitor, budget, received)
+
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s visitor=%d peer=%d given=%d[%s] received=%d[%s]",
+            LOG, visitor:id(), peer:id(), #given, table_concat(given, ","),
+            #received, table_concat(received, ","))
+    end
+
+    return { given = given, received = received }
+end
+
+function on_game_start()
+    _load_barter_policy()
+end

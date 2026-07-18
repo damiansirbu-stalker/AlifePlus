@@ -58,7 +58,9 @@ Alpha mutants:
 - Killing an alpha draws same-species hunters.
 
 Trade and needs:
-- Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.- Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
+- Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.
+- Stalkers also barter directly with their own faction, swapping surplus for what they lack with a squad at a friendly camp, no money: ammo, meds, grenades, and a spare weapon or armor better than the other is carrying.
+- Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
 Loot claim (protection):
 - Every kill belongs to whoever made it. NPCs leave your fresh kills alone while you are near, and their own kills stay closed to you while the squad lives.
@@ -182,6 +184,7 @@ Needs
   - Shelter - The stalker walks to a safe location when exposed too long.
   - Money - The stalker searches anomaly fields for artefacts or hunts mutant lairs.
   - Supply - The stalker walks to a trader, medic, or mechanic (anyone wired to dm_init_trader in vanilla) to sell surplus and restock per a rank-tiered policy. Veterans add premium ammo, grenades, and larger consumable bands. Rookies carry basic ammo and standard medkits.
+  - Barter - The stalker walks to a same-faction squad and swaps items with a stalker there, no money. Each hands over the surplus the other is short on (ammo for equipped weapons, medical supplies, grenades) and a spare weapon, outfit, or helmet that costs more than the one the other carries. An off-map version travels to a friendly squad on another map. Shares the Supply need, so a stalker restocks whichever is reachable.
   - Job - The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
   - Social - The stalker walks to a campfire or base for company.
 

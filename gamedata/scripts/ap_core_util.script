@@ -1,7 +1,7 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
 local game_relations, get_actor_true_community = game_relations, get_actor_true_community
-local xbus, xsquad, xsmart, xconst, xlevel, xobject = xbus, xsquad, xsmart, xconst, xlevel, xobject
+local xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature = xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
 local PHASE = ap_core_const.CONSEQUENCE_PHASE
@@ -290,6 +290,38 @@ function has_service_npc_at_smart(smart)
         if _has_role_at_smart(smart, SERVICE_ROLES[i]) then return true end
     end
     return false
+end
+
+--- Barter counterpart of has_service_npc_at_smart: a routing-time predicate that any squad is
+--- physically stationed at the smart. Uses SIMBOARD roster truth (xsmart.is_smart_empty), which is
+--- cross-level and offline safe, unlike the npc_info role walk. Combined with the cause's
+--- exclude_enemy gate it means "a non-hostile squad is stationed here to barter with"; the precise
+--- stalker-peer check runs at arrival in get_peer_stalker_at_smart (mirrors trader NO_TRADER skip).
+--- @param smart smart_terrain
+--- @return boolean
+function has_peer_squad_at_smart(smart)
+    if not smart then return false end
+    return not xsmart.is_smart_empty(smart.id)
+end
+
+--- Resolve a stalker peer to barter with at a smart: first alive, scriptable stalker in the smart's
+--- npc_info roster whose squad is not the arriving squad. Mirrors get_service_npc_at_smart's roster
+--- walk (smart.npc_info -> xobject.go), swapping the role test for stalker + scriptable and adding
+--- the own-squad exclusion so a squad never barters with itself. is_unscriptable drops companions,
+--- story, traders, and named NPCs (same gate ap_ext_loot_select uses).
+--- @param smart smart_terrain
+--- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
+--- @return game_object|nil Online stalker peer, or nil if none present
+function get_peer_stalker_at_smart(smart, exclude_squad_id)
+    if not smart or not smart.npc_info then return nil end
+    for npc_id in pairs(smart.npc_info) do
+        local squad = xsquad.get_squad_by_member(npc_id)
+        local npc = not (squad and squad.id == exclude_squad_id) and xobject.go(npc_id)
+        if npc and npc:alive() and xcreature.is_stalker(npc) and not xcreature.is_unscriptable(npc) then
+            return npc
+        end
+    end
+    return nil
 end
 
 -- ============================================================================

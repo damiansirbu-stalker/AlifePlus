@@ -86,6 +86,8 @@ defaults = {
     cause_social_base_enabled = true,
     cause_social_offmap_enabled = true,
     cause_supply_trader_offmap_enabled = true,
+    cause_barter_enabled = true,
+    cause_barter_offmap_enabled = true,
     cause_job_explore_offmap_enabled = true,
 
     -- World: offmap balance cap (dispatches per source map per OFFMAP_WINDOW_SEC)
@@ -290,6 +292,16 @@ defaults = {
     consequence_supply_trader_offmap_rush = false,
     consequence_supply_trader_offmap_arrive_action_enabled = true,
 
+    -- Consequence: Barter (peer item swap, no money)
+    consequence_barter_enabled = true,
+    consequence_barter_rush = false,
+    consequence_barter_arrive_action_enabled = true,
+
+    -- Consequence: Barter Offmap (cross-map sibling of barter)
+    consequence_barter_offmap_enabled = true,
+    consequence_barter_offmap_rush = false,
+    consequence_barter_offmap_arrive_action_enabled = true,
+
     -- Consequence: Job Explore Offmap (cross-map sibling of job_explore)
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
@@ -322,6 +334,7 @@ defaults = {
     loot_block_npc_vs_npc_ttl = 1,
     loot_select_enabled = true,
     trade_profit_max = 5000,
+    barter_max_items = 5,
 
     -- Economy: faction market (ap_ext_market)
     market_enabled = true,
@@ -347,9 +360,11 @@ defaults = {
 -- job_outpost, social_campfire, social_base have no arrive_action toggle in the current
 -- ruleset, so this profile does not gate them.
 local stateless_overrides = {
-    -- Arrive-action toggles (trade-only; gated in ap_ext_consequences_needs.script:_make_on_arrive)
+    -- Arrive-action toggles (trade + barter; gated in ap_ext_consequences_needs.script:_make_on_arrive)
     consequence_supply_trader_arrive_action_enabled = false,
     consequence_supply_trader_offmap_arrive_action_enabled = false,
+    consequence_barter_arrive_action_enabled = false,
+    consequence_barter_offmap_arrive_action_enabled = false,
     -- Area mutator spawn toggles (the actual spawn-table mutation step)
     mutator_area_conquest_mutate_smart = false,
     mutator_area_swarm_mutate_smart = false,
@@ -399,6 +414,7 @@ local _key_to_tab = {
     loot_block_npc_vs_npc_ttl = "economy/loot",
     loot_select_enabled = "economy/loot_policy",
     trade_profit_max = "economy/trade",
+    barter_max_items = "economy/barter",
     market_enabled = "economy/market",
     market_items_per_trader = "economy/market",
     market_window_hours = "economy/market",
@@ -449,6 +465,8 @@ local _key_to_tab = {
     cause_social_base_enabled = "causes/needs",
     cause_social_offmap_enabled = "causes/needs",
     cause_supply_trader_offmap_enabled = "causes/needs",
+    cause_barter_enabled = "causes/needs",
+    cause_barter_offmap_enabled = "causes/needs",
     cause_job_explore_offmap_enabled = "causes/needs",
     cause_max_offmap = "world/offmap",
     offmap_base_hops = "world/offmap",
@@ -582,6 +600,12 @@ local _key_to_tab = {
     consequence_supply_trader_offmap_enabled = "consequences/supply_trader_offmap",
     consequence_supply_trader_offmap_rush = "consequences/supply_trader_offmap",
     consequence_supply_trader_offmap_arrive_action_enabled = "consequences/supply_trader_offmap",
+    consequence_barter_enabled = "consequences/barter",
+    consequence_barter_rush = "consequences/barter",
+    consequence_barter_arrive_action_enabled = "consequences/barter",
+    consequence_barter_offmap_enabled = "consequences/barter_offmap",
+    consequence_barter_offmap_rush = "consequences/barter_offmap",
+    consequence_barter_offmap_arrive_action_enabled = "consequences/barter_offmap",
     consequence_job_explore_offmap_enabled = "consequences/job_explore_offmap",
     consequence_job_explore_offmap_rush = "consequences/job_explore_offmap",
     btn_reset_all = "development",
@@ -797,6 +821,15 @@ function on_mcm_load()
                         },
                     },
                     {
+                        id = "barter",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_economy_barter_title"),
+                            _desc("ui_mcm_ap_economy_barter_desc"),
+                            _track("barter_max_items", 0, 20, 1),
+                        },
+                    },
+                    {
                         id = "market",
                         sh = true,
                         gr = {
@@ -965,6 +998,12 @@ function on_mcm_load()
                             { id = "div_supply_trader_offmap", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_supply_trader_offmap_tag"),
                             _check("cause_supply_trader_offmap_enabled"),
+                            { id = "div_barter", type = "line" },
+                            _tag("ui_mcm_ap_causes_needs_barter_tag"),
+                            _check("cause_barter_enabled"),
+                            { id = "div_barter_offmap", type = "line" },
+                            _tag("ui_mcm_ap_causes_needs_barter_offmap_tag"),
+                            _check("cause_barter_offmap_enabled"),
                             { id = "div_money_harvest", type = "line" },
                             _tag("ui_mcm_ap_causes_needs_money_harvest_tag"),
                             _check("cause_money_harvest_enabled"),
@@ -1299,6 +1338,28 @@ function on_mcm_load()
                             _check("consequence_supply_trader_offmap_enabled"),
                             _check("consequence_supply_trader_offmap_rush"),
                             _check("consequence_supply_trader_offmap_arrive_action_enabled"),
+                        },
+                    },
+                    {
+                        id = "barter",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_barter_title"),
+                            _tag("ui_mcm_ap_consequences_barter_tag"),
+                            _check("consequence_barter_enabled"),
+                            _check("consequence_barter_rush"),
+                            _check("consequence_barter_arrive_action_enabled"),
+                        },
+                    },
+                    {
+                        id = "barter_offmap",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_consequences_barter_offmap_title"),
+                            _tag("ui_mcm_ap_consequences_barter_offmap_tag"),
+                            _check("consequence_barter_offmap_enabled"),
+                            _check("consequence_barter_offmap_rush"),
+                            _check("consequence_barter_offmap_arrive_action_enabled"),
                         },
                     },
                     {

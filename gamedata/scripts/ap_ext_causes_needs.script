@@ -309,6 +309,20 @@ function on_game_start()
         { cause = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap", need = "supply",
           filter = ap_core_util.has_service_npc_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
+        -- Barter: peer answer to the supply drive alongside the trader causes. Instead of a service
+        -- NPC it routes to any non-hostile occupied smart (has_peer_squad_at_smart + exclude_enemy)
+        -- and, on arrival, swaps surplus for deficit with a stalker there -- no money. Arriving at a
+        -- barter smart resets last_supply_at exactly as a trade does; barter and trade are
+        -- interchangeable restocks. RELATION pairs with GREED: sociable greedy factions share stock.
+        { cause = CAUSE.BARTER, name = "barter", need = "supply",
+          filter = ap_core_util.has_peer_squad_at_smart, exclude_enemy = true,
+          personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
+        -- Cross-map peer row, mirror of supply_trader_offmap: peaceful greedy factions travel to a
+        -- neighbor map to barter; aggressive factions stay home. Alignment widens to the off-map
+        -- traveler set; filter stays the prop-only occupancy check (cross-level safe).
+        { cause = CAUSE.BARTER_OFFMAP, name = "barter_offmap", need = "supply",
+          filter = ap_core_util.has_peer_squad_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
+          personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
           filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_stalker_jobs(s) end,
           alignment = _alignment_selfserving, exclude_enemy = true,
