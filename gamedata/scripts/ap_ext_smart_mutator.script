@@ -1,215 +1,60 @@
---- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, infestation, decay)
+--- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, swarm, infestation).
+--- One descriptor-driven lifecycle -- inject/refresh, a 60s re-apply against the engine wiping
+--- respawn_params (and reverting faction) on load, decay, save/restore. conquest / swarm / infest
+--- are entries in MUTATIONS; their only real differences (shared vs exclusive spawn, refresh vs
+--- reject on a re-hit, the per-level cap, the cfg keys, the timestamp field, the save key) are
+--- descriptor fields, not copied code. A new mutation type is a new descriptor, not a new copy.
 
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
 local math_floor = math.floor
-local xobject, xsmart_spawn, xtime = xobject, xsmart_spawn, xtime
+local xobject, xsmart_spawn, xtime, xprofiler = xobject, xsmart_spawn, xtime, xprofiler
 
 local CALLBACK = ap_core_const.CALLBACK
-
 local cfg = ap_core_mcm.cfg
 
 local CONQUEST_KEY = "ap_conquest"
 local SWARM_KEY = "ap_swarm"
 local INFEST_KEY = "ap_infest"
 
-local _conquered_smarts = {}
-local _conquered_pending = nil
-local _swarmed_smarts = {}
-local _swarmed_pending = nil
-local _infested_smarts = {}
-local _infested_pending = nil
-
 local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
-function conquer_smart(smart_id, faction, level_id)
-    if not smart_id or not faction or not level_id then return false end
-    if not cfg or not cfg.mutator_area_conquest_mutate_smart then return false end
-    local smart = xobject.se(smart_id)
-    if not smart then return false end
-    local now = xtime.game_sec()
-    local existing = _conquered_smarts[smart_id]
-    if existing and existing.faction == faction then
-        existing.conquered_at = now
-        ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s (refresh)", smart_id, faction)
-        return true
-    end
-    if not xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, faction, cfg.mutator_area_conquest_spawn_num) then
-        ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
-        return false
-    end
-    _conquered_smarts[smart_id] = { faction = faction, level_id = level_id, conquered_at = now }
-    ap_core_debug.debug("[MUTATOR.SMART] conquer_smart: smart=%d faction=%s level=%d", smart_id, faction, level_id)
-    return true
-end
+-- Conquest respawn interval override (game seconds). A conquered smart respawns its owning faction
+-- this fast instead of the vanilla default (~12h), so the outpost fills while held. Written to
+-- smart.respawn_idle (vanilla per-smart field, smart_terrain.script:231). TODO n490 Phase 1: expose
+-- in MCM (default 60 game-min, min 1 game-min for tests) once the eng+rus XML labels are added.
+local CONQUEST_RESPAWN_IDLE_SEC = 3600
+-- Species allowed to infest (pack / lair / swarm creatures that overrun and hold a place). Solo
+-- apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) are excluded --
+-- they do not nest. Gates infest at the entry point; off-list species are rejected.
+local INFEST_SPECIES = {
+    bloodsucker = true, snork = true, cat = true, dog = true, pseudodog = true, psy_dog = true,
+    rat = true, tushkano = true, lurker = true, psysucker = true, fracture = true,
+    flesh = true, boar = true, zombie = true,
+}
 
-function swarm_smart(smart_id, species, level_id)
-    if not smart_id or not species or not level_id then return false end
-    if not cfg or not cfg.mutator_area_swarm_mutate_smart then return false end
-    local smart = xobject.se(smart_id)
-    if not smart then return false end
-    local now = xtime.game_sec()
-    local existing = _swarmed_smarts[smart_id]
-    if existing and existing.faction == species then
-        existing.swarmed_at = now
-        ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s (refresh)", smart_id, species)
-        return true
-    end
-    if not xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, species, cfg.mutator_area_swarm_spawn_num) then
-        ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s FAILED (unknown species)", smart_id, species)
-        return false
-    end
-    _swarmed_smarts[smart_id] = { faction = species, level_id = level_id, swarmed_at = now }
-    ap_core_debug.debug("[MUTATOR.SMART] swarm_smart: smart=%d species=%s level=%d", smart_id, species, level_id)
-    return true
-end
-
+-- Live per-type state, keyed by mutation name; _pending holds saved entries between load_state and
+-- the on_game_load restore. The on-disk format keeps the historical keys (conquered_smarts /
+-- swarmed_smarts / infested_smarts) via mut.save_key, so saves stay compatible.
+local _state = { conquest = {}, swarm = {}, infest = {} }
+local _pending = {}
 local _decay_collector = {}
 
--- Check if a single conquest entry has decayed
--- @cost O(1) | 1 luabind (xobject.se) if decayed
-local function _check_conquest_decay(smart_id, data, now, decay_sec)
-    if decay_sec <= 0 then return false end
-    if not data.conquered_at then return false end
-    if (now - data.conquered_at) <= decay_sec then return false end
-    local smart = xobject.se(smart_id)
-    if smart then xsmart_spawn.clear_shared_spawn(smart, CONQUEST_KEY) end
-    ap_core_debug.debug("[MUTATOR.SMART] conquest_decay: smart=%d faction=%s age=%dh",
-        smart_id, data.faction, math_floor((now - data.conquered_at) / 3600))
-    return true
-end
-
--- Re-apply conquest injection if engine wiped respawn_params (STATE_Read rebuilds from LTX)
--- @cost O(1) | 1 luabind (xobject.se)
-local function _check_conquest_respawn(smart_id, data)
-    local smart = xobject.se(smart_id)
-    if not smart then return end
-    xsmart_spawn.set_shared_spawn(smart, CONQUEST_KEY, data.faction, cfg.mutator_area_conquest_spawn_num)
-end
-
--- Check if a single swarm entry has decayed
--- @cost O(1) | 1 luabind (xobject.se) if decayed
-local function _check_swarm_decay(smart_id, data, now, decay_sec)
-    if decay_sec <= 0 then return false end
-    if not data.swarmed_at then return false end
-    if (now - data.swarmed_at) <= decay_sec then return false end
-    local smart = xobject.se(smart_id)
-    if smart then xsmart_spawn.clear_shared_spawn(smart, SWARM_KEY) end
-    ap_core_debug.debug("[MUTATOR.SMART] swarm_decay: smart=%d species=%s age=%dh",
-        smart_id, data.faction, math_floor((now - data.swarmed_at) / 3600))
-    return true
-end
-
--- Re-apply swarm injection if engine wiped respawn_params
--- @cost O(1) | 1 luabind (xobject.se)
-local function _check_swarm_respawn(smart_id, data)
-    local smart = xobject.se(smart_id)
-    if not smart then return end
-    xsmart_spawn.set_shared_spawn(smart, SWARM_KEY, data.faction, cfg.mutator_area_swarm_spawn_num)
-end
-
--- Check if a single infest entry has decayed
--- @cost O(1) | 1 luabind (xobject.se) if decayed
-local function _check_infest_decay(smart_id, data, now, decay_sec)
-    if decay_sec <= 0 then return false end
-    if not data.infested_at then return false end
-    if (now - data.infested_at) <= decay_sec then return false end
-    local smart = xobject.se(smart_id)
-    if smart then xsmart_spawn.clear_exclusive_spawn(smart, INFEST_KEY) end
-    ap_core_debug.debug("[MUTATOR.SMART] infest_decay: smart=%d faction=%s age=%dh",
-        smart_id, data.faction, math_floor((now - data.infested_at) / 3600))
-    return true
-end
-
--- Re-apply exclusive spawn and faction for infested smarts
--- faction_controlled + faction + respawn_params all volatile (engine rebuilds from LTX on load)
--- smart.faction reverted by check_smart_faction every tick on online smarts (monsters invisible)
--- @cost O(1) | 1 luabind (xobject.se)
-local function _check_infest_respawn(smart_id, data)
-    local smart = xobject.se(smart_id)
-    if not smart then return end
-    xsmart_spawn.set_exclusive_spawn(smart, INFEST_KEY, data.faction, cfg.mutator_area_infest_spawn_num)
-end
-
---- Update all conquered smarts: re-apply injection, decay expired entries.
--- @cost O(n) conquered smarts (bounded by the cause-side per-faction presence cap + decay)
-local function _update_conquered(now)
-    if not cfg or not cfg.mutator_area_conquest_mutate_smart then return end
-    local decay_sec = cfg.mutator_area_conquest_decay_hours * 3600
-    local count = 0
-    for smart_id, data in pairs(_conquered_smarts) do
-        if _check_conquest_decay(smart_id, data, now, decay_sec) then
-            count = count + 1
-            _decay_collector[count] = smart_id
-        else
-            _check_conquest_respawn(smart_id, data)
-        end
-    end
-    for i = 1, count do
-        _conquered_smarts[_decay_collector[i]] = nil
-        _decay_collector[i] = nil
-    end
-end
-
---- Update all swarmed smarts: re-apply injection, decay expired entries.
--- @cost O(n) swarmed smarts (bounded by the cause-side per-faction presence cap + decay)
-local function _update_swarmed(now)
-    if not cfg or not cfg.mutator_area_swarm_mutate_smart then return end
-    local decay_sec = cfg.mutator_area_swarm_decay_hours * 3600
-    local count = 0
-    for smart_id, data in pairs(_swarmed_smarts) do
-        if _check_swarm_decay(smart_id, data, now, decay_sec) then
-            count = count + 1
-            _decay_collector[count] = smart_id
-        else
-            _check_swarm_respawn(smart_id, data)
-        end
-    end
-    for i = 1, count do
-        _swarmed_smarts[_decay_collector[i]] = nil
-        _decay_collector[i] = nil
-    end
-end
-
---- Update all infested smarts: re-apply exclusive spawn + faction, decay expired entries.
--- @cost O(n) infested smarts (max mutator_area_infest_max_per_level * ~14 levels)
-local function _update_infested(now)
-    if not cfg or not cfg.mutator_area_infest_mutate_smart then return end
-    local decay_sec = cfg.mutator_area_infest_decay_hours * 3600
-    local count = 0
-    for smart_id, data in pairs(_infested_smarts) do
-        if _check_infest_decay(smart_id, data, now, decay_sec) then
-            count = count + 1
-            _decay_collector[count] = smart_id
-        else
-            _check_infest_respawn(smart_id, data)
-        end
-    end
-    for i = 1, count do
-        _infested_smarts[_decay_collector[i]] = nil
-        _decay_collector[i] = nil
-    end
-end
-
-local function _scan()
-    local now = xtime.game_sec()
-    _update_conquered(now)
-    _update_swarmed(now)
-    _update_infested(now)
-    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
-end
-
 --- Check if a smart terrain is infested
+--- @param smart_id number
+--- @return boolean
 function is_infested(smart_id)
-    return smart_id and _infested_smarts[smart_id] ~= nil
+    return smart_id and _state.infest[smart_id] ~= nil
 end
 
---- Check if per-level infest cap allows more infestations
+--- Check if the per-level infest cap allows another infestation on this level
+--- @param level_id number
+--- @return boolean
 function can_infest_on_level(level_id)
     if not level_id then return false end
     local count = 0
-    for _, data in pairs(_infested_smarts) do
+    for _, data in pairs(_state.infest) do
         if data.level_id == level_id then
             count = count + 1
             if count >= cfg.mutator_area_infest_max_per_level then return false end
@@ -218,141 +63,229 @@ function can_infest_on_level(level_id)
     return true
 end
 
---- Infest a smart terrain with exclusive spawn injection
-function infest_smart(smart_id, faction, level_id)
-    if not smart_id or not faction or not level_id then return false end
-    if not cfg or not cfg.mutator_area_infest_mutate_smart then return false end
-    if _infested_smarts[smart_id] then return false end
-    if not can_infest_on_level(level_id) then return false end
-    local smart = xobject.se(smart_id)
-    if not smart then return false end
-    if not xsmart_spawn.set_exclusive_spawn(smart, INFEST_KEY, faction, cfg.mutator_area_infest_spawn_num) then
-        ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s FAILED (unknown faction)", smart_id, faction)
+-- One descriptor per mutation type. apply/clear are the xsmart_spawn calls; refresh=true updates the
+-- timestamp on a same-identity re-hit (conquest/swarm), refresh=false rejects a re-hit (infest); cap
+-- gates admission and restore (infest only). ts_field / save_key preserve the on-disk format. The
+-- identity (faction or species) is stored under .faction for all three (historical + trace reads it).
+local MUTATIONS = {
+    conquest = {
+        name = "conquest", key = CONQUEST_KEY, id_word = "faction", refresh = true,
+        apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
+        respawn_idle_sec = CONQUEST_RESPAWN_IDLE_SEC,
+        mutate_cfg = "mutator_area_conquest_mutate_smart",
+        decay_cfg = "mutator_area_conquest_decay_hours",
+        num_cfg = "mutator_area_conquest_spawn_num",
+        ts_field = "conquered_at", save_key = "conquered_smarts",
+    },
+    swarm = {
+        name = "swarm", key = SWARM_KEY, id_word = "species", refresh = true,
+        apply = xsmart_spawn.set_shared_spawn, clear = xsmart_spawn.clear_shared_spawn,
+        mutate_cfg = "mutator_area_swarm_mutate_smart",
+        decay_cfg = "mutator_area_swarm_decay_hours",
+        num_cfg = "mutator_area_swarm_spawn_num",
+        ts_field = "swarmed_at", save_key = "swarmed_smarts",
+    },
+    infest = {
+        name = "infest", key = INFEST_KEY, id_word = "faction", refresh = false, cap = can_infest_on_level, allow = INFEST_SPECIES,
+        apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
+        mutate_cfg = "mutator_area_infest_mutate_smart",
+        decay_cfg = "mutator_area_infest_decay_hours",
+        num_cfg = "mutator_area_infest_spawn_num",
+        ts_field = "infested_at", save_key = "infested_smarts",
+    },
+}
+
+-- respawn_point_prop_section -> descriptor, for the deferred spawn trace.
+local _mut_by_key = {}
+for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
+
+-- Inject or refresh one mutation on a smart. Returns true on apply/refresh, false on a gate reject
+-- or unknown identity. Same order as the old conquer_smart / swarm_smart / infest_smart bodies:
+-- refresh a same-identity re-hit (conquest/swarm), reject an existing entry (infest), then cap.
+-- @cost O(1) | 1 luabind (xobject.se) on a real inject
+local function _mutate(mut, smart_id, identity, level_id)
+    if not smart_id or not identity or not level_id then return false end
+    if not cfg or not cfg[mut.mutate_cfg] then return false end
+    local tbl = _state[mut.name]
+    local now = xtime.game_sec()
+    local existing = tbl[smart_id]
+    if mut.refresh and existing and existing.faction == identity then
+        existing[mut.ts_field] = now
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s (refresh)", mut.name, smart_id, mut.id_word, identity)
+        return true
+    end
+    if not mut.refresh and existing then return false end
+    if mut.allow and not mut.allow[identity] then
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (not in allowlist)", mut.name, smart_id, mut.id_word, identity)
         return false
     end
-    _infested_smarts[smart_id] = { faction = faction, level_id = level_id, infested_at = xtime.game_sec() }
-    ap_core_debug.debug("[MUTATOR.SMART] infest_smart: smart=%d faction=%s level=%d", smart_id, faction, level_id)
+    if mut.cap and not mut.cap(level_id) then return false end
+    local smart = xobject.se(smart_id)
+    if not smart then return false end
+    if not mut.apply(smart, mut.key, identity, cfg[mut.num_cfg]) then
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s FAILED (unknown %s)", mut.name, smart_id, mut.id_word, identity, mut.id_word)
+        return false
+    end
+    if mut.respawn_idle_sec then smart.respawn_idle = mut.respawn_idle_sec end
+    tbl[smart_id] = { faction = identity, level_id = level_id, [mut.ts_field] = now }
+    ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d", mut.name, smart_id, mut.id_word, identity, level_id)
     return true
 end
 
+--- Conquer a smart: additive faction spawn injection. Refreshes if already conquered by the same
+--- faction; re-conquers (overwrites) if a different faction.
+--- @param smart_id number
+--- @param faction string Stalker community
+--- @param level_id number
+--- @return boolean
+function conquer_smart(smart_id, faction, level_id)
+    return _mutate(MUTATIONS.conquest, smart_id, faction, level_id)
+end
+
+--- Swarm a smart: additive mutant-species spawn injection.
+--- @param smart_id number
+--- @param species string Mutant species
+--- @param level_id number
+--- @return boolean
+function swarm_smart(smart_id, species, level_id)
+    return _mutate(MUTATIONS.swarm, smart_id, species, level_id)
+end
+
+--- Infest a smart: exclusive spawn injection. Rejects a second infest on the same smart and obeys
+--- the per-level cap.
+--- @param smart_id number
+--- @param faction string Mutant species / faction
+--- @param level_id number
+--- @return boolean
+function infest_smart(smart_id, faction, level_id)
+    return _mutate(MUTATIONS.infest, smart_id, faction, level_id)
+end
+
+-- Clear the respawn entry for one decayed record and log it.
+local function _decay_one(mut, smart_id, data, ts, now)
+    local smart = xobject.se(smart_id)
+    if smart then mut.clear(smart, mut.key) end
+    ap_core_debug.debug("[MUTATOR.SMART] %s_decay: smart=%d %s=%s age=%dh",
+        mut.name, smart_id, mut.id_word, data.faction, math_floor((now - ts) / 3600))
+end
+
+-- Restate one live entry: the engine wipes respawn_params (and reverts faction_controlled/faction)
+-- on load and every tick, so the 60s pass re-applies the spawn, and the conquest respawn_idle.
+local function _reapply_one(mut, smart_id, data)
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    mut.apply(smart, mut.key, data.faction, cfg[mut.num_cfg])
+    if mut.respawn_idle_sec then smart.respawn_idle = mut.respawn_idle_sec end
+end
+
+-- Re-apply live entries and decay expired ones for one mutation type.
+-- @cost O(n) entries of this type | 1 luabind (xobject.se) per entry
+local function _update(mut, now)
+    if not cfg or not cfg[mut.mutate_cfg] then return end
+    local tbl = _state[mut.name]
+    local decay_sec = cfg[mut.decay_cfg] * 3600
+    local count = 0
+    for smart_id, data in pairs(tbl) do
+        local ts = data[mut.ts_field]
+        if decay_sec > 0 and ts and (now - ts) > decay_sec then
+            _decay_one(mut, smart_id, data, ts, now)
+            count = count + 1
+            _decay_collector[count] = smart_id
+        else
+            _reapply_one(mut, smart_id, data)
+        end
+    end
+    for i = 1, count do
+        tbl[_decay_collector[i]] = nil
+        _decay_collector[i] = nil
+    end
+end
+
+-- 60s re-apply + decay pass over every mutation type. Timed when debug is on (null profiler = zero
+-- overhead otherwise), so a real breach of the frame budget surfaces in the log.
+local function _scan()
+    local now = xtime.game_sec()
+    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    prof:start()
+    for _, mut in pairs(MUTATIONS) do _update(mut, now) end
+    prof:stop()
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[MUTATOR.SMART] scan: %.2fms", prof:get_ms())
+    end
+    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
+end
+
 local function _on_save_state(m_data)
-    m_data.ap_ext_smart_mutator = {
-        conquered_smarts = _conquered_smarts,
-        swarmed_smarts = _swarmed_smarts,
-        infested_smarts = _infested_smarts,
-    }
+    local out = {}
+    for _, mut in pairs(MUTATIONS) do
+        out[mut.save_key] = _state[mut.name]
+    end
+    m_data.ap_ext_smart_mutator = out
 end
 
 local function _on_load_state(m_data)
     local saved = m_data.ap_ext_smart_mutator
     if type(saved) ~= "table" then saved = {} end
-    _conquered_smarts = {}
-    local cs = saved.conquered_smarts
-    _conquered_pending = (type(cs) == "table") and cs or {}
-    _swarmed_smarts = {}
-    local ss = saved.swarmed_smarts
-    _swarmed_pending = (type(ss) == "table") and ss or {}
-    _infested_smarts = {}
-    local is = saved.infested_smarts
-    _infested_pending = (type(is) == "table") and is or {}
+    for _, mut in pairs(MUTATIONS) do
+        _state[mut.name] = {}
+        local entries = saved[mut.save_key]
+        _pending[mut.name] = (type(entries) == "table") and entries or {}
+    end
 end
 
-local function _restore_conquered(now)
-    if not _conquered_pending then return end
-    if not cfg or not cfg.mutator_area_conquest_mutate_smart then
-        _conquered_pending = nil
-        ap_core_debug.info("[MUTATOR.SMART] on_game_load: conquest disabled, skipped restore")
+-- Restore saved entries into live state on load. Non-table / faction-less / level-less entries are
+-- dropped. Infest re-checks its per-level cap (can be lowered between sessions), counting entries
+-- already restored in this pass; conquest/swarm do not -- their per-faction presence cap is a
+-- cause-time check against live SIMBOARD occupancy, not meaningful this early in load, so over-cap
+-- saves simply stop renewing and decay out.
+local function _restore(mut, now)
+    local pending = _pending[mut.name]
+    if not pending then return end
+    if not cfg or not cfg[mut.mutate_cfg] then
+        _pending[mut.name] = nil
+        ap_core_debug.info("[MUTATOR.SMART] on_game_load: %s disabled, skipped restore", mut.name)
         return
     end
-    local restored = 0
-    for smart_id, data in pairs(_conquered_pending) do
-        if type(data) ~= "table" then goto continue end
-        if not data.faction or not data.level_id then goto continue end
-        -- No cap re-check on restore: the per-faction presence cap is enforced at cause time
-        -- (ap_ext_causes_area) against live SIMBOARD occupancy, which is not meaningful this
-        -- early in load. Saved injections above a lowered cap stop renewing and decay out.
-        _conquered_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, conquered_at = data.conquered_at or now }
-        restored = restored + 1
-        ::continue::
-    end
-    _conquered_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: conquest restored=%d", restored)
-end
-
-local function _restore_swarmed(now)
-    if not _swarmed_pending then return end
-    if not cfg or not cfg.mutator_area_swarm_mutate_smart then
-        _swarmed_pending = nil
-        ap_core_debug.info("[MUTATOR.SMART] on_game_load: swarm disabled, skipped restore")
-        return
-    end
-    local restored = 0
-    for smart_id, data in pairs(_swarmed_pending) do
-        if type(data) ~= "table" then goto continue end
-        if not data.faction or not data.level_id then goto continue end
-        -- No cap re-check on restore: same rationale as _restore_conquered.
-        _swarmed_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, swarmed_at = data.swarmed_at or now }
-        restored = restored + 1
-        ::continue::
-    end
-    _swarmed_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: swarm restored=%d", restored)
-end
-
-local function _restore_infested(now)
-    if not _infested_pending then return end
-    if not cfg or not cfg.mutator_area_infest_mutate_smart then
-        _infested_pending = nil
-        ap_core_debug.info("[MUTATOR.SMART] on_game_load: infest disabled, skipped restore")
-        return
-    end
+    local tbl = _state[mut.name]
     local restored, skipped = 0, 0
-    for smart_id, data in pairs(_infested_pending) do
-        if type(data) ~= "table" then goto continue end
-        if not data.faction or not data.level_id then goto continue end
-        -- Enforce the per-level cap on restore (cap can be lowered in MCM between sessions).
-        -- can_infest_on_level counts the entries already restored in this pass.
-        if not can_infest_on_level(data.level_id) then skipped = skipped + 1; goto continue end
-        _infested_smarts[smart_id] = { faction = data.faction, level_id = data.level_id, infested_at = data.infested_at or now }
-        restored = restored + 1
-        ::continue::
+    for smart_id, data in pairs(pending) do
+        if type(data) == "table" and data.faction and data.level_id then
+            if mut.cap and not mut.cap(data.level_id) then
+                skipped = skipped + 1
+            else
+                tbl[smart_id] = { faction = data.faction, level_id = data.level_id, [mut.ts_field] = data[mut.ts_field] or now }
+                restored = restored + 1
+            end
+        end
     end
-    _infested_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: infest restored=%d skipped=%d", restored, skipped)
+    _pending[mut.name] = nil
+    if mut.cap then
+        ap_core_debug.debug("[MUTATOR.SMART] on_game_load: %s restored=%d skipped=%d", mut.name, restored, skipped)
+    else
+        ap_core_debug.debug("[MUTATOR.SMART] on_game_load: %s restored=%d", mut.name, restored)
+    end
 end
 
 local function _on_game_load()
     local now = xtime.game_sec()
-    _restore_conquered(now)
-    _restore_swarmed(now)
-    _restore_infested(now)
+    for _, mut in pairs(MUTATIONS) do _restore(mut, now) end
     _scan()
 end
 
 -- Deferred trace: respawn_point_prop_section is set in try_respawn AFTER SIMBOARD:create_squad
--- returns (smart_terrain.script:1720-1721), so reading it requires waiting one tick. Filtering on
--- AP's own injection keys proves the AP entry won the roll vs coexisting LTX entries.
+-- returns (smart_terrain.script:1720-1721), so reading it needs one tick. Matching an AP injection
+-- key proves the AP entry won the roll vs coexisting LTX entries.
 -- @cost 1-2 luabind (xobject.se + section_name) per AP-attributed spawn; 0 for non-AP spawns
 local function _trace_spawn_deferred(squad_id, smart_id)
     local squad = xobject.se(squad_id)
     if not squad then return true end
-    local prop = squad.respawn_point_prop_section
-    if prop ~= CONQUEST_KEY and prop ~= SWARM_KEY and prop ~= INFEST_KEY then return true end
-    local data, tag
-    if prop == CONQUEST_KEY then
-        data = _conquered_smarts[smart_id]
-        tag = "conquest_spawn"
-    elseif prop == SWARM_KEY then
-        data = _swarmed_smarts[smart_id]
-        tag = "swarm_spawn"
-    else
-        data = _infested_smarts[smart_id]
-        tag = "infest_spawn"
-    end
+    local mut = _mut_by_key[squad.respawn_point_prop_section]
+    if not mut then return true end
+    local data = _state[mut.name][smart_id]
     local faction = data and data.faction or "?"
     local section = squad.section_name and squad:section_name() or "?"
-    ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d faction=%s section=%s squad=%d",
-        tag, smart_id, faction, section, squad_id)
+    ap_core_debug.debug("[MUTATOR.SMART] %s_spawn: smart=%d %s=%s section=%s squad=%d",
+        mut.name, smart_id, mut.id_word, faction, section, squad_id)
     return true
 end
 
@@ -360,7 +293,7 @@ end
 -- CreateTimeEvent is idempotent on (ev_id, act_id) (_g.script:345), so multi-NPC squads register
 -- once and the rest are no-ops. Delay 0 fires next ProcessEventQueue tick, by which point
 -- try_respawn has completed and the marker fields are visible.
--- @cost 1 enabled() check (~150ns) per NPC when DEBUG off; 1 CreateTimeEvent per NPC when on
+-- @cost 1 enabled() check per NPC when DEBUG off; 1 CreateTimeEvent per NPC when on
 local function _on_npc_creation(squad, _, spawn_smart)
     if not ap_core_debug.enabled() then return end
     if not spawn_smart then return end
@@ -368,12 +301,10 @@ local function _on_npc_creation(squad, _, spawn_smart)
 end
 
 function on_game_start()
-    _conquered_smarts = {}
-    _swarmed_smarts = {}
-    _infested_smarts = {}
-    _conquered_pending = nil
-    _swarmed_pending = nil
-    _infested_pending = nil
+    for _, mut in pairs(MUTATIONS) do
+        _state[mut.name] = {}
+        _pending[mut.name] = nil
+    end
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)

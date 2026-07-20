@@ -782,7 +782,7 @@ ALPHA_PROMOTE marker integration is record-driven: ap_ext_consequences_alpha cal
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-Runtime smart terrain mutations: territory conquest (shared spawn) and mutant infestation (exclusive spawn).
+Runtime smart terrain mutations, one descriptor-driven lifecycle (a `MUTATIONS` table + `_mutate` / `_update` / `_restore`): territory conquest and mutant infestation, both EXCLUSIVE spawn (sole ownership), plus additive swarm. A new mutation type is a descriptor entry, not a copied lifecycle. (n490 conquest overhaul: conquest was additive shared spawn before, made exclusive here.)
 
 #### Engine respawn pathways
 
@@ -794,20 +794,17 @@ Pathway 2: faction_controlled (~16 vanilla smarts). Smarts with faction_controll
 
 Faction resolution: check_smart_faction (smart_terrain.script:1209-1236) runs every update tick for online smarts. Counts IsStalker NPCs present and sets self.faction. When empty: self.faction = self.default_faction (nil for most smarts). Monsters (IsMonster) are invisible to this function; a smart occupied only by mutants reverts as if empty. Runs AFTER try_respawn in the update cycle (line 1279 vs 1253). Online smarts only.
 
-#### Conquest (shared spawn)
+#### Conquest (exclusive spawn)
 
-conquer_smart(smart_id, faction) calls xsmart.set_shared_spawn(smart, "ap_conquest", faction, spawn_num). Adds ONE respawn_params entry for the conqueror's faction. The entry has no .faction field and faction_controlled is NOT set. Because faction_controlled stays nil, the engine's respawn filter at line 1667 passes ALL entries unconditionally - both the original LTX entries and the injected conquest entry fire. The conqueror's squads appear alongside the originals, competing for max_population slots. Squad sections come from xsmart.SQUADS_BY_FACTION: stalker factions spawn *_sim_squad_novice / advanced / veteran; mutant factions spawn simulation_* sections.
+conquer_smart(smart_id, faction) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_conquest", faction, spawn_num), setting faction_controlled + faction so the engine respawn filter (smart_terrain.script:1667) passes ONLY the conqueror's entry - the smart respawns solely the winning faction and suppresses its original LTX spawns. Squad sections come from xsmart_spawn.SQUADS_BY_FACTION (stalker *_sim_squad_novice / advanced / veteran). The smart also gets smart.respawn_idle = CONQUEST_RESPAWN_IDLE_SEC (3600, 60 game-min) so it repopulates faster than the ~12h vanilla default while held.
 
-Coexistence:
+Revert. clear_exclusive_spawn(smart, "ap_conquest") removes the entry and restores faction_controlled / smart.faction to defaults; the smart returns to its LTX spawns.
 
-- max_population=1 mutant lair: conquest entry competes with the original mutant entry. Engine picks one eligible entry at random per respawn cycle (smart_terrain.script:1707). Sometimes a mutant spawns, sometimes the conqueror's squad.
-- max_population=3 stalker camp: the conquest entry adds one squad slot alongside existing stalker spawns. Mixed presence, not replacement.
+Volatility. The engine rebuilds respawn_params from LTX and reverts faction (check_smart_faction) on load and every tick, so the entry, the faction, and respawn_idle are re-applied by the 60s scanner. Two-phase restore: load_state -> _pending; on_game_load applies after entities exist.
 
-Revert. xsmart_spawn.clear_shared_spawn(smart, "ap_conquest") removes the entry. Smart returns to its original LTX-only spawn tables. faction_controlled and smart.faction were never modified.
+Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner clears expired entries (clear_exclusive_spawn); the smart returns to its original spawns.
 
-Volatility. Engine rebuilds respawn_params from LTX on every load (STATE_Read calls read_params), so the injected entry is lost. Two-phase restore: load_state -> _conquered_pending; on_game_load applies via set_shared_spawn after entities exist. 60s periodic scanner re-applies injections as a safety net.
-
-Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner checks xtime.game_sec() - conquered_at and calls clear_shared_spawn on expired entries. Original LTX spawns never interrupted - decay just removes the extra entry.
+Infest allowlist. Only pack / lair species (INFEST_SPECIES: bloodsucker, snork, cat, dog, pseudodog, psy_dog, rat, tushkano, lurker, psysucker, fracture, flesh, boar, zombie) may infest; solo apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) are rejected at the entry point.
 
 Per-faction presence cap. Enforced at cause time, not in the mutator: _eligible_conquer rejects with reason max_faction_smarts when xsmart.get_faction_smart_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level (default 3, MCM 1-6). The count is smarts on the level where a squad of the faction is stationed - vanilla bases and spawns included, not only AP conquests - so a dominant faction stops expanding while a faction with no presence always passes. conquer_smart carries no cap of its own; same-faction re-conquest refreshes the timestamp. Restore does not re-check the cap (SIMBOARD occupancy is not meaningful that early in load); restored injections keep renewing via the 60s scanner and expire on their normal decay schedule, so an old save converges within decay_hours instead of trimming at load.
 
