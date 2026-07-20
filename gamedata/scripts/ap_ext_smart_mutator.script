@@ -20,11 +20,6 @@ local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
--- Conquest respawn interval override (game seconds). A conquered smart respawns its owning faction
--- this fast instead of the vanilla default (~12h), so the outpost fills while held. Written to
--- smart.respawn_idle (vanilla per-smart field, smart_terrain.script:231). TODO n490 Phase 1: expose
--- in MCM (default 60 game-min, min 1 game-min for tests) once the eng+rus XML labels are added.
-local CONQUEST_RESPAWN_IDLE_SEC = 3600
 -- Species allowed to infest (pack / lair / swarm creatures that overrun and hold a place). Solo
 -- apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) are excluded --
 -- they do not nest. Gates infest at the entry point; off-list species are rejected.
@@ -71,7 +66,7 @@ local MUTATIONS = {
     conquest = {
         name = "conquest", key = CONQUEST_KEY, id_word = "faction", refresh = true,
         apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
-        respawn_idle_sec = CONQUEST_RESPAWN_IDLE_SEC,
+        respawn_idle_cfg = "mutator_area_conquest_respawn_minutes",
         mutate_cfg = "mutator_area_conquest_mutate_smart",
         decay_cfg = "mutator_area_conquest_decay_hours",
         num_cfg = "mutator_area_conquest_spawn_num",
@@ -126,7 +121,7 @@ local function _mutate(mut, smart_id, identity, level_id)
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s FAILED (unknown %s)", mut.name, smart_id, mut.id_word, identity, mut.id_word)
         return false
     end
-    if mut.respawn_idle_sec then smart.respawn_idle = mut.respawn_idle_sec end
+    if mut.respawn_idle_cfg then smart.respawn_idle = cfg[mut.respawn_idle_cfg] * 60 end
     tbl[smart_id] = { faction = identity, level_id = level_id, [mut.ts_field] = now }
     ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d", mut.name, smart_id, mut.id_word, identity, level_id)
     return true
@@ -175,7 +170,7 @@ local function _reapply_one(mut, smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
     mut.apply(smart, mut.key, data.faction, cfg[mut.num_cfg])
-    if mut.respawn_idle_sec then smart.respawn_idle = mut.respawn_idle_sec end
+    if mut.respawn_idle_cfg then smart.respawn_idle = cfg[mut.respawn_idle_cfg] * 60 end
 end
 
 -- Re-apply live entries and decay expired ones for one mutation type.
