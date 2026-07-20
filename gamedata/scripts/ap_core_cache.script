@@ -64,6 +64,9 @@ local IsStalker, IsTrader = IsStalker, IsTrader
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
+-- zone_campfire CSE class (object_factory_register.cpp:395 CLSID_Z_CAMPFIRE). Single clsid for
+-- client + server, no _s split, so it matches on the server object during the offline pool walk.
+local CLSID_CAMPFIRE = clsid.zone_campfire
 
 -- smart.ini section name where gulag_general.script:1358-1364 reads exclusive job
 -- assignments. Used by _read_exclusive_section to build the section->smart_id reverse map.
@@ -381,21 +384,40 @@ local function _index_standalone(se)
     end
 end
 
+-- Record a map-placed campfire's owning smart into xsmart's static set so has_campfire answers
+-- offline (bind_campfire's db.campfire_table_by_smart_names is online-scope only, collapsing the
+-- effective campfire-filter reach for far squads). Clsid-gated first as the pure-virtual safety
+-- belt, same as _index_standalone. se:name() carries the SDK name <smart>_campfire_N;
+-- xsmart.note_campfire_object mirrors bind_campfire's strip + SIMBOARD ownership gate. Rides the
+-- shared alife-pool walk below -- no extra iterate_objects pass.
+-- @cost O(1) non-campfire (1 luabind clsid early-out); per campfire: 1 luabind name + hash gate.
+-- @src anomaly/bind_campfire.script(251-278), object_factory_register.cpp(395) zone_campfire clsid
+local function _index_campfire(se)
+    if not se then return end
+    if se:clsid() ~= CLSID_CAMPFIRE then return end
+    xsmart.note_campfire_object(se:name())
+end
+
 -- Re-resolve via xobject.se(id) per tick (which wraps alife_object): the queue captures IDs
 -- (not refs) so an entity destroyed between enumeration and processing returns nil here.
 -- Holding a CSE_Abstract ref across frames hits pure-virtual on section_name when the C++
 -- vtable is replaced mid-destruction (xrCore/xrDebugNew.cpp:1045 "pure virtual function call").
--- pcall cannot catch this per doc/library/modding/pcall-safety.md:50-57.
-local function _bucket_one_stalker(id)
+-- pcall cannot catch this per doc/library/modding/pcall-safety.md:50-57. One se fetch feeds every
+-- per-CSE indexer (standalone roles, campfire map); each self-gates by clsid.
+local function _bucket_one_cse(id)
     if not id then return true end
     local se = xobject.se(id)
     if not se then return true end
     _index_standalone(se)
+    _index_campfire(se)
     return true
 end
 
 local function _on_standalone_build_done()
     ap_core_debug.debug("[CORE.CACHE] standalone role bucket built")
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[CORE.CACHE] campfire map: %d smarts", xsmart.campfire_map_count())
+    end
 end
 
 -- Snapshot every CSE in the full alife pool via sim:iterate_objects. The earlier 1.7.1
@@ -404,9 +426,10 @@ end
 -- offline NPCs outside actor's switch_distance and members of currently-offline squads,
 -- missing most curated trader/medic/mechanic entries (probed on Cordon: 6 of 8 curated NPCs
 -- missing including Loris, mil trader, mechanics). The full-pool walk catches everyone;
--- _index_standalone class-gates the per-entity handler so only Stalker + Trader CSEs reach
--- the role lookup. Cache is cross-level (no actor-level filter at snapshot time) so off-map
--- destinations can resolve traders on neighbor levels.
+-- _bucket_one_cse fans each CSE out to _index_standalone (Stalker + Trader role buckets) and
+-- _index_campfire (map-campfire set in xsmart), both clsid-gated so non-matching CSEs early-out.
+-- Cache is cross-level (no actor-level filter at snapshot time) so off-map destinations can
+-- resolve traders on neighbor levels and offline campfire smarts resolve at full scan range.
 -- @cost O(n) total alife CSEs for snapshot (~40k on heavy GAMMA saves); xslice ticks pay
 --       1 alife_object + class check (early-out for non-stalker/trader, typical 90%+) +
 --       section lookup + smart binding on curated matches.
@@ -435,7 +458,7 @@ local function _build_standalone_role_bucket()
     end
     xslice.start(STANDALONE_BUILD_QUEUE, queue, {
         step = STANDALONE_BUILD_STEP,
-        func = _bucket_one_stalker,
+        func = _bucket_one_cse,
         on_done = _on_standalone_build_done,
     })
 end

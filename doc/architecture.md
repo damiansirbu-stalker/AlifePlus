@@ -97,7 +97,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
-| ap_core_cache | Per-level smart / stash / squad indexes plus a cross-level standalone-role-NPC index, built frame-spread (xslice) at actor_on_first_update; finders take them as opts.source. Mechanism in the module header |
+| ap_core_cache | Per-level smart / stash / squad indexes plus a cross-level standalone-role-NPC index, built frame-spread (xslice) at actor_on_first_update; the same walk feeds xsmart's map-campfire set. Finders take them as opts.source. Mechanism in the module header |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
 | ap_core_callbacks | Synthetic callbacks AP declares and fires: ap_squad_on_change (the radiant heartbeat sweep) and ap_npc_medkit_use. Canonical section: Pipeline -> Synthetic callbacks |
