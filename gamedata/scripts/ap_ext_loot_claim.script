@@ -208,12 +208,31 @@ local function _npc_claimer(v, corpse_pos, radius)
     return _lone_claimer(v.killer, corpse_pos, radius)
 end
 
+--- Companion looker carve-out for reserve-own: true when the player has opted companions out of the
+--- rule (loot_include_companions off) and the current looker is a companion, so a companion may
+--- field-dress / loot the actor's kills. Zero cost on the default path -- the toggle short-circuits
+--- before any squad resolution. _current_looker is the scanning NPC (published by _publish_looker);
+--- nil-guarded in case near_actor is ever called outside a scan. Traced, noop when debug disabled.
+--- @cost O(1) | 0 luabind when the toggle is on; get_object_squad (2 luabind) + is_companion (0) when off
+local function _companion_exempt(obj)
+    if cfg.loot_include_companions or not _current_looker then return false end
+    local looker_squad = get_object_squad(_current_looker)
+    if not looker_squad or not xsquad.is_companion(looker_squad) then return false end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s reserve_own corpse=%s looker=%s -> exempt:companion",
+            LOG, obj:id(), _current_looker:id())
+    end
+    return true
+end
+
 --- Exclusion rule -- Half A (reserve own): the actor's own fresh kill while the actor is within the
---- reserve radius of the corpse. Independent of which NPC is looking.
+--- reserve radius of the corpse. Independent of which NPC is looking, except companions when
+--- loot_include_companions is off (see _companion_exempt). Scoped to reserve-own; Flow C is untouched.
 --- @cost O(1) | half/owner check first; game_sec + 1 distance only on an actor-owned corpse
 local function _excluded_reserve_own(v, obj)
     if not cfg.loot_reserve_own_enabled then return false end
     if not v or v.killer ~= _ac_id or not _fresh(v, cfg.loot_reserve_own_ttl) then return false end
+    if _companion_exempt(obj) then return false end
     local actor = db.actor
     if not actor then return true end
     local corpse_pos = _corpse_pos(obj)

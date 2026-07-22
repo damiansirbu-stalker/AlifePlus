@@ -306,27 +306,30 @@ defaults = {
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
 
-    -- Area conquest (additive shared spawn, human factions)
+    -- Area conquest (exclusive spawn / sole ownership, human factions)
     mutator_area_conquest_mutate_smart = true,
     mutator_area_conquest_spawn_num = 2,
     mutator_area_conquest_decay_hours = 48,
     mutator_area_conquest_respawn_minutes = 60,
 
-    -- Area swarm (additive shared spawn, mutant species)
+    -- Area swarm (exclusive spawn / sole ownership, mutant species)
     mutator_area_swarm_mutate_smart = true,
     mutator_area_swarm_spawn_num = 2,
     mutator_area_swarm_decay_hours = 48,
+    mutator_area_swarm_respawn_minutes = 60,
 
     -- Area infest (exclusive spawn replacement)
     mutator_area_infest_mutate_smart = true,
     mutator_area_infest_max_per_level = 3,
     mutator_area_infest_spawn_num = 3,
     mutator_area_infest_decay_hours = 48,
+    mutator_area_infest_respawn_minutes = 60,
 
     -- Economy: loot ownership + trade resolution
     loot_reserve_own_enabled = true,
     loot_reserve_own_radius = 150,
     loot_reserve_own_ttl = 1,
+    loot_include_companions = true,
     loot_block_npc_enabled = true,
     loot_block_npc_radius = 150,
     loot_block_npc_ttl = 1,
@@ -407,6 +410,7 @@ local _key_to_tab = {
     loot_reserve_own_enabled = "economy/loot",
     loot_reserve_own_radius = "economy/loot",
     loot_reserve_own_ttl = "economy/loot",
+    loot_include_companions = "economy/loot",
     loot_block_npc_enabled = "economy/loot",
     loot_block_npc_radius = "economy/loot",
     loot_block_npc_ttl = "economy/loot",
@@ -519,6 +523,7 @@ local _key_to_tab = {
     mutator_area_infest_max_per_level = "mutators/infest",
     mutator_area_infest_spawn_num = "mutators/infest",
     mutator_area_infest_decay_hours = "mutators/infest",
+    mutator_area_infest_respawn_minutes = "mutators/infest",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
     consequence_alpha_promote_max_alphas = "consequences/alpha_promote",
     consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
@@ -562,6 +567,7 @@ local _key_to_tab = {
     mutator_area_swarm_mutate_smart = "mutators/swarm",
     mutator_area_swarm_spawn_num = "mutators/swarm",
     mutator_area_swarm_decay_hours = "mutators/swarm",
+    mutator_area_swarm_respawn_minutes = "mutators/swarm",
     consequence_harvest_rob_enabled = "consequences/harvest_rob",
     consequence_harvest_rob_rush = "consequences/harvest_rob",
     consequence_harvest_rob_max_squads = "consequences/harvest_rob",
@@ -769,6 +775,7 @@ function on_mcm_load()
                             _check("mutator_area_swarm_mutate_smart"),
                             _track("mutator_area_swarm_spawn_num", 1, 5, 1),
                             _track("mutator_area_swarm_decay_hours", 0, 168, 4),
+                            _track("mutator_area_swarm_respawn_minutes", 1, 720, 1),
                         },
                     },
                     {
@@ -781,6 +788,7 @@ function on_mcm_load()
                             _track("mutator_area_infest_max_per_level", 1, 5, 1),
                             _track("mutator_area_infest_spawn_num", 1, 5, 1),
                             _track("mutator_area_infest_decay_hours", 0, 168, 4),
+                            _track("mutator_area_infest_respawn_minutes", 1, 720, 1),
                         },
                     },
                 },
@@ -797,6 +805,7 @@ function on_mcm_load()
                             _check("loot_reserve_own_enabled"),
                             _track("loot_reserve_own_radius", 10, 150, 10),
                             _track("loot_reserve_own_ttl", 1, 6, 1),
+                            _check("loot_include_companions"),
                             _check("loot_block_npc_enabled"),
                             _track("loot_block_npc_radius", 10, 150, 10),
                             _track("loot_block_npc_ttl", 1, 6, 1),

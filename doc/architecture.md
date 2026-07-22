@@ -459,7 +459,7 @@ The seam. Two hook points, no base-script edits:
 - The actor's own input. Half B vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
 
 The three flows, each with its own MCM enable, radius, and TTL, no master switch (recording gates on any flow being enabled):
-- Half A (loot_reserve_own): NPC looters skip a body the actor killed while the actor is near it.
+- Half A (loot_reserve_own): NPC looters skip a body the actor killed while the actor is near it. Companion looters can be exempted (loot_include_companions, on by default) so a companion may loot the actor's kills.
 - Half B (loot_block_npc): the actor cannot open a living NPC squad's kill; a PDA tip names the owner instead.
 - Flow C (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is near.
 
@@ -782,7 +782,7 @@ ALPHA_PROMOTE marker integration is record-driven: ap_ext_consequences_alpha cal
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-Runtime smart terrain mutations, one descriptor-driven lifecycle (a `MUTATIONS` table + `_mutate` / `_update` / `_restore`): territory conquest and mutant infestation, both EXCLUSIVE spawn (sole ownership), plus additive swarm. A new mutation type is a descriptor entry, not a copied lifecycle. (n490 conquest overhaul: conquest was additive shared spawn before, made exclusive here.)
+Runtime smart terrain mutations, one descriptor-driven lifecycle (a `MUTATIONS` table + `_mutate` / `_update` / `_restore`): territory conquest (a faction), swarm (a mutant species), and infestation (a mutant species, higher count + species allowlist + per-level cap), all EXCLUSIVE spawn (sole ownership). A new mutation type is a descriptor entry, not a copied lifecycle. (n490 conquest overhaul: conquest and swarm were additive shared spawn before, made exclusive here.)
 
 #### Engine respawn pathways
 
@@ -796,7 +796,7 @@ Faction resolution: check_smart_faction (smart_terrain.script:1209-1236) runs ev
 
 #### Conquest (exclusive spawn)
 
-conquer_smart(smart_id, faction) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_conquest", faction, spawn_num), setting faction_controlled + faction so the engine respawn filter (smart_terrain.script:1667) passes ONLY the conqueror's entry - the smart respawns solely the winning faction and suppresses its original LTX spawns. Squad sections come from xsmart_spawn.SQUADS_BY_FACTION (stalker *_sim_squad_novice / advanced / veteran). The smart also gets smart.respawn_idle = CONQUEST_RESPAWN_IDLE_SEC (3600, 60 game-min) so it repopulates faster than the ~12h vanilla default while held.
+conquer_smart(smart_id, faction) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_conquest", faction, spawn_num), setting faction_controlled + faction so the engine respawn filter (smart_terrain.script:1667) passes ONLY the conqueror's entry - the smart respawns solely the winning faction and suppresses its original LTX spawns. Squad sections come from xsmart_spawn.SQUADS_BY_FACTION (stalker *_sim_squad_novice / advanced / veteran). The smart also gets smart.respawn_idle = cfg.mutator_area_conquest_respawn_minutes * 60 (MCM under Mutators > Conquest, default 60 game-min, range 1-720) so it repopulates faster than the ~12h vanilla default while held.
 
 Revert. clear_exclusive_spawn(smart, "ap_conquest") removes the entry and restores faction_controlled / smart.faction to defaults; the smart returns to its LTX spawns.
 
@@ -804,25 +804,25 @@ Volatility. The engine rebuilds respawn_params from LTX and reverts faction (che
 
 Decay. cfg.mutator_area_conquest_decay_hours (default 48). Scanner clears expired entries (clear_exclusive_spawn); the smart returns to its original spawns.
 
-Infest allowlist. Only pack / lair species (INFEST_SPECIES: bloodsucker, snork, cat, dog, pseudodog, psy_dog, rat, tushkano, lurker, psysucker, fracture, flesh, boar, zombie) may infest; solo apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) are rejected at the entry point.
-
 Per-faction presence cap. Enforced at cause time, not in the mutator: _eligible_conquer rejects with reason max_faction_smarts when xsmart.get_faction_smart_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level (default 3, MCM 1-6). The count is smarts on the level where a squad of the faction is stationed - vanilla bases and spawns included, not only AP conquests - so a dominant faction stops expanding while a faction with no presence always passes. conquer_smart carries no cap of its own; same-faction re-conquest refreshes the timestamp. Restore does not re-check the cap (SIMBOARD occupancy is not meaningful that early in load); restored injections keep renewing via the 60s scanner and expire on their normal decay schedule, so an old save converges within decay_hours instead of trimming at load.
 
-#### Swarm (shared spawn, mutants)
+#### Swarm (exclusive spawn, mutants)
 
-swarm_smart(smart_id, species) calls xsmart_spawn.set_shared_spawn(smart, "ap_swarm", species, spawn_num). Same mechanism as conquest - additive shared spawn entry, no faction_controlled, no .faction field. The injected entry fires alongside the originals. Species comes from xsmart_spawn.SQUADS_BY_SPECIES (simulation_* sections).
+swarm_smart(smart_id, species) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_swarm", species, spawn_num). Same takeover as conquest, with a mutant species instead of a faction: sets faction_controlled + faction so the engine gate (smart_terrain.script:1667) passes ONLY the swarm entry and suppresses the smart's original LTX spawns. Species comes from xsmart_spawn.SQUADS_BY_SPECIES (simulation_* sections). The smart also gets smart.respawn_idle = cfg.mutator_area_swarm_respawn_minutes * 60 (MCM under Mutators > Swarm, default 60 game-min) so it repopulates faster while held.
 
-Independence from conquest. _swarmed_smarts is a separate table from _conquered_smarts. Same-smart conquest and swarm coexist as two distinct respawn_params entries (ap_conquest + ap_swarm); engine picks one eligible entry per respawn cycle. Save and load round-trip each table separately.
+Independence from conquest. _swarmed_smarts is a separate table from _conquered_smarts, and each round-trips through save/load on its own key. Both take exclusive ownership, so a smart carries at most one live takeover in practice: the is_smart_empty filter on both causes only targets unoccupied wild smarts, and the faction gate resolves to whichever faction or species the smart last took.
 
-Decay. cfg.mutator_area_swarm_decay_hours (default 48). Scanner checks xtime.game_sec() - swarmed_at and calls clear_shared_spawn on expired entries.
+Decay. cfg.mutator_area_swarm_decay_hours (default 48). Scanner checks xtime.game_sec() - swarmed_at and calls clear_exclusive_spawn on expired entries; the smart returns to its original spawns.
 
 Per-bloc presence cap. Enforced at cause time: _eligible_swarm rejects with reason max_faction_smarts when xsmart.get_faction_smart_count(ap_ext_const.alignment_mutant, level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level (default 5, MCM 1-8). All mutant communities count as one side (per-community caps would let 7 monster_* communities each fill their own quota on one level). swarm_smart carries no cap of its own; same-species re-swarm refreshes the timestamp. Restore does not re-check the cap, same rationale as conquest.
 
-Volatility. Same as conquest: engine rebuilds respawn_params on STATE_Read. Two-phase restore via _swarmed_pending. 60s scanner re-applies via set_shared_spawn.
+Volatility. Same as conquest: engine rebuilds respawn_params and reverts faction on STATE_Read and every tick. Two-phase restore via _swarmed_pending. 60s scanner re-applies via set_exclusive_spawn.
 
 #### Infestation (exclusive spawn)
 
 infest_smart(smart_id, faction, level_id) calls xsmart_spawn.set_exclusive_spawn(smart, "ap_infest", faction, spawn_num). Sets smart.faction_controlled to a non-nil value (activating the engine's faction gate at line 1667) and adds ONE respawn_params entry with a .faction field matching the infesting faction. LTX entries have no .faction so they fail the gate (nil == faction is false). Only the infest entry spawns. Exclusive replacement without deleting originals.
+
+Species allowlist. Only pack / lair species (INFEST_SPECIES: bloodsucker, snork, cat, dog, pseudodog, psy_dog, rat, tushkano, lurker, psysucker, fracture, flesh, boar, zombie) may infest; solo apex / psi bosses (gigant, chimera, burer, controller, poltergeist, karlik) are rejected in _mutate at the entry point. The cause-side _alignment_conquer_mutant gate (feral + predator + aberrant) still lets those apex species roll a target, so the _mutate reject is the real enforcement until a cause-side gate is added.
 
 Faction re-apply. check_smart_faction runs every tick on online smarts and counts only IsStalker NPCs - monsters invisible. When only mutants occupy an online smart, self.faction reverts to default_faction, breaking the faction gate match. 60s periodic scanner re-applies smart.faction via set_exclusive_spawn for all infested smarts.
 
