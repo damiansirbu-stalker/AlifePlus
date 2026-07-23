@@ -1,0 +1,166 @@
+--- ap_ext_object_mutator: Combat identity of the earned alpha status -- hit power dealt (vs any
+--- victim: mutant, stalker, actor), hit power taken, panic immunity, trophy loot. Everything is
+--- event-driven: the damage runs at the modded-exes before-hit seams (mutable shit.power), the
+--- loot at monster_on_loot_init; nothing runs per frame or on a timer. Effects are id-keyed,
+--- set at alpha_promote, cleared on entity unregister, rebuilt from the tracker after load and
+--- on option change. The multiplier scales linearly with alpha level: at ALPHA_MAX_LEVEL the
+--- bonus equals the MCM max_pct (Creatures > Alpha).
+
+local pairs, next, tostring, math_random, RegisterScriptCallback = pairs, next, tostring, math.random, RegisterScriptCallback
+local xtable, xcreature = xtable, xcreature
+local ap_core_debug, ap_ext_tracker = ap_core_debug, ap_ext_tracker
+
+local CALLBACK = ap_core_const.CALLBACK
+local ALPHA_LOOT = ap_ext_const.ALPHA_LOOT
+local ALPHA_MAX_LEVEL = 10
+local cfg = ap_core_mcm.cfg
+local LOG = "[MUTATOR.OBJECT]"
+
+-- Live alpha ids (the per-hit early-out and the panic key, independent of the damage toggles so
+-- disabling damage never silently kills panic immunity). _hit_power_* hold the per-id multipliers;
+-- _panic_applied dedupes the engine threshold write per game object lifetime.
+local _alpha_ids = {}
+local _hit_power_dealt = {}
+local _hit_power_taken = {}
+local _panic_applied = {}
+
+--- Register the combat effects for a promoted alpha (called from the alpha_promote consequence
+--- and the rebuild). Multiplier = 1 +/- max_pct/100 * level/ALPHA_MAX_LEVEL.
+--- @safety SAFE - pure table writes; nil-guarded args
+--- @cost O(1) | 0 luabind
+--- @param npc_id number Alpha entity id
+--- @param level number Alpha level (1..ALPHA_MAX_LEVEL)
+function set_alpha_effects(npc_id, level)
+    if not npc_id or not level or level < 1 then return end
+    _alpha_ids[npc_id] = true
+    if cfg.mutator_alpha_hit_power_dealt_enabled then
+        _hit_power_dealt[npc_id] = 1.0 + (cfg.mutator_alpha_hit_power_dealt_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
+    end
+    if cfg.mutator_alpha_hit_power_taken_enabled then
+        _hit_power_taken[npc_id] = 1.0 - (cfg.mutator_alpha_hit_power_taken_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
+    end
+end
+
+-- Dealt-scaling shared by all three victim seams: an alpha attacker multiplies the hit.
+-- @cost O(1) | 1 luabind (draftsman:id) only when the hit has an attacker object
+local function _scale_dealt(shit)
+    local attacker = shit.draftsman
+    local mult = attacker and _hit_power_dealt[attacker:id()]
+    if mult then shit.power = shit.power * mult end
+    return mult
+end
+
+-- Victim is a monster: apply dealt (alpha attacker), taken (alpha victim), and panic immunity
+-- (alpha victim, own toggle -- decoupled from the damage toggles). set_custom_panic_threshold(0)
+-- keeps the alpha from fleeing damage; applied once per object lifetime, re-applied after loads
+-- because _panic_applied resets with the VM.
+-- @cost O(1) | pure-Lua early-out when no alphas are alive; 1-2 luabind on an alpha-involved hit
+local function _on_monster_before_hit(monster, shit, _bone_id, _flags)
+    if next(_alpha_ids) == nil then return end
+    local dealt = _scale_dealt(shit)
+    local victim_id = monster:id()
+    local taken = _hit_power_taken[victim_id]
+    if taken then shit.power = shit.power * taken end
+    if cfg.mutator_alpha_panic_immunity_enabled and _alpha_ids[victim_id] and not _panic_applied[victim_id] then
+        monster:set_custom_panic_threshold(0)
+        _panic_applied[victim_id] = true
+    end
+    if (dealt or taken) and ap_core_debug.enabled() then
+        ap_core_debug.debug("%s monster_hit victim=%d dealt=%s taken=%s power=%.3f",
+            LOG, victim_id, tostring(dealt), tostring(taken), shit.power)
+    end
+end
+
+-- Victim is a stalker NPC: dealt only (stalkers are never alphas).
+-- @cost O(1) | pure-Lua early-out when no alphas are alive
+local function _on_npc_before_hit(npc, shit, _bone_id, _flags)
+    if next(_alpha_ids) == nil then return end
+    local dealt = _scale_dealt(shit)
+    if dealt and ap_core_debug.enabled() then
+        ap_core_debug.debug("%s npc_hit victim=%d dealt=%.3f power=%.3f", LOG, npc:id(), dealt, shit.power)
+    end
+end
+
+-- Victim is the actor: dealt only, behind the vs-player toggle. Note the seam's own signature
+-- (no victim arg; the actor is implicit).
+-- @cost O(1) | pure-Lua early-outs when disabled or no alphas are alive
+local function _on_actor_before_hit(shit, _bone_id, _flags)
+    if not cfg.mutator_alpha_vs_player then return end
+    if next(_alpha_ids) == nil then return end
+    local dealt = _scale_dealt(shit)
+    if dealt and ap_core_debug.enabled() then
+        ap_core_debug.debug("%s actor_hit dealt=%.3f power=%.3f", LOG, dealt, shit.power)
+    end
+end
+
+-- Inject trophy loot into a dead alpha's mutant-loot table: the species hide (when it has one)
+-- plus (level - 1) draws from the species parts pool -- one guaranteed trophy per kill, more for
+-- higher levels, never a pelt stack (the issue-#11 shape).
+-- @cost O(level) | 1 tracker lookup + species resolve on a dead alpha; 1 hash miss otherwise
+local function _on_monster_loot_init(victim, loot_table)
+    if not victim or not loot_table then return end
+    if not cfg.mutator_alpha_loot_enabled then return end
+    local level = ap_ext_tracker.get_alpha_level(victim:id())
+    if level < 1 then return end
+    local species = xcreature.get_mutant_species(victim:id())
+    local pool = species and ALPHA_LOOT[species]
+    if not pool then return end
+    local parts = pool.parts
+    local start_i = 1
+    if pool.hide then
+        if not loot_table[pool.hide] then loot_table[pool.hide] = { count = 0 } end
+        loot_table[pool.hide].count = loot_table[pool.hide].count + 1
+        start_i = 2
+    end
+    for _ = start_i, level do
+        local section = parts[math_random(#parts)]
+        if not loot_table[section] then loot_table[section] = { count = 0 } end
+        loot_table[section].count = loot_table[section].count + 1
+    end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s alpha_loot id=%d species=%s level=%d", LOG, victim:id(), species, level)
+    end
+end
+
+-- Drop all effect state for an id. Blind hash deletes, safe for non-alphas; the prompt path
+-- against id recycling (freed server ids are pooled and reused), mirroring ap_ext_tracker's
+-- unregister clearing.
+local function _on_entity_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    _alpha_ids[id] = nil
+    _hit_power_dealt[id] = nil
+    _hit_power_taken[id] = nil
+    _panic_applied[id] = nil
+end
+
+-- Rebuild every effect from the tracker's live alpha registry: after load (the tracker has
+-- already swept recycled ids at on_game_load) and on option change (sliders and toggles
+-- recompute; panic re-applies on the next hit).
+local function _rebuild()
+    _alpha_ids = {}
+    _hit_power_dealt = {}
+    _hit_power_taken = {}
+    _panic_applied = {}
+    for id, data in pairs(ap_ext_tracker.get_alphas()) do
+        set_alpha_effects(id, data.level)
+    end
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s rebuild: %d alphas", LOG, xtable.count(_alpha_ids))
+    end
+end
+
+function on_game_start()
+    _alpha_ids = {}
+    _hit_power_dealt = {}
+    _hit_power_taken = {}
+    _panic_applied = {}
+    RegisterScriptCallback(CALLBACK.MONSTER_ON_BEFORE_HIT, _on_monster_before_hit)
+    RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_npc_before_hit)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_BEFORE_HIT, _on_actor_before_hit)
+    RegisterScriptCallback(CALLBACK.MONSTER_ON_LOOT_INIT, _on_monster_loot_init)
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _rebuild)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _rebuild)
+    ap_core_debug.info("%s Initialized", LOG)
+end

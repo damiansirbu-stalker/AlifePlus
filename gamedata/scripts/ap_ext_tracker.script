@@ -47,13 +47,13 @@ end
 local function _on_load_state(m_data)
     _ap_alpha_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
-    _ap_killers = saved.killers or {}
-    _ap_alphas = _validate_alphas(saved.alphas or {})
+    _ap_killers = (type(saved.killers) == "table") and saved.killers or {}
+    _ap_alphas = _validate_alphas((type(saved.alphas) == "table") and saved.alphas or {})
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_squad_opportunities = xttltable.create_fifo_cache({ capacity = 100 })
-    if not saved.killers then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
-    if not saved.alphas then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
+    if type(saved.killers) ~= "table" then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
+    if type(saved.alphas) ~= "table" then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d",
             xtable.count(_ap_killers), xtable.count(_ap_alphas))

@@ -213,6 +213,29 @@ PERSONALITY["tushkano"]    = { aggression=0.20, survival=0.60, territory=0.10, p
 PERSONALITY["rat"]         = { aggression=0.20, survival=0.60, territory=0.10, perception=0.30, relation=0.60 }
 PERSONALITY["karlik"]      = { aggression=0.20, survival=0.60, territory=0.10, perception=0.30, relation=0.70 }
 
+--- Alpha trophy loot per species: one hide (when the species has one) plus alpha-level-1 draws
+--- from parts. Keyed by the DEAD alpha's species -- independent of the territorial INFEST_SPECIES
+--- allowlist, so every promotable species pays out. Consumed by ap_ext_object_mutator at
+--- monster_on_loot_init. src: vanilla mutant part / hide sections (configs/items/items_mutant_*).
+ALPHA_LOOT = {
+    bloodsucker = { hide = "hide_bloodsucker", parts = { "mutant_part_heart_bloodsucker", "mutant_part_krovosos_jaw" } },
+    boar        = { hide = "hide_boar",        parts = { "mutant_part_tusk_boar", "mutant_part_boar_chop" } },
+    burer       = { hide = "hide_burer",       parts = { "mutant_part_brain_burer" } },
+    chimera     = { hide = "hide_chimera",     parts = { "mutant_part_heart_chimera", "mutant_part_chimera_kogot" } },
+    controller  = { hide = "hide_controller",  parts = { "mutant_part_controller_glass" } },
+    dog         = {                            parts = { "mutant_part_dog_heart", "mutant_part_dog_liver" } },
+    flesh       = { hide = "hide_flesh",       parts = { "mutant_part_flesh_eye" } },
+    gigant      = { hide = "hide_pseudogiant", parts = { "mutant_part_pseudogigant_eye" } },
+    psy_dog     = { hide = "hide_psy_dog",     parts = { "mutant_part_controller_glass" } },
+    pseudodog   = { hide = "hide_pseudodog",   parts = { "mutant_part_fang_psevdodog" } },
+    snork       = {                            parts = { "mutant_part_snork_mask", "mutant_part_snork_hand" } },
+    tushkano    = {                            parts = { "mutant_part_tushkano_head" } },
+    cat         = {                            parts = { "mutant_part_cat_thyroid", "mutant_part_cat_claw" } },
+    lurker      = { hide = "hide_lurker",      parts = { "mutant_part_lurker_eye" } },
+    psysucker   = { hide = "hide_psysucker",   parts = { "mutant_part_psysucker_hand" } },
+    karlik      = {                            parts = { "mutant_part_controller_glass" } },
+}
+
 --- Stalker needs DTO field names
 NEED_FIELDS = {
     "last_hunger_at", "last_sleep_at", "last_rest_at",

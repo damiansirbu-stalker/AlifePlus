@@ -1,7 +1,8 @@
 --- ap_ext_consequences_alpha: Registers new alpha mutants and updates alpha level (alpha_promote)
 
 local xobject, xsquad, xtable = xobject, xsquad, xtable
-local ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker = ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker
+local ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator =
+    ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -36,6 +37,7 @@ local function _handler(event_data)
             return { code = TRACE.OK, id = killer_id, level = level }
         end)
         if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
+        ap_ext_object_mutator.set_alpha_effects(killer_id, level)
 
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then

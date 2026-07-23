@@ -319,12 +319,22 @@ defaults = {
     mutator_area_swarm_decay_hours = 48,
     mutator_area_swarm_respawn_minutes = 60,
 
-    -- Area infest (exclusive spawn replacement)
+    -- Area infest (exclusive spawn replacement; elevated numbers are its identity)
     mutator_area_infest_mutate_smart = true,
     mutator_area_infest_max_per_level = 3,
-    mutator_area_infest_spawn_num = 3,
+    mutator_area_infest_spawn_num = 4,
     mutator_area_infest_decay_hours = 48,
     mutator_area_infest_respawn_minutes = 60,
+
+    -- Creature mutator: Alpha (ap_ext_object_mutator; combat identity of the earned alpha status).
+    -- max_pct = TOTAL percent at alpha level 10; per-level effect scales linearly.
+    mutator_alpha_hit_power_dealt_enabled = true,
+    mutator_alpha_hit_power_dealt_max_pct = 15,
+    mutator_alpha_hit_power_taken_enabled = true,
+    mutator_alpha_hit_power_taken_max_pct = 15,
+    mutator_alpha_vs_player = true,
+    mutator_alpha_panic_immunity_enabled = true,
+    mutator_alpha_loot_enabled = true,
 
     -- Economy: loot ownership + trade resolution
     loot_reserve_own_enabled = true,
@@ -525,6 +535,13 @@ local _key_to_tab = {
     mutator_area_infest_spawn_num = "mutators/infest",
     mutator_area_infest_decay_hours = "mutators/infest",
     mutator_area_infest_respawn_minutes = "mutators/infest",
+    mutator_alpha_hit_power_dealt_enabled = "creatures/alpha",
+    mutator_alpha_hit_power_dealt_max_pct = "creatures/alpha",
+    mutator_alpha_hit_power_taken_enabled = "creatures/alpha",
+    mutator_alpha_hit_power_taken_max_pct = "creatures/alpha",
+    mutator_alpha_vs_player = "creatures/alpha",
+    mutator_alpha_panic_immunity_enabled = "creatures/alpha",
+    mutator_alpha_loot_enabled = "creatures/alpha",
     consequence_alpha_promote_enabled = "consequences/alpha_promote",
     consequence_alpha_promote_max_alphas = "consequences/alpha_promote",
     consequence_alphakill_targeted_enabled = "consequences/alphakill_targeted",
@@ -792,6 +809,26 @@ function on_mcm_load()
                             _track("mutator_area_infest_spawn_num", 1, 5, 1),
                             _track("mutator_area_infest_decay_hours", 0, 168, 4),
                             _track("mutator_area_infest_respawn_minutes", 1, 720, 1),
+                        },
+                    },
+                },
+            },
+            {
+                id = "creatures",
+                gr = {
+                    {
+                        id = "alpha",
+                        sh = true,
+                        gr = {
+                            _slide("ui_mcm_ap_creatures_alpha_title"),
+                            _desc("ui_mcm_ap_creatures_alpha_desc"),
+                            _check("mutator_alpha_hit_power_dealt_enabled"),
+                            _track("mutator_alpha_hit_power_dealt_max_pct", 0, 30, 5),
+                            _check("mutator_alpha_hit_power_taken_enabled"),
+                            _track("mutator_alpha_hit_power_taken_max_pct", 0, 30, 5),
+                            _check("mutator_alpha_vs_player"),
+                            _check("mutator_alpha_panic_immunity_enabled"),
+                            _check("mutator_alpha_loot_enabled"),
                         },
                     },
                 },

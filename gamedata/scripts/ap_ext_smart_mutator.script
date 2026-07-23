@@ -1,10 +1,12 @@
 --- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, swarm, infestation).
 --- One descriptor-driven lifecycle -- inject/refresh, a 60s re-apply against the engine wiping
 --- respawn_params (and reverting faction) on load, decay, save/restore. conquest / swarm / infest
---- are entries in MUTATIONS; all three take exclusive ownership (sole spawn). Their only real
---- differences (identity is a faction or a species, refresh vs reject on a re-hit, the infest
---- per-level cap + species allowlist, the spawn count, the cfg keys, the timestamp/save keys) are
---- descriptor fields, not copied code. A new mutation type is a new descriptor, not a new copy.
+--- are entries in MUTATIONS; all three take exclusive ownership (sole spawn), and a taken smart is
+--- never retaken -- is_taken rejects cross-identity and cross-type hits, so takeovers end by decay.
+--- Their only real differences (identity is a faction or a species, refresh vs reject on a re-hit,
+--- the INFEST_SPECIES allowlist on both mutant types, the infest per-level cap, the spawn count,
+--- the cfg keys, the timestamp/save keys) are descriptor fields, not copied code. A new mutation
+--- type is a new descriptor, not a new copy.
 --- Conquest additionally grows an outpost: a held smart chances service NPCs (trader / barman /
 --- mechanic / medic) plus a guard detail, spawned by the smart and held via scripted_target, stocked
 --- via xcreature.make_trader once online, torn down on decay. See the Outpost services section below.
@@ -25,14 +27,20 @@ local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
--- Species allowed to infest (pack / lair / swarm creatures that overrun and hold a place). Solo
--- apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) are excluded --
--- they do not nest. Gates infest at the entry point; off-list species are rejected.
-local INFEST_SPECIES = {
+--- Species allowed to take territory (pack / lair creatures that overrun and hold a place). Solo
+--- apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) never multiply
+--- onto a smart; trash mobs (rat, tushkano, flesh, zombie) never nest. The list equals the effective
+--- set: every entry passes the causes' feral/predator/aberrant alignment gate. Public: gates BOTH
+--- swarm and infest, in the descriptors here (enforcement) and in ap_ext_causes_area (no wasted trips).
+INFEST_SPECIES = {
     bloodsucker = true, snork = true, cat = true, dog = true, pseudodog = true, psy_dog = true,
-    rat = true, tushkano = true, lurker = true, psysucker = true, fracture = true,
-    flesh = true, boar = true, zombie = true,
+    lurker = true, psysucker = true, fracture = true, boar = true,
 }
+
+--- Mutation type names (public: cause-side gates key is_taken by these).
+MUT_CONQUEST = "conquest"
+MUT_SWARM = "swarm"
+MUT_INFEST = "infest"
 
 -- Outpost services (conquest only). A held conquer smart grows service NPCs (trader / barman /
 -- mechanic / medic) that trade, repair, heal -- spawned by the smart through a faction-tagged
@@ -79,14 +87,16 @@ end
 
 -- Live per-type state, keyed by mutation name; _pending holds saved entries between load_state and
 -- the on_game_load restore. The on-disk format keeps the historical keys (conquered_smarts /
--- swarmed_smarts / infested_smarts) via mut.save_key, so saves stay compatible. Conquest entries
--- also carry a .services set { [role]=true } of active outpost roles (re-injected on scan, capped).
+-- swarmed_smarts / infested_smarts) via mut.save_key, so saves stay compatible. Entries carry
+-- .respawn_idle_base (the smart's pre-mutation interval, restored on decay); conquest entries carry
+-- a .services set { [role]=true } of active outpost roles (re-injected on scan, capped).
 local _state = { conquest = {}, swarm = {}, infest = {} }
 local _pending = {}
 local _decay_collector = {}
--- Pinned outpost squads (services + guard detail): squad_id -> { smart_id, smart_name, role, held_at,
--- stocked }. role is a service role or "guard". scripted_target holds them at the smart; the scan
--- reasserts, decay releases. _hold_drop_collector is the prune scratch list (mirrors _decay_collector).
+-- Pinned outpost squads (services + guard detail): squad_id -> { smart_id, smart_name, section,
+-- role, held_at, stocked }. role is a service role or "guard"; section is the squad section pinned
+-- at hold time (the identity check against server-id recycling). scripted_target holds them at the
+-- smart; the scan reasserts, decay releases. _hold_drop_collector is the prune scratch list.
 local _held_squads = {}
 local _held_pending = nil
 local _hold_drop_collector = {}
@@ -96,6 +106,23 @@ local _hold_drop_collector = {}
 --- @return boolean
 function is_infested(smart_id)
     return smart_id and _state.infest[smart_id] ~= nil
+end
+
+--- Check if a smart holds a live mutation entry other than (mut_name, identity): another type, or
+--- the same type under a different identity. The takeover exclusion gate -- cause filters skip such
+--- smarts and _mutate rejects the hit, so a taken smart is never retaken until its entry decays.
+--- nil mut_name treats every live entry as other (any takeover blocks).
+--- @param smart_id number
+--- @param mut_name string|nil MUT_CONQUEST / MUT_SWARM / MUT_INFEST
+--- @param identity string|nil Faction or species holding the claim
+--- @return boolean
+function is_taken(smart_id, mut_name, identity)
+    if not smart_id then return false end
+    for name, tbl in pairs(_state) do
+        local entry = tbl[smart_id]
+        if entry and (name ~= mut_name or entry.faction ~= identity) then return true end
+    end
+    return false
 end
 
 --- Check if the per-level infest cap allows another infestation on this level
@@ -119,8 +146,8 @@ end
 -- identity (faction or species) is stored under .faction for all three (historical + trace reads it).
 local MUTATIONS = {
     conquest = {
-        name = "conquest", key = CONQUEST_KEY, id_word = "faction", refresh = true, grows_services = true,
-        apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
+        name = MUT_CONQUEST, key = CONQUEST_KEY, id_word = "faction", refresh = true, grows_services = true,
+        apply = xsmart_spawn.set_exclusive_spawn_tiered, clear = xsmart_spawn.clear_exclusive_spawn,
         respawn_idle_cfg = "mutator_area_conquest_respawn_minutes",
         mutate_cfg = "mutator_area_conquest_mutate_smart",
         decay_cfg = "mutator_area_conquest_decay_hours",
@@ -128,7 +155,7 @@ local MUTATIONS = {
         ts_field = "conquered_at", save_key = "conquered_smarts",
     },
     swarm = {
-        name = "swarm", key = SWARM_KEY, id_word = "species", refresh = true,
+        name = MUT_SWARM, key = SWARM_KEY, id_word = "species", refresh = true, allow = INFEST_SPECIES,
         apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
         respawn_idle_cfg = "mutator_area_swarm_respawn_minutes",
         mutate_cfg = "mutator_area_swarm_mutate_smart",
@@ -137,7 +164,7 @@ local MUTATIONS = {
         ts_field = "swarmed_at", save_key = "swarmed_smarts",
     },
     infest = {
-        name = "infest", key = INFEST_KEY, id_word = "faction", refresh = false, cap = can_infest_on_level, allow = INFEST_SPECIES,
+        name = MUT_INFEST, key = INFEST_KEY, id_word = "faction", refresh = false, cap = can_infest_on_level, allow = INFEST_SPECIES,
         apply = xsmart_spawn.set_exclusive_spawn, clear = xsmart_spawn.clear_exclusive_spawn,
         respawn_idle_cfg = "mutator_area_infest_respawn_minutes",
         mutate_cfg = "mutator_area_infest_mutate_smart",
@@ -151,6 +178,44 @@ local MUTATIONS = {
 local _mut_by_key = {}
 for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
 
+-- Settle a hit against existing mutation state: refresh the timestamp on a same-identity re-hit
+-- (conquest/swarm), reject any re-hit for non-refresh types (infest), and reject a taken smart
+-- (any other live entry -- cross-identity or cross-type; takeovers end by decay, never by another
+-- takeover). Returns "refreshed" or "rejected" when existing state decides the call, nil when
+-- _mutate proceeds to a fresh apply. Split out of _mutate to stay under the complexity cap.
+local function _try_existing(mut, existing, smart_id, identity, now)
+    if mut.refresh and existing and existing.faction == identity then
+        existing[mut.ts_field] = now
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s (refresh)", mut.name, smart_id, mut.id_word, identity)
+        return "refreshed"
+    end
+    if not mut.refresh and existing then
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (already present)", mut.name, smart_id, mut.id_word, identity)
+        return "rejected"
+    end
+    if is_taken(smart_id, mut.name, identity) then
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (taken)", mut.name, smart_id, mut.id_word, identity)
+        return "rejected"
+    end
+    return nil
+end
+
+-- Write the mutation's fast respawn interval onto the smart, capturing the pre-mutation value into
+-- the entry for the decay restore. Prefers a value already captured by ANY live entry on this smart:
+-- a retake or a second mutation type runs after the 60s re-apply has overwritten smart.respawn_idle,
+-- so live state is no longer the LTX truth. Runs before tbl[smart_id] is overwritten, so the loop
+-- still sees the entry being replaced.
+local function _set_fast_respawn(mut, smart, smart_id, entry)
+    if not mut.respawn_idle_cfg then return end
+    local base
+    for _, tbl in pairs(_state) do
+        local held = tbl[smart_id]
+        if held and held.respawn_idle_base then base = held.respawn_idle_base; break end
+    end
+    entry.respawn_idle_base = base or smart.respawn_idle
+    smart.respawn_idle = cfg[mut.respawn_idle_cfg] * 60
+end
+
 -- Inject or refresh one mutation on a smart. Returns true on apply/refresh, false on a gate reject
 -- or unknown identity. Same order as the old conquer_smart / swarm_smart / infest_smart bodies:
 -- refresh a same-identity re-hit (conquest/swarm), reject an existing entry (infest), then cap.
@@ -160,16 +225,8 @@ local function _mutate(mut, smart_id, identity, level_id)
     if not cfg or not cfg[mut.mutate_cfg] then return false end
     local tbl = _state[mut.name]
     local now = xtime.game_sec()
-    local existing = tbl[smart_id]
-    if mut.refresh and existing and existing.faction == identity then
-        existing[mut.ts_field] = now
-        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s (refresh)", mut.name, smart_id, mut.id_word, identity)
-        return true
-    end
-    if not mut.refresh and existing then
-        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (already present)", mut.name, smart_id, mut.id_word, identity)
-        return false
-    end
+    local handled = _try_existing(mut, tbl[smart_id], smart_id, identity, now)
+    if handled then return handled == "refreshed" end
     if mut.allow and not mut.allow[identity] then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (not in allowlist)", mut.name, smart_id, mut.id_word, identity)
         return false
@@ -184,8 +241,8 @@ local function _mutate(mut, smart_id, identity, level_id)
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s FAILED (unknown %s)", mut.name, smart_id, mut.id_word, identity, mut.id_word)
         return false
     end
-    if mut.respawn_idle_cfg then smart.respawn_idle = cfg[mut.respawn_idle_cfg] * 60 end
     local entry = { faction = identity, level_id = level_id, [mut.ts_field] = now }
+    _set_fast_respawn(mut, smart, smart_id, entry)
     if mut.grows_services then entry.services = {} end
     tbl[smart_id] = entry
     ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d", mut.name, smart_id, mut.id_word, identity, level_id)
@@ -202,7 +259,8 @@ function conquer_smart(smart_id, faction, level_id)
     return _mutate(MUTATIONS.conquest, smart_id, faction, level_id)
 end
 
---- Swarm a smart: additive mutant-species spawn injection.
+--- Swarm a smart: exclusive mutant-species spawn injection (sole ownership). Refreshes if already
+--- swarmed by the same species; re-swarms (overwrites) if a different species.
 --- @param smart_id number
 --- @param species string Mutant species
 --- @param level_id number
@@ -280,14 +338,16 @@ local function _pick_missing_role(data)
 end
 
 -- Pin one spawned outpost squad at its smart via scripted_target and ledger it. scripted_target routes
--- the squad to specific_update (holds it); it keeps its faction community and its smart jobs. The scan
--- reasserts, decay releases. smart_name is cached so the reassert never pays a :name() bridge call.
--- @cost O(1) | 1 luabind heavy (smart:name string alloc) on pin
+-- the squad to specific_update (holds it); it keeps its faction community and its smart jobs. smart_name
+-- is cached so the reassert never pays a :name() bridge call; section is the identity check that keeps
+-- the ledger honest against server-id recycling (see _resolve_held).
+-- @cost O(1) | 2 luabind heavy (smart:name + squad:section_name string allocs) on pin
 local function _hold_squad(squad, smart_id, role, now)
     local smart = xobject.se(smart_id)
     if not smart then return end
     xsquad.acquire_squad(squad, smart)
-    _held_squads[squad.id] = { smart_id = smart_id, smart_name = smart:name(), role = role, held_at = now }
+    _held_squads[squad.id] = { smart_id = smart_id, smart_name = smart:name(),
+        section = squad:section_name(), role = role, held_at = now }
     ap_core_debug.debug("[MUTATOR.SMART] hold: smart=%d role=%s squad=%d", smart_id, role, squad.id)
 end
 
@@ -344,13 +404,26 @@ local function _grow_services()
     end
 end
 
--- Scan step: reassert scripted_target on every pinned outpost squad; prune entries whose squad is gone
--- (died / released) or whose smart is no longer conquered (releasing that squad back to the sim).
--- @cost O(n) held squads | 1 luabind (xobject.se) per entry
+-- Resolve a held entry's squad with identity intact: the id must still resolve to a SQUAD (freed
+-- server ids are pooled and reused, xrServer.cpp:873 vfFreeID) carrying the section pinned at hold
+-- time, else the entry is stale and the caller must prune WITHOUT touching the id's new occupant.
+-- Entries from a pre-section save skip the section compare; the class check still applies.
+-- @cost O(1) | 1 luabind (xobject.se) + clsid + 1 heavy (section_name) on a live squad
+local function _resolve_held(squad_id, entry)
+    local squad = xobject.se(squad_id)
+    if not squad or not xsquad.is_squad(squad) then return nil end
+    if entry.section and squad:section_name() ~= entry.section then return nil end
+    return squad
+end
+
+-- Scan step: reassert scripted_target on every pinned outpost squad; prune entries whose squad is
+-- gone (died / released / id recycled) or whose smart is no longer conquered (releasing that squad
+-- back to the sim).
+-- @cost O(n) held squads | _resolve_held per entry
 local function _reassert_holds()
     local drop = 0
     for squad_id, entry in pairs(_held_squads) do
-        local squad = xobject.se(squad_id)
+        local squad = _resolve_held(squad_id, entry)
         if not squad or not _state.conquest[entry.smart_id] then
             if squad then xsquad.release_squad(squad) end
             drop = drop + 1
@@ -377,7 +450,7 @@ end
 -- Stock one held service squad once its (single) member is online. Stops at the first online member.
 -- @cost O(members) | 1 luabind (xobject.go) per member until the online one
 local function _try_stock(squad_id, entry)
-    local squad = xobject.se(squad_id)
+    local squad = _resolve_held(squad_id, entry)
     if not squad then return end
     local data = _state.conquest[entry.smart_id]
     if not data then return end
@@ -414,7 +487,7 @@ local function _release_holds_for_smart(smart_id, smart, data)
     local drop = 0
     for squad_id, entry in pairs(_held_squads) do
         if entry.smart_id == smart_id then
-            local squad = xobject.se(squad_id)
+            local squad = _resolve_held(squad_id, entry)
             if squad then xsquad.release_squad(squad) end
             drop = drop + 1
             _hold_drop_collector[drop] = squad_id
@@ -430,7 +503,13 @@ end
 -- release the held guards / services and clear their respawn entries.
 local function _decay_one(mut, smart_id, data, ts, now)
     local smart = xobject.se(smart_id)
-    if smart then mut.clear(smart, mut.key) end
+    if smart then
+        mut.clear(smart, mut.key)
+        -- Restore the pre-mutation interval captured at inject (nil on a pre-capture save; the
+        -- engine then restores it from LTX at the next load via read_params). If another live
+        -- mutation still holds this smart, its next 60s re-apply reasserts its own interval.
+        if data.respawn_idle_base then smart.respawn_idle = data.respawn_idle_base end
+    end
     if mut.grows_services then _release_holds_for_smart(smart_id, smart, data) end
     ap_core_debug.debug("[MUTATOR.SMART] %s_decay: smart=%d %s=%s age=%dh",
         mut.name, smart_id, mut.id_word, data.faction, math_floor((now - ts) / 3600))
@@ -511,6 +590,15 @@ local function _on_load_state(m_data)
     _held_pending = (type(holds) == "table") and holds or {}
 end
 
+-- Rebuild one live entry from its saved form: timestamp fallback, carried respawn_idle_base,
+-- services set for growers. Split out of _restore to stay under the complexity cap.
+local function _restore_entry(mut, data, now)
+    local entry = { faction = data.faction, level_id = data.level_id, [mut.ts_field] = data[mut.ts_field] or now }
+    if type(data.respawn_idle_base) == "number" then entry.respawn_idle_base = data.respawn_idle_base end
+    if mut.grows_services then entry.services = (type(data.services) == "table") and data.services or {} end
+    return entry
+end
+
 -- Restore saved entries into live state on load. Non-table / faction-less / level-less entries are
 -- dropped. Infest re-checks its per-level cap (can be lowered between sessions), counting entries
 -- already restored in this pass; conquest/swarm do not -- their per-faction presence cap is a
@@ -531,9 +619,7 @@ local function _restore(mut, now)
             if mut.cap and not mut.cap(data.level_id) then
                 skipped = skipped + 1
             else
-                local entry = { faction = data.faction, level_id = data.level_id, [mut.ts_field] = data[mut.ts_field] or now }
-                if mut.grows_services then entry.services = (type(data.services) == "table") and data.services or {} end
-                tbl[smart_id] = entry
+                tbl[smart_id] = _restore_entry(mut, data, now)
                 restored = restored + 1
             end
         end

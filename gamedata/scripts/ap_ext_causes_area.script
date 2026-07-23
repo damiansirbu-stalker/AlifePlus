@@ -1,7 +1,9 @@
 --- ap_ext_causes_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
 --- area_swarm (mutant empty smart), area_infest (mutant lair/surge). RULES and SCAN live here
 --- per radiant invariants 4 + 5 + 10. Mutants try INFEST and SWARM in randomized order so
---- neither has a structural first-pick advantage. Humans only check CONQUER.
+--- neither has a structural first-pick advantage. Humans only check CONQUER. Both mutant causes
+--- gate on ap_ext_smart_mutator.INFEST_SPECIES (bosses and trash mobs never take territory), and
+--- every target filter skips taken smarts via is_taken (takeovers end by decay, not by retake).
 
 local math_random = math.random
 local xsquad, xsmart, xtime, xlevel, xcreature, xtable = xsquad, xsmart, xtime, xlevel, xcreature, xtable
@@ -47,10 +49,14 @@ local _is_last_faction_smart = ap_ext_util.is_last_faction_smart
 -- Human-only. No accepts_faction; engine's has_jobs_for self-rejects mismatched stalker
 -- communities on arrival (release_no_jobs). xsmart.has_jobs_for cite: stalker job assignment
 -- requires smart.props[community] to be set; mismatch yields nil job, has_jobs_for false.
-local function _build_conquer_filter()
+-- is_taken skips smarts under a live mutation (other than this faction's own conquest, which
+-- refreshes) -- takeovers end by decay, never by another takeover.
+local function _build_conquer_filter(player_id)
+    local mutator = ap_ext_smart_mutator
     return function(smart)
         if not xsmart.is_smart_empty(smart.id) then return false end
         if not _is_wild_smart(smart) then return false end
+        if mutator.is_taken(smart.id, mutator.MUT_CONQUEST, player_id) then return false end
         return not _is_last_faction_smart(smart)
     end
 end
@@ -58,10 +64,14 @@ end
 -- Mutant variant of conquer. Needs upfront accepts_faction because mob_home stubs are
 -- oversupplied for mutants (gulag_general.script:1018-1022) so has_jobs_for rarely rejects.
 -- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
-local function _make_swarm_filter(player_id)
+-- is_taken keys on the SPECIES (swarm identity), so a same-species re-swarm refreshes while any
+-- other live mutation blocks the smart.
+local function _make_swarm_filter(player_id, species)
+    local mutator = ap_ext_smart_mutator
     return function(smart)
         if not xsmart.is_smart_empty(smart.id) then return false end
         if not _is_wild_smart(smart) then return false end
+        if mutator.is_taken(smart.id, mutator.MUT_SWARM, species) then return false end
         return xsmart.accepts_faction(smart, player_id) and not _is_last_faction_smart(smart)
     end
 end
@@ -129,7 +139,7 @@ local function _eligible_conquer(trace, squad, now, level_id, budget)
     end
     budget.remaining = budget.remaining - 1
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
-        { level_id = level_id, filter = _build_conquer_filter(), max_distance = RANGE_EYE })
+        { level_id = level_id, filter = _build_conquer_filter(squad.player_id), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
     if not t_ok then
@@ -150,6 +160,7 @@ end
 local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     if not cfg.cause_area_swarm_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, SWARM_FIELD, now)
     if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then
@@ -167,7 +178,7 @@ local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     end
     budget.remaining = budget.remaining - 1
     local smart = ap_core_util.find_smart_observed(trace, squad.position,
-        { level_id = level_id, filter = _make_swarm_filter(squad.player_id), max_distance = RANGE_EYE })
+        { level_id = level_id, filter = _make_swarm_filter(squad.player_id, species), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
     if not t_ok then
@@ -189,6 +200,7 @@ end
 local function _eligible_infest(trace, squad, species, now, level_id, budget)
     if not cfg.cause_area_infest_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, INFEST_FIELD, now)
     if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then
@@ -202,8 +214,10 @@ local function _eligible_infest(trace, squad, species, now, level_id, budget)
     if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
     if not base_filter then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
+    -- is_taken with no identity: ANY live mutation blocks (infest never refreshes, so its own
+    -- entries block too -- supersedes the old is_infested check).
     local filter = function(smart)
-        if ap_ext_smart_mutator.is_infested(smart.id) then return false end
+        if ap_ext_smart_mutator.is_taken(smart.id) then return false end
         return base_filter(smart)
     end
     if budget.remaining <= 0 then
