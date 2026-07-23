@@ -169,7 +169,7 @@ Opportunities
   Territory
     - Area Conquer - Stalker factions take over empty territory (Ecologists excluded; mutants use Area Swarm).
       The conqueror owns the smart outright, it respawns only the winner's squads and repopulates faster while held, and the claim decays over time (MCM configurable).
-      Its squads match the region's danger, novices in the rookie south up to veterans in the hard north, read from each smart's own spawn tier.
+      Its squads match the region's danger: rookie maps field only novices, early maps add advanced squads, and from the mid maps north every tier holds ground.
       A faction that already holds several smart terrains on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last smart terrain on a level.
     - Area Swarm - Pack and lair mutants take over empty smart terrains the same way, the smart spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per map.
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.

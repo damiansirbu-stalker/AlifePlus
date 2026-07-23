@@ -383,11 +383,17 @@ end
 -- @cost O(1) roll + O(conquered) cap counts on a hit
 local function _try_grow_service(smart_id, data)
     if math_random(100) > SERVICE_CHANCE then return end
-    if _service_count_on_level(data.level_id) >= SERVICE_MAX_PER_LEVEL then return end
+    if _service_count_on_level(data.level_id) >= SERVICE_MAX_PER_LEVEL then
+        ap_core_debug.debug("[MUTATOR.SMART] service_reject: smart=%d level cap", smart_id)
+        return
+    end
     local role = _pick_missing_role(data)
     if not role then return end
     if not _role_cfg_path(data.faction, role) then return end
-    if _faction_role_count_on_level(data.level_id, data.faction, role) >= SERVICE_MAX_PER_FACTION_ROLE then return end
+    if _faction_role_count_on_level(data.level_id, data.faction, role) >= SERVICE_MAX_PER_FACTION_ROLE then
+        ap_core_debug.debug("[MUTATOR.SMART] service_reject: smart=%d faction=%s role=%s kind cap", smart_id, data.faction, role)
+        return
+    end
     local smart = xobject.se(smart_id)
     if not smart then return end
     data.services[role] = true
@@ -426,6 +432,8 @@ local function _reassert_holds()
         local squad = _resolve_held(squad_id, entry)
         if not squad or not _state.conquest[entry.smart_id] then
             if squad then xsquad.release_squad(squad) end
+            ap_core_debug.debug("[MUTATOR.SMART] hold_drop: smart=%d role=%s squad=%d %s",
+                entry.smart_id, entry.role, squad_id, squad and "released" or "gone")
             drop = drop + 1
             _hold_drop_collector[drop] = squad_id
         else
@@ -508,7 +516,10 @@ local function _decay_one(mut, smart_id, data, ts, now)
         -- Restore the pre-mutation interval captured at inject (nil on a pre-capture save; the
         -- engine then restores it from LTX at the next load via read_params). If another live
         -- mutation still holds this smart, its next 60s re-apply reasserts its own interval.
-        if data.respawn_idle_base then smart.respawn_idle = data.respawn_idle_base end
+        if data.respawn_idle_base then
+            smart.respawn_idle = data.respawn_idle_base
+            ap_core_debug.debug("[MUTATOR.SMART] %s_decay: smart=%d respawn_idle restored to %d", mut.name, smart_id, data.respawn_idle_base)
+        end
     end
     if mut.grows_services then _release_holds_for_smart(smart_id, smart, data) end
     ap_core_debug.debug("[MUTATOR.SMART] %s_decay: smart=%d %s=%s age=%dh",
