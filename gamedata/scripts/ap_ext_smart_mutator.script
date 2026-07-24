@@ -663,7 +663,10 @@ end
 
 -- 60s re-apply + decay pass over every mutation type. Timed when debug is on (null profiler = zero
 -- overhead otherwise), so a real breach of the frame budget surfaces in the log.
+-- ResetTimeEvent FIRST: an error mid-body would otherwise leave the event due and refiring every
+-- frame (doc/library/xray/internals/globals.md, reset placement).
 local function _scan()
+    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
     local now = xtime.game_sec()
     local prof = xprofiler.new_if(ap_core_debug.enabled())
     prof:start()
@@ -675,7 +678,6 @@ local function _scan()
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[MUTATOR.SMART] scan: %.2fms", prof:get_ms())
     end
-    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
 end
 
 local function _on_save_state(m_data)
