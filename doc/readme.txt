@@ -56,10 +56,10 @@ Territory and population:
 - Radiant dispatches weigh tactical soundness. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad already targets, scores low and usually stays.
 
 Alpha mutants:
-- Alpha mutants emerge from combat and accumulate kills.
-- An alpha hits harder, resists more damage, and never flees from wounds, growing with its level under modest caps.
-- An alpha is visibly marked by a subtle dust shimmer on its body.
-- Killing an alpha draws same-species hunters, and its corpse carries the species hide plus extra trophy parts.
+- A mutant that survives fights is promoted through alpha levels by its kill count.
+- Each level raises the damage it deals and lowers the damage it takes, up to +15% and -15% at max level, both configurable and set separately against you and against NPCs.
+- An alpha never panics on hit, and its corpse carries the species hide plus extra trophy parts.
+- A dust-shimmer particle marks its body, so you read the pack leader on sight. Killing one draws same-species hunters.
 
 Trade and needs:
 - Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.
@@ -176,6 +176,7 @@ Opportunities
       A faction that already holds several smart terrains on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last smart terrain on a level.
     - Area Swarm - Pack and lair mutants take over empty smart terrains the same way, the smart spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per map.
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
+    - Outpost services - A camp a faction holds long enough grows service NPCs that run the game's own jobs. The trader takes a real trade post at the camp center and works as a full shopkeeper you buy from and sell to, alongside a barman, mechanic, or medic that trade, repair, and heal. Guards and residents keep their patrols and camp jobs, every service stocks the faction's market, and growth runs on game time. Turn it off in MCM to keep conquest combat-only.
     - A taken smart stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
 
 Needs
