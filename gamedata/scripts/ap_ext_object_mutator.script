@@ -1,13 +1,14 @@
 --- ap_ext_object_mutator: Combat identity of the earned alpha status -- hit power dealt (vs any
---- victim: mutant, stalker, actor), hit power taken, panic immunity, trophy loot. Everything is
---- event-driven: the damage runs at the modded-exes before-hit seams (mutable shit.power), the
---- loot at monster_on_loot_init; nothing runs per frame or on a timer. Effects are id-keyed,
+--- victim: mutant, stalker, actor), hit power taken, panic immunity, trophy loot, and a visible
+--- particle mark on the creature. Everything is event-driven: the damage runs at the modded-exes
+--- before-hit seams (mutable shit.power), the loot at monster_on_loot_init, the mark at promote /
+--- net spawn and stops at death; nothing runs per frame or on a timer. Effects are id-keyed,
 --- set at alpha_promote, cleared on entity unregister, rebuilt from the tracker after load and
 --- on option change. The multiplier scales linearly with alpha level: at ALPHA_MAX_LEVEL the
 --- bonus equals the MCM max_pct (Creatures > Alpha).
 
 local pairs, next, tostring, math_random, RegisterScriptCallback = pairs, next, tostring, math.random, RegisterScriptCallback
-local xtable, xcreature = xtable, xcreature
+local xtable, xcreature, xobject = xtable, xcreature, xobject
 local ap_core_debug, ap_ext_tracker = ap_core_debug, ap_ext_tracker
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -16,18 +17,67 @@ local ALPHA_MAX_LEVEL = 10
 local cfg = ap_core_mcm.cfg
 local LOG = "[MUTATOR.OBJECT]"
 
+-- The mark: picked from this set by id (stable across sessions, no saved state; the by-id pick
+-- is machinery for future additions -- today the set is the 1 in-game-approved effect, user
+-- verdict 2026-07-24). Artefact auras are deliberately absent (they mean "artefact carrier").
+-- Config-referenced names ONLY -- a name missing from the live particle library is an engine
+-- fatal with no Lua existence check (r4.cpp model_CreateParticles;
+-- doc/library/modding/particles.md). Bones tried in order; get_bone_id returns BI_NONE on a miss.
+local MARK_PARTICLES = {
+    "generator\\anomaly_gen_dust",
+}
+local MARK_BONES = { "bip01_head", "bip01_spine", "bip01_pelvis", "link" }
+local BI_NONE = 65535
+
 -- Live alpha ids (the per-hit early-out and the panic key, independent of the damage toggles so
 -- disabling damage never silently kills panic immunity). _hit_power_* hold the per-id multipliers;
--- _panic_applied dedupes the engine threshold write per game object lifetime.
+-- _panic_applied dedupes the engine threshold write per game object lifetime. _marks holds the
+-- exact (name, bone) pair emitting on the live game object -- stop_particles needs both verbatim.
 local _alpha_ids = {}
 local _hit_power_dealt = {}
 local _hit_power_taken = {}
 local _panic_applied = {}
+local _marks = {}
+
+-- Attach the alpha's mark to its live game object; no-op when disabled, offline, dead, or
+-- already emitting. Bone verified via get_bone_id before attach (BI_NONE on a miss).
+-- @cost O(1) | up to 6 luabind on attach (object_by_id, alive, <=4 get_bone_id, start_particles); promote/net-spawn-time only
+local function _try_apply_mark(npc_id)
+    if not cfg.mutator_alpha_mark_enabled or _marks[npc_id] then return end
+    local obj = xobject.go(npc_id)
+    if not obj or not obj:alive() then return end
+    local bone
+    for i = 1, #MARK_BONES do
+        if obj:get_bone_id(MARK_BONES[i]) ~= BI_NONE then bone = MARK_BONES[i] break end
+    end
+    if not bone then return end
+    local name = MARK_PARTICLES[npc_id % #MARK_PARTICLES + 1]
+    obj:start_particles(name, bone)
+    _marks[npc_id] = { name = name, bone = bone }
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s mark id=%d particle=%s bone=%s", LOG, npc_id, name, bone)
+    end
+end
+
+-- Stop the mark and forget it. Safe when the game object is already gone (its particles died
+-- with it); required on a corpse -- particles have no lifecycle and would emit forever.
+-- @cost O(1) | <=2 luabind
+local function _stop_mark(npc_id)
+    local mark = _marks[npc_id]
+    if not mark then return end
+    local obj = xobject.go(npc_id)
+    if obj then obj:stop_particles(mark.name, mark.bone) end
+    _marks[npc_id] = nil
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("%s mark_stop id=%d particle=%s", LOG, npc_id, mark.name)
+    end
+end
 
 --- Register the combat effects for a promoted alpha (called from the alpha_promote consequence
---- and the rebuild). Multiplier = 1 +/- max_pct/100 * level/ALPHA_MAX_LEVEL.
---- @safety SAFE - pure table writes; nil-guarded args
---- @cost O(1) | 0 luabind
+--- and the rebuild). Multiplier = 1 +/- max_pct/100 * level/ALPHA_MAX_LEVEL; the mark attaches
+--- when the alpha is online (net spawn covers the rest).
+--- @safety SAFE - pure table writes; nil-guarded args; mark attach is bone-verified
+--- @cost O(1) | 0 luabind (plus the one-time mark attach when online)
 --- @param npc_id number Alpha entity id
 --- @param level number Alpha level (1..ALPHA_MAX_LEVEL)
 function set_alpha_effects(npc_id, level)
@@ -39,6 +89,7 @@ function set_alpha_effects(npc_id, level)
     if cfg.mutator_alpha_hit_power_taken_enabled then
         _hit_power_taken[npc_id] = 1.0 - (cfg.mutator_alpha_hit_power_taken_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
     end
+    _try_apply_mark(npc_id)
 end
 
 -- Dealt-scaling shared by all three victim seams: an alpha attacker multiplies the hit.
@@ -122,6 +173,22 @@ local function _on_monster_loot_init(victim, loot_table)
     end
 end
 
+-- Fresh game object for a monster: any earlier particles died with the old object, so forget
+-- the stale mark and re-attach when the monster is an alpha. Covers game load and every
+-- offline->online transition.
+-- @cost O(1) | pure-Lua for non-alphas
+local function _on_monster_net_spawn(obj, _se_obj)
+    local id = obj:id()
+    _marks[id] = nil
+    if _alpha_ids[id] then _try_apply_mark(id) end
+end
+
+-- Stop the mark the moment the alpha dies -- otherwise the corpse keeps emitting.
+-- @cost O(1) | pure-Lua for unmarked monsters
+local function _on_monster_death(victim, _who)
+    if victim then _stop_mark(victim:id()) end
+end
+
 -- Drop all effect state for an id. Blind hash deletes, safe for non-alphas; the prompt path
 -- against id recycling (freed server ids are pooled and reused), mirroring ap_ext_tracker's
 -- unregister clearing.
@@ -132,6 +199,7 @@ local function _on_entity_unregister(se_obj)
     _hit_power_dealt[id] = nil
     _hit_power_taken[id] = nil
     _panic_applied[id] = nil
+    _marks[id] = nil
 end
 
 -- Rebuild every effect from the tracker's live alpha registry: after load (the tracker has
@@ -145,8 +213,13 @@ local function _rebuild()
     for id, data in pairs(ap_ext_tracker.get_alphas()) do
         set_alpha_effects(id, data.level)
     end
+    -- Marks survive the reset on purpose (live particles need the stored name+bone to stop).
+    -- Prune the ones whose owner is no longer an alpha or whose toggle went off.
+    for id in pairs(_marks) do
+        if not _alpha_ids[id] or not cfg.mutator_alpha_mark_enabled then _stop_mark(id) end
+    end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s rebuild: %d alphas", LOG, xtable.count(_alpha_ids))
+        ap_core_debug.debug("%s rebuild: %d alphas, %d marked", LOG, xtable.count(_alpha_ids), xtable.count(_marks))
     end
 end
 
@@ -155,6 +228,9 @@ function on_game_start()
     _hit_power_dealt = {}
     _hit_power_taken = {}
     _panic_applied = {}
+    _marks = {}
+    RegisterScriptCallback(CALLBACK.MONSTER_ON_NET_SPAWN, _on_monster_net_spawn)
+    RegisterScriptCallback(CALLBACK.MONSTER_ON_DEATH_CALLBACK, _on_monster_death)
     RegisterScriptCallback(CALLBACK.MONSTER_ON_BEFORE_HIT, _on_monster_before_hit)
     RegisterScriptCallback(CALLBACK.NPC_ON_BEFORE_HIT, _on_npc_before_hit)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_BEFORE_HIT, _on_actor_before_hit)
