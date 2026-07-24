@@ -49,6 +49,8 @@ Active opportunities:
 
 Territory and population:
 - Stalkers and mutants claim empty outposts.
+- A conquered camp belongs to the winner alone: only their squads respawn there, matched to the region's danger.
+- A held camp grows into an outpost on game time: a trader manning a permanent post at the camp's center, a barman, mechanic, or medic, a guard detail, and residents on their patrols.
 - Conquests decay if nobody holds them.
 - Mutants infest lairs and buildings as nests.
 - Radiant dispatches weigh tactical soundness. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad already targets, scores low and usually stays.
@@ -56,6 +58,7 @@ Territory and population:
 Alpha mutants:
 - Alpha mutants emerge from combat and accumulate kills.
 - An alpha hits harder, resists more damage, and never flees from wounds, growing with its level under modest caps.
+- An alpha is visibly marked by a subtle dust shimmer on its body.
 - Killing an alpha draws same-species hunters, and its corpse carries the species hide plus extra trophy parts.
 
 Trade and needs:
