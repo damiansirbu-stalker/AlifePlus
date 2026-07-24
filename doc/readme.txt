@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.8.3 (xlibs 1.8.2, demonized 20250908)
+- Version: 1.8.4 (xlibs 1.8.3, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -241,7 +241,7 @@ Market
 
   Sell it and it surfaces: when a hub trader restocks, the items his faction's stalkers recently sold turn up in stock, rank-gated and premium-priced, gone after a short window. Buy it and it thins: the ammo and medical those stalkers keep purchasing run short in his fresh stock.
 
-  It is an echo, never a transfer. The ruck is wiped and respawned each restock, so what appears is re-created, never the original item, and never more than the faction really trades. The market reads two bounded lists per faction, recent sales and recent buys, and moves no goods of its own.
+  It is an echo, never a transfer. The stock is wiped and respawned each restock, so what appears is re-created, never the original item, and never more than the faction really trades. The market reads two bounded lists per faction, recent sales and recent buys, and moves no goods of its own.
 
   The sell-out pulls a share of the drained ammo and medical, 30% by default; at the default the last few of anything survive, and at maximum a trader is stripped bare. Rookies see common goods, veterans the artefacts and devices a faction is bleeding. Each item shows once, at one trader, at several times value, five by default, and different traders carry different stock. A nearby stalker may call it out on the PDA when a trader takes in something rich or runs dry. Premium, condition, sell-out share, and the item lists sit under Economy then Faction market; off restores vanilla stock.
 
