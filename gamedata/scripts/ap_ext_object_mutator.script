@@ -144,9 +144,9 @@ local function _on_actor_before_hit(shit, _bone_id, _flags)
     end
 end
 
--- Inject trophy loot into a dead alpha's mutant-loot table: the species hide (when it has one)
--- plus (level - 1) draws from the species parts pool -- one guaranteed trophy per kill, more for
--- higher levels, never a pelt stack (the issue-#11 shape).
+-- Inject trophy loot into a dead alpha's mutant-loot table: the species hide plus (level - 1)
+-- draws from the species parts pool, or level draws when the species has no hide -- one
+-- guaranteed trophy per kill, more for higher levels, never a pelt stack (the issue-#11 shape).
 -- @cost O(level) | 1 tracker lookup + species resolve on a dead alpha; 1 hash miss otherwise
 local function _on_monster_loot_init(victim, loot_table)
     if not victim or not loot_table then return end
@@ -204,8 +204,10 @@ end
 
 -- Rebuild every effect from the tracker's live alpha registry: after load (the tracker has
 -- already swept recycled ids at on_game_load) and on option change (sliders and toggles
--- recompute; panic re-applies on the next hit).
+-- recompute; panic re-applies on the next hit, and a no-longer-qualifying id gets its engine
+-- threshold restored below).
 local function _rebuild()
+    local was_panic = _panic_applied
     _alpha_ids = {}
     _hit_power_dealt = {}
     _hit_power_taken = {}
@@ -217,6 +219,16 @@ local function _rebuild()
     -- Prune the ones whose owner is no longer an alpha or whose toggle went off.
     for id in pairs(_marks) do
         if not _alpha_ids[id] or not cfg.mutator_alpha_mark_enabled then _stop_mark(id) end
+    end
+    -- The panic write is a live engine field, so an id that no longer qualifies (toggle off, or
+    -- dropped from the alpha registry) gets the LTX default restored on its live game object
+    -- (set_default_panic_threshold, in the floor build). An offline id is skipped: its C++
+    -- object is gone and the next spawn re-reads the LTX default anyway.
+    for id in pairs(was_panic) do
+        if not (cfg.mutator_alpha_panic_immunity_enabled and _alpha_ids[id]) then
+            local obj = xobject.go(id)
+            if obj then obj:set_default_panic_threshold() end
+        end
     end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s rebuild: %d alphas, %d marked", LOG, xtable.count(_alpha_ids), xtable.count(_marks))
