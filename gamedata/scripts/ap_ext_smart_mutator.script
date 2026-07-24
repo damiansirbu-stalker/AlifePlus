@@ -12,7 +12,7 @@
 --- via xcreature.make_trader once online, torn down on decay. See the Outpost services section below.
 
 local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
-local math_floor, math_random = math.floor, math.random
+local math_floor, math_random, string_match, string_format = math.floor, math.random, string.match, string.format
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature = xsquad, xcreature
 
@@ -62,10 +62,15 @@ local SERVICE_ROLES = { "trader", "barman", "mechanic", "medic" }
 local _ROLE_SET = { trader = true, barman = true, mechanic = true, medic = true }
 local SERVICE_KEY_PREFIX = "ap_service_"
 -- Framework caps (not MCM). GUARD_QUOTA: combat squads pinned per outpost as a guard detail (rest
--- roam). SERVICE_CHANCE: percent roll per held smart per scan to add one missing role. Per-level and
--- per-(faction, role) caps spread services across a map instead of every outpost being a full base.
+-- roam). SERVICE_CHANCE: percent roll per held smart per due growth interval to add one missing
+-- role. Growth runs on GAME time (user ruling 2026-07-24): one roll per SERVICE_ROLL_GAME_SEC of
+-- game clock per held smart, so sleeping and time skips grow outposts; catch-up after a long skip
+-- is capped at SERVICE_ROLL_MAX_CATCHUP rolls per pass. Per-level and per-(faction, role) caps
+-- spread services across a map instead of every outpost being a full base.
 local GUARD_QUOTA = 2
 local SERVICE_CHANCE = 15
+local SERVICE_ROLL_GAME_SEC = 600
+local SERVICE_ROLL_MAX_CATCHUP = 4
 local SERVICE_MAX_PER_LEVEL = 3
 local SERVICE_MAX_PER_FACTION_ROLE = 1
 
@@ -100,6 +105,9 @@ local _decay_collector = {}
 local _held_squads = {}
 local _held_pending = nil
 local _hold_drop_collector = {}
+-- Per-smart game-sec stamp of the last consumed growth interval. Ephemeral by design (a short
+-- growth clock need not survive a reload; first roll comes one interval after load).
+local _service_roll_at = {}
 
 --- Check if a smart terrain is infested
 --- @param smart_id number
@@ -367,15 +375,79 @@ local function _try_pin_spawn(squad, smart_id, prop, now)
     _hold_squad(squad, smart_id, role, now)
 end
 
+-- Trade-spot job content (the policy half; xsmart_spawn.add_runtime_job is the mechanism).
+-- Vanilla beh_trader priority 59: above camper 45, below surge 60, so the trader upgrades onto
+-- the spot on the smart's next job-selection pass.
+local TRADE_SPOT_PRIOR = 59
+local TRADE_SPOT_NAME_PREFIX = "ap_trade_spot_"
+-- The job's logic text, the vanilla beh_trade_1 shape (beh_gulag_jobs.ltx marsh base): stand
+-- guard at the smart's position, serve trade on the trade signal. The generic meet block is
+-- included verbatim (gulag_general.load_job's builder) because the runtime job's ini REPLACES
+-- the smart blob for its sections. path_end fed as an arg (a literal `key = value` line in
+-- source trips the compat-smell lint on ini text).
+local _TRADE_SPOT_TEXT = [[
+[logic@%s]
+active = beh@%s
+
+[beh@%s]
+meet = meet@generic_lager
+pt1 = 5000,guard | pos:%s look:%s sig:trade
+on_signal = trade | %%=trade_job_sell_items%%
+path_end = %s
+
+[meet@generic_lager]
+close_distance = {=is_wounded} 0, {!is_squad_commander} 0, {!after_first_meet !actor_friend !actor_is_safemode =actor_has_weapon} 3, 3
+close_anim = {=is_wounded} nil, {!is_squad_commander} nil, {!actor_is_safemode =actor_has_weapon} nil, talk_default
+close_snd_hello = {=is_wounded} nil, {!is_squad_commander} nil, {=actor_enemy} nil, {!after_first_meet !actor_friend !actor_is_safemode =actor_has_weapon} meet_stop, meet_hello
+close_snd_bye = nil
+close_victim = {=is_wounded} nil, {!is_squad_commander} nil, actor
+far_distance = {=is_wounded} 0, {!is_squad_commander} 0, {!after_first_meet !actor_friend !actor_is_safemode =actor_has_weapon} 5, 5
+far_anim = {=is_wounded} nil, {!is_squad_commander} nil, {!after_first_meet !actor_friend !actor_is_safemode =actor_has_weapon} threat_na, nil
+far_snd = {=is_wounded} nil, {!is_squad_commander} nil, {=actor_enemy} nil, {=is_story} nil, {!after_first_meet !actor_friend !actor_is_safemode =actor_has_weapon} meet_hide_weapon, meet_wait
+far_victim = {=is_wounded} nil, {!is_squad_commander} nil, actor
+use = {=is_wounded} false, {!is_squad_commander} false, {=actor_enemy} false, {=has_enemy} false, {=dist_to_actor_le(3)} true, false
+snd_on_use = {=is_wounded} nil, {=actor_enemy} nil, {!is_squad_commander} meet_use_no_talk_leader, {=has_enemy} meet_use_no_fight, {=dist_to_actor_le(3)} meet_use_no_default, nil
+meet_dialog = nil
+abuse = {=has_enemy} false, true
+trade_enable = {=actor_enemy} false, true
+allow_break = true
+use_text = nil
+]]
+
+-- Only the outpost's own service trader may take the runtime trade spot. The vanilla trade-spot
+-- permission (precond_trade_job) admits any online NPC with sellable loot -- the wrong occupant
+-- for an outpost counter.
+local function _trade_spot_precond(se_obj)
+    return string_match(se_obj:section_name(), "^sim_default_%w+_trader$") ~= nil
+end
+
+-- Ensure the runtime trade-spot job exists on a smart with a trader service. Idempotent; the
+-- engine rebuilds the job list on every game load, so this rides the same re-apply cadence as
+-- the respawn entries. The smart's own job selection then seats the trader (prior 59 > camper).
+-- @cost O(text) string format per pass (cheap); the insert itself happens once per load
+local function _ensure_trade_spot(smart, data)
+    if not data.services or not data.services.trader then return end
+    local name = TRADE_SPOT_NAME_PREFIX .. smart.id
+    local center = smart.position
+    local pos = string_format("%.2f,%.2f,%.2f", center.x, center.y, center.z)
+    local look = string_format("%.2f,%.2f,%.2f", center.x + 2, center.y, center.z)
+    xsmart_spawn.add_runtime_job(smart, {
+        name = name, prior = TRADE_SPOT_PRIOR, precondition_fn = _trade_spot_precond,
+        text = string_format(_TRADE_SPOT_TEXT, name, name, name, pos, look, "loop"),
+    })
+end
+
 -- Re-inject the faction-tagged service respawn entries for a held conquer smart (the engine wipes
 -- respawn_params on load and every tick, same as the conquest entry). Called AFTER mut.apply has set
--- smart.faction, so set_exclusive_spawn_section tags each entry with the current owner.
+-- smart.faction, so set_exclusive_spawn_section tags each entry with the current owner. Also
+-- re-ensures the trade-spot job (jobs rebuild on load like respawn_params get wiped).
 -- @cost O(services) | 0 luabind (pure Lua table writes)
 local function _reapply_service_entries(smart, data)
     if not data.services then return end
     for role in pairs(data.services) do
         xsmart_spawn.set_exclusive_spawn_section(smart, _service_key(role), _service_section(data.faction, role), 1)
     end
+    _ensure_trade_spot(smart, data)
 end
 
 -- Roll one held conquer smart for a service role it lacks, under the per-level and per-kind caps. On
@@ -398,15 +470,38 @@ local function _try_grow_service(smart_id, data)
     if not smart then return end
     data.services[role] = true
     xsmart_spawn.set_exclusive_spawn_section(smart, _service_key(role), _service_section(data.faction, role), 1)
+    if role == "trader" then _ensure_trade_spot(smart, data) end
     ap_core_debug.debug("[MUTATOR.SMART] service_add: smart=%d faction=%s role=%s", smart_id, data.faction, role)
 end
 
+-- Consume the due growth intervals for one smart on the GAME clock: floor(elapsed / interval)
+-- rolls, stamp advanced by whole intervals (remainder accumulates), catch-up capped so a
+-- week-long time skip cannot burst-fill a level in one pass. First sighting stamps, no roll.
+-- @cost O(1) roll count + O(rolls) _try_grow_service calls
+local function _roll_due_services(smart_id, data, now)
+    local last = _service_roll_at[smart_id]
+    if not last then
+        _service_roll_at[smart_id] = now
+        return
+    end
+    local rolls = math_floor((now - last) / SERVICE_ROLL_GAME_SEC)
+    if rolls < 1 then return end
+    _service_roll_at[smart_id] = last + rolls * SERVICE_ROLL_GAME_SEC
+    if rolls > SERVICE_ROLL_MAX_CATCHUP then rolls = SERVICE_ROLL_MAX_CATCHUP end
+    for _ = 1, rolls do
+        _try_grow_service(smart_id, data)
+    end
+end
+
 -- Scan step: grow services on held conquer smarts (gated by the conquest + services MCM toggles).
+-- Game-time paced: sleeping and time skips count (user ruling 2026-07-24), the real-time scan is
+-- only the pump that collects due intervals.
 -- @cost O(n) conquered smarts
 local function _grow_services()
     if not cfg or not cfg.mutator_area_conquest_mutate_smart or not cfg.mutator_area_conquest_grow_services then return end
+    local now = xtime.game_sec()
     for smart_id, data in pairs(_state.conquest) do
-        _try_grow_service(smart_id, data)
+        _roll_due_services(smart_id, data, now)
     end
 end
 
@@ -490,6 +585,9 @@ local function _release_holds_for_smart(smart_id, smart, data)
     if smart and data.services then
         for role in pairs(data.services) do
             xsmart_spawn.clear_shared_spawn(smart, _service_key(role))
+        end
+        if data.services.trader then
+            xsmart_spawn.remove_runtime_job(smart, "logic@" .. TRADE_SPOT_NAME_PREFIX .. smart_id)
         end
     end
     local drop = 0
