@@ -48,9 +48,9 @@ Active opportunities:
 - NPCs walk to stashes to loot, ambush, or fill them with supplies.
 
 Territory and population:
-- Stalkers and mutants claim empty outposts.
-- A conquered camp belongs to the winner alone: only their squads respawn there, matched to the region's danger.
-- A held camp grows into an outpost on game time: a trader manning a permanent post at the camp's center, a barman, mechanic, or medic, a guard detail, and residents on their patrols.
+- Stalkers and mutants claim empty areas.
+- A conquered area belongs to the winner alone: only their squads respawn there, matched to the region's danger.
+- A held area grows one service on game time: a trader manning a permanent post at the area's center, or a barman, mechanic, or medic, plus a guard detail and residents on their patrols.
 - Conquests decay if nobody holds them.
 - Mutants infest lairs and buildings as nests.
 - Radiant dispatches weigh tactical soundness. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad already targets, scores low and usually stays.
@@ -63,7 +63,7 @@ Alpha mutants:
 
 Trade and needs:
 - Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.
-- Stalkers also barter directly with their own faction, swapping surplus for what they lack with a squad at a friendly camp, no money: ammo, meds, grenades, and a spare weapon or armor better than the other is carrying.
+- Stalkers also barter directly with their own faction, swapping surplus for what they lack with a squad at a friendly area, no money: ammo, meds, grenades, and a spare weapon or armor better than the other is carrying.
 - Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
 Loot claim (protection):
@@ -171,13 +171,13 @@ Opportunities
 
   Territory
     - Area Conquer - Stalker factions take over empty territory (Ecologists excluded; mutants use Area Swarm).
-      The conqueror owns the smart outright, it respawns only the winner's squads and repopulates faster while held, and the claim decays over time (MCM configurable).
-      Its squads match the region's danger: rookie maps field only novices, early maps add advanced squads, and from the mid maps north every tier holds ground.
-      A faction that already holds several smart terrains on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last smart terrain on a level.
-    - Area Swarm - Pack and lair mutants take over empty smart terrains the same way, the smart spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per map.
+      The conqueror owns the area outright, it respawns only the winner's squads and repopulates faster while held, and the claim decays over time (MCM configurable).
+      Its squads match the region's danger: rookie levels field only novices, early levels add advanced squads, and from the mid levels north every tier holds ground.
+      A faction that already holds several areas on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last area on a level.
+    - Area Swarm - Pack and lair mutants take over empty areas the same way, the area spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per level.
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
-    - Outpost services - A camp a faction holds long enough grows service NPCs that run the game's own jobs. The trader takes a real trade post at the camp center and works as a full shopkeeper you buy from and sell to, alongside a barman, mechanic, or medic that trade, repair, and heal. Guards and residents keep their patrols and camp jobs, every service stocks the faction's market, and growth runs on game time. Turn it off in MCM to keep conquest combat-only.
-    - A taken smart stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
+    - Area services - An area a faction holds long enough grows one service NPC that runs the game's own jobs: a trader taking a real trade post at the area's center, a full shopkeeper you buy from and sell to, or a barman, mechanic, or medic that trades, repairs, or heals. Guards and residents keep their patrols and jobs, the service stocks the faction's market, and growth runs on game time. Services spread across a level's areas by MCM caps, and the trader's supplies tier is capped so he never matches a hub trader. Turn it off in MCM to keep conquest combat-only.
+    - A taken area stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
 
 Needs
 
