@@ -1,0 +1,46 @@
+; AlifePlus outpost stock policy. Filters a conquered-area service NPC's player-facing stock
+; after each restock, so a field outpost sells a lean assortment instead of the full faction
+; shelf. Applied on top of the below-hub supplies drop (Mutators > Conquest); this file decides
+; WHICH kinds a service stocks, the supplies drop decides HOW DEEP its ammo/gear tiers go.
+;
+; FORMAT (same shape as ap_loot_policy.ltx): `category = min, max`. MAX is used, MIN is ignored.
+;   max = 0  -> the category is stripped from stock (blacklist).
+;   max = N  -> the category is kept, capped at N (whitelist with a cap).
+;   a row deleted entirely -> that category is left untouched.
+;   a row may also name a single item section (energy_drink = 0, 2); a section row overrides
+;   the item's category row, same contract as the other policy files.
+; DLTX-overridable like the other policy files. Absent or empty file = filter off (logged).
+;
+; MEANING -- differs from the loadout policies (ap_trade_policy, ap_loot_policy) by design, and
+; this is the whole reason it is a separate file. Those cap a category TOTAL across what one NPC
+; CARRIES. This caps PER TYPE on what a trader SELLS: a shelf stocks many kinds, a loadout is one
+; carry. So `medkit = 0, 3` keeps 3 of EACH medkit kind on the shelf, and `ammo_per_type = 0, 90`
+; keeps 90 rounds of EACH ammo type (two ammo types of one caliber keep 90 each; the key is the
+; shelf equivalent of the loadout policies' equipped-relative ammo_slot_* keys, in rounds).
+; Whole stacks release: an ammo cap below one box size strips that type entirely rather than
+; keeping a partial box.
+;
+; Category names match get_section_category (the same vocabulary the other policies use).
+; Equipped weapon and armor and quest items are never in scope -- the categorizer skips them.
+;
+; DEFAULT below = a field resupply post: ammo, medical, provisions, a few grenades and repair
+; parts; no weapons, armor, artefacts, or devices (an outpost is not an armory).
+
+[ap_outpost_stock]
+ammo_per_type    = 0, 90
+grenade_ammo     = 0, 2
+medkit           = 0, 3
+bandage          = 0, 5
+antirad          = 0, 3
+stim             = 0, 2
+pill             = 0, 2
+food             = 0, 5
+drink            = 0, 5
+grenade          = 0, 2
+crafting         = 0, 5
+weapon           = 0, 0
+outfit           = 0, 0
+helmet           = 0, 0
+artefact         = 0, 0
+device           = 0, 0
+other            = 0, 0

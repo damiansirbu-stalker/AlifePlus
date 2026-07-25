@@ -36,8 +36,8 @@
 --- (_claimed).
 ---
 --- One restock path: a hook over trade_manager.update, which every restock advances resupply_time
---- through on every install (vanilla writes it directly; the Trader Destockifier variant monkeypatches
---- the same function, so its restock is visible through the wrapper chain too).
+--- through on every install (vanilla writes it directly; destockifier-style trader_autoinject variants
+--- monkeypatch the same function, so their restock is visible through the wrapper chain too).
 ---
 --- Premium pricing is applied by the engine's on_get_item_cost script callback (utils_item.script:995)
 --- for tagged goods only: full base cost x premium, the condition discount bypassed.
@@ -608,10 +608,10 @@ end
 
 --- Wire the single restock path: a hook over trade_manager.update. Every restock advances
 --- resupply_time through that function on every install -- vanilla performs the write directly, and
---- the Trader Destockifier variant monkeypatches trade_manager.update, so the reference change is
---- visible through the wrapper chain either way. No capability probe: there is no public query for a
---- declared callback name, and RegisterScriptCallback on an undeclared name (e.g. trader_on_restock
---- when the winning trader_autoinject variant is not the Destockifier one) silently drops the
+--- destockifier-style trader_autoinject variants monkeypatch trade_manager.update, so the reference
+--- change is visible through the wrapper chain either way. No capability probe: there is no public
+--- query for a declared callback name, and RegisterScriptCallback on an undeclared name (e.g.
+--- trader_on_restock when the winning trader_autoinject variant does not declare it) silently drops the
 --- registration, which would be a silent feature kill. Touch trade_manager first so xevent.hook can
 --- rawget it.
 local function _setup_restock()
