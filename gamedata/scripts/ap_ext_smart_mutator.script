@@ -11,7 +11,7 @@
 --- mechanic / medic) plus a guard detail, spawned by the smart and held via scripted_target, stocked
 --- via xcreature.make_trader once online, torn down on decay. See the Outpost services section below.
 
-local pairs, next, type, tonumber, RegisterScriptCallback = pairs, next, type, tonumber, RegisterScriptCallback
+local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
 local math_floor, math_random, string_match, string_format = math.floor, math.random, string.match, string.format
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature = xsquad, xcreature
@@ -337,21 +337,28 @@ local function _faction_role_count_on_level(level_id, faction, role)
     return count
 end
 
--- First role this outpost's faction can still field on the level: has a trade config and is
--- under the per-(faction, role) level cap (MCM). Folding the cap into the pick keeps a taken
--- role (trader claimed by an earlier outpost) from blocking the roles behind it in
--- SERVICE_ROLES order -- later outposts land on later roles instead of proposing trader forever.
+-- The LEAST-represented role this outpost's faction can still field on the level: eligible = has
+-- a trade config and is under the per-(faction, role) level cap (MCM). Among eligible roles, pick
+-- the one with the fewest live instances for this faction on the level, breaking ties by
+-- SERVICE_ROLES order (trader first). Picking the minimum (not the first eligible) spreads the
+-- roster: with the cap raised, "first eligible" kept returning trader until a faction hit the
+-- trader cap, so every outpost grew a trader and barman / mechanic / medic never appeared
+-- (field-confirmed 2026-07-25). Least-represented gives trader, then barman, mechanic, medic,
+-- then round-robins as the cap allows -- variety at any cap value.
 -- @cost O(roles) * O(conquered) cap meter
 local function _pick_service_role(data)
     local cap = cfg.mutator_area_conquest_services_max_per_faction_role
+    local best_role, best_count
     for i = 1, #SERVICE_ROLES do
         local role = SERVICE_ROLES[i]
-        if _role_cfg_path(data.faction, role)
-            and _faction_role_count_on_level(data.level_id, data.faction, role) < cap then
-            return role
+        if _role_cfg_path(data.faction, role) then
+            local count = _faction_role_count_on_level(data.level_id, data.faction, role)
+            if count < cap and (not best_count or count < best_count) then
+                best_role, best_count = role, count
+            end
         end
     end
-    return nil
+    return best_role
 end
 
 -- Pin one spawned outpost squad at its smart via scripted_target and ledger it. scripted_target routes
@@ -403,6 +410,7 @@ local _TRADE_SPOT_TEXT = [[
 [logic@%s]
 active = beh@%s
 trade = %s
+level_spot = %s
 
 [beh@%s]
 target = %s
@@ -467,7 +475,7 @@ local function _ensure_trade_spot(smart, data)
     local look = string_format("%.2f,%.2f,%.2f", center.x + 2, center.y, center.z)
     xsmart_spawn.add_runtime_job(smart, {
         name = name, prior = TRADE_SPOT_PRIOR, precondition_fn = _trade_spot_precond,
-        text = string_format(_TRADE_SPOT_TEXT, name, name, trade_cfg, name,
+        text = string_format(_TRADE_SPOT_TEXT, name, name, trade_cfg, "trader", name,
             "waypoint", "beh_move", "guard", "patrol", "patrol", "rush", "guard",
             pos, look, "loop"),
     })
@@ -523,6 +531,7 @@ local function _roll_due_services(smart_id, data, now)
     if rolls < 1 then return end
     _service_roll_at[smart_id] = last + rolls * SERVICE_ROLL_GAME_SEC
     if rolls > SERVICE_ROLL_MAX_CATCHUP then rolls = SERVICE_ROLL_MAX_CATCHUP end
+    ap_core_debug.debug("[MUTATOR.SMART] service_roll: smart=%d rolls=%d", smart_id, rolls)
     for _ = 1, rolls do
         _try_grow_service(smart_id, data)
     end
@@ -538,6 +547,18 @@ local function _grow_services()
     for smart_id, data in pairs(_state.conquest) do
         _roll_due_services(smart_id, data, now)
     end
+end
+
+-- Remove a service squad from the world, clearing each member's PDA spot first. The trade-spot
+-- job's `level_spot = trader` icon is added by the engine (stalker_generic.update_level_spot);
+-- vanilla removes it on death, but a decay removal skips the death path, so the icon would
+-- otherwise linger at the dissolved outpost. remove_level_spot is vanilla's own remover.
+-- @cost O(members) | remove_level_spot per member + remove_squad
+local function _remove_service_squad(squad)
+    for member_id in xsquad.iter_member_ids(squad) do
+        stalker_generic.remove_level_spot(member_id)
+    end
+    xsquad.remove_squad(squad)
 end
 
 -- Resolve a held entry's squad with identity intact: the id must still resolve to a SQUAD (freed
@@ -563,13 +584,8 @@ local function _reassert_holds()
         if not squad or not _state.conquest[entry.smart_id] then
             -- Same guard/service split as _release_holds_for_smart: a service outside its
             -- outpost is removed, never released to roam as a stocked shopkeeper.
-            if squad then
-                if entry.role == "guard" then
-                    xsquad.release_squad(squad)
-                else
-                    xsquad.remove_squad(squad)
-                end
-            end
+            local drop_fn = (entry.role == "guard") and xsquad.release_squad or _remove_service_squad
+            if squad then drop_fn(squad) end
             ap_core_debug.debug("[MUTATOR.SMART] hold_drop: smart=%d role=%s squad=%d %s",
                 entry.smart_id, entry.role, squad_id, squad and "released" or "gone")
             drop = drop + 1
@@ -590,7 +606,11 @@ end
 local function _stock_member(go, member_id, cfg_path, entry)
     if not xcreature.make_trader(go, cfg_path, true) then return end
     entry.stocked = true
-    ap_core_debug.debug("[MUTATOR.SMART] service_stock: smart=%d role=%s npc=%d", entry.smart_id, entry.role, member_id)
+    -- active_section names the job he holds at stock time (logic@ap_trade_spot_N once seated;
+    -- an earlier grab shows the lesser job the next selection pass upgrades him off).
+    local st = db.storage[member_id]
+    ap_core_debug.debug("[MUTATOR.SMART] service_stock: smart=%d role=%s npc=%d job=%s",
+        entry.smart_id, entry.role, member_id, tostring(st and st.active_section))
 end
 
 -- Stock one held service squad once its (single) member is online. Stops at the first online member.
@@ -608,6 +628,30 @@ local function _try_stock(squad_id, entry)
             _stock_member(go, member_id, cfg_path, entry)
             return
         end
+    end
+end
+
+-- Debug-only ledger dump: one line per held SERVICE squad per scan (guards skipped) -- smart,
+-- role, stocked, and the member's online state + active job section. Observation only, guarded
+-- leaf on the scan; skipped entirely when debug is off. Hub traders are outside this ledger
+-- (trade_manager's registry is local); their per-view state logs on trade open in ap_ext_market.
+-- @cost debug on only | O(services); 1-2 luabind per entry (member resolve)
+local function _log_service_entry(squad_id, entry)
+    if entry.role == "guard" then return end
+    local member_id
+    local squad = _resolve_held(squad_id, entry)
+    if squad then
+        for id in xsquad.iter_member_ids(squad) do member_id = id break end
+    end
+    local st = member_id and db.storage[member_id]
+    ap_core_debug.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s online=%s job=%s",
+        entry.smart_id, entry.smart_name, entry.role, squad_id, tostring(entry.stocked or false),
+        tostring(member_id and xobject.go(member_id) ~= nil), tostring(st and st.active_section))
+end
+
+local function _log_services()
+    for squad_id, entry in pairs(_held_squads) do
+        _log_service_entry(squad_id, entry)
     end
 end
 
@@ -641,13 +685,8 @@ local function _release_holds_for_smart(smart_id, smart, data)
     for squad_id, entry in pairs(_held_squads) do
         if entry.smart_id == smart_id then
             local squad = _resolve_held(squad_id, entry)
-            if squad then
-                if entry.role == "guard" then
-                    xsquad.release_squad(squad)
-                else
-                    xsquad.remove_squad(squad)
-                end
-            end
+            local drop_fn = (entry.role == "guard") and xsquad.release_squad or _remove_service_squad
+            if squad then drop_fn(squad) end
             drop = drop + 1
             _hold_drop_collector[drop] = squad_id
         end
@@ -729,6 +768,7 @@ local function _scan()
     _stock_services()
     prof:stop()
     if ap_core_debug.enabled() then
+        _log_services()
         ap_core_debug.debug("[MUTATOR.SMART] scan: %.2fms", prof:get_ms())
     end
 end
@@ -862,20 +902,26 @@ local function _held_trader_entry(npc)
     return (entry and entry.role == "trader") and entry or nil
 end
 
--- Supplies-tier clamp for outpost traders. trade_manager.update picks the supplies section per
--- restock from the config's buy_supplies condlist against ACTOR state -- goodwill or the money
--- achievement (heavy_pockets_functor) turns every hub-config trader into a supplies_5 shop
--- (trade_manager.script:141-153, trade_stalker_owl.ltx:7). The clamp RIDES the original restock,
+-- Supplies-tier control for outpost traders, keeping them below the faction's hub trader.
+-- trade_manager.update picks the supplies section per restock from the config's buy_supplies
+-- condlist against ACTOR state -- goodwill thresholds plus the heavy_pockets money achievement
+-- (trade_manager.script:141-153, trade_stalker_owl.ltx:7). Because the outpost trader uses his
+-- faction's own config, the picked tier is EXACTLY what that faction's hub trader would show the
+-- player right now: his earned standing. Two levers shape it downward:
+--   penalty (mutator_area_conquest_trader_supplies_penalty) - tiers BELOW the earned pick, so the
+--     outpost always trails the hub and scales with the player's standing (default 1: one rung
+--     below hub). 0 disables the relative rule.
+--   cap (mutator_area_conquest_trader_supplies_tier) - absolute ceiling regardless of standing.
+-- effective = clamp(min(picked - penalty, cap), 1, picked). The control RIDES the original restock,
 -- it does not mirror it: the original runs first (vanilla stamps tm.resupply_time, the trade-UI
 -- profile fields stay correct, and trader_autoinject-family wrappers see a normal trader whose
 -- restock gate reads a real stamp), then a restock is detected by resupply_time identity change
 -- (trade_manager.script:139 builds a fresh stamp table only when it restocks; window early-returns
--- keep the old table) and the supplies pick is redone with the MCM cap. Only a pick ABOVE the cap
--- pays a second buy_supplies, once per restock. Correct under either wrap order with
--- trader_autoinject: its injection fires on a 0.1s time event after the wrapper tail, so the
--- synchronous re-stock here always precedes destockifier-style processing. Tier names are uniform
--- supplies_1..N across all 12 faction configs (contiguous from 1), so the capped section always
--- exists when the pick exceeds it.
+-- keep the old table) and the supplies pick is redone. Only an effective tier BELOW the pick pays a
+-- second buy_supplies, once per restock. Correct under either wrap order with trader_autoinject: its
+-- injection fires on a 0.1s time event after the wrapper tail, so the synchronous re-stock here
+-- always precedes destockifier-style processing. Tier names are uniform supplies_1..N across all 12
+-- faction configs (contiguous from 1), so supplies_(effective) always exists for 1 <= effective < picked.
 local _org_trade_update
 local function _trade_update(npc, force_refresh)
     local entry = npc and _held_trader_entry(npc)
@@ -892,11 +938,15 @@ local function _trade_update(npc, force_refresh)
     local condlist = xr_logic.parse_condlist(npc, "trader", "buy_supplies", supplies)
     supplies = condlist and xr_logic.pick_section_from_condlist(db.actor, npc, condlist)
     if supplies == nil or supplies == "" then return end
-    local tier = tonumber(string_match(supplies, "^supplies_(%d+)$"))
+    local picked = tonumber(string_match(supplies, "^supplies_(%d+)$"))
+    if not picked then return end
+    local effective = picked - cfg.mutator_area_conquest_trader_supplies_penalty
     local cap = cfg.mutator_area_conquest_trader_supplies_tier
-    if tier and cap and tier > cap then
-        npc:buy_supplies(config, "supplies_" .. cap)
-        ap_core_debug.debug("[MUTATOR.SMART] supplies_clamp: npc=%d tier=%d cap=%d", id, tier, cap)
+    if effective > cap then effective = cap end
+    if effective < 1 then effective = 1 end
+    if effective < picked then
+        npc:buy_supplies(config, "supplies_" .. effective)
+        ap_core_debug.debug("[MUTATOR.SMART] supplies_below_hub: npc=%d hub=%d outpost=%d", id, picked, effective)
     end
 end
 
@@ -909,18 +959,28 @@ end
 -- Null a dead service NPC's loot. The vanilla death pass (death_manager.decide_items_to_keep,
 -- xr_motivator.script:362) rolls per-item keep chances but has no concept of trade stock --
 -- vanilla shields its hub traders with invulnerability instead, so a killable outpost service
--- would drop its whole assortment. Fires on npc_on_death_callback (xr_motivator.script:396),
--- AFTER that pass: whatever it kept is released here. Guards are exempt -- ordinary combat
--- squads follow ordinary loot rules.
--- @cost O(inventory) on a held service NPC's death only | alife_object + alife_release per item
-local function _on_npc_death(victim, _)
-    local squad = get_object_squad(victim)
-    if not squad then return end
+-- would drop its whole assortment. Seam: squad_on_npc_death (sim_squad_scripted.script:493),
+-- which hands the squad DIRECTLY and fires before remove_npc. The engine npc_on_death_callback
+-- is the wrong seam here: the server-side death chain (se_stalker:on_death -> squad:on_npc_death
+-- -> remove_npc) can strip the member's group_id first, so get_object_squad(victim) resolves nil
+-- and a 1-man service squad may already be deleted -- field-confirmed 2026-07-25 (trader kill
+-- dropped full stock, no service_loot_null in log). Guards are exempt -- ordinary combat squads
+-- follow ordinary loot rules. Offline death: no game object, nothing to release here; the corpse
+-- and its stock go through vanilla offline corpse cleanup.
+-- @cost O(inventory) on a held service NPC's death only | xobject.go + alife_release per item
+local function _on_squad_npc_death(squad, se_npc, _)
+    if not squad or not se_npc then return end
     local entry = _held_squads[squad.id]
     if not entry or entry.role == "guard" then return end
+    local victim = xobject.go(se_npc.id)
+    if not victim then
+        ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d offline (skipped)",
+            entry.smart_id, entry.role, se_npc.id)
+        return
+    end
     victim:iterate_inventory(_release_item, victim)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
-        entry.smart_id, entry.role, victim:id())
+        entry.smart_id, entry.role, se_npc.id)
 end
 
 function on_game_start()
@@ -934,7 +994,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_CREATION, _on_npc_creation)
-    RegisterScriptCallback(CALLBACK.NPC_ON_DEATH_CALLBACK, _on_npc_death)
+    RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
     -- Function-level patch (no callback fires inside trade_manager.update; pattern per
     -- doc/library/modding/script-loading.md monkey-patch section). Raw assignment, not
     -- xevent.hook: the hook registry is single-slot per function key and ap_ext_market already

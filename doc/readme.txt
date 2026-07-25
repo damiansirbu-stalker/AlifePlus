@@ -176,7 +176,9 @@ Opportunities
       A faction that already holds several areas on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last area on a level.
     - Area Swarm - Pack and lair mutants take over empty areas the same way, the area spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per level.
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
-    - Area services - An area a faction holds long enough grows one service NPC that runs the game's own jobs: a trader taking a real trade post at the area's center, a full shopkeeper you buy from and sell to, or a barman, mechanic, or medic that trades, repairs, or heals. Guards and residents keep their patrols and jobs, the service stocks the faction's market, and growth runs on game time. Services spread across a level's areas by MCM caps, and the trader's supplies tier is capped so he never matches a hub trader. Turn it off in MCM to keep conquest combat-only.
+    - Area services - An area a faction holds long enough grows one service NPC that runs the game's own jobs: a trader on a real trade post at the area's center, a full shopkeeper you buy from and sell to marked with the standard PDA trader icon, or a barman, mechanic, or medic that trades, repairs, or heals.
+      A faction's areas grow the least common service first, so a map fills with varied traders, barmen, mechanics, and medics rather than only traders, bounded by per-level and per-faction caps in MCM.
+      The area trader stocks below his faction's hub trader, tracking your standing but always a set number of tiers behind, so field shops never rival the hubs. Guards and residents keep their patrols, the service joins the faction market, and growth runs on game time. Turn it off in MCM to keep conquest combat-only.
     - A taken area stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
 
 Needs
@@ -352,7 +354,7 @@ Mod compatibility:
   - Autolooter / proximity-loot mods: opening a claimed corpse is blocked, so auto-loot driven through the loot window is stopped with it. Only remote/proximity transfer that never opens the corpse can still take a claimed kill. Reserving your own kills from NPC looters is unaffected.
   - Interaction Dot Marks (Catspaw): opening, take-all, and auto-loot of a claimed corpse through its dot are blocked. Remote transfer that never opens the corpse can still take a claimed kill.
   - Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.
-  - Trader stock addons (Trader Destockifier, restock hooks, stock injectors): area traders restock through the game's standard trader pipeline, so these govern them like any other trader, on top of the supplies cap. The faction market detects restocks through the same pipeline, so it works with them too.
+  - Trader stock addons (Trader Destockifier, restock hooks, stock injectors): area traders restock through the game's standard trader pipeline, so these govern them like any other trader, on top of the below-hub supplies rule. The faction market detects restocks through the same pipeline, so it works with them too.
 
 ---
 
@@ -380,7 +382,7 @@ Each cause and consequence is a module you can enable or disable through MCM.
 Gameplay actions (trade, stash looting, supply trader visits) each have their own toggles and tunable values: chances, cooldowns, thresholds, quantities, rate limits, and budgets.
 Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
 
-Two reset buttons live under Development. Reset ALL to Defaults restores every setting to factory state and takes effect on the first click. Reset ALL to Stateless Defaults restores factory state and then disables trade, item consumption, stash fill, stash loot, and smart ownership. AlifePlus dispatch and travel still run. Use the stateless preset on installs where another mod owns those systems.
+Two reset buttons live under Development. Reset ALL to Defaults restores every setting to factory state and takes effect on the first click. Reset ALL to Stateless Defaults restores factory state and then disables trade, item consumption, stash fill, stash loot, smart ownership, and alpha creature modifications. AlifePlus dispatch and travel still run. Use the stateless preset on installs where another mod owns those systems.
 
 Presets:
   Calm Zone: A-Life Rate 4, Cause Budget 5, Consequence Budget 1, Global Rate Limit 2

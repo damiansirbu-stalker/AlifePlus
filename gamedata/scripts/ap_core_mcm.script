@@ -314,7 +314,8 @@ defaults = {
     mutator_area_conquest_grow_services = true,
     mutator_area_conquest_services_max_per_level = 3,
     mutator_area_conquest_services_max_per_faction_role = 1,
-    mutator_area_conquest_trader_supplies_tier = 2,
+    mutator_area_conquest_trader_supplies_penalty = 1,
+    mutator_area_conquest_trader_supplies_tier = 5,
 
     -- Area swarm (exclusive spawn / sole ownership, mutant species)
     mutator_area_swarm_mutate_smart = true,
@@ -384,8 +385,11 @@ local stateless_overrides = {
     consequence_supply_trader_offmap_arrive_action_enabled = false,
     consequence_barter_arrive_action_enabled = false,
     consequence_barter_offmap_arrive_action_enabled = false,
-    -- Area mutator spawn toggles (the actual spawn-table mutation step)
+    -- Area mutator spawn toggles (the actual spawn-table mutation step). grow_services is
+    -- double-gated behind conquest's mutate_smart, but stays explicitly off so re-enabling
+    -- Inject spawns alone does not silently bring outpost services back.
     mutator_area_conquest_mutate_smart = false,
+    mutator_area_conquest_grow_services = false,
     mutator_area_swarm_mutate_smart = false,
     mutator_area_infest_mutate_smart = false,
     -- Stash item flows (whole consequence; no arrive-action split exists for stash)
@@ -399,6 +403,13 @@ local stateless_overrides = {
     loot_select_enabled = false,
     -- Faction market (trader stock injection + sell-out removal; one flag gates both directions)
     market_enabled = false,
+    -- Alpha creature modifications (damage dealt/taken scaling, panic immunity, corpse trophy
+    -- injection, body mark). Promotion tracking stays; only the payload on the mutant is skipped.
+    mutator_alpha_hit_power_dealt_enabled = false,
+    mutator_alpha_hit_power_taken_enabled = false,
+    mutator_alpha_panic_immunity_enabled = false,
+    mutator_alpha_loot_enabled = false,
+    mutator_alpha_mark_enabled = false,
 }
 
 local _key_to_tab = {
@@ -590,6 +601,7 @@ local _key_to_tab = {
     mutator_area_conquest_grow_services = "mutators/conquest",
     mutator_area_conquest_services_max_per_level = "mutators/conquest",
     mutator_area_conquest_services_max_per_faction_role = "mutators/conquest",
+    mutator_area_conquest_trader_supplies_penalty = "mutators/conquest",
     mutator_area_conquest_trader_supplies_tier = "mutators/conquest",
     mutator_area_swarm_mutate_smart = "mutators/swarm",
     mutator_area_swarm_spawn_num = "mutators/swarm",
@@ -794,6 +806,7 @@ function on_mcm_load()
                             _check("mutator_area_conquest_grow_services"),
                             _track("mutator_area_conquest_services_max_per_level", 1, 6, 1),
                             _track("mutator_area_conquest_services_max_per_faction_role", 1, 3, 1),
+                            _track("mutator_area_conquest_trader_supplies_penalty", 0, 4, 1),
                             _track("mutator_area_conquest_trader_supplies_tier", 1, 5, 1),
                         },
                     },
