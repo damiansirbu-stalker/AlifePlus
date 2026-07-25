@@ -703,6 +703,20 @@ local function _release_one(id, tag)
     xinventory.release_item(obj)
 end
 
+-- Debug-only vanish trace: name a tagged good that left its trader BEFORE its window expired --
+-- released outright (engine restock wipe, a destockifier's removal) or moved to another owner
+-- (sold, looted). Observation only, once per good (tag.gone_logged), never untags; the normal
+-- expiry path still owns the tag lifecycle. Skipped entirely when debug is off.
+-- @cost O(1) | 1 luabind (xobject.se) per live tag per period, debug on only
+local function _log_vanished(id, tag)
+    if tag.gone_logged then return end
+    local se_item = xobject.se(id)
+    if se_item and se_item.parent_id == tag.trader_id then return end
+    tag.gone_logged = true
+    ap_core_debug.debug("%s good_gone: trader=%d id=%d sec=%s %s", LOG, tag.trader_id, id,
+        tostring(tag.section), se_item and ("owner=" .. tostring(se_item.parent_id)) or "released")
+end
+
 --- Release market goods past their window. Repeating timer (re-armed each fire). The engine restock
 --- also wipes goods, so this is the primary cleanup only when the window is shorter than the restock
 --- interval. Expired ids are collected first (module-level buffer), then released + untagged after
@@ -710,11 +724,14 @@ end
 local function _release_expired()
     local now = xtime.game_sec()
     local window = _goods_window_sec()
+    local debug_on = ap_core_debug.enabled()
     local count = 0
     for id, tag in pairs(_market_goods) do
         if now - tag.inject_time >= window then
             count = count + 1
             _release_buf[count] = id
+        elseif debug_on then
+            _log_vanished(id, tag)
         end
     end
     for i = 1, count do

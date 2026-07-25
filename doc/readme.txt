@@ -352,6 +352,7 @@ Mod compatibility:
   - Autolooter / proximity-loot mods: opening a claimed corpse is blocked, so auto-loot driven through the loot window is stopped with it. Only remote/proximity transfer that never opens the corpse can still take a claimed kill. Reserving your own kills from NPC looters is unaffected.
   - Interaction Dot Marks (Catspaw): opening, take-all, and auto-loot of a claimed corpse through its dot are blocked. Remote transfer that never opens the corpse can still take a claimed kill.
   - Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.
+  - Trader stock addons (Trader Destockifier, restock hooks, stock injectors): area traders restock through the game's standard trader pipeline, so these govern them like any other trader, on top of the supplies cap. The faction market detects restocks through the same pipeline, so it works with them too.
 
 ---
 
