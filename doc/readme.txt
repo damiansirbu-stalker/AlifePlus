@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: 1.8.4 (xlibs 1.8.3, demonized 20250908)
+- Version: 1.8.5 (xlibs 1.8.3, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -178,7 +178,7 @@ Opportunities
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
     - Area services - An area a faction holds long enough grows one service NPC that runs the game's own jobs: a trader on a real trade post at the area's center, a full shopkeeper you buy from and sell to marked with the standard PDA trader icon, or a barman, mechanic, or medic that trades, repairs, or heals.
       A faction's areas grow the least common service first, so a map fills with varied traders, barmen, mechanics, and medics rather than only traders, bounded by per-level and per-faction caps in MCM.
-      The area trader stocks below his faction's hub trader, tracking your standing but always a set number of tiers behind, so field shops never rival the hubs. Guards and residents keep their patrols, the service joins the faction market, and growth runs on game time. Turn it off in MCM to keep conquest combat-only.
+      The area trader stocks below his faction's hub trader, tracking your standing but always a configurable number of tiers behind, so field shops never rival the hubs and the hub traders keep their value. Each service also sells only a lean assortment by category (ap_outpost_stock_policy.ltx): ammo, medical, provisions, and a few grenades and repair parts by default, no weapons, armor, or artefacts, so an area service resupplies without being an armory. Guards and residents keep their patrols, the service joins the faction market, and growth runs on game time. Turn it off in MCM to keep conquest combat-only.
     - A taken area stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
 
 Needs
