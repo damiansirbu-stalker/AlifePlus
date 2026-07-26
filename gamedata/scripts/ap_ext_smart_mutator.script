@@ -16,7 +16,7 @@ local math_floor, math_random, string_match, string_format, string_sub = math.fl
 local math_cos, math_sin, PI = math.cos, math.sin, math.pi
 local table_concat = table.concat
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
-local xsquad, xcreature, xinventory = xsquad, xcreature, xinventory
+local xsquad, xcreature, xinventory, xevent = xsquad, xcreature, xinventory, xevent
 local get_object_squad, alife_release = get_object_squad, alife_release
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -510,7 +510,7 @@ local function _ensure_service_spot(smart, data, role)
     if not trade_cfg then return end
     local name = _service_spot_name(smart.id, role)
     local center = smart.position
-    local bearing = SPOT_BEARING[role] or 0
+    local bearing = SPOT_BEARING[role]
     local pos = string_format("%.2f,%.2f,%.2f",
         center.x + SPOT_RADIUS * math_cos(bearing), center.y, center.z + SPOT_RADIUS * math_sin(bearing))
     local look = string_format("%.2f,%.2f,%.2f", center.x, center.y, center.z)
@@ -694,7 +694,7 @@ end
 -- @cost O(1) | 1 luabind (set_visual_name) once per service, none afterwards
 local function _apply_service_visual(go, member_id, faction)
     local pool = SERVICE_VISUALS[faction]
-    if not pool or #pool == 0 then return end
+    if not pool then return end
     local visual = pool[member_id % #pool + 1]
     go:set_visual_name(visual, true)
     ap_core_debug.debug("[MUTATOR.SMART] service_visual: npc=%d faction=%s visual=%s",
@@ -1385,7 +1385,25 @@ local function _on_squad_npc_death(squad, se_npc, _)
         entry.smart_id, entry.role, se_npc.id)
 end
 
+-- xr_logic turns a SAVED logic ini name back into an ini. A name starting with "*" means a generated
+-- ini and is looked up in db.dynamic_ltx (xr_logic.script:1234-1236). That is the only branch of
+-- get_customdata_or_ini_file with no fallback -- every other path ends at default_custom_data.ltx --
+-- and its caller indexes the result immediately (initialize_obj:1262 -> configure_schemes:81), so an
+-- unregistered name is an engine fatal rather than a bad NPC. A generated ini cannot survive a save,
+-- only its name can, so the window where a saved name has no ini is real: the smart may not have
+-- rebuilt that job yet, or the feature that created it may be gone. The spot job here is what puts
+-- "*" names into saves, so the guard lives with it. Restores the missing fallback and nothing else,
+-- and names the NPC and the string at WARN so the next report says which job went missing.
+local function _guard_generated_ini(original, npc, filename)
+    local ini, name = original(npc, filename)
+    if ini then return ini, name end
+    ap_core_debug.warn("[MUTATOR.SMART] unresolved logic ini '%s' on npc=%s, loading empty logic",
+        tostring(filename), npc:name())
+    return ini_file("default_custom_data.ltx"), "default_custom_data.ltx"
+end
+
 function on_game_start()
+    xevent.hook("xr_logic", "get_customdata_or_ini_file", _guard_generated_ini)
     for _, mut in pairs(MUTATIONS) do
         _state[mut.name] = {}
         _pending[mut.name] = nil
