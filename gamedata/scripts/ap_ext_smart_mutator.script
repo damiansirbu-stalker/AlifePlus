@@ -398,11 +398,19 @@ local function _try_pin_spawn(squad, smart_id, prop, now)
     _hold_squad(squad, smart_id, role, now)
 end
 
--- Trade-spot job content (the policy half; xsmart_spawn.add_runtime_job is the mechanism).
--- Vanilla beh_trader priority 59: above camper 45, below surge 60, so the trader upgrades onto
--- the spot on the smart's next job-selection pass.
-local TRADE_SPOT_PRIOR = 59
-local TRADE_SPOT_NAME_PREFIX = "ap_trade_spot_"
+-- Service-spot job content (the policy half; xsmart_spawn.add_runtime_job is the mechanism).
+-- Vanilla beh_trader priority 59: above camper 45, below surge 60, so the service upgrades onto
+-- its spot on the smart's next job-selection pass. EVERY service role gets one, not just the
+-- trader: the job's `trade` key is the only thing that makes an NPC a trader to the vanilla
+-- pipeline and to restock addons (trader_autoinject.get_trader_type reads the ACTIVE logic
+-- section's trade key and returns -1 without it, trader_autoinject.script:85-101), so a barman
+-- or mechanic left on an ordinary walker/patrol job is invisible to them and has his config
+-- reset to trade_generic on every reassignment. One job per (smart, role), each with its own
+-- position offset so two services do not stand inside each other.
+local SERVICE_SPOT_PRIOR = 59
+local SERVICE_SPOT_NAME_PREFIX = "ap_service_spot_"
+-- Job name for one (smart, role): "ap_service_spot_<smart_id>_<role>".
+local function _service_spot_name(smart_id, role) return SERVICE_SPOT_NAME_PREFIX .. smart_id .. "_" .. role end
 -- The job's logic text, the vanilla beh_trade_1 shape (beh_gulag_jobs.ltx marsh base) reduced to
 -- SEATING only: stand guard at the smart's position and loop. It carries NO sig:trade /
 -- on_signal = trade_job_sell_items -- that vanilla signal is for a VISITING NPC selling TO a
@@ -418,7 +426,7 @@ local TRADE_SPOT_NAME_PREFIX = "ap_trade_spot_"
 -- defaults are condlist-tunable by other addons; gather/help/corpse are off so the trader holds
 -- the counter instead of wandering to loot. path_end fed as an arg (a literal `key = value` line
 -- in source trips the compat-smell lint on ini text).
-local _TRADE_SPOT_TEXT = [[
+local _SERVICE_SPOT_TEXT = [[
 [logic@%s]
 active = beh@%s
 trade = %s
@@ -460,43 +468,57 @@ allow_break = true
 use_text = nil
 ]]
 
--- Only the outpost's OWN service trader may take the runtime trade spot: the NPC must belong to
--- a ledgered trader squad. The vanilla trade-spot permission (precond_trade_job) admits any
--- online NPC with sellable loot, and even a profile-section match alone would admit a visiting
+-- Only the outpost's OWN service of THAT role may take its spot: the NPC must belong to a ledgered
+-- squad carrying the role. The vanilla trade-spot permission (precond_trade_job) admits any online
+-- NPC with sellable loot, and even a profile-section match alone would admit a visiting
 -- sim_default_*_trader from elsewhere -- seating him would re-point his trade config at this
--- outpost's (the job's `trade` key re-inits on assignment). Ledger membership is identity a
--- profile cannot spoof. Before the on_game_load holds restore the ledger is briefly empty, so a
--- just-loaded trader may grab a lesser job; the smart's continuous job selection upgrades him on
--- the pass after the restore.
-local function _trade_spot_precond(se_obj)
-    local squad = xsquad.get_squad_by_member(se_obj.id)
-    local entry = squad and _held_squads[squad.id]
-    return (entry ~= nil and entry.role == "trader") or false
+-- outpost's (the job's `trade` key re-inits on assignment). Ledger membership plus the role compare
+-- is identity a profile cannot spoof, and it keeps a barman off the trader's counter. Before the
+-- on_game_load holds restore the ledger is briefly empty, so a just-loaded service may grab a lesser
+-- job; the smart's continuous job selection upgrades him on the pass after the restore.
+local function _make_spot_precond(role)
+    return function(se_obj)
+        local squad = xsquad.get_squad_by_member(se_obj.id)
+        local entry = squad and _held_squads[squad.id]
+        return (entry ~= nil and entry.role == role) or false
+    end
 end
 
--- Ensure the runtime trade-spot job exists on a smart with a trader service. Idempotent; the
--- engine rebuilds the job list on every game load, so this rides the same re-apply cadence as
--- the respawn entries. The smart's own job selection then seats the trader (prior 59 > camper).
--- The logic section carries `trade = <faction cfg>`: configure_schemes re-inits every stalker's
--- trade config from that key on EVERY job (re)assignment, defaulting to trade_generic.ltx
--- (xr_logic.script:113), so without it any reassignment would silently reset the trader to the
--- generic assortment. It also classifies him for trader_autoinject.get_trader_type (SUPPLIER),
--- so restock-hook addons (destockifiers, injectors) treat him as a normal trader.
--- @cost O(text) string format per pass (cheap); the insert itself happens once per load
-local function _ensure_trade_spot(smart, data)
-    if not data.services or not data.services.trader then return end
-    local trade_cfg = _role_cfg_path(data.faction, "trader")
+-- Spot offset per role, so services at one outpost stand apart instead of inside each other.
+local SPOT_OFFSET = { trader = 0, barman = 3, mechanic = -3, medic = 6 }
+
+-- Ensure the runtime spot job for one service role. Idempotent; the engine rebuilds the job list on
+-- every game load, so this rides the same re-apply cadence as the respawn entries. The smart's own
+-- job selection then seats the service (prior 59 > camper). The logic section carries
+-- `trade = <role cfg>`: configure_schemes re-inits every stalker's trade config from that key on
+-- EVERY job (re)assignment, defaulting to trade_generic.ltx (xr_logic.script:113), so without it a
+-- reassignment silently resets the service to the generic assortment. The same key is what makes him
+-- visible to restock addons: trader_autoinject.get_trader_type reads the ACTIVE logic section's trade
+-- key and returns -1 without one (trader_autoinject.script:85-101), so a service on an ordinary
+-- walker/patrol job is skipped by every destockifier and injector in the chain.
+-- @cost O(text) string format per role per pass (cheap); the insert itself happens once per load
+local function _ensure_service_spot(smart, data, role)
+    local trade_cfg = _role_cfg_path(data.faction, role)
     if not trade_cfg then return end
-    local name = TRADE_SPOT_NAME_PREFIX .. smart.id
+    local name = _service_spot_name(smart.id, role)
     local center = smart.position
-    local pos = string_format("%.2f,%.2f,%.2f", center.x, center.y, center.z)
-    local look = string_format("%.2f,%.2f,%.2f", center.x + 2, center.y, center.z)
+    local offset = SPOT_OFFSET[role] or 0
+    local pos = string_format("%.2f,%.2f,%.2f", center.x + offset, center.y, center.z)
+    local look = string_format("%.2f,%.2f,%.2f", center.x + offset + 2, center.y, center.z)
     xsmart_spawn.add_runtime_job(smart, {
-        name = name, prior = TRADE_SPOT_PRIOR, precondition_fn = _trade_spot_precond,
-        text = string_format(_TRADE_SPOT_TEXT, name, name, trade_cfg, "trader", name,
+        name = name, prior = SERVICE_SPOT_PRIOR, precondition_fn = _make_spot_precond(role),
+        text = string_format(_SERVICE_SPOT_TEXT, name, name, trade_cfg, role, name,
             "waypoint", "beh_move", "guard", "patrol", "patrol", "rush", "guard",
             pos, look, "loop"),
     })
+end
+
+-- Ensure a spot for every service role this outpost has grown.
+local function _ensure_service_spots(smart, data)
+    if not data.services then return end
+    for role in pairs(data.services) do
+        _ensure_service_spot(smart, data, role)
+    end
 end
 
 -- Re-inject the faction-tagged service respawn entries for a held conquer smart (the engine wipes
@@ -509,7 +531,7 @@ local function _reapply_service_entries(smart, data)
     for role in pairs(data.services) do
         xsmart_spawn.set_exclusive_spawn_section(smart, _service_key(role), _service_section(data.faction, role), 1)
     end
-    _ensure_trade_spot(smart, data)
+    _ensure_service_spots(smart, data)
 end
 
 -- Roll one held conquer smart for its single service, under the per-level and per-kind caps.
@@ -531,7 +553,7 @@ local function _try_grow_service(smart_id, data)
     if not smart then return end
     data.services[role] = true
     xsmart_spawn.set_exclusive_spawn_section(smart, _service_key(role), _service_section(data.faction, role), 1)
-    if role == "trader" then _ensure_trade_spot(smart, data) end
+    _ensure_service_spot(smart, data, role)
     ap_core_debug.debug("[MUTATOR.SMART] service_add: smart=%d faction=%s role=%s", smart_id, data.faction, role)
 end
 
@@ -624,7 +646,7 @@ end
 local function _stock_member(go, member_id, cfg_path, entry)
     if not xcreature.make_trader(go, cfg_path, true) then return end
     entry.stocked = true
-    -- active_section names the job he holds at stock time (logic@ap_trade_spot_N once seated;
+    -- active_section names the job he holds at stock time (logic@ap_service_spot_N_<role> once seated;
     -- an earlier grab shows the lesser job the next selection pass upgrades him off).
     local st = db.storage[member_id]
     ap_core_debug.debug("[MUTATOR.SMART] service_stock: smart=%d role=%s npc=%d job=%s",
@@ -712,9 +734,7 @@ local function _release_holds_for_smart(smart_id, smart, data)
     if smart and data.services then
         for role in pairs(data.services) do
             xsmart_spawn.clear_shared_spawn(smart, _service_key(role))
-        end
-        if data.services.trader then
-            xsmart_spawn.remove_runtime_job(smart, "logic@" .. TRADE_SPOT_NAME_PREFIX .. smart_id)
+            xsmart_spawn.remove_runtime_job(smart, "logic@" .. _service_spot_name(smart_id, role))
         end
     end
     local drop = 0
@@ -931,24 +951,39 @@ local function _on_npc_creation(squad, _, spawn_smart)
     CreateTimeEvent("ap_spawn_deferred", squad.id, 0, _on_spawn_deferred, squad.id, spawn_smart.id)
 end
 
--- Outpost stock policy rules (which item kinds a service sells, capped PER TYPE): loaded once at
+-- Outpost stock policy: which item kinds a service sells, ONE BLOCK PER ROLE. Loaded once at
 -- on_game_start from ap_outpost_stock_policy.ltx, a file separate from the loadout policies because
--- it caps a SHELF per type, not a loadout total. rules[key] = { min, max }; nil if the file is absent.
+-- it caps a SHELF, not a loadout. Per role because a cap that suits a trader guts a specialist: a
+-- barman's whole trade is food and drink, a medic's is medical, a mechanic's is tools and parts, and
+-- one blanket block left each of them with a handful of items (field-measured 2026-07-26).
+-- _stock_policy[role] = rules; nil when no role block loaded, and a role with no block is unfiltered.
 local STOCK_POLICY_PATH = "alifeplus\\ap_outpost_stock_policy.ltx"
-local STOCK_POLICY_SECTION = "ap_outpost_stock"
+local STOCK_POLICY_PREFIX = "ap_outpost_stock_"
 local STOCK_FILTER_EV = "ap_outpost_stock_filter"
 local _stock_policy
 
 local function _load_stock_policy()
-    local loaded = xinventory.load_policy(STOCK_POLICY_PATH, { STOCK_POLICY_SECTION })
-    local block = loaded and loaded[STOCK_POLICY_SECTION]
-    local rules = block and block.rules
-    -- load_policy yields an EMPTY block (not nil) for a missing file or section; only a block
-    -- with at least one rule arms the filter, and absence is loud -- the ruled failure mode is
-    -- "clamp only, never silently open" (user ruling 2026-07-25).
-    _stock_policy = (rules and next(rules)) and rules or nil
-    if not _stock_policy then
-        ap_core_debug.info("[MUTATOR.SMART] stock policy %s absent or empty: outpost stock filter OFF", STOCK_POLICY_PATH)
+    local sections = {}
+    for i = 1, #SERVICE_ROLES do sections[i] = STOCK_POLICY_PREFIX .. SERVICE_ROLES[i] end
+    local loaded = xinventory.load_policy(STOCK_POLICY_PATH, sections)
+    -- load_policy yields an EMPTY block (not nil) for a missing file or section, so only a block
+    -- holding at least one rule arms that role, and a gap is loud -- the ruled failure mode is
+    -- "never silently open" (user ruling 2026-07-25).
+    local out, count = nil, 0
+    for i = 1, #SERVICE_ROLES do
+        local role = SERVICE_ROLES[i]
+        local block = loaded and loaded[STOCK_POLICY_PREFIX .. role]
+        local rules = block and block.rules
+        if rules and next(rules) then
+            out = out or {}
+            out[role] = rules
+            count = count + 1
+        end
+    end
+    _stock_policy = out
+    if count < #SERVICE_ROLES then
+        ap_core_debug.info("[MUTATOR.SMART] stock policy %s: %d/%d role blocks loaded, roles without one are unfiltered",
+            STOCK_POLICY_PATH, count, #SERVICE_ROLES)
     end
 end
 
@@ -1035,24 +1070,27 @@ local function _try_preempt_below_hub(npc, id, force_refresh)
 end
 
 -- Map an engine item category to its outpost-stock policy key: the ammo_* family (equipped-relative
--- loadout classes) folds to the single shelf key ammo_per_type (counted in rounds, per ammo
+-- loadout classes) folds to the single shelf key ammo_rounds_per_type (counted in rounds, per ammo
 -- section); every other category name already matches the policy vocabulary.
 local function _shelf_key(category)
-    if string_sub(category, 1, 5) == "ammo_" then return "ammo_per_type" end
+    if string_sub(category, 1, 5) == "ammo_" then return "ammo_rounds_per_type" end
     return category
 end
 
--- Category filter over a service NPC's freshly restocked shelf: release items whose kind the policy
--- caps, counting PER TYPE (per item section) -- ammo_per_type in rounds, everything else per item.
+-- Category filter over a service NPC's freshly restocked shelf: release items past their rule's cap.
+-- A plain category row is a SHELF TOTAL for that category; ammo is the one per-type rule (rounds per
+-- ammo type), because a shelf should carry several calibers and ammo is meant to dominate an outpost.
+-- Totals are what keeps it lean: vanilla lists many sections per category (77 separate meats and foods
+-- in a barman's supply list), so a per-type cap there multiplies into a warehouse. A row naming a
+-- single item section caps that section alone (the shared policy contract, xinventory.policy_key).
 -- Equipped weapon/armor and quest items are skipped by the categorizer; an unlisted category is left
--- alone. A row naming a single item section overrides that item's category row (the shared policy
--- contract, xinventory.policy_key). Collect-then-release so the walk is not mutated mid-iteration.
+-- alone. Collect-then-release so the walk is not mutated mid-iteration.
 -- @cost O(stock) | get_category + section per item, release per over-cap item
-local function _filter_stock(npc, npc_id)
-    local rules = _stock_policy
+local function _filter_stock(npc, npc_id, role)
+    local rules = _stock_policy and _stock_policy[role]
     if not rules then return end
     local opts = xinventory.get_category_opts(npc)
-    local per_section = {}
+    local counted = {}
     local drop = {}
     local seen = 0
     xinventory.iterate_inventory(npc_id, function(_, item)
@@ -1060,11 +1098,14 @@ local function _filter_stock(npc, npc_id)
         local cat = xinventory.get_category(item, opts)
         if cat == "equipped" or cat == "untouchable" then return end
         local sec = item:section()
-        local rule = rules[sec] or rules[_shelf_key(cat)]
+        local section_rule = rules[sec]
+        local rule = section_rule or rules[_shelf_key(cat)]
         if not rule then return end
-        local unit = (string_sub(cat, 1, 5) == "ammo_") and (item:ammo_get_count() or 0) or 1
-        local total = (per_section[sec] or 0) + unit
-        per_section[sec] = total
+        local is_ammo = string_sub(cat, 1, 5) == "ammo_"
+        local key = (is_ammo or section_rule) and sec or cat
+        local unit = is_ammo and (item:ammo_get_count() or 0) or 1
+        local total = (counted[key] or 0) + unit
+        counted[key] = total
         if total > rule.max then drop[#drop + 1] = item end
     end)
     -- Guard each release on a live server object: a straggler still mid-spawn has a game object
@@ -1076,15 +1117,15 @@ local function _filter_stock(npc, npc_id)
             removed = removed + 1
         end
     end
-    ap_core_debug.debug("[MUTATOR.SMART] stock_filter: npc=%d seen=%d removed=%d", npc_id, seen, removed)
+    ap_core_debug.debug("[MUTATOR.SMART] stock_filter: npc=%d role=%s seen=%d removed=%d", npc_id, role, seen, removed)
 end
 
 -- Deferred ~1s after restock: buy_supplies destroys + respawns the shelf and its items register
 -- over the next ticks, not the next frame (destockifier-style stock addons defer their own
 -- removal 1s for the same reason). A shorter defer walks a half-spawned inventory and removes nothing.
-local function _filter_stock_deferred(npc_id)
+local function _filter_stock_deferred(npc_id, role)
     local npc = xobject.go(npc_id)
-    if npc then _filter_stock(npc, npc_id) end
+    if npc then _filter_stock(npc, npc_id, role) end
     return true
 end
 
@@ -1103,7 +1144,9 @@ local function _trade_update(npc, force_refresh)
     end
     _org_trade_update(npc, force_refresh)
     if trade_manager.get_trade_profile(id, "resupply_time") == stamp then return end
-    if _stock_policy then CreateTimeEvent(STOCK_FILTER_EV, id, 1, _filter_stock_deferred, id) end
+    if _stock_policy and _stock_policy[entry.role] then
+        CreateTimeEvent(STOCK_FILTER_EV, id, 1, _filter_stock_deferred, id, entry.role)
+    end
 end
 
 -- keep_item's release idiom (death_manager.script:403), reused per item on a nulled corpse.

@@ -3,44 +3,111 @@
 ; shelf. Applied on top of the below-hub supplies drop (Mutators > Conquest); this file decides
 ; WHICH kinds a service stocks, the supplies drop decides HOW DEEP its ammo/gear tiers go.
 ;
-; FORMAT (same shape as ap_loot_policy.ltx): `category = min, max`. MAX is used, MIN is ignored.
-;   max = 0  -> the category is stripped from stock (blacklist).
-;   max = N  -> the category is kept, capped at N (whitelist with a cap).
-;   a row deleted entirely -> that category is left untouched.
-;   a row may also name a single item section (energy_drink = 0, 2); a section row overrides
-;   the item's category row, same contract as the other policy files.
-; DLTX-overridable like the other policy files. Absent or empty file = filter off (logged).
+; ONE BLOCK PER SERVICE ROLE. A cap that suits a trader guts a specialist: a barman's whole trade
+; is food and drink, a medic's is medical, a mechanic's is tools and parts. Each role is capped
+; generously in its own trade and hard everywhere else, so a service stays recognisably itself.
+; A role whose block is missing or empty is not filtered at all (logged at load).
 ;
-; MEANING -- differs from the loadout policies (ap_trade_policy, ap_loot_policy) by design, and
-; this is the whole reason it is a separate file. Those cap a category TOTAL across what one NPC
-; CARRIES. This caps PER TYPE on what a trader SELLS: a shelf stocks many kinds, a loadout is one
-; carry. So `medkit = 0, 3` keeps 3 of EACH medkit kind on the shelf, and `ammo_per_type = 0, 90`
-; keeps 90 rounds of EACH ammo type (two ammo types of one caliber keep 90 each; the key is the
-; shelf equivalent of the loadout policies' equipped-relative ammo_slot_* keys, in rounds).
-; Whole stacks release: an ammo cap below one box size strips that type entirely rather than
-; keeping a partial box.
+; FORMAT: `key = N`. One number, a CAP. There is no minimum: nothing here ever adds stock, it
+; only removes what is over the cap.
+;   N = 0  -> stripped from stock entirely.
+;   N > 0  -> kept, capped at N.
+;   row deleted entirely -> that category is left untouched.
+; DLTX-overridable.
 ;
-; Category names match get_section_category (the same vocabulary the other policies use).
+; HOW A ROW COUNTS -- read the key name:
+;   <category>              a SHELF TOTAL for that whole category. `food = 8` means 8 food items
+;                           on the shelf, all kinds together. Vanilla lists many sections per
+;                           category (a barman's supply list carries 77 separate meats and foods),
+;                           so a total is the only cap that keeps the shelf lean.
+;   ammo_rounds_per_type    ROUNDS, not boxes, and counted separately for each ammo type. 90 means
+;                           90 rounds of EACH type, so a shelf carries several calibers and ammo
+;                           stays the bulk of a trader's business. A box counts as the rounds in
+;                           it, so a value below one box size (30-60 rounds for most types) strips
+;                           that ammo entirely rather than leaving a partial box -- stacks release
+;                           whole.
+;   <item section>          a row may also name one item section (energy_drink = 2); it then caps
+;                           that section alone and overrides its category row.
+;
+; Category names match get_section_category (the same vocabulary the other policy files use).
 ; Equipped weapon and armor and quest items are never in scope -- the categorizer skips them.
-;
-; DEFAULT below = a field resupply post: ammo, medical, provisions, a few grenades and repair
-; parts; no weapons, armor, artefacts, or devices (an outpost is not an armory).
 
-[ap_outpost_stock]
-ammo_per_type    = 0, 90
-grenade_ammo     = 0, 2
-medkit           = 0, 3
-bandage          = 0, 5
-antirad          = 0, 3
-stim             = 0, 2
-pill             = 0, 2
-food             = 0, 5
-drink            = 0, 5
-grenade          = 0, 2
-crafting         = 0, 5
-weapon           = 0, 0
-outfit           = 0, 0
-helmet           = 0, 0
-artefact         = 0, 0
-device           = 0, 0
-other            = 0, 0
+; Field resupply post: ammo by the caseload plus a little of everything else.
+[ap_outpost_stock_trader]
+ammo_rounds_per_type = 90
+grenade_ammo         = 4
+grenade              = 4
+medkit               = 4
+bandage              = 6
+antirad              = 4
+stim                 = 3
+pill                 = 3
+food                 = 8
+drink                = 6
+crafting             = 6
+weapon               = 0
+outfit               = 0
+helmet               = 0
+artefact             = 0
+device               = 0
+other                = 0
+
+; Food and drink are the whole trade; everything else is incidental.
+[ap_outpost_stock_barman]
+ammo_rounds_per_type = 0
+grenade_ammo         = 0
+grenade              = 0
+medkit               = 2
+bandage              = 3
+antirad              = 3
+stim                 = 3
+pill                 = 4
+food                 = 25
+drink                = 20
+crafting             = 0
+weapon               = 0
+outfit               = 0
+helmet               = 0
+artefact             = 0
+device               = 0
+other                = 0
+
+; Tools, kits and parts are the whole trade. Detectors stay: reading the Zone is a tech's business.
+[ap_outpost_stock_mechanic]
+ammo_rounds_per_type = 0
+grenade_ammo         = 0
+grenade              = 0
+medkit               = 0
+bandage              = 0
+antirad              = 0
+stim                 = 0
+pill                 = 0
+food                 = 0
+drink                = 0
+crafting             = 25
+weapon               = 0
+outfit               = 0
+helmet               = 0
+artefact             = 0
+device               = 6
+other                = 0
+
+; Medical is the whole trade, with rations on the side.
+[ap_outpost_stock_medic]
+ammo_rounds_per_type = 0
+grenade_ammo         = 0
+grenade              = 0
+medkit               = 10
+bandage              = 12
+antirad              = 8
+stim                 = 6
+pill                 = 8
+food                 = 4
+drink                = 4
+crafting             = 0
+weapon               = 0
+outfit               = 0
+helmet               = 0
+artefact             = 0
+device               = 0
+other                = 0
