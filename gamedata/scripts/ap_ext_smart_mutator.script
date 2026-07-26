@@ -13,12 +13,14 @@
 
 local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
 local math_floor, math_random, string_match, string_format, string_sub = math.floor, math.random, string.match, string.format, string.sub
+local math_cos, math_sin, PI = math.cos, math.sin, math.pi
 local table_concat = table.concat
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature, xinventory = xsquad, xcreature, xinventory
 local get_object_squad, alife_release = get_object_squad, alife_release
 
 local CALLBACK = ap_core_const.CALLBACK
+local SERVICE_VISUALS = ap_ext_const.SERVICE_VISUALS
 local cfg = ap_core_mcm.cfg
 
 local CONQUEST_KEY = "ap_conquest"
@@ -485,8 +487,13 @@ local function _make_spot_precond(role)
     end
 end
 
--- Spot offset per role, so services at one outpost stand apart instead of inside each other.
-local SPOT_OFFSET = { trader = 0, barman = 3, mechanic = -3, medic = 6 }
+-- Spot placement per role: one bearing each around the smart centre, so services stand apart instead
+-- of inside each other AND apart from one another's line. The earlier form offset each role along
+-- the same axis with a shared look direction, which stood them in a rank facing the same way
+-- (field-reported 2026-07-26). Each service now takes his own quarter of a ring at the centre and
+-- faces it, which reads as a post rather than a firing line.
+local SPOT_RADIUS = 3
+local SPOT_BEARING = { trader = 0, barman = 0.5 * PI, mechanic = PI, medic = 1.5 * PI }
 
 -- Ensure the runtime spot job for one service role. Idempotent; the engine rebuilds the job list on
 -- every game load, so this rides the same re-apply cadence as the respawn entries. The smart's own
@@ -503,9 +510,10 @@ local function _ensure_service_spot(smart, data, role)
     if not trade_cfg then return end
     local name = _service_spot_name(smart.id, role)
     local center = smart.position
-    local offset = SPOT_OFFSET[role] or 0
-    local pos = string_format("%.2f,%.2f,%.2f", center.x + offset, center.y, center.z)
-    local look = string_format("%.2f,%.2f,%.2f", center.x + offset + 2, center.y, center.z)
+    local bearing = SPOT_BEARING[role] or 0
+    local pos = string_format("%.2f,%.2f,%.2f",
+        center.x + SPOT_RADIUS * math_cos(bearing), center.y, center.z + SPOT_RADIUS * math_sin(bearing))
+    local look = string_format("%.2f,%.2f,%.2f", center.x, center.y, center.z)
     xsmart_spawn.add_runtime_job(smart, {
         name = name, prior = SERVICE_SPOT_PRIOR, precondition_fn = _make_spot_precond(role),
         text = string_format(_SERVICE_SPOT_TEXT, name, name, trade_cfg, role, name,
@@ -672,14 +680,37 @@ local function _reassert_holds()
     end
 end
 
+-- Dress one service in his faction's own appearance pool (ap_ext_const.SERVICE_VISUALS). Vanilla
+-- dresses most roles of a faction in one model, so an outpost trader looks like any other stalker of
+-- his side and two outposts on a map look like the same man. The model is picked from the NPC's own
+-- id, so it is stable across loads without storing anything and differs between areas. Rides
+-- _stock_member, so it fires on the first stock, again after a load (stocked is cleared there), and
+-- on a trade-config drift -- never on an ordinary scan. Persistence is native: set_visual_name lands
+-- on the SERVER entity (GE_CHANGE_VISUAL -> CSE_Visual::set_visual, xrServer_process_event.cpp:174)
+-- and CSE_AbstractVisual serializes it in STATE_Write, so the model survives save/load and
+-- offline/online, and re-applying the same one costs nothing (set_visual_name returns early when the
+-- visual already matches, script_game_object2.cpp:671). An addon that dresses him from an outfit he
+-- was given (DNPCAV and kin) holds the model between those points rather than being fought per scan.
+-- @cost O(1) | 1 luabind (set_visual_name) once per service, none afterwards
+local function _apply_service_visual(go, member_id, faction)
+    local pool = SERVICE_VISUALS[faction]
+    if not pool or #pool == 0 then return end
+    local visual = pool[member_id % #pool + 1]
+    go:set_visual_name(visual, true)
+    ap_core_debug.debug("[MUTATOR.SMART] service_visual: npc=%d faction=%s visual=%s",
+        member_id, faction, visual)
+end
+
 -- Apply the trade config to one online service member; marks the entry stocked on success. make_trader
 -- is idempotent (trade_init self-dedupes on cfg), so a re-fire before the flag sets is harmless.
 -- @cost O(1) | make_trader (trade_init + optional stock) on the member
-local function _stock_member(go, member_id, cfg_path, entry)
+local function _stock_member(go, member_id, cfg_path, entry, faction)
     if not xcreature.make_trader(go, cfg_path, true) then return end
     entry.stocked = true
-    -- active_section names the job he holds at stock time (logic@ap_service_spot_N_<role> once seated;
-    -- an earlier grab shows the lesser job the next selection pass upgrades him off).
+    _apply_service_visual(go, member_id, faction)
+    -- active_section names the scheme block he is running at stock time, not the job wrapper the
+    -- smart assigned: beh@ap_service_spot_N_<role> once seated (the job's `active` key), and the
+    -- lesser job's own block on an earlier grab, which the next selection pass upgrades him off.
     local st = db.storage[member_id]
     ap_core_debug.debug("[MUTATOR.SMART] service_stock: smart=%d role=%s npc=%d job=%s",
         entry.smart_id, entry.role, member_id, tostring(st and st.active_section))
@@ -687,13 +718,13 @@ end
 
 -- Stock an unstocked online member, or re-stock it when its trade config drifted off the role
 -- (cfg_ltx compare). Split from _try_stock for the nesting cap.
-local function _stock_or_refresh(go, member_id, cfg_path, entry)
+local function _stock_or_refresh(go, member_id, cfg_path, entry, faction)
     if entry.stocked then
         if trade_manager.get_trade_profile(member_id, "cfg_ltx") == cfg_path then return end
         ap_core_debug.debug("[MUTATOR.SMART] service_cfg_drift: smart=%d role=%s npc=%d",
             entry.smart_id, entry.role, member_id)
     end
-    _stock_member(go, member_id, cfg_path, entry)
+    _stock_member(go, member_id, cfg_path, entry, faction)
 end
 
 -- Stock one held service squad once its (single) member is online, and KEEP it stocked: every
@@ -714,12 +745,18 @@ local _off_post_seen = {}
 -- `beh@general` nor sets `target` falls back to axr_beh's default goto_target
 -- ("{!is_squad_commander} commander, actor", axr_beh.script:28) -- for a one-man service squad that
 -- resolves to the ACTOR, which is the trader-follows-you report. Logs on the transition only.
+-- The compare is against the spot's `beh@` block, NOT its `logic@` wrapper: active_section holds the
+-- block named by the job's `active` key (xr_logic.script:252 stores what determine_section_to_activate
+-- returned), and a `logic@` name can never appear there -- get_scheme_by_section would read its scheme
+-- as "logic", which is not a registered scheme, so activate_by_section bails at :224 before the store.
+-- The wrapper name lives in st.section_logic. Comparing against `logic@` reported every correctly
+-- posted service as off post (16 for 16 in the 2026-07-26 field log).
 -- @cost debug on only: O(1), db.storage read + one concat, no luabind. Debug off: one call, returns.
 local function _audit_post(squad_id, member_id, entry)
     if not ap_core_debug.enabled() then return end
     local st = db.storage[member_id]
     local section = st and st.active_section
-    local expected = "logic@" .. _service_spot_name(entry.smart_id, entry.role)
+    local expected = "beh@" .. _service_spot_name(entry.smart_id, entry.role)
     if section == expected then
         _off_post_seen[squad_id] = nil
         return
@@ -740,7 +777,7 @@ local function _try_stock(squad_id, entry)
     for member_id in xsquad.iter_member_ids(squad) do
         local go = xobject.go(member_id)
         if go then
-            _stock_or_refresh(go, member_id, cfg_path, entry)
+            _stock_or_refresh(go, member_id, cfg_path, entry, data.faction)
             _audit_post(squad_id, member_id, entry)
             return
         end
