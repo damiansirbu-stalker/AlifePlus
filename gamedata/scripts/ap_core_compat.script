@@ -1,5 +1,5 @@
 --- ap_core_compat: Save data migrations and proxy registrations for external mods
-local pairs, type, RegisterScriptCallback = pairs, type, RegisterScriptCallback
+local pairs, type, tostring, RegisterScriptCallback = pairs, type, tostring, RegisterScriptCallback
 local xobject, xsquad, xchange = xobject, xsquad, xchange
 local ap_core_debug, ap_core_broker, ap_api = ap_core_debug, ap_core_broker, ap_api
 local game_translate_string = game.translate_string
@@ -7,6 +7,7 @@ local CALLBACK = ap_core_const.CALLBACK
 
 local _to_remove = {}
 local _pending_release = {}
+local _pending_remove = {}
 
 -- Queue a squad id for engine-side release at on_game_load.
 -- load_state runs before objects().load() (alife_storage_manager.cpp:141), so
@@ -14,6 +15,15 @@ local _pending_release = {}
 local function _queue_release(squad_id)
     if type(squad_id) ~= "number" then return end
     _pending_release[#_pending_release + 1] = squad_id
+end
+
+-- Queue a squad for engine-side removal (delete, not release) at on_game_load. Same timing reason as
+-- _queue_release. The section travels with the id: freed server ids are pooled and reused
+-- (xrServer.cpp:873 vfFreeID), so a hold entry written before its squad died can name an id that now
+-- belongs to something else, and the drain compares the section before deleting anything.
+local function _queue_remove(squad_id, section)
+    if type(squad_id) ~= "number" then return end
+    _pending_remove[#_pending_remove + 1] = { id = squad_id, section = section }
 end
 
 --- v1.2 -> v1.3: queue orphan release for squads in old save keys
@@ -120,6 +130,53 @@ local function _v17_to_v18_reset_loot_owner(m_data)
     for i = 1, #_to_remove do owner[_to_remove[i]] = nil end
 end
 
+-- Service roles in keep-preference order, frozen at the version this migration targets. A migration
+-- Empty one outpost's service set in place.
+local function _clear_services(services)
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for role in pairs(services) do _to_remove[#_to_remove + 1] = role end
+    for i = 1, #_to_remove do services[_to_remove[i]] = nil end
+end
+
+-- Drop every service hold and queue its squad for removal; guard holds stay (they are combat squads,
+-- not services, and the outpost keeps its detail).
+local function _clear_service_holds(holds)
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for squad_id, entry in pairs(holds) do
+        if type(entry) == "table" and entry.role and entry.role ~= "guard" then
+            _queue_remove(squad_id, entry.section)
+            _to_remove[#_to_remove + 1] = squad_id
+        end
+    end
+    for i = 1, #_to_remove do holds[_to_remove[i]] = nil end
+end
+
+--- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries, and let growth rebuild
+--- them under the current rules. The one-service-per-outpost rule guards growth only, so a save
+--- written before it keeps every role it grew: field logs show outposts holding trader, barman and
+--- mechanic at once, standing in a rank, with one outpost eating its whole level budget so no other
+--- outpost on that map can ever grow a service. Keeping one of the three would carry a legacy NPC's
+--- stock, trade config and spot forward and pick an arbitrary survivor, so all of them go and the
+--- next growth roll seats a fresh service at the corrected spot geometry.
+--- Empties the service sets and drops the service holds; the squads themselves are removed at
+--- on_game_load, because load_state runs before objects().load (alife_storage_manager.cpp:141) and no
+--- server entity exists yet.
+--- Mutates both tables IN PLACE: ap_ext_smart_mutator captures them by reference at its own
+--- load_state and dispatch order is nondeterministic (axr_main.script:272), same reason as
+--- _v17_to_v18_reset_loot_owner.
+local function _v185_to_v186_clear_outpost_services(m_data)
+    local saved = m_data.ap_ext_smart_mutator
+    local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
+    if type(conquest) == "table" then
+        for _, data in pairs(conquest) do
+            local services = (type(data) == "table") and data.services or nil
+            if type(services) == "table" then _clear_services(services) end
+        end
+    end
+    local holds = m_data.ap_ext_smart_mutator_holds
+    if type(holds) == "table" then _clear_service_holds(holds) end
+end
+
 --- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
 --- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
 local function _v155_to_v16_extract_record_save_key(m_data)
@@ -144,6 +201,7 @@ xchange.register("ap_v15_to_v155_release_orphan_arrivals",       _v15_to_v155_re
 xchange.register("ap_v155_to_v16_extract_record_save_key",       _v155_to_v16_extract_record_save_key)
 xchange.register("ap_v16_to_v17_reset_smart_mutator",            _v16_to_v17_reset_smart_mutator)
 xchange.register("ap_v17_to_v18_reset_loot_owner",               _v17_to_v18_reset_loot_owner)
+xchange.register("ap_v185_to_v186_clear_outpost_services",       _v185_to_v186_clear_outpost_services)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
@@ -151,8 +209,8 @@ local function _on_load_state(m_data)
     xchange.run(m_data)
 end
 
---- Drain queued orphan releases. on_game_load fires post-STATE_Read so server entities exist.
-local function _on_game_load()
+-- Drain queued orphan releases.
+local function _drain_releases()
     if #_pending_release == 0 then return end
     local count = 0
     for i = 1, #_pending_release do
@@ -166,6 +224,56 @@ local function _on_game_load()
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[COMPAT] release_orphaned: released=%d", count)
     end
+end
+
+-- Identity guard for a queued removal: the live squad must still carry the section pinned when the
+-- hold was written. Entries saved before the section was recorded skip the compare.
+local function _same_section(squad, section)
+    if not section then return true end
+    return squad:section_name() == section
+end
+
+-- Drain queued removals. Each member's PDA trade spot goes first: the icon is added by the engine
+-- from the job's `level_spot` key (stalker_generic.update_level_spot) and vanilla only clears it on
+-- death, so a removal that skips it leaves the icon on the map at a dissolved post.
+-- A queued removal runs once per save and deletes a live NPC, so it reports per squad, not just a
+-- total: a bare count cannot tell a removal from a skip, and a skip is what a recycled id looks like.
+local function _drain_removals()
+    if #_pending_remove == 0 then return end
+    local debug_on = ap_core_debug.enabled()
+    local count, skipped = 0, 0
+    for i = 1, #_pending_remove do
+        local queued = _pending_remove[i]
+        local squad = xobject.se(queued.id)
+        if squad and xsquad.is_squad(squad) and _same_section(squad, queued.section) then
+            for member_id in xsquad.iter_member_ids(squad) do
+                stalker_generic.remove_level_spot(member_id)
+            end
+            xsquad.remove_squad(squad)
+            count = count + 1
+            if debug_on then
+                ap_core_debug.debug("[COMPAT] remove_queued: squad=%d section=%s removed",
+                    queued.id, tostring(queued.section))
+            end
+        else
+            skipped = skipped + 1
+            if debug_on then
+                ap_core_debug.debug("[COMPAT] remove_queued: squad=%d section=%s SKIPPED (%s)",
+                    queued.id, tostring(queued.section),
+                    squad and "identity mismatch" or "entity gone")
+            end
+        end
+        _pending_remove[i] = nil
+    end
+    if debug_on then
+        ap_core_debug.debug("[COMPAT] remove_queued: removed=%d skipped=%d", count, skipped)
+    end
+end
+
+--- Drain queued engine-side work. on_game_load fires post-STATE_Read so server entities exist.
+local function _on_game_load()
+    _drain_releases()
+    _drain_removals()
 end
 
 local function _xlate(key)
