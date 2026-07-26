@@ -1149,6 +1149,69 @@ local function _trade_update(npc, force_refresh)
     end
 end
 
+-- Random-task gate for outpost services. Vanilla resolves an NPC's task pool from its logic
+-- `task_section` and falls back to `npc:section() .. "_task_"` (axr_task_manager.script:860-869).
+-- A service spawns from sim_default_<faction>_<role> and configs/misc/task/tm_warfare.ltx defines
+-- exactly those sections, so a field trader hands out the Warfare pool. Those tasks cannot be
+-- completed without Warfare installed: [sim_default_csky_trader_task_3] runs
+-- =setup_companion_task(ecolog_companion_task_1) on accept and carries
+-- condlist_0 = {!squad_exist(ecolog_companion_task_1)} fail, and that functor is absent from base
+-- scripts, so the escort fails the moment the player takes it (field report 2026-07-26). A post in
+-- the field is a shop, not a task giver -- gate the pool rather than curate task sections.
+local _org_generate_tasks
+local _hub_gated = {}
+
+-- Pool side: the one seam both readers share. The dialog reaches it through
+-- dialogs.generate_available_tasks / sim_generate_available_tasks (dialogs.script:638,644) and every
+-- PDA taskboard through its own trigger_generate_available_tasks (iTheon ui_pda_taskboard_tab:246,
+-- Tasks QoL :308, lizzardman pda_taskboard:169), so the board and the conversation cannot disagree.
+-- Guards fall through to the original: they spawn from ordinary squad sections, which own no pool.
+-- Runs the original and empties its result rather than writing the pool table directly, so vanilla
+-- keeps its own per-NPC bookkeeping (the list is created there, axr_task_manager.script:840-844,
+-- along with the sim skip roll) and the entry can never be left holding a list generated before the
+-- ledger restored on load.
+-- @cost O(1) on a service | one hash probe when no outpost is held (_held_service_entry early-out)
+local function _generate_available_tasks(npc, is_sim)
+    local entry = npc and _held_service_entry(npc)
+    if not entry then return _org_generate_tasks(npc, is_sim) end
+    _org_generate_tasks(npc, is_sim)
+    local npc_id = npc:id()
+    local pool = axr_task_manager.available_tasks[npc_id]
+    if pool then empty_table(pool) end
+    ap_core_debug.debug("[MUTATOR.SMART] task_gate: smart=%d role=%s npc=%d",
+        entry.smart_id, entry.role, npc_id)
+end
+
+-- Dialog side. An empty pool alone still opens the task topic on a blank reply, because the
+-- ask-for-work phrase gates on check_task_stack, not on the pool (dialog_manager.script:261). The
+-- same shape closes the rest of the hub surface these profiles carry: a post in the field trades,
+-- repairs and heals, and does not hand out missions, sell guide routes, broker valuables, or buy
+-- documents and encrypted PDAs. Each gated name is a dialog-level <precondition> in
+-- configs/gameplay/dialogs.xml (dm_ordered_task_dialog :619, dm_broker_dialog :664,
+-- dm_important_documents :4039, dm_encrypted_pda :3638, buy_route :3267); false there leaves the
+-- dialog with no available phrase and it renders no topic. Patching the predicate is what the engine
+-- allows: preconditions resolve by NAME on every evaluation (PhraseScript.cpp:185-218), never bound
+-- at dialog load. dm_ordered_task_completed_dialog is deliberately left open, so a mission taken
+-- before this gate existed can still be turned in.
+-- @cost O(1) | 1 luabind (who_is_npc) + the _held_service_entry probe, on dialog open only
+local function _make_hub_gate(org)
+    return function(first_speaker, second_speaker)
+        local npc = first_speaker and second_speaker
+            and dialogs.who_is_npc(first_speaker, second_speaker)
+        if npc and _held_service_entry(npc) then return false end
+        return org(first_speaker, second_speaker)
+    end
+end
+
+-- Wrap one hub predicate in place, once. Same probe as the trade_manager patch: the type check both
+-- guards a harness without vanilla scripts and triggers the in-game auto-load of the module.
+local function _gate_hub_predicate(module, fn_name)
+    if _hub_gated[fn_name] then return end
+    if type(module) ~= "table" or type(module[fn_name]) ~= "function" then return end
+    _hub_gated[fn_name] = true
+    module[fn_name] = _make_hub_gate(module[fn_name])
+end
+
 -- keep_item's release idiom (death_manager.script:403), reused per item on a nulled corpse.
 local function _release_item(_, item)
     local se_item = item and xobject.se(item:id())
@@ -1205,6 +1268,17 @@ function on_game_start()
         _org_trade_update = trade_manager.update
         trade_manager.update = _trade_update
     end
+    -- Same raw-assignment patch shape, one per task reader (see the task gate above).
+    if not _org_generate_tasks and type(axr_task_manager) == "table"
+        and type(axr_task_manager.generate_available_tasks) == "function" then
+        _org_generate_tasks = axr_task_manager.generate_available_tasks
+        axr_task_manager.generate_available_tasks = _generate_available_tasks
+    end
+    _gate_hub_predicate(dialogs, "check_task_stack")
+    _gate_hub_predicate(dialogs, "condition_actor_has_valuable_item")
+    _gate_hub_predicate(dialogs, "actor_has_important_documents")
+    _gate_hub_predicate(txr_routes, "check_all_routes")
+    _gate_hub_predicate(ui_pda_npc_tab, "have_encrypted_pda")
     _load_stock_policy()
     CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
