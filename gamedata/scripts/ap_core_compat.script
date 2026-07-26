@@ -17,8 +17,8 @@ local function _queue_release(squad_id)
     _pending_release[#_pending_release + 1] = squad_id
 end
 
--- Queue a squad for engine-side removal (delete, not release) at on_game_load. Same timing reason as
--- _queue_release. The section travels with the id: freed server ids are pooled and reused
+-- Queue a squad for engine-side removal (delete, not release). Same timing as _queue_release.
+-- The section travels with the id: freed server ids are pooled and reused
 -- (xrServer.cpp:873 vfFreeID), so a hold entry written before its squad died can name an id that now
 -- belongs to something else, and the drain compares the section before deleting anything.
 local function _queue_remove(squad_id, section)
@@ -130,7 +130,6 @@ local function _v17_to_v18_reset_loot_owner(m_data)
     for i = 1, #_to_remove do owner[_to_remove[i]] = nil end
 end
 
--- Service roles in keep-preference order, frozen at the version this migration targets. A migration
 -- Empty one outpost's service set in place.
 local function _clear_services(services)
     for k = 1, #_to_remove do _to_remove[k] = nil end
@@ -158,9 +157,10 @@ end
 --- outpost on that map can ever grow a service. Keeping one of the three would carry a legacy NPC's
 --- stock, trade config and spot forward and pick an arbitrary survivor, so all of them go and the
 --- next growth roll seats a fresh service at the corrected spot geometry.
---- Empties the service sets and drops the service holds; the squads themselves are removed at
---- on_game_load, because load_state runs before objects().load (alife_storage_manager.cpp:141) and no
---- server entity exists yet.
+--- Empties the service sets and drops the service holds; the squads themselves go at on_game_load,
+--- the documented safe mutation point -- entities registered, no update tick yet
+--- (doc/library/modding/script-loading.md:425-455). load_state is too early for that: it runs before
+--- objects().load (alife_storage_manager.cpp:141), so no server entity exists.
 --- Mutates both tables IN PLACE: ap_ext_smart_mutator captures them by reference at its own
 --- load_state and dispatch order is nondeterministic (axr_main.script:272), same reason as
 --- _v17_to_v18_reset_loot_owner.
@@ -270,7 +270,8 @@ local function _drain_removals()
     end
 end
 
---- Drain queued engine-side work. on_game_load fires post-STATE_Read so server entities exist.
+--- Drain queued engine-side work. on_game_load is the documented safe mutation point: entities are
+--- registered and no update tick has run yet (doc/library/modding/script-loading.md:425-455).
 local function _on_game_load()
     _drain_releases()
     _drain_removals()
