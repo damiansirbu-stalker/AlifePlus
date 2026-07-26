@@ -13,6 +13,7 @@
 
 local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
 local math_floor, math_random, string_match, string_format, string_sub = math.floor, math.random, string.match, string.format, string.sub
+local table_concat = table.concat
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature, xinventory = xsquad, xcreature, xinventory
 local get_object_squad, alife_release = get_object_squad, alife_release
@@ -594,11 +595,42 @@ end
 -- vanilla removes it on death, but a decay removal skips the death path, so the icon would
 -- otherwise linger at the dissolved outpost. remove_level_spot is vanilla's own remover.
 -- @cost O(members) | remove_level_spot per member + remove_squad
+-- Members handed to a removal, checked on the next scan (_audit_removed). Release is not
+-- instant, so same-frame verification would report every removal as failed.
+local _removed_members = {}
+local _removed_count = 0
+
 local function _remove_service_squad(squad)
     for member_id in xsquad.iter_member_ids(squad) do
         stalker_generic.remove_level_spot(member_id)
+        _removed_count = _removed_count + 1
+        _removed_members[_removed_count] = member_id
     end
     xsquad.remove_squad(squad)
+end
+
+-- A service NPC who outlives his ledger entry is barred from his own spot job (its precondition is
+-- ledger membership) and falls to whatever else the smart offers. If that is a `beh` section without
+-- a `target`, axr_beh's default resolves to the ACTOR for a one-man squad's commander
+-- (axr_beh.script:28) and the shopkeeper follows the player for good. Nothing else can see such an
+-- NPC -- every other loop here iterates the ledger he is no longer in -- so removals are verified
+-- one scan later, when any deferred release has completed.
+-- Debug only, and the list is dropped either way so it cannot grow across a session with debug off.
+-- @cost debug on only: 1 luabind per id removed since the last scan, normally zero. Debug off: clear.
+local function _audit_removed()
+    if not ap_core_debug.enabled() then
+        for i = 1, _removed_count do _removed_members[i] = nil end
+        _removed_count = 0
+        return
+    end
+    for i = 1, _removed_count do
+        local member_id = _removed_members[i]
+        if xobject.se(member_id) then
+            ap_core_debug.debug("[MUTATOR.SMART] service_removal_orphan: npc=%d survived removal", member_id)
+        end
+        _removed_members[i] = nil
+    end
+    _removed_count = 0
 end
 
 -- Resolve a held entry's squad with identity intact: the id must still resolve to a SQUAD (freed
@@ -672,6 +704,32 @@ end
 -- assortment. The cfg_ltx compare catches the drift within a scan and _stock_member re-inits
 -- and restocks the role config. Stops at the first online member.
 -- @cost O(members) | 1 luabind (xobject.go) per member until the online one + 1 profile read
+-- Last section a service was seen off his post on, keyed by squad id. Session-local: the log wants
+-- one line per change, not one per scan, and a fresh session should re-report what it finds.
+local _off_post_seen = {}
+
+-- Post audit, debug only. A service belongs on his own spot job; the smart's job selection can put him
+-- elsewhere (surge outranks it at prior 60, and a lost ledger entry bars him from his own post). The
+-- section name is what identifies the failure, because a `beh` section that neither inherits
+-- `beh@general` nor sets `target` falls back to axr_beh's default goto_target
+-- ("{!is_squad_commander} commander, actor", axr_beh.script:28) -- for a one-man service squad that
+-- resolves to the ACTOR, which is the trader-follows-you report. Logs on the transition only.
+-- @cost debug on only: O(1), db.storage read + one concat, no luabind. Debug off: one call, returns.
+local function _audit_post(squad_id, member_id, entry)
+    if not ap_core_debug.enabled() then return end
+    local st = db.storage[member_id]
+    local section = st and st.active_section
+    local expected = "logic@" .. _service_spot_name(entry.smart_id, entry.role)
+    if section == expected then
+        _off_post_seen[squad_id] = nil
+        return
+    end
+    if _off_post_seen[squad_id] == section then return end
+    _off_post_seen[squad_id] = section
+    ap_core_debug.debug("[MUTATOR.SMART] service_off_post: smart=%d role=%s npc=%d job=%s expected=%s",
+        entry.smart_id, entry.role, member_id, tostring(section), expected)
+end
+
 local function _try_stock(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
     if not squad then return end
@@ -683,6 +741,7 @@ local function _try_stock(squad_id, entry)
         local go = xobject.go(member_id)
         if go then
             _stock_or_refresh(go, member_id, cfg_path, entry)
+            _audit_post(squad_id, member_id, entry)
             return
         end
     end
@@ -813,6 +872,48 @@ end
 -- overhead otherwise), so a real breach of the frame budget surfaces in the log.
 -- ResetTimeEvent FIRST: an error mid-body would otherwise leave the event due and refiring every
 -- frame (doc/library/xray/internals/globals.md, reset placement).
+-- Count our spot jobs currently present in a smart's job list.
+local function _count_spot_jobs(jobs)
+    local prefix = "logic@" .. SERVICE_SPOT_NAME_PREFIX
+    local width, found = #prefix, 0
+    for i = 1, (jobs and #jobs or 0) do
+        if string_sub(jobs[i].section, 1, width) == prefix then found = found + 1 end
+    end
+    return found
+end
+
+-- Our respawn entry keys present on a smart, in list order.
+local function _injected_respawn_keys(smart)
+    local keys, count = {}, 0
+    for key in pairs(smart.respawn_params or {}) do
+        if string_sub(key, 1, 3) == "ap_" then
+            count = count + 1
+            keys[count] = key
+        end
+    end
+    return count > 0 and table_concat(keys, ",") or "-"
+end
+
+-- Debug-only per-held-smart line: what AlifePlus actually has in the smart right now, as opposed to
+-- what the ledger believes. The engine rebuilds both the job list and respawn_params on every load,
+-- so a spot-job count below the number of services held is the reason a service is off his post, and
+-- a missing respawn key is the reason a spawn stopped. Neither is visible from the ledger.
+-- @cost debug on only: O(jobs + respawn entries) pure Lua per held smart, 2 luabind
+local function _log_smart_injection(smart_id)
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    local jobs = smart.stalker_jobs
+    ap_core_debug.debug("[MUTATOR.SMART] smart_state: smart=%d(%s) spot_jobs=%d/%d respawn=%s controlled=%s",
+        smart_id, smart:name(), _count_spot_jobs(jobs), jobs and #jobs or 0,
+        _injected_respawn_keys(smart), tostring(smart.faction_controlled))
+end
+
+local function _log_smart_injections()
+    for smart_id in pairs(_state.conquest) do
+        _log_smart_injection(smart_id)
+    end
+end
+
 local function _scan()
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
     local now = xtime.game_sec()
@@ -822,9 +923,11 @@ local function _scan()
     _grow_services()
     _reassert_holds()
     _stock_services()
+    _audit_removed()
     prof:stop()
     if ap_core_debug.enabled() then
         _log_services()
+        _log_smart_injections()
         ap_core_debug.debug("[MUTATOR.SMART] scan: %.2fms", prof:get_ms())
     end
 end

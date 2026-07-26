@@ -1,0 +1,81 @@
+--- ap_ext_follow_trace: names every NPC currently configured to walk to the player.
+--- Diagnostic only, debug only. It reads; it changes nothing.
+---
+--- An NPC on the `beh` scheme takes its destination from `target`. A section that neither inherits
+--- [beh@general] (configs/beh_gulag_jobs.ltx:1) nor sets the key itself falls back to the scheme's
+--- class default, "{!is_squad_commander} commander, actor" (axr_beh.script:28) -- and for a one-man
+--- squad, whose only member is his own commander, that resolves to the ACTOR. The NPC then walks at
+--- the player and never stops. Field reports of a trader following cannot say whose NPC it is, so
+--- this sweep resolves the condlist exactly as the scheme does at axr_beh.script:135 and reports
+--- every hit with the job that produced it, whether the NPC belongs to AlifePlus or to another mod.
+---
+--- Player-runnable: set AlifePlus MCM log level to DEBUG, play until it happens, send alifeplus.log.
+
+local tostring, RegisterScriptCallback = tostring, RegisterScriptCallback
+
+local CALLBACK = ap_core_const.CALLBACK
+
+local TIMER_EV = "ap_ext_follow_trace"
+local SCAN_ID = "follow_scan"
+local SCAN_INTERVAL_SEC = 60
+
+--- Job-section prefix of an AlifePlus outpost service post. Matching on the section rather than on
+--- the mutator's ledger keeps this module free of any dependency on it.
+local OURS_PREFIX = "logic@ap_service_spot_"
+
+-- Last job each follower was seen on. A follower who has not changed job says nothing on the next
+-- pass, so a long session with one stuck NPC costs one line, not one per minute.
+local _seen = {}
+
+--- The game object when this NPC's behaviour target resolves to the actor, else nil.
+--- Only an NPC on a behaviour scheme carries `goto_target`, so everyone else costs two table reads.
+--- @cost O(1) | 0 luabind for a non-behaviour NPC, 1 + the condlist resolve otherwise
+local function _follower_npc(npc_id, storage)
+    local scheme_state = storage and storage.active_scheme and storage[storage.active_scheme]
+    local condlist = scheme_state and scheme_state.goto_target
+    if not condlist then return nil end
+    local npc = xobject.go(npc_id)
+    if not npc then return nil end
+    if xr_logic.pick_section_from_condlist(db.actor, npc, condlist) ~= "actor" then return nil end
+    return npc
+end
+
+--- Report one NPC if he is walking at the player and was not already reported on this job.
+local function _trace_one(npc_id)
+    local storage = db.storage[npc_id]
+    local npc = _follower_npc(npc_id, storage)
+    if not npc then
+        _seen[npc_id] = nil
+        return
+    end
+    local job = storage.active_section
+    if _seen[npc_id] == job then return end
+    _seen[npc_id] = job
+    local squad = get_object_squad(npc)
+    local ours = job and job:sub(1, #OURS_PREFIX) == OURS_PREFIX
+    ap_core_debug.debug("[MUTATOR.FOLLOW] npc=%d section=%s community=%s squad=%s members=%d job=%s alifeplus_post=%s",
+        npc_id, npc:section(), npc:character_community(), tostring(squad and squad.id),
+        squad and squad:npc_count() or 0, tostring(job), tostring(ours or false))
+end
+
+--- Sweep the online stalkers. Returns before touching anything when debug logging is off.
+--- @cost debug on only: O(online stalkers) table reads. Debug off: one call, returns.
+local function _scan()
+    ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
+    if not ap_core_debug.enabled() then return end
+    local online = db.OnlineStalkers
+    if not online then return end
+    for i = 1, #online do
+        _trace_one(online[i])
+    end
+end
+
+local function _on_game_load()
+    _seen = {}
+end
+
+function on_game_start()
+    _seen = {}
+    RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
+    CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
+end
