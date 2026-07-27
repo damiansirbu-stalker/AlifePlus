@@ -18,12 +18,23 @@ local table_concat = table.concat
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature, xinventory, xevent = xsquad, xcreature, xinventory, xevent
 local get_object_squad, alife_release = get_object_squad, alife_release
+local ini_sys = ini_sys
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 -- Outpost service appearance pools (faction -> ordered visual list), loaded from ap_service_visuals.ltx
 -- at on_game_start by _load_service_visuals. Forward-declared here because _apply_service_visual reads it.
 local _service_visuals
+-- Outpost service sidearm and its ammo, resolved once at on_game_start (see _load_service_weapon).
+-- Forward-declared here because _arm_member reads them.
+local _service_weapon, _service_ammo
+local SERVICE_AMMO_ROUNDS = 30
+-- Outpost services spawn from the vanilla sim_default_<faction>_<role> profiles, which roll rank
+-- 10000-20000 (professional to master), a hub-VIP rank wrong for a field merchant. It makes him a
+-- needlessly strong fighter and inflates the faction-relation swing when he is killed, since the
+-- relation code weights a kill by the victim's rank. _set_service_rank corrects it on the server
+-- object the instant the member is created, before any tick or read.
+local SERVICE_RANK = 0
 
 local CONQUEST_KEY = "ap_conquest"
 local SWARM_KEY = "ap_swarm"
@@ -741,6 +752,20 @@ local function _apply_service_visual(go, member_id, faction, entry)
         member_id, faction, visual)
 end
 
+-- Give one online service a sidearm on first stock, once (entry.armed persists with the ledger, so a
+-- reload does not re-give and the weapon persists natively). Guards are armed by their own profiles;
+-- only these counter-profile services spawn with an empty <supplies>. The weapon section resolves at
+-- load from vanilla-base candidates, so nothing here is GAMMA-specific, and if none resolves he stays
+-- unarmed. Rank is a separate concern, corrected at creation by _set_service_rank.
+-- @cost O(1) | 1-2 xinventory.create_item, first stock only
+local function _arm_member(member_id, entry)
+    if entry.armed or not _service_weapon then return end
+    xinventory.create_item(_service_weapon, member_id, { cond = 1 })
+    if _service_ammo then xinventory.create_item(_service_ammo, member_id, { ammo = SERVICE_AMMO_ROUNDS }) end
+    entry.armed = true
+    ap_core_debug.debug("[MUTATOR.SMART] service_armed: npc=%d weapon=%s", member_id, _service_weapon)
+end
+
 -- Apply the trade config to one online service member; marks the entry stocked on success. make_trader
 -- is idempotent (trade_init self-dedupes on cfg), so a re-fire before the flag sets is harmless.
 -- @cost O(1) | make_trader (trade_init + optional stock) on the member
@@ -748,6 +773,7 @@ local function _stock_member(go, member_id, cfg_path, entry, faction)
     if not xcreature.make_trader(go, cfg_path, true) then return end
     entry.stocked = true
     _apply_service_visual(go, member_id, faction, entry)
+    _arm_member(member_id, entry)
     -- active_section names the scheme block he is running at stock time, not the job wrapper the
     -- smart assigned: beh@ap_service_spot_N_<role> once seated (the job's `active` key), and the
     -- lesser job's own block on an earlier grab, which the next selection pass upgrades him off.
@@ -1119,14 +1145,35 @@ local function _on_spawn_deferred(squad_id, smart_id)
     return true
 end
 
--- squad_on_npc_creation fires once per NPC member, BEFORE try_respawn writes respawn_point_*.
+-- Correct one outpost service to a rank-and-file rank on its server object. Its own step, nothing
+-- else. Set on the server object (m_rank); the online character inherits it on net_spawn and it never
+-- re-rolls (the engine rolls only when NO_RANK, xrServer_Objects_ALife_Monsters.cpp:472), so no code
+-- ever sees the profile's master-grade rank.
+-- @cost O(1) | 1 luabind (set_rank)
+local function _set_service_rank(se_obj)
+    if not (se_obj and se_obj.set_rank) then return end
+    local trace = ap_core_debug.enabled()
+    local before = trace and se_obj:rank()
+    se_obj:set_rank(SERVICE_RANK)
+    if trace then
+        ap_core_debug.debug("[MUTATOR.SMART] service_rank: npc=%d %s -> %s",
+            se_obj.id, tostring(before), tostring(se_obj:rank()))
+    end
+end
+
+-- squad_on_npc_creation fires once per NPC member (sim_board.script:149 passes squad, member se_obj,
+-- spawn_smart), BEFORE try_respawn writes respawn_point_*. A service member's server rank is corrected
+-- here, synchronously at creation, before any update tick or rank read, so there is no window and no
+-- race (our service squads are ap_service_<faction>_<role>; guards spawn as ordinary faction squads).
 -- CreateTimeEvent is idempotent on (ev_id, act_id) (_g.script:345), so multi-NPC squads register
 -- once and the rest are no-ops. Delay 0 fires next ProcessEventQueue tick, by which point try_respawn
 -- has completed and the marker fields are visible. Only deferred for a conquered smart (outpost
 -- pinning) or when debug is on (spawn trace) -- the 99% of normal spawns schedule nothing.
 -- @cost O(1) | 1 conquest hash read; 1 CreateTimeEvent only on an outpost/traced spawn
-local function _on_npc_creation(squad, _, spawn_smart)
+local function _on_npc_creation(squad, se_obj, spawn_smart)
     if not spawn_smart then return end
+    local sec = squad and squad.section_name and squad:section_name()
+    if sec and sec:sub(1, #SERVICE_KEY_PREFIX) == SERVICE_KEY_PREFIX then _set_service_rank(se_obj) end
     if not _state.conquest[spawn_smart.id] and not ap_core_debug.enabled() then return end
     CreateTimeEvent("ap_spawn_deferred", squad.id, 0, _on_spawn_deferred, squad.id, spawn_smart.id)
 end
@@ -1205,6 +1252,29 @@ local function _load_service_visuals()
     if count < total then
         ap_core_debug.info("[MUTATOR.SMART] service visuals %s: %d/%d faction pools loaded, factions without one keep spawn visuals",
             VISUAL_POLICY_PATH, count, total)
+    end
+end
+
+-- Outpost service sidearm. The service profiles are vanilla counter NPCs (sim_default_<faction>_<role>)
+-- whose <supplies> is empty, so unlike the guard detail -- ordinary faction squads the smart respawns
+-- armed -- a service spawns empty-handed. Resolve one sidearm and its ammo once from vanilla-base
+-- candidates present on both vanilla and GAMMA, dynamic-checked so an install missing a section falls
+-- through, and if none resolve the services stay unarmed rather than erroring.
+local SERVICE_WEAPON_CANDIDATES = { "wpn_pm", "wpn_pb", "wpn_fort", "wpn_pmm" }
+local SERVICE_AMMO_CANDIDATES = { "ammo_9x18_fmj", "ammo_9x18_pmm" }
+
+local function _first_existing_section(candidates)
+    for i = 1, #candidates do
+        if ini_sys:section_exist(candidates[i]) then return candidates[i] end
+    end
+    return nil
+end
+
+local function _load_service_weapon()
+    _service_weapon = _first_existing_section(SERVICE_WEAPON_CANDIDATES)
+    _service_ammo = _first_existing_section(SERVICE_AMMO_CANDIDATES)
+    if not _service_weapon then
+        ap_core_debug.info("[MUTATOR.SMART] no service sidearm section resolved; services stay unarmed")
     end
 end
 
@@ -1520,6 +1590,7 @@ function on_game_start()
     _gate_hub_predicate(ui_pda_npc_tab, "have_encrypted_pda")
     _load_stock_policy()
     _load_service_visuals()
+    _load_service_weapon()
     CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end
