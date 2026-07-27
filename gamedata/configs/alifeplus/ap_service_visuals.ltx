@@ -1,0 +1,194 @@
+; AlifePlus outpost service appearance pools, ONE SECTION PER FACTION. An outpost service spawns
+; from the vanilla sim_default_<faction>_<role> profile, and most factions dress every role in the
+; same model, so left alone a trader looks like any other stalker of his side and two outposts on a
+; map look like the same man. The mutator dresses each service from its faction's pool here.
+;
+; FORMAT: one visual path per line, `N = <actor visual>`, read as an ORDERED list (the key is only
+; an index; the value is the model). set_visual_name is applied verbatim. DLTX-overridable: override
+; an index to swap a model, add an index to widen a pool, add a [ap_service_visual_<faction>] section
+; to serve a new faction. A faction with no section or an empty one leaves its services in their
+; spawn visual (logged at load).
+;
+; SELECTION: the mutator picks, for each new service, a model not already worn by another service of
+; the SAME faction on the SAME level (one service per outpost, so per-smart is automatic), and stores
+; the pick on the service so a reload keeps the same look. Order below is the tie-break start point.
+;
+; WHAT IS IN HERE, AND WHY ONLY THIS. Each entry's only wearers are generated sim_default profiles,
+; so no named character shares a face with a service (probe-audited 2026-07-27: every model resolves
+; to sim_default_* only). Every entry is referenced by a vanilla character_desc profile, so the mesh
+; ships with the base game, not a modpack -- a missing model is Debug.fatal in CModelPool
+; (ModelPool.cpp:110-124), never an invisible NPC. Exosuits excluded. Twelve per faction, ordered
+; balaclavas and cloth masks first, then gasmasks and respirators, then helmets, then the visuals the
+; faction's own generic service profiles wear, and a bare face only where a faction runs out. Nothing
+; the base game ships reads as a shopkeeper -- every anonymous covered face it carries is combat gear
+; -- so a mask is as close as the assets allow. Monolith owns 2 covered faces and ISG 4, so both
+; fill from their own bare wardrobe; renegade has none of its own and wears bandit masks, four of
+; which vanilla renegade profiles already use.
+
+[ap_service_visual_stalker]
+0  = actors\stalker_neutral\stalker_neutral1a_mas2
+1  = actors\stalker_neutral\stalker_neutral1a_mask
+2  = actors\stalker_neutral\stalker_neutral1b_mas2
+3  = actors\stalker_neutral\stalker_neutral1b_mask
+4  = actors\stalker_neutral\stalker_neutral1c_mas2
+5  = actors\stalker_neutral\stalker_neutral1c_mask
+6  = actors\stalker_neutral\stalker_neutral1d_mas2
+7  = actors\stalker_neutral\stalker_neutral1d_mask
+8  = actors\stalker_neutral\stalker_neutral1e_mas2
+9  = actors\stalker_neutral\stalker_neutral1e_mask
+10 = actors\stalker_neutral\stalker_neutral1f_mas2
+11 = actors\stalker_neutral\stalker_neutral2a_gp5
+
+[ap_service_visual_dolg]
+0  = actors\stalker_dolg\stalker_do_mask
+1  = actors\stalker_dolg\stalker_do_mask_1
+2  = actors\stalker_dolg\stalker_dolg2a_mas2
+3  = actors\stalker_dolg\stalker_dolg2a_mas3
+4  = actors\stalker_dolg\stalker_dolg2a_mask
+5  = actors\stalker_dolg\stalker_dolg_2_backpack_helm_battle
+6  = actors\stalker_dolg\stalker_dolg_2_backpack_helm_battle_nogas
+7  = actors\stalker_dolg\stalker_dolg_2_backpack_helm_tactic
+8  = actors\stalker_dolg\stalker_dolg_2_backpack_helm_tactic_nogas
+9  = actors\stalker_dolg\stalker_dolg_2_balloon_helm_battle
+10 = actors\stalker_dolg\stalker_dolg_2_balloon_helm_tactic
+11 = actors\stalker_dolg\stalker_dolg_2_balloon_on_helm_tactic
+
+[ap_service_visual_freedom]
+0  = actors\stalker_freedom\stalker_freedom2a_mas2
+1  = actors\stalker_freedom\stalker_freedom2a_mas3
+2  = actors\stalker_freedom\stalker_freedom2a_mask
+3  = actors\stalker_freedom\stalker_freedom2b_mas2
+4  = actors\stalker_freedom\stalker_freedom2b_mask
+5  = actors\stalker_freedom\stalker_freedom_1_backpack_helm_battle
+6  = actors\stalker_freedom\stalker_freedom_1_backpack_helm_battle_nogas
+7  = actors\stalker_freedom\stalker_freedom_1_backpack_helm_tactic
+8  = actors\stalker_freedom\stalker_freedom_1_backpack_helm_tactic_nogas
+9  = actors\stalker_freedom\stalker_freedom_1_balloon_helm_battle
+10 = actors\stalker_freedom\stalker_freedom_1_helm_battle_nogas
+11 = actors\stalker_freedom\stalker_freedom_1_helm_tactic_nogas
+
+[ap_service_visual_csky]
+0  = actors\stalker_nebo\stalker_nebo_1_backpack_helm_battle
+1  = actors\stalker_nebo\stalker_nebo_1_backpack_helm_m40
+2  = actors\stalker_nebo\stalker_nebo_1_backpack_helm_respirator
+3  = actors\stalker_nebo\stalker_nebo_1_backpack_helm_tactic
+4  = actors\stalker_nebo\stalker_nebo_2_backpack_helm_battle
+5  = actors\stalker_nebo\stalker_nebo_2_backpack_helm_battle_nogas
+6  = actors\stalker_nebo\stalker_nebo_2_backpack_helm_tactic
+7  = actors\stalker_nebo\stalker_nebo_2_backpack_helm_tactic_nogas
+8  = actors\stalker_nebo\stalker_nebo_3_balloon_helm_battle
+9  = actors\stalker_nebo\stalker_nebo_3_balloon_helm_tactic
+10 = actors\stalker_nebo\stalker_nebo_3_helm_battle
+11 = actors\stalker_nebo\stalker_nebo_3_helm_battle_nogas
+
+[ap_service_visual_bandit]
+0  = actors\stalker_bandit\stalker_band2a_mask
+1  = actors\stalker_bandit\stalker_band_2_mask
+2  = actors\stalker_bandit\stalker_bandit1a_mask
+3  = actors\stalker_bandit\stalker_bandit1c_mask
+4  = actors\stalker_bandit\stalker_bandit_1_mask
+5  = actors\stalker_bandit\stalker_bandit_2_mask
+6  = actors\stalker_bandit\stalker_bandit_2a_gp5
+7  = actors\stalker_bandit\stalker_bandit_5_gasmask
+8  = actors\stalker_bandit\stalker_bandit6d
+9  = actors\stalker_bandit\stalker_band_ha
+10 = actors\stalker_bandit\stalker_bandit1a
+11 = actors\stalker_bandit\stalker_bandit1a_gas
+
+[ap_service_visual_killer]
+0  = actors\stalker_merc\stalker_ki_mask
+1  = actors\stalker_merc\stalker_merc_2_balloon_helm_tactic
+2  = actors\stalker_merc\stalker_merc_2_balloon_on_helm_tactic
+3  = actors\stalker_merc\stalker_merc_2_helm_battle
+4  = actors\stalker_merc\stalker_merc_2_helm_battle_nogas
+5  = actors\stalker_merc\stalker_merc_2_helm_tactic
+6  = actors\stalker_merc\stalker_merc_2_helm_tactic_nogas
+7  = actors\stalker_merc\stalker_merc_2a_gp5
+8  = actors\stalker_merc\stalker_mercen2b_mask
+9  = actors\stalker_merc\stalker_mercen_2_mask
+10 = actors\stalker_merc\stalker_merc4a
+11 = actors\stalker_merc\stalker_ki_antigas
+
+[ap_service_visual_ecolog]
+0  = actors\stalker_ecologist\stalker_ecolog_guard1_gp5
+1  = actors\stalker_ecologist\stalker_ecolog_guard1_mas2
+2  = actors\stalker_ecologist\stalker_ecolog_guard1_mas3
+3  = actors\stalker_ecologist\stalker_ecolog_guard1_mask
+4  = actors\stalker_ecologist\stalker_ecolog_guard2_gp5
+5  = actors\stalker_ecologist\stalker_ecolog_guard2_mas2
+6  = actors\stalker_ecologist\stalker_ecolog_guard2_mas3
+7  = actors\stalker_ecologist\stalker_ecolog_guard2_mask
+8  = actors\stalker_ecologist\stalker_ecolog_guard3_gp5
+9  = actors\stalker_ecologist\stalker_ecolog_guard3_mas2
+10 = actors\stalker_ecologist\stalker_ecolog_guard3_mas3
+11 = actors\stalker_ecologist\stalker_ecolog_guard3_mask
+
+[ap_service_visual_greh]
+0  = actors\stalker_greh\stalker_greh_2a_gp5
+1  = actors\stalker_greh\stalker_greh_2a_mask
+2  = actors\stalker_greh\stalker_greh_2b_gp5
+3  = actors\stalker_greh\stalker_greh_2b_mask
+4  = actors\stalker_greh\stalker_greh_2c_gp5
+5  = actors\stalker_greh\stalker_greh_2c_mask
+6  = actors\stalker_greh\stalker_greh_0c_1
+7  = actors\stalker_greh\stalker_greh_0d_face_10
+8  = actors\stalker_greh\stalker_greh_1a_face_02
+9  = actors\stalker_greh\stalker_greh_2a
+10 = actors\stalker_greh\stalker_greh_0a_1
+11 = actors\stalker_greh\stalker_greh_0a_face_07
+
+[ap_service_visual_monolith]
+0  = actors\stalker_monolith\stalker_monolith0_gp5
+1  = actors\stalker_monolith\stalker_monolith2_gp5
+2  = actors\stalker_monolith\stalker_monolith_4_proto
+3  = actors\stalker_monolith\stalker_mo_head1
+4  = actors\stalker_monolith\stalker_mo_head2
+5  = actors\stalker_monolith\stalker_mo_head_1
+6  = actors\stalker_monolith\stalker_monolith1
+7  = actors\stalker_monolith\stalker_monolith1b
+8  = actors\stalker_monolith\stalker_monolith2
+9  = actors\stalker_monolith\stalker_monolith_6
+10 = actors\stalker_monolith\stalker_monolith3a
+11 = actors\stalker_monolith\stalker_monolith3b
+
+[ap_service_visual_army]
+0  = actors\stalker_soldier\soldier_balaklava
+1  = actors\stalker_soldier\soldier_mask_green
+2  = actors\stalker_soldier\stalker_soldier_1_helm_battle
+3  = actors\stalker_soldier\stalker_soldier_1_helm_battle_nogas
+4  = actors\stalker_soldier\stalker_soldier_1_helm_tactic_nogas
+5  = actors\stalker_soldier\stalker_soldier_2_helm_battle
+6  = actors\stalker_soldier\stalker_soldier_2_helm_battle_nogas
+7  = actors\stalker_soldier\stalker_soldier_2_helm_tactic
+8  = actors\stalker_soldier\stalker_soldier_2_helm_tactic_nogas
+9  = actors\stalker_soldier\stalker_soldier_4_helm_battle
+10 = actors\stalker_soldier\stalker_soldier_4_helm_battle_nogas
+11 = actors\stalker_soldier\stalker_soldier_4_helm_tactic
+
+[ap_service_visual_isg]
+0  = actors\stalker_isg\stalker_isg_1_helm_battle
+1  = actors\stalker_isg\stalker_isg_1_helm_battle_nogas
+2  = actors\stalker_isg\stalker_isg_1_helm_tactic
+3  = actors\stalker_isg\stalker_isg_1_helm_tactic_nogas
+4  = actors\stalker_isg\stalker_isg_1a_face_1
+5  = actors\stalker_isg\stalker_isg_merc
+6  = actors\stalker_isg\stalker_isg_outfit
+7  = actors\stalker_isg\light_isg
+8  = actors\stalker_isg\stalker_isg_1a_face_2
+9  = actors\stalker_isg\stalker_isg_1a_face_3
+10 = actors\stalker_isg\stalker_isg_1a_merc
+11 = actors\stalker_isg\stalker_isg_1a_sci
+
+[ap_service_visual_renegade]
+0  = actors\stalker_bandit\stalker_band2a_mask
+1  = actors\stalker_bandit\stalker_band_2_mask
+2  = actors\stalker_bandit\stalker_bandit1a_mask
+3  = actors\stalker_bandit\stalker_bandit1b_mask
+4  = actors\stalker_bandit\stalker_bandit1c_mask
+5  = actors\stalker_bandit\stalker_bandit_1_mask
+6  = actors\stalker_bandit\stalker_bandit_2_mask
+7  = actors\stalker_bandit\stalker_bandit_5_gasmask
+8  = actors\stalker_renegade\stalker_bandit_3_face_2
+9  = actors\stalker_renegade\stalker_renegade_1a_face_2
+10 = actors\stalker_renegade\stalker_renegade_1b_face_2
+11 = actors\stalker_bandit\stalker_bandit1a

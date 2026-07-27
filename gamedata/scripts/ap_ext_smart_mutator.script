@@ -20,8 +20,10 @@ local xsquad, xcreature, xinventory, xevent = xsquad, xcreature, xinventory, xev
 local get_object_squad, alife_release = get_object_squad, alife_release
 
 local CALLBACK = ap_core_const.CALLBACK
-local SERVICE_VISUALS = ap_ext_const.SERVICE_VISUALS
 local cfg = ap_core_mcm.cfg
+-- Outpost service appearance pools (faction -> ordered visual list), loaded from ap_service_visuals.ltx
+-- at on_game_start by _load_service_visuals. Forward-declared here because _apply_service_visual reads it.
+local _service_visuals
 
 local CONQUEST_KEY = "ap_conquest"
 local SWARM_KEY = "ap_swarm"
@@ -680,22 +682,60 @@ local function _reassert_holds()
     end
 end
 
--- Dress one service in his faction's own appearance pool (ap_ext_const.SERVICE_VISUALS). Vanilla
--- dresses most roles of a faction in one model, so an outpost trader looks like any other stalker of
--- his side and two outposts on a map look like the same man. The model is picked from the NPC's own
--- id, so it is stable across loads without storing anything and differs between areas. Rides
--- _stock_member, so it fires on the first stock, again after a load (stocked is cleared there), and
--- on a trade-config drift -- never on an ordinary scan. Persistence is native: set_visual_name lands
--- on the SERVER entity (GE_CHANGE_VISUAL -> CSE_Visual::set_visual, xrServer_process_event.cpp:174)
--- and CSE_AbstractVisual serializes it in STATE_Write, so the model survives save/load and
--- offline/online, and re-applying the same one costs nothing (set_visual_name returns early when the
--- visual already matches, script_game_object2.cpp:671). An addon that dresses him from an outfit he
--- was given (DNPCAV and kin) holds the model between those points rather than being fought per scan.
--- @cost O(1) | 1 luabind (set_visual_name) once per service, none afterwards
-local function _apply_service_visual(go, member_id, faction)
-    local pool = SERVICE_VISUALS[faction]
+-- Set of visuals already worn by another service of this faction on this level, so a fresh service
+-- picks a model no sibling is wearing (one service per outpost, so per-smart is automatic; the level
+-- is the scope that matters). held.visual is the stored pick; a guard never has one. Faction and
+-- level of each held service come from its conquest data, pruned in step with the ledger.
+-- @cost O(held) | one _state.conquest hash probe per held entry, no luabind
+local function _service_visual_taken(faction, level_id)
+    local taken = {}
+    for _, held in pairs(_held_squads) do
+        local data = held.visual and _state.conquest[held.smart_id]
+        if data and data.faction == faction and data.level_id == level_id then
+            taken[held.visual] = true
+        end
+    end
+    return taken
+end
+
+-- First pool model no same-faction service wears on this level, searching from an id-derived offset
+-- so factions with room spread out; the id-indexed slot is the fallback when the pool is exhausted.
+-- @cost O(pool) + O(held) | pure Lua, no luabind
+local function _pick_service_visual(pool, member_id, entry)
+    local data = entry and _state.conquest[entry.smart_id]
+    local taken = data and _service_visual_taken(data.faction, data.level_id) or {}
+    local size = #pool
+    local start = member_id % size
+    for offset = 0, size - 1 do
+        local candidate = pool[(start + offset) % size + 1]
+        if not taken[candidate] then return candidate end
+    end
+    -- every pool model is already worn by a sibling on this level (pool smaller than the same-faction
+    -- service count): fall back to the id-indexed slot, so two services share a face.
+    ap_core_debug.debug("[MUTATOR.SMART] service_visual_pool_exhausted: faction=%s size=%d",
+        data and data.faction or "?", size)
+    return pool[start + 1]
+end
+
+-- Dress one service in his faction's own appearance pool (ap_service_visuals.ltx, loaded once at
+-- on_game_start). Vanilla dresses most roles of a faction in one model, so an outpost trader looks
+-- like any other stalker of his side and two outposts on a map look like the same man. The pick skips
+-- any model a same-faction service already wears on this level and is STORED on the entry
+-- (entry.visual), so a reload and a trade-config-drift re-fire keep the same look instead of
+-- re-rolling. Rides _stock_member, so it fires on the first stock, again after a load (stocked is
+-- cleared there), and on a trade-config drift -- never on an ordinary scan. Persistence is native:
+-- set_visual_name lands on the SERVER entity (GE_CHANGE_VISUAL -> CSE_Visual::set_visual,
+-- xrServer_process_event.cpp:174) and CSE_AbstractVisual serializes it in STATE_Write, so the model
+-- survives save/load and offline/online, and re-applying the same one costs nothing (set_visual_name
+-- returns early when the visual already matches, script_game_object2.cpp:671). An addon that dresses
+-- him from an outfit he was given (DNPCAV and kin) holds the model between those points rather than
+-- being fought per scan. A faction with no pool leaves the service in his spawn visual.
+-- @cost O(1) amortised | first pick O(pool)+O(held), reload/drift reuse is O(1), 1 luabind (set_visual_name)
+local function _apply_service_visual(go, member_id, faction, entry)
+    local pool = _service_visuals and _service_visuals[faction]
     if not pool then return end
-    local visual = pool[member_id % #pool + 1]
+    local visual = (entry and entry.visual) or _pick_service_visual(pool, member_id, entry)
+    if entry then entry.visual = visual end
     go:set_visual_name(visual, true)
     ap_core_debug.debug("[MUTATOR.SMART] service_visual: npc=%d faction=%s visual=%s",
         member_id, faction, visual)
@@ -707,7 +747,7 @@ end
 local function _stock_member(go, member_id, cfg_path, entry, faction)
     if not xcreature.make_trader(go, cfg_path, true) then return end
     entry.stocked = true
-    _apply_service_visual(go, member_id, faction)
+    _apply_service_visual(go, member_id, faction, entry)
     -- active_section names the scheme block he is running at stock time, not the job wrapper the
     -- smart assigned: beh@ap_service_spot_N_<role> once seated (the job's `active` key), and the
     -- lesser job's own block on an earlier grab, which the next selection pass upgrades him off.
@@ -1127,6 +1167,47 @@ local function _load_stock_policy()
     end
 end
 
+-- Outpost service appearance pools: ONE SECTION PER FACTION in ap_service_visuals.ltx, each an
+-- ORDERED list of visual paths (numbered keys, value is the model). Loaded once at on_game_start,
+-- mirroring _load_stock_policy. The faction set is TRADER_CFG's keys (every faction the outpost
+-- mutator serves). A faction with no section or an empty one gets no pool and its services keep their
+-- spawn visual (logged). Moved out of ap_ext_const so the pool is DLTX-overridable like the policies.
+-- @cost O(factions * lines) at load only | per line: 1 luabind heavy r_line_ex
+local VISUAL_POLICY_PATH = "alifeplus\\ap_service_visuals.ltx"
+local VISUAL_SECTION_PREFIX = "ap_service_visual_"
+
+-- One faction's [ap_service_visual_<faction>] section as an ordered list of visual paths (the key is
+-- an index, the value is the model); nil when the section is absent or empty.
+-- @cost O(lines) | per line: 1 luabind heavy r_line_ex
+local function _read_visual_pool(ini, section)
+    if not (ini and ini:section_exist(section)) then return nil end
+    local pool = {}
+    for i = 0, ini:line_count(section) - 1 do
+        local _, _, value = ini:r_line_ex(section, i, "", "")
+        if value ~= "" then pool[#pool + 1] = value end
+    end
+    return pool[1] and pool or nil
+end
+
+local function _load_service_visuals()
+    local out, count, total = nil, 0, 0
+    local ini = ini_file(VISUAL_POLICY_PATH)
+    for faction in pairs(TRADER_CFG) do
+        total = total + 1
+        local pool = _read_visual_pool(ini, VISUAL_SECTION_PREFIX .. faction)
+        if pool then
+            out = out or {}
+            out[faction] = pool
+            count = count + 1
+        end
+    end
+    _service_visuals = out
+    if count < total then
+        ap_core_debug.info("[MUTATOR.SMART] service visuals %s: %d/%d faction pools loaded, factions without one keep spawn visuals",
+            VISUAL_POLICY_PATH, count, total)
+    end
+end
+
 -- npc -> its _held_squads entry when it is an outpost SERVICE (trader / barman / mechanic / medic),
 -- else nil. Guards and non-outpost NPCs return nil; an empty ledger returns before the
 -- get_object_squad engine lookup, so with no outposts anywhere the wrapper costs one hash probe.
@@ -1438,6 +1519,7 @@ function on_game_start()
     _gate_hub_predicate(txr_routes, "check_all_routes")
     _gate_hub_predicate(ui_pda_npc_tab, "have_encrypted_pda")
     _load_stock_policy()
+    _load_service_visuals()
     CreateTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC, _scan)
     ap_core_debug.info("[MUTATOR.SMART] Initialized")
 end
