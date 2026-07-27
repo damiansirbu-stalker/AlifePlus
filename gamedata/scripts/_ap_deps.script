@@ -121,6 +121,9 @@ function on_game_start()
     end
 
     -- The boot platform line and the MCM footer come from the same builder, so they never drift.
+    -- printf lands it in xray_*.log (the log reporters attach); xlog mirrors it to <mod>.log.
+    local platform_line = (platform_status())
+    printf("~ [%s] %s", MOD_NAME, platform_line)
     xlog.get_logger(MOD_NAME, { outfile = MOD_NAME:lower() .. ".log" })
-        .info("%s", (platform_status()))
+        .info("%s", platform_line)
 end
