@@ -20,6 +20,7 @@ local floor, pairs, ipairs, tonumber = math.floor, pairs, ipairs, tonumber
 local string_match, string_sub = string.match, string.sub
 local table_sort, table_concat = table.sort, table.concat
 local xinventory, xcreature, ap_core_debug = xinventory, xcreature, ap_core_debug
+local RegisterScriptCallback, GetTalkingNpc = RegisterScriptCallback, GetTalkingNpc
 
 local SELL_MULT = 0.5
 local BUY_MULT  = 1.0
@@ -251,6 +252,17 @@ function trade(npc, seller)
     return { sold = sold, bought = bought }
 end
 
+-- Dump the trade partner's stock on debug when trade opens, via the shared xlibs util (aggregated,
+-- one line). This is the trade feature's OWN hook, decoupled from the market and outpost-service
+-- dumps, so any trader you open reports its shelf. GetTalkingNpc is the partner (mob_trade.script:30).
+-- No-op when debug is off.
+local function _on_trade_started()
+    if not ap_core_debug.enabled() then return end
+    local npc = GetTalkingNpc()
+    if npc then xinventory.dump(npc, "trade", ap_core_debug.debug) end
+end
+
 function on_game_start()
     _load_trade_policy()
+    RegisterScriptCallback(ap_core_const.CALLBACK.ACTOR_MENU_ON_TRADE_STARTED, _on_trade_started)
 end

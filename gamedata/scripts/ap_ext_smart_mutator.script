@@ -1531,6 +1531,7 @@ local function _on_squad_npc_death(squad, se_npc, _)
             entry.smart_id, entry.role, se_npc.id)
         return
     end
+    if ap_core_debug.enabled() then xinventory.dump(victim, "service", ap_core_debug.debug) end
     victim:iterate_inventory(_release_item, victim)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
         entry.smart_id, entry.role, se_npc.id)
