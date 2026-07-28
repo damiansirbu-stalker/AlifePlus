@@ -659,12 +659,13 @@ local function _pin_stationed_services_at(smart_id, now)
     end
 end
 
--- Adopt any untracked service squad stationed at a conquest smart -- covers a spawn pin missed because
--- the conquest entry was not present at spawn, regardless of the entry's services set, so a ledger
--- desync cannot leave a service unpinned.
+-- Discovery sweep: adopt any untracked service squad stationed at a conquest smart -- covers a spawn
+-- pin missed because the conquest entry was not present at spawn, regardless of the entry's services
+-- set, so a ledger desync cannot leave a service unpinned. An unpinned-and-untracked service is a
+-- load-time miss (a mid-session respawn finds its conquest entry present and is pinned at spawn), so
+-- this rides the 60s pass and the load reconcile, NOT the 10s invariant pass. `now` is the caller's.
 -- @cost O(conquest smarts) | one iter_stationed_squads walk per smart
-local function _pin_stationed_services()
-    local now = xtime.game_sec()
+local function _pin_stationed_services(now)
     for smart_id in pairs(_state.conquest) do
         _pin_stationed_services_at(smart_id, now)
     end
@@ -693,10 +694,18 @@ local function _enforce_service_post(squad, squad_id, entry, member_id, smart)
     return true
 end
 
--- Enforce the invariant for one held outpost squad: prune when gone/decayed, reassert the pin (routes
--- a service home), guards stop there, a service hands off to _enforce_service_post once online.
--- Returns false when the caller must drop the ledger entry (squad gone / smart decayed / removed).
--- @cost O(1) | _resolve_held + reassert_target; online service adds iter_member_ids + xobject.go
+-- Squad-targeting invariant for one held outpost squad: keep its scripted_target pinned to its smart,
+-- which routes it home via specific_update. reassert_target rewrites only on a mismatch, so a squad
+-- already pinned costs one field read.
+-- @cost O(1) | 1 luabind trivial (reassert_target read; +2 on a mismatch)
+local function _enforce_service_pin(squad, entry)
+    xsquad.reassert_target(squad, entry.smart_name)
+end
+
+-- Orchestrate both invariants for one held outpost squad, or prune it. Resolve to a still-ours squad
+-- (else drop the entry -- release a guard, remove a service); enforce the pin; a guard stops there; a
+-- service seated online hands to _enforce_service_post. Returns false when the caller drops the entry.
+-- @cost O(1) | _resolve_held + _enforce_service_pin; online service adds iter_member_ids + xobject.go
 local function _update_service(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
     if not squad or not _state.conquest[entry.smart_id] then
@@ -706,7 +715,7 @@ local function _update_service(squad_id, entry)
             entry.smart_id, entry.role, squad_id, squad and "released" or "gone")
         return false
     end
-    xsquad.reassert_target(squad, entry.smart_name)
+    _enforce_service_pin(squad, entry)
     if entry.role == "guard" then return true end
     local member_id
     for id in xsquad.iter_member_ids(squad) do member_id = id break end
@@ -716,14 +725,14 @@ local function _update_service(squad_id, entry)
     return _enforce_service_post(squad, squad_id, entry, member_id, smart)
 end
 
--- 10s service-invariant loop: adopt untracked services, then keep each held squad pinned and on its
--- spot job (or drop it). Light and frequent, separate from the 60s _update_mutations pass (grow /
--- decay / stock). Drops are collected then nil'd after the walk (pairs-safe).
+-- 10s invariant pass: keep each held squad pinned and on its spot job, or drop it. The discovery sweep
+-- (adopt untracked services) is NOT here -- it is a load-time concern, run on the 60s _update_mutations
+-- pass and the load reconcile. Light and frequent. Drops are collected then nil'd after the walk
+-- (pairs-safe). Timed when debug is on (null profiler = noop otherwise).
 local function _update_services()
     ResetTimeEvent(TIMER_EV, UPDATE_SERVICES_ID, UPDATE_SERVICES_SEC)
     local prof = xprofiler.new_if(ap_core_debug.enabled())
     prof:start()
-    _pin_stationed_services()
     local drop = 0
     for squad_id, entry in pairs(_held_squads) do
         if not _update_service(squad_id, entry) then
@@ -737,7 +746,7 @@ local function _update_services()
     end
     prof:stop()
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[MUTATOR.SMART] service_update: dropped=%d %.2fms", drop, prof:get_ms())
+        ap_core_debug.debug("[MUTATOR.SMART] service_update: dropped=%d enforce=%.2fms", drop, prof:get_ms())
     end
 end
 
@@ -814,24 +823,29 @@ local function _arm_member(member_id, entry)
     ap_core_debug.debug("[MUTATOR.SMART] service_armed: npc=%d weapon=%s", member_id, _service_weapon)
 end
 
--- Apply the trade config to one online service member; marks the entry stocked on success. make_trader
--- is idempotent (trade_init self-dedupes on cfg), so a re-fire before the flag sets is harmless.
--- @cost O(1) | make_trader (trade_init + optional stock) on the member
+-- Register the trade config on one online service member (trade_init only, NOT a proactive buy_supplies).
+-- The vanilla on-use path stocks the shelf the first time the player trades with him: xr_motivator:426
+-- calls trade_manager.update, which _trade_update wraps to apply the below-hub tier and defer the category
+-- filter -- so stocking is lazy and demand-driven, like a hub trader, never a shelf spawn in the scan (six
+-- services coming online at once used to stack six buy_supplies into one frame). make_trader is idempotent
+-- (trade_init self-dedupes on cfg). entry.stocked marks the profile initialised this session (cleared on
+-- load so it re-inits). Also applies appearance + sidearm, which stay proactive (cheap, not trade stock).
+-- @cost O(1) | make_trader (trade_init) + visual + arm on the member
 local function _stock_member(go, member_id, cfg_path, entry, faction)
-    if not xcreature.make_trader(go, cfg_path, true) then return end
+    if not xcreature.make_trader(go, cfg_path) then return end
     entry.stocked = true
     _apply_service_visual(go, member_id, faction, entry)
     _arm_member(member_id, entry)
-    -- active_section names the scheme block he is running at stock time, not the job wrapper the
+    -- active_section names the scheme block he is running at init time, not the job wrapper the
     -- smart assigned: beh@ap_service_spot_N_<role> once seated (the job's `active` key), and the
     -- lesser job's own block on an earlier grab, which the next selection pass upgrades him off.
     local st = db.storage[member_id]
-    ap_core_debug.debug("[MUTATOR.SMART] service_stock: smart=%d role=%s npc=%d job=%s",
+    ap_core_debug.debug("[MUTATOR.SMART] service_init: smart=%d role=%s npc=%d job=%s",
         entry.smart_id, entry.role, member_id, tostring(st and st.active_section))
 end
 
--- Stock an unstocked online member, or re-stock it when its trade config drifted off the role
--- (cfg_ltx compare). Split from _try_stock for the nesting cap.
+-- Initialise the trade config on an uninitialised online member, or re-init it when the config drifted
+-- off the role (cfg_ltx compare); the shelf restocks lazily on-use. Split from _try_stock for the nesting cap.
 local function _stock_or_refresh(go, member_id, cfg_path, entry, faction)
     if entry.stocked then
         if trade_manager.get_trade_profile(member_id, "cfg_ltx") == cfg_path then return end
@@ -847,7 +861,7 @@ end
 -- trader's runtime job carries the key, but the other three roles sit on ordinary smart jobs,
 -- so an alarm / surge / job-competition reassignment silently reverts them to the generic
 -- assortment. The cfg_ltx compare catches the drift within a scan and _stock_member re-inits
--- and restocks the role config. Stops at the first online member.
+-- the role config; the on-use path restocks it. Stops at the first online member.
 -- @cost O(members) | 1 luabind (xobject.go) per member until the online one + 1 profile read
 local function _try_stock(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
@@ -889,8 +903,8 @@ local function _log_services()
     end
 end
 
--- Scan step: stock any held service squad that is online and not yet stocked, and re-stock one
--- whose trade config drifted off its role (guards skipped).
+-- Scan step: initialise the trade config on any held service that is online and not yet initialised,
+-- and re-init one whose config drifted off its role; the shelf stocks lazily on-use, not here (guards skipped).
 -- @cost O(n) held squads | _resolve_held + member resolve + 1 profile read per service
 local function _stock_services()
     for squad_id, entry in pairs(_held_squads) do
@@ -994,14 +1008,22 @@ local function _update_mutations()
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
     local now = xtime.game_sec()
     local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
+    prof:reset():start()
     for _, mut in pairs(MUTATIONS) do _update(mut, now) end
+    prof:stop(); local update_ms = prof:get_ms()
+    prof:reset():start()
+    _pin_stationed_services(now)
+    prof:stop(); local adopt_ms = prof:get_ms()
+    prof:reset():start()
     _grow_services()
+    prof:stop(); local grow_ms = prof:get_ms()
+    prof:reset():start()
     _stock_services()
-    prof:stop()
+    prof:stop(); local stock_ms = prof:get_ms()
     if ap_core_debug.enabled() then
         _log_services()
-        ap_core_debug.debug("[MUTATOR.SMART] scan: %.2fms", prof:get_ms())
+        ap_core_debug.debug("[MUTATOR.SMART] scan: update=%.2f adopt=%.2f grow=%.2f stock=%.2f ms",
+            update_ms, adopt_ms, grow_ms, stock_ms)
     end
 end
 
