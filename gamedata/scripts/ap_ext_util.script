@@ -112,11 +112,12 @@ function is_tactically_eligible(squad, smart)
     return math_random() <= score, last_of_faction, smart_targeted, score
 end
 
---- Wild smart: not a base, no trader job. AP-domain classifier shared by area/instincts
---- generators. See xsmart.is_base / xsmart.has_stalker_jobs for the engine-side semantics.
+--- Field smart: not a base and not already hosting a hub trader -- an ordinary contested smart the
+--- takeovers (conquer / swarm / infest / territory) may claim. See xsmart.is_base /
+--- xsmart.has_stalker_jobs for the engine-side semantics.
 --- @param smart smart_terrain
 --- @return boolean
-function is_wild_smart(smart)
+function is_field_smart(smart)
     return not xsmart.is_base(smart) and not xsmart.has_stalker_jobs(smart, xsmart.JOB_TYPE_TRADER)
 end
 
