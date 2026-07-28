@@ -555,6 +555,19 @@ Territory that mutants hold becomes territory where mutants breed.
 
 ---
 
+### Outpost: Service, Post
+
+A smart terrain a faction holds long enough grows into an outpost. It spawns a single service NPC (trader, barman, mechanic, or medic) that mans a permanent post at the centre and runs the game's own trade, repair, and heal jobs.
+
+The engine holds every part and no connection between them. `trade_manager` stocks a trader from a config, `gulag_general` assigns the post and guard jobs, and the `sim_default_<faction>_<role>` profiles carry the trade dialogs and mechanic_mode. But a trader is a fixed feature of a hand-placed hub, and a smart terrain has zero faction fields at the C++ level (`CSE_ALifeSmartZone`). Nothing spawns a shopkeeper onto ground a faction wins at runtime.
+
+GSC built the faction hub around exactly this NPC. The faction leader operates as a permanent merchant from a guarded hideout, with guards whose number and gear scale with the faction [8]. The more artifact-bearing points a faction controls, the better the stalkers it fields [8]. An outpost service carries that hub economy onto conquered ground: the winner posts a shopkeeper of his own faction, stocked below the hub so the hubs stay worth the walk, dressed from the faction wardrobe, and dissolved when the claim decays.
+
+> "The in-game Zone has been shaken by furious war of factions for the new territories, resources, and control points of the important paths to the center of the Zone."
+> Clear Sky official gameplay page [4]
+
+---
+
 ### Infestation: Nest
 
 When a mutant squad's territorial instinct fires, it walks to a species-appropriate smart terrain and claims it as a nest.
