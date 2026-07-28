@@ -581,6 +581,9 @@ end
 local function _restock_deferred(trader_id)
     local trader = xobject.go(trader_id)
     if trader then
+        -- Market flow's per-trader dump: the raw restock stock, before this module's sellout/inject
+        -- reshape. The trade flow dumps the shelf on open; this captures the market's input.
+        if ap_core_debug.enabled() then xinventory.dump(trader, "market", ap_core_debug.debug) end
         _sellout_at_trader(trader)
         _inject_at_trader(trader)
     end
