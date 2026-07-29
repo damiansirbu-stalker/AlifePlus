@@ -366,6 +366,7 @@ defaults = {
 
     -- Development
     log_level = "WARN",
+    log_flush = false,
     map_markers = false,
     statistics_position = "off",
 
@@ -414,6 +415,7 @@ local stateless_overrides = {
 
 local _key_to_tab = {
     log_level = "development",
+    log_flush = "development",
     map_markers = "development",
     statistics_position = "development",
     alife_ratio = "framework",
@@ -1603,6 +1605,7 @@ function on_mcm_load()
                         {"INFO", "info"},
                         {"DEBUG", "debug"},
                     }),
+                    _check("log_flush"),
                     _list("statistics_position", {
                         {"off", "off"},
                         {"top_left", "top_left"},
