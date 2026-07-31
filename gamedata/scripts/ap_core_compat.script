@@ -8,6 +8,7 @@ local CALLBACK = ap_core_const.CALLBACK
 local _to_remove = {}
 local _pending_release = {}
 local _pending_remove = {}
+local _purge_services_pending = false
 
 -- Queue a squad id for engine-side release at on_game_load.
 -- load_state runs before objects().load() (alife_storage_manager.cpp:141), so
@@ -177,6 +178,18 @@ local function _v185_to_v186_clear_outpost_services(m_data)
     if type(holds) == "table" then _clear_service_holds(holds) end
 end
 
+--- v1.8.6 -> v1.8.7: purge every outpost-service NPC once, current or from any prior implementation,
+--- and let growth reseat them. _v185_to_v186_clear_outpost_services reached only services still in the
+--- saved ledger, so a service whose outpost decayed or that was displaced dropped out of the ledger
+--- but stayed in the world, seated on a since-renamed job that no longer resolves and reverting to a
+--- full vanilla trader that hands out tasks. Rather than sort good from bad, delete them all: an
+--- ap_service_ squad exists only as an outpost service, and growth reseats a fresh one, same as the
+--- _v185_to_v186 reset. Arms the flag; _drain_outpost_services does the delete at on_game_load, where
+--- the live squads exist. No m_data read -- the xchange log alone gates it to one run per save.
+local function _v186_to_v187_purge_outpost_services()
+    _purge_services_pending = true
+end
+
 --- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
 --- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
 local function _v155_to_v16_extract_record_save_key(m_data)
@@ -202,6 +215,7 @@ xchange.register("ap_v155_to_v16_extract_record_save_key",       _v155_to_v16_ex
 xchange.register("ap_v16_to_v17_reset_smart_mutator",            _v16_to_v17_reset_smart_mutator)
 xchange.register("ap_v17_to_v18_reset_loot_owner",               _v17_to_v18_reset_loot_owner)
 xchange.register("ap_v185_to_v186_clear_outpost_services",       _v185_to_v186_clear_outpost_services)
+xchange.register("ap_v186_to_v187_purge_outpost_services",       _v186_to_v187_purge_outpost_services)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
@@ -270,10 +284,28 @@ local function _drain_removals()
     end
 end
 
+--- Queue every outpost-service squad in the world for removal (see the _v186_to_v187 changeset). An
+--- ap_service_ squad section is AlifePlus-only (no vanilla trader carries it) and exists solely as an
+--- outpost service, so all of them go, tracked or not; the mutator's ledger self-heals on its next
+--- scan (a held entry whose squad is gone is pruned) and growth reseats fresh services. One pass over
+--- the squad set at load, a few dozen removals at most, so no frame spread. Runs at on_game_load,
+--- where the live squads exist and no update tick has run yet. iter_squads yields resolved (non-nil)
+--- squads and _queue_remove only appends, so nothing mutates SIMBOARD.squads mid-walk.
+--- @cost O(squads) section walk + O(services) queue | drained in the same on_game_load pass
+local function _drain_outpost_services()
+    for squad in xsquad.iter_squads() do
+        local sec = squad.section_name and squad:section_name()
+        if sec and sec:sub(1, 11) == "ap_service_" then _queue_remove(squad.id) end
+    end
+end
+
 --- Drain queued engine-side work. on_game_load is the documented safe mutation point: entities are
---- registered and no update tick has run yet (doc/library/modding/script-loading.md:425-455).
+--- registered and no update tick has run yet (doc/library/modding/script-loading.md:425-455). The
+--- orphan-service sweep queues into the same removal list before the drain, so one pass deletes both
+--- the changeset-queued removals and the orphans.
 local function _on_game_load()
     _drain_releases()
+    if _purge_services_pending then _purge_services_pending = false; _drain_outpost_services() end
     _drain_removals()
 end
 
