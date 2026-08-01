@@ -471,7 +471,7 @@ Invariants:
 - Ownership is the killer's squad, not the individual; dropping one member never frees the body.
 - Companions, zombified killers, and story corpses never hold a claim against the actor.
 - Relation is read at block time, so a faction turning hostile lapses its claim live.
-- The spoken lines (Half A / Flow C yield tips, Half B claimer warn) require the voicing NPC to see the corpse it reacts to and see the kill owner it addresses (actor or owning NPC); the veto still blocks, only the message is gated, so an NPC that never perceived the scene stays silent.
+- Every spoken line (the two yield tips, the claim warn) requires the voicing NPC within 30m of the body and the party it addresses, with line of sight to each (xcombat.sees_within, CHATTER_RANGE), so an NPC never comments on a kill it cannot see or one across the level. The veto still blocks, only the message is gated. The pass-up, which the player only overhears, additionally requires the actor within CHATTER_RANGE of the body.
 - Pure veto: no item transfer, no money, no save-side effect beyond the ledger.
 
 Release (current). A claim ends by time (per-flow freshness, then the 6h sweep) or by proximity (the owner squad or the actor leaving the radius). It does not end when the body is looted, so an emptied corpse stays claimed for the freshness window. The fair-release rework (todo-alifeplus-next.md) changes this to clear-on-loot and makes the near_actor wrapper authoritative over the vanilla radius; not yet implemented.

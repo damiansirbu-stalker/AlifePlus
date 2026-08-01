@@ -44,11 +44,9 @@ local MAX_WARN_VARIANTS = 16
 
 -- Seldom yield tips for Half A (an NPC leaves YOUR kill) and Flow C (you witness a pass-up). Both
 -- fire on the per-scan hot path, so they are gated by a low roll AND a shared minimum interval -- at
--- most one yield tip, A or C, per interval. Both also require the speaking NPC to SEE the corpse it is
--- declining and SEE the kill owner it yields to (the _can_voice sight gate): a line never fires for a
--- kill the NPC never perceived. Flow C is the only line the player is not a party to (it passes between
--- two other NPCs), so it also requires the ACTOR to see the speaker -- the player only hears a pass-up
--- he can actually watch, on the same sight basis as the rest, no proximity radius.
+-- most one yield tip, A or C, per interval. Both also require the speaking NPC to actually perceive the
+-- scene it talks about: it must SEE the body and the kill owner within CHATTER_RANGE (_can_voice). Flow
+-- C, which the player only overhears, additionally requires the actor within CHATTER_RANGE of the body.
 local RESERVE_YIELD_PREFIX = "st_ap_loot_reserve_yield"
 local NPCVNPC_YIELD_PREFIX = "st_ap_loot_npcvnpc_yield"
 local MAX_YIELD_VARIANTS = 16
@@ -56,6 +54,11 @@ local YIELD_TIP_CHANCE = 0.15
 -- Wall seconds (os.clock), not game_sec: throttles a player-facing tip, so it holds steady across
 -- time compression and time-skip (game_sec jumps on sleep and would reset the gate). 10 real minutes.
 local YIELD_TIP_INTERVAL_SEC = 600
+-- Chatter range (metres). A loot line is voiced only when the speaking NPC is within this of BOTH the
+-- body and the party it addresses AND has line of sight to each (xcombat.sees_within). Short, because
+-- :see alone reaches combat spotting distance, too far for speech. Also the pass-up's player-overhear
+-- gate (the actor must be within this of the body to receive a line between two other NPCs).
+local CHATTER_RANGE = 30
 
 -- victim_id -> { killer = npc_id, squad = squad_id_or_nil, t = death_game_sec }
 local _owner = nil
@@ -120,13 +123,31 @@ local function _within(pos, target, radius)
     return pos:distance_to_sqr(target) < radius * radius
 end
 
---- Does it make sense for npc to voice a loot line here -- can it currently SEE the body it reacts to
---- and the party it addresses (the actor or the owning NPC)? The one sight gate behind every loot
---- line, so an NPC never speaks about a kill it did not perceive. party nil requires only the body.
---- @cost O(1) | 1 see (xcombat.sees -> npc:see, visual-memory read), 2 when a party is given
-local function _can_voice(npc, corpse, party)
-    if not xcombat.sees(npc, corpse) then return false end
-    return not party or xcombat.sees(npc, party)
+--- Is the actor close enough to the corpse to overhear an NPC passing it up (Flow C player-overhear
+--- gate)? The pass-up is between two other NPCs, so the player only gets it when near the scene.
+--- @cost O(1) | 1 distance when the actor exists
+local function _actor_witnessing(corpse_pos)
+    local actor = db.actor
+    if not actor then return false end
+    return _within(actor:position(), corpse_pos, CHATTER_RANGE)
+end
+
+--- Can this NPC voice a loot line about body to other -- is it within CHATTER_RANGE of BOTH and looking
+--- at each (xcombat.sees_within: short range + line of sight)? The one gate behind every loot line, so
+--- an NPC never speaks about a body or a party it cannot actually see. Distance is tested before vision
+--- inside each sees_within, so a far target bails cheap. Traces speaker, both distances, and the
+--- voice/silent verdict when ap_core_debug.enabled() -- noop (the plain result) when debug is off.
+--- @cost O(1) | up to 2 sees_within, each a squared-distance compare then a visual-memory read when in range
+local function _can_voice(speaker, body, other)
+    local ok = xcombat.sees_within(speaker, body, CHATTER_RANGE)
+        and xcombat.sees_within(speaker, other, CHATTER_RANGE)
+    if ap_core_debug.enabled() then
+        local sp = speaker:position()
+        ap_core_debug.debug("%s can_voice speaker=%s body=%s(%.1fm) other=%s(%.1fm) range=%s -> %s", LOG,
+            speaker:id(), body:id(), sp:distance_to(body:position()),
+            other:id(), sp:distance_to(other:position()), CHATTER_RANGE, ok and "voice" or "silent")
+    end
+    return ok
 end
 
 --- Actor character name for the #name# slot, or nil.
@@ -150,21 +171,20 @@ local function _resolve_pooled(prefix, pool_n, name)
     return game.translate_string(string_format("%s_001", prefix))
 end
 
---- Show a seldom yield tip attributed to npc, drawn from the prefix's pool, with the #name# slot
---- filled by name (the kill owner for npc-vs-npc, the actor for reserve-own). Bails on the cheap roll
---- first (no clock read), then drops an enemy speaker (a hostile NPC never voices a courteous yield
---- line at the actor). Then the sight gate _can_voice: the speaker must currently see the corpse it is
---- declining and the kill owner it yields to (the actor for reserve-own, the owning NPC for npc-vs-npc),
---- so a line never fires for a kill it never perceived. Then the shared minimum interval, so it stays
---- rare even on the hot path. Gates the tip only; the loot exclusion is decided by the caller.
---- @cost O(1) | roll only on the common bail; 1 relation + _can_voice (1-2 see) past the roll; os.clock + _resolve_pooled only on fire
-local function _yield_tip(npc, prefix, pool_n, name, corpse, owner)
+--- Show a seldom yield tip attributed to npc (the pretender), drawn from the prefix's pool, with the
+--- #name# slot filled by name (the kill owner for npc-vs-npc, the actor for reserve-own). Bails on the
+--- cheap roll first (no clock read), then drops an enemy speaker (a hostile NPC never voices a courteous
+--- yield line at the actor), then the shared minimum interval, THEN the _can_voice sight gate -- the
+--- speaker must see the body and the owner within CHATTER_RANGE. Sight runs last (heaviest) and only
+--- past the free interval check, and the interval is consumed only when a line actually fires.
+--- @cost O(1) | roll only on the common bail; 1 relation past the roll; _can_voice only past the interval
+local function _yield_tip(npc, prefix, pool_n, name, body, owner)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local actor = db.actor
     if not actor or npc:relation(actor) >= game_object.enemy then return end
-    if not _can_voice(npc, corpse, owner) then return end
     local now = os.clock()
     if now < _yield_tip_next then return end
+    if not _can_voice(npc, body, owner) then return end
     _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
     xpda.npc_tip(npc, _resolve_pooled(prefix, pool_n, name), { sound = "news" })
 end
@@ -410,10 +430,10 @@ end
 
 --- Tip the actor that the kill is claimed: a PDA tip headed by the claimer's name + portrait, carrying
 --- a random line from the warn pool. Throttled per corpse by _tip_ttl so a held/mashed USE key warns
---- once per approach. Voiced only when _can_voice holds -- the claimer currently sees the corpse it
---- defends and the actor taking it: the veto still blocks the loot, this gates the line so a claimer
---- that never perceived the scene stays silent. Not throttled on a silent pass, so the warn fires the
---- first approach the claimer actually sees.
+--- once per approach. Voiced only when the owner (the sole NPC here) can voice it -- sees the body it
+--- defends and sees you within CHATTER_RANGE. The veto still blocks the loot; a claimer that cannot see
+--- the scene just stays silent. Not throttled on a silent pass, so the warn fires the first approach it
+--- actually sees you.
 local function _warn_once(corpse, owner)
     local corpse_id = corpse:id()
     if _tip_ttl:get(corpse_id) then return end
