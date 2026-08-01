@@ -50,7 +50,7 @@ Active opportunities:
 Territory and population:
 - Stalkers and mutants claim empty areas.
 - A conquered area belongs to the winner alone: only their squads respawn there, matched to the region's danger.
-- A held area grows one service on game time: a trader manning a permanent post at the area's center, or a barman, mechanic, or medic, plus a guard detail and residents on their patrols.
+- A held area grows into a mini base: service NPCs (trader, barman, mechanic, or medic) plus resident guards, kept manned by the game's own respawn while the hold lasts.
 - Conquests decay if nobody holds them.
 - Mutants infest lairs and buildings as nests.
 - Radiant dispatches weigh tactical soundness. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad already targets, scores low and usually stays.
@@ -170,16 +170,15 @@ Opportunities
     - Fill - A stalker squad spots the stash and hides supplies inside.
 
   Territory
-    - Area Conquer - Stalker factions take over empty territory (Ecologists excluded; mutants use Area Swarm).
-      The conqueror owns the area outright, it respawns only the winner's squads and repopulates faster while held, and the claim decays over time (MCM configurable).
-      Its squads match the region's danger: rookie levels field only novices, early levels add advanced squads, and from the mid levels north every tier holds ground.
-      A faction that already holds several areas on a level stops conquering there, so weaker factions and newcomers expand first, and no faction ever loses its last area on a level.
-    - Area Swarm - Pack and lair mutants take over empty areas the same way, the area spawning only their species while held. Solo bosses and vermin never do. Decay, cap, and spawn count tune independently from Area Conquer in MCM. All mutant species count as one side for the level cap, so mutants as a whole stay bounded per level.
+    - Area Conquer - Stalker factions take over empty wild camps (Ecologists excluded; mutants use Area Swarm; bases and story camps are never taken).
+      The conqueror owns the area outright: it respawns only the winner's squads, matched to the region's danger, and the claim decays over time (MCM configurable).
+      Who conquers follows the level's population: factions with little presence there conquer more, the dominant one less, and each faction holds a bounded number of areas per level, so newcomers and underdogs expand first.
+    - Area Swarm - Pack and lair mutants take over empty areas the same way, the area spawning only their species while held. Solo bosses and vermin never do. Mutants count as one side: they swarm more where they are few on a level and less where they already dominate. Decay, cap, and spawn count tune independently in MCM.
     - Area Infest - The same pack and lair species turn dens into nests, and only squads carrying an alpha can do it. A nest holds more squads than a swarm, replaces the original spawns entirely until it decays, and a per-level cap limits the spread.
-    - Outpost services - An area a faction holds long enough grows into an outpost with one service NPC running the game's own jobs: a trader, barman, mechanic, or medic manning a post at the outpost center, marked with the standard PDA icon and held there, so he never wanders off or trails you.
-      A faction's outposts grow the least common service first, so a map fills with varied traders, barmen, mechanics, and medics rather than only traders, bounded by per-level and per-faction caps in MCM.
-      Each service sells only its own trade (ap_outpost_stock_policy.ltx, one block per role): ammo, food and drink, medical, or tools and detectors, never weapons or armor. The trader stocks below his faction's hub, tracking your standing but a configurable number of tiers behind, so field shops never rival the hubs.
-      Each is dressed from his faction's own wardrobe so no two on a map look alike, carries a sidearm, and spawns rank-and-file rather than hub-grade, so killing one costs faction relations like any ordinary stalker. Growth runs on game time, and MCM turns it off.
+    - Outposts - A conquered area grows into a mini base: on takeover it rolls a plan of service NPCs (up to the MCM count, different roles) and resident guard squads, and the game's own respawn mans the base and replaces its dead, off screen, at the world's normal pacing, for as long as the area is held.
+      A service is a trader, barman, mechanic, or medic of the owning faction: he lives at the area like a resident, carries the standard PDA role icon and a sidearm, spawns rank-and-file, and joins the faction market.
+      Each sells only its own trade (ap_outpost_stock_policy.ltx, one block per role) and holds a limited money bankroll that refills at restock, so selling him loot for cash dries up until then. The trader stocks a configurable number of supply tiers below his faction's hub, so field shops never rival the hubs.
+    - Decay - When a claim decays the area returns to its original spawns. Resident guards simply stay behind as ordinary squads, and a service dissolves with the outpost: removed quietly if nobody is around, or demoted to an ordinary stalker in place if you are watching.
     - A taken area stays taken until its claim decays. Nobody conquers, swarms, or nests over a live takeover, and wiping the holders does not flip it.
 
 Needs

@@ -28,12 +28,18 @@
 ;                           whole.
 ;   <item section>          a row may also name one item section (energy_drink = 2); it then caps
 ;                           that section alone and overrides its category row.
+;   money                   the role's BANKROLL in rubles: the service's money is RESET to this
+;                           value on every restock. Selling to him drains it; the next restock
+;                           tops it back up -- so the cash you can extract by selling is capped
+;                           per restock cycle, like a limited-funds hub trader. Row deleted ->
+;                           his money is left to the engine.
 ;
 ; Category names match get_section_category (the same vocabulary the other policy files use).
 ; Equipped weapon and armor and quest items are never in scope -- the categorizer skips them.
 
 ; Field resupply post: ammo by the caseload plus a little of everything else.
 [ap_outpost_stock_trader]
+money                = 10000
 ammo_rounds_per_type = 60
 grenade_ammo         = 2
 grenade              = 2
@@ -54,6 +60,7 @@ other                = 0
 
 ; Food and drink are the whole trade; everything else is incidental.
 [ap_outpost_stock_barman]
+money                = 10000
 ammo_rounds_per_type = 0
 grenade_ammo         = 0
 grenade              = 0
@@ -74,6 +81,7 @@ other                = 0
 
 ; Tools, kits and parts are the whole trade. Detectors stay: reading the Zone is a tech's business.
 [ap_outpost_stock_mechanic]
+money                = 10000
 ammo_rounds_per_type = 0
 grenade_ammo         = 0
 grenade              = 0
@@ -94,6 +102,7 @@ other                = 0
 
 ; Medical is the whole trade, with rations on the side.
 [ap_outpost_stock_medic]
+money                = 10000
 ammo_rounds_per_type = 0
 grenade_ammo         = 0
 grenade              = 0

@@ -5,10 +5,10 @@
 --- gate on ap_ext_smart_mutator.INFEST_SPECIES (bosses and trash mobs never take territory), and
 --- every target filter skips taken smarts via is_taken (takeovers end by decay, not by retake).
 
-local math_random = math.random
-local xsquad, xsmart, xtime, xlevel, xcreature, xtable = xsquad, xsmart, xtime, xlevel, xcreature, xtable
+local math_random, pairs = math.random, pairs
+local xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable = xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable
 local ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer = ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer
-local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
+local ap_core_cache, ap_ext_util, ap_ext_tracker = ap_core_cache, ap_ext_util, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
@@ -104,6 +104,52 @@ local function _resolve_infest_filter(species, player_id)
     return nil
 end
 
+-- =========================================================================
+-- Level census (the saturation gate, user rulings 2026-08-01)
+-- =========================================================================
+-- Per-level squad census by community, from the ap_core_cache per-level bucket: total squads,
+-- per-community counts, mutant total. Rebuilt lazily after CENSUS_TTL_SEC real seconds (os.clock
+-- rate-limit guard); presence changes at squad-travel speed, so 10-minute staleness is invisible
+-- to an expansion gate. nil before the bucket exists (early load) -- the share check PASSES on a
+-- nil census: no data must not block anyone.
+local CENSUS_TTL_SEC = 600
+local _census = {}
+
+-- @cost O(squads on level) | 1 luabind medium (alife_object) per squad, once per level per TTL
+local function _build_census(level_id)
+    local pool = ap_core_cache.squads_on_level(level_id)
+    if not pool then return nil end
+    local by_comm, total, mutant = {}, 0, 0
+    for squad_id in pairs(pool) do
+        local squad = xobject.se(squad_id)
+        local comm = squad and squad.player_id
+        if comm then
+            total = total + 1
+            by_comm[comm] = (by_comm[comm] or 0) + 1
+            if _alignment_mutant[comm] then mutant = mutant + 1 end
+        end
+    end
+    return { at = os.clock(), total = total, mutant = mutant, by_comm = by_comm }
+end
+
+local function _get_census(level_id)
+    local census = _census[level_id]
+    if census and os.clock() - census.at < CENSUS_TTL_SEC then return census end
+    census = _build_census(level_id)
+    _census[level_id] = census
+    return census
+end
+
+-- Inverse-share eligibility: pass chance = 1 - own share of the level's squad population. A
+-- zero-presence side always passes (intruders always have a door), the dominant side passes
+-- rarely but is never banned (user ruling: less, not never). Returns pass, share (share for the
+-- reject trace).
+local function _check_census_share(census, count)
+    if not census or census.total == 0 then return true, 0 end
+    local share = count / census.total
+    return math_random() >= share, share
+end
+
 local function _squad_has_alpha(squad)
     for member_id in xsquad.iter_member_ids(squad) do
         if ap_ext_tracker.is_alpha(member_id) then return true end
@@ -131,7 +177,12 @@ local function _eligible_conquer(trace, squad, now, level_id, budget)
     if not p_ok then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
-    if xsmart.get_faction_smart_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level then
+    local census = _get_census(level_id)
+    local share_ok, share = _check_census_share(census, census and (census.by_comm[squad.player_id] or 0) or 0)
+    if not share_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    end
+    if ap_ext_smart_mutator.conquest_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
     end
     if budget.remaining <= 0 then
@@ -170,7 +221,12 @@ local function _eligible_swarm(trace, squad, species, now, level_id, budget)
     if not p_ok then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
-    if xsmart.get_faction_smart_count(_alignment_mutant, level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level then
+    local census = _get_census(level_id)
+    local share_ok, share = _check_census_share(census, census and census.mutant or 0)
+    if not share_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    end
+    if ap_ext_smart_mutator.swarm_count(level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
     end
     if budget.remaining <= 0 then
@@ -211,6 +267,11 @@ local function _eligible_infest(trace, squad, species, now, level_id, budget)
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
     end
     if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
+    local census = _get_census(level_id)
+    local share_ok, share = _check_census_share(census, census and census.mutant or 0)
+    if not share_ok then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    end
     if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
     if not base_filter then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end

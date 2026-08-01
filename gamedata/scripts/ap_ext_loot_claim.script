@@ -13,7 +13,7 @@
 local type, tostring, rawget, RegisterScriptCallback = type, tostring, rawget, RegisterScriptCallback
 local string_format, math_random = string.format, math.random
 local xevent, xttltable, xcreature, xsquad = xevent, xttltable, xcreature, xsquad
-local xtime, xobject, xpda, xinventory = xtime, xobject, xpda, xinventory
+local xtime, xobject, xpda, xinventory, xcombat = xtime, xobject, xpda, xinventory, xcombat
 local INVALID_BONE_ID = xconst.INVALID_BONE_ID
 local level, game, game_relations, game_object = level, game, game_relations, game_object
 local CALLBACK = ap_core_const.CALLBACK
@@ -44,8 +44,11 @@ local MAX_WARN_VARIANTS = 16
 
 -- Seldom yield tips for Half A (an NPC leaves YOUR kill) and Flow C (you witness a pass-up). Both
 -- fire on the per-scan hot path, so they are gated by a low roll AND a shared minimum interval -- at
--- most one yield tip, A or C, per interval. Flow C additionally requires the actor to be
--- within WITNESS_RANGE of the corpse (it is NPC-vs-NPC; only tip what the player can actually see).
+-- most one yield tip, A or C, per interval. Both also require the speaking NPC to SEE the corpse it is
+-- declining and SEE the kill owner it yields to (the _can_voice sight gate): a line never fires for a
+-- kill the NPC never perceived. Flow C is the only line the player is not a party to (it passes between
+-- two other NPCs), so it also requires the ACTOR to see the speaker -- the player only hears a pass-up
+-- he can actually watch, on the same sight basis as the rest, no proximity radius.
 local RESERVE_YIELD_PREFIX = "st_ap_loot_reserve_yield"
 local NPCVNPC_YIELD_PREFIX = "st_ap_loot_npcvnpc_yield"
 local MAX_YIELD_VARIANTS = 16
@@ -53,7 +56,6 @@ local YIELD_TIP_CHANCE = 0.15
 -- Wall seconds (os.clock), not game_sec: throttles a player-facing tip, so it holds steady across
 -- time compression and time-skip (game_sec jumps on sleep and would reset the gate). 10 real minutes.
 local YIELD_TIP_INTERVAL_SEC = 600
-local WITNESS_RANGE = 50
 
 -- victim_id -> { killer = npc_id, squad = squad_id_or_nil, t = death_game_sec }
 local _owner = nil
@@ -118,12 +120,13 @@ local function _within(pos, target, radius)
     return pos:distance_to_sqr(target) < radius * radius
 end
 
---- Is the actor close enough to the corpse to witness an NPC passing it up (Flow C tip gate)?
---- @cost O(1) | 1 distance when the actor exists
-local function _actor_witnessing(corpse_pos)
-    local actor = db.actor
-    if not actor then return false end
-    return _within(actor:position(), corpse_pos, WITNESS_RANGE)
+--- Does it make sense for npc to voice a loot line here -- can it currently SEE the body it reacts to
+--- and the party it addresses (the actor or the owning NPC)? The one sight gate behind every loot
+--- line, so an NPC never speaks about a kill it did not perceive. party nil requires only the body.
+--- @cost O(1) | 1 see (xcombat.sees -> npc:see, visual-memory read), 2 when a party is given
+local function _can_voice(npc, corpse, party)
+    if not xcombat.sees(npc, corpse) then return false end
+    return not party or xcombat.sees(npc, party)
 end
 
 --- Actor character name for the #name# slot, or nil.
@@ -150,12 +153,16 @@ end
 --- Show a seldom yield tip attributed to npc, drawn from the prefix's pool, with the #name# slot
 --- filled by name (the kill owner for npc-vs-npc, the actor for reserve-own). Bails on the cheap roll
 --- first (no clock read), then drops an enemy speaker (a hostile NPC never voices a courteous yield
---- line at the actor), then the shared minimum interval, so it stays rare even on the hot path.
---- @cost O(1) | roll only on the common bail; 1 relation luabind past the roll; os.clock + _resolve_pooled only on fire
-local function _yield_tip(npc, prefix, pool_n, name)
+--- line at the actor). Then the sight gate _can_voice: the speaker must currently see the corpse it is
+--- declining and the kill owner it yields to (the actor for reserve-own, the owning NPC for npc-vs-npc),
+--- so a line never fires for a kill it never perceived. Then the shared minimum interval, so it stays
+--- rare even on the hot path. Gates the tip only; the loot exclusion is decided by the caller.
+--- @cost O(1) | roll only on the common bail; 1 relation + _can_voice (1-2 see) past the roll; os.clock + _resolve_pooled only on fire
+local function _yield_tip(npc, prefix, pool_n, name, corpse, owner)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local actor = db.actor
     if not actor or npc:relation(actor) >= game_object.enemy then return end
+    if not _can_voice(npc, corpse, owner) then return end
     local now = os.clock()
     if now < _yield_tip_next then return end
     _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
@@ -243,7 +250,7 @@ local function _excluded_reserve_own(v, obj)
             actor_pos:distance_to(corpse_pos), cfg.loot_reserve_own_radius,
             reserved and "reserved" or "lapsed")
     end
-    if reserved then _yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n, _actor_name()) end
+    if reserved then _yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n, _actor_name(), obj, actor) end
     return reserved
 end
 
@@ -262,22 +269,23 @@ local function _excluded_squad_claim(v, obj, looker)
     if not _fresh(v, cfg.loot_block_npc_vs_npc_ttl) then return false end
     local corpse_pos = _corpse_pos(obj)
     local radius = cfg.loot_block_npc_vs_npc_radius
-    local blocked, owner_name
+    local blocked, owner_name, owner_obj
     if v.squad then
         local looker_squad = get_object_squad(looker)
         if looker_squad and looker_squad.id == v.squad then return false end
         local squad = xobject.se(v.squad)
-        blocked = xsquad.is_squad(squad) and _first_member_within(squad, corpse_pos, radius) ~= nil
+        owner_obj = xsquad.is_squad(squad) and _first_member_within(squad, corpse_pos, radius) or nil
+        blocked = owner_obj ~= nil
         if blocked then owner_name = xsquad.get_commander_name(squad) end
     else
         if v.killer == looker:id() then return false end
         local owner = xobject.go(v.killer)
         if not owner or not owner:alive() then return false end
         blocked = _within(owner:position(), corpse_pos, radius)
-        if blocked then owner_name = owner:character_name() end
+        if blocked then owner_name, owner_obj = owner:character_name(), owner end
     end
     if blocked and _actor_witnessing(corpse_pos) then
-        _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n, owner_name)
+        _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n, owner_name, obj, owner_obj)
     end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s npc_vs_npc corpse=%s owner=%s looker=%s -> %s", LOG, corpse_id,
@@ -402,9 +410,15 @@ end
 
 --- Tip the actor that the kill is claimed: a PDA tip headed by the claimer's name + portrait, carrying
 --- a random line from the warn pool. Throttled per corpse by _tip_ttl so a held/mashed USE key warns
---- once per approach.
-local function _warn_once(corpse_id, owner)
+--- once per approach. Voiced only when _can_voice holds -- the claimer currently sees the corpse it
+--- defends and the actor taking it: the veto still blocks the loot, this gates the line so a claimer
+--- that never perceived the scene stays silent. Not throttled on a silent pass, so the warn fires the
+--- first approach the claimer actually sees.
+local function _warn_once(corpse, owner)
+    local corpse_id = corpse:id()
     if _tip_ttl:get(corpse_id) then return end
+    local actor = db.actor
+    if not actor or not _can_voice(owner, corpse, actor) then return end
     _tip_ttl:set(corpse_id, true)
     xpda.npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _actor_name()), { sound = "beep_1" })
 end
@@ -424,7 +438,7 @@ local function _on_before_key_press(_key, bind, _dis, flags)
     local owner = _claim_owner(obj)
     if not owner then return end
     flags.ret_value = false
-    _warn_once(obj:id(), owner)
+    _warn_once(obj, owner)
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s blocked open corpse=%s owner=%s", LOG, obj:id(), owner:id())
     end
@@ -438,10 +452,11 @@ end
 local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     if not cfg.loot_block_npc_enabled then return end
     if not xinventory.is_corpse_take(mode, bag) then return end
-    local owner = _claim_owner(xobject.go(npc_id))
+    local corpse = xobject.go(npc_id)
+    local owner = _claim_owner(corpse)
     if not owner then return end
     xinventory.deny_move(flags)
-    _warn_once(npc_id, owner)
+    _warn_once(corpse, owner)
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner:id())
     end
@@ -453,10 +468,11 @@ end
 --- @cost O(1) | master/half compare first; claim lookup only on a Dot Marks corpse interact
 local function _veto_dotmarks(id, flags)
     if not cfg.loot_block_npc_enabled or not flags or not id then return end
-    local owner = _claim_owner(xobject.go(id))
+    local corpse = xobject.go(id)
+    local owner = _claim_owner(corpse)
     if not owner then return end
     flags.ret_value = false
-    _warn_once(id, owner)
+    _warn_once(corpse, owner)
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s blocked dotmarks corpse=%s owner=%s", LOG, id, owner:id())
     end

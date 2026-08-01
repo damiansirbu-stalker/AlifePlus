@@ -190,6 +190,48 @@ local function _v186_to_v187_purge_outpost_services()
     _purge_services_pending = true
 end
 
+--- v1.8.6 -> v1.8.7: outpost mini-base redesign (plan rows + pin; no spot job, no visuals, no
+--- respawn-pacing writes). Purge every outpost-service NPC in the world (any prior implementation,
+--- the _v186_to_v187 sweep reused) and reset every conquest entry's outpost state: services
+--- cleared and the plan marker (guards) dropped, so the mutator rolls a FRESH plan under the
+--- current MCM sliders for each legacy held smart at restore. Service holds drop with their
+--- squads. Old pinned-guard holds (the retired forced-stay garrison feature) drop too and their
+--- squads are queued for RELEASE -- they were ordinary conquest spawns, so clearing the pin
+--- returns them to the sim they came from.
+-- Reset one saved conquest entry's outpost state: services cleared, plan marker + dead field dropped.
+local function _reset_saved_plan(data)
+    if type(data) ~= "table" then return end
+    if type(data.services) == "table" then _clear_services(data.services) end
+    data.guards = nil
+    data.respawn_idle_base = nil
+end
+
+-- Drop the old pinned-guard holds and queue their squads for release back to the sim.
+local function _release_saved_guard_holds(holds)
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for squad_id, entry in pairs(holds) do
+        if type(entry) == "table" and entry.role == "guard" then
+            _queue_release(squad_id)
+            _to_remove[#_to_remove + 1] = squad_id
+        end
+    end
+    for i = 1, #_to_remove do holds[_to_remove[i]] = nil end
+end
+
+local function _v187_to_v188_reset_outpost_plans(m_data)
+    local saved = m_data.ap_ext_smart_mutator
+    local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
+    if type(conquest) == "table" then
+        for _, data in pairs(conquest) do _reset_saved_plan(data) end
+    end
+    local holds = m_data.ap_ext_smart_mutator_holds
+    if type(holds) == "table" then
+        _clear_service_holds(holds)
+        _release_saved_guard_holds(holds)
+    end
+    _purge_services_pending = true
+end
+
 --- v1.5.5 -> v1.6: extract activity record save key out of m_data.ap_core_broker
 --- into its own m_data.ap_core_record. Idempotent: no-op once the old keys are gone.
 local function _v155_to_v16_extract_record_save_key(m_data)
@@ -216,6 +258,13 @@ xchange.register("ap_v16_to_v17_reset_smart_mutator",            _v16_to_v17_res
 xchange.register("ap_v17_to_v18_reset_loot_owner",               _v17_to_v18_reset_loot_owner)
 xchange.register("ap_v185_to_v186_clear_outpost_services",       _v185_to_v186_clear_outpost_services)
 xchange.register("ap_v186_to_v187_purge_outpost_services",       _v186_to_v187_purge_outpost_services)
+xchange.register("ap_v187_to_v188_reset_outpost_plans",          _v187_to_v188_reset_outpost_plans)
+-- Second arming of the same purge: saves that already stamped v187_to_v188 through the earlier,
+-- squad-only drain still carry orphaned service NPCs; this re-runs the (now NPC-aware) drain once.
+local function _v188_purge_orphan_service_npcs()
+    _purge_services_pending = true
+end
+xchange.register("ap_v188_purge_orphan_service_npcs",            _v188_purge_orphan_service_npcs)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
@@ -284,18 +333,63 @@ local function _drain_removals()
     end
 end
 
---- Queue every outpost-service squad in the world for removal (see the _v186_to_v187 changeset). An
---- ap_service_ squad section is AlifePlus-only (no vanilla trader carries it) and exists solely as an
---- outpost service, so all of them go, tracked or not; the mutator's ledger self-heals on its next
---- scan (a held entry whose squad is gone is pruned) and growth reseats fresh services. One pass over
---- the squad set at load, a few dozen removals at most, so no frame spread. Runs at on_game_load,
---- where the live squads exist and no update tick has run yet. iter_squads yields resolved (non-nil)
---- squads and _queue_remove only appends, so nothing mutates SIMBOARD.squads mid-walk.
---- @cost O(squads) section walk + O(services) queue | drained in the same on_game_load pass
+-- Service ROLE from a sim_default profile section ("sim_default_stalker_trader" -> "trader"),
+-- nil for every other section. The NPC-level identity of an outpost service: the profile persists
+-- on the server entity for life, squad or no squad.
+local _SERVICE_ROLES = { trader = true, barman = true, mechanic = true, medic = true }
+local function _service_profile_role(sec)
+    local role = sec and sec:match("^sim_default_%a+_(%a+)$")
+    return (role and _SERVICE_ROLES[role]) and role or nil
+end
+
+--- Purge every outpost-service NPC in the world, by BOTH identities (see the _v186_to_v187 and
+--- _v188 changesets). Squad identity: an ap_service_ squad section is AlifePlus-only, so every
+--- such squad is queued for removal, tracked or not. NPC identity: a stalker wearing a
+--- sim_default_<faction>_<role> service profile with NO resolving squad is an ORPHAN leftover --
+--- old builds could delete a service squad out from under its member, and a squadless NPC is
+--- invisible to the squad sweep, standing or wandering forever (field, 2026-08-01: an orphaned
+--- trader walked Cordon and survived every purge). Vanilla story mode never leaves sim_default
+--- service profiles squadless, so an orphan match is ours by construction; squadded foreign
+--- sim_default NPCs are untouched. One pass over the server-object pool at load (once per save
+--- lineage, the changeset gates it), then the queues drain in the same on_game_load pass.
+--- @cost O(CSE pool) one-shot walk + O(services) queue | migration-only, never a per-session cost
+-- Collector for one CSE: append a squadless service NPC's id to `orphans`. An NPC whose group_id
+-- resolves to a live squad is left to the squad sweep.
+local function _collect_orphan_service(se, orphans)
+    if not _service_profile_role(se.section_name and se:section_name()) then return end
+    local squad = xsquad.get_squad_by_member(se.id)
+    if squad and xsquad.is_squad(squad) then return end
+    orphans[#orphans + 1] = se.id
+end
+
+-- Release one collected orphan by id (PDA spot first), logging per NPC when debug is on.
+local function _release_orphan_service(sim, npc_id, debug_on)
+    local se = xobject.se(npc_id)
+    if not se then return 0 end
+    stalker_generic.remove_level_spot(npc_id)
+    sim:release(se, true)
+    if debug_on then
+        ap_core_debug.debug("[COMPAT] orphan_service_released: npc=%d", npc_id)
+    end
+    return 1
+end
+
 local function _drain_outpost_services()
+    local sim = alife()
+    if not sim then return end
     for squad in xsquad.iter_squads() do
         local sec = squad.section_name and squad:section_name()
         if sec and sec:sub(1, 11) == "ap_service_" then _queue_remove(squad.id) end
+    end
+    local orphans = {}
+    sim:iterate_objects(function(se) _collect_orphan_service(se, orphans) end)
+    local debug_on = ap_core_debug.enabled()
+    local released = 0
+    for i = 1, #orphans do
+        released = released + _release_orphan_service(sim, orphans[i], debug_on)
+    end
+    if released > 0 then
+        ap_core_debug.warn("[COMPAT] orphan_service_purge: released=%d squadless service NPCs", released)
     end
 end
 

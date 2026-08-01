@@ -306,14 +306,15 @@ defaults = {
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
 
-    -- Area conquest (exclusive spawn / sole ownership, human factions)
+    -- Area conquest (exclusive spawn / sole ownership, human factions). Outpost plan sliders:
+    -- services/guards rolled once per conquest; respawn pacing is the world's own (no knob).
     mutator_area_conquest_mutate_smart = true,
     mutator_area_conquest_spawn_num = 2,
     mutator_area_conquest_decay_hours = 120,
-    mutator_area_conquest_respawn_minutes = 60,
     mutator_area_conquest_grow_services = true,
+    mutator_area_conquest_services_per_smart = 1,
+    mutator_area_conquest_guards_per_smart = 1,
     mutator_area_conquest_services_max_per_level = 3,
-    mutator_area_conquest_services_max_per_faction_role = 1,
     mutator_area_conquest_trader_supplies_penalty = 1,
     mutator_area_conquest_trader_supplies_tier = 4,
 
@@ -321,14 +322,12 @@ defaults = {
     mutator_area_swarm_mutate_smart = true,
     mutator_area_swarm_spawn_num = 2,
     mutator_area_swarm_decay_hours = 48,
-    mutator_area_swarm_respawn_minutes = 60,
 
     -- Area infest (exclusive spawn replacement; elevated numbers are its identity)
     mutator_area_infest_mutate_smart = true,
     mutator_area_infest_max_per_level = 3,
     mutator_area_infest_spawn_num = 4,
     mutator_area_infest_decay_hours = 48,
-    mutator_area_infest_respawn_minutes = 60,
 
     -- Creature mutator: Alpha (ap_ext_object_mutator; combat identity of the earned alpha status).
     -- max_pct = TOTAL percent at alpha level 10; per-level effect scales linearly.
@@ -551,7 +550,6 @@ local _key_to_tab = {
     mutator_area_infest_max_per_level = "mutators/infest",
     mutator_area_infest_spawn_num = "mutators/infest",
     mutator_area_infest_decay_hours = "mutators/infest",
-    mutator_area_infest_respawn_minutes = "mutators/infest",
     mutator_alpha_hit_power_dealt_enabled = "creatures/alpha",
     mutator_alpha_hit_power_dealt_max_pct = "creatures/alpha",
     mutator_alpha_hit_power_taken_enabled = "creatures/alpha",
@@ -599,16 +597,15 @@ local _key_to_tab = {
     mutator_area_conquest_mutate_smart = "mutators/conquest",
     mutator_area_conquest_spawn_num = "mutators/conquest",
     mutator_area_conquest_decay_hours = "mutators/conquest",
-    mutator_area_conquest_respawn_minutes = "mutators/conquest",
     mutator_area_conquest_grow_services = "mutators/conquest",
+    mutator_area_conquest_services_per_smart = "mutators/conquest",
+    mutator_area_conquest_guards_per_smart = "mutators/conquest",
     mutator_area_conquest_services_max_per_level = "mutators/conquest",
-    mutator_area_conquest_services_max_per_faction_role = "mutators/conquest",
     mutator_area_conquest_trader_supplies_penalty = "mutators/conquest",
     mutator_area_conquest_trader_supplies_tier = "mutators/conquest",
     mutator_area_swarm_mutate_smart = "mutators/swarm",
     mutator_area_swarm_spawn_num = "mutators/swarm",
     mutator_area_swarm_decay_hours = "mutators/swarm",
-    mutator_area_swarm_respawn_minutes = "mutators/swarm",
     consequence_harvest_rob_enabled = "consequences/harvest_rob",
     consequence_harvest_rob_rush = "consequences/harvest_rob",
     consequence_harvest_rob_max_squads = "consequences/harvest_rob",
@@ -804,10 +801,10 @@ function on_mcm_load()
                             _check("mutator_area_conquest_mutate_smart"),
                             _track("mutator_area_conquest_spawn_num", 1, 5, 1),
                             _track("mutator_area_conquest_decay_hours", 0, 168, 4),
-                            _track("mutator_area_conquest_respawn_minutes", 1, 720, 1),
                             _check("mutator_area_conquest_grow_services"),
-                            _track("mutator_area_conquest_services_max_per_level", 1, 6, 1),
-                            _track("mutator_area_conquest_services_max_per_faction_role", 1, 3, 1),
+                            _track("mutator_area_conquest_services_per_smart", 1, 3, 1),
+                            _track("mutator_area_conquest_guards_per_smart", 0, 3, 1),
+                            _track("mutator_area_conquest_services_max_per_level", 1, 8, 1),
                             _track("mutator_area_conquest_trader_supplies_penalty", 0, 4, 1),
                             _track("mutator_area_conquest_trader_supplies_tier", 1, 5, 1),
                         },
@@ -821,7 +818,6 @@ function on_mcm_load()
                             _check("mutator_area_swarm_mutate_smart"),
                             _track("mutator_area_swarm_spawn_num", 1, 5, 1),
                             _track("mutator_area_swarm_decay_hours", 0, 168, 4),
-                            _track("mutator_area_swarm_respawn_minutes", 1, 720, 1),
                         },
                     },
                     {
@@ -834,7 +830,6 @@ function on_mcm_load()
                             _track("mutator_area_infest_max_per_level", 1, 5, 1),
                             _track("mutator_area_infest_spawn_num", 1, 5, 1),
                             _track("mutator_area_infest_decay_hours", 0, 168, 4),
-                            _track("mutator_area_infest_respawn_minutes", 1, 720, 1),
                         },
                     },
                 },
