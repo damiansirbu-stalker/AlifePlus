@@ -237,7 +237,7 @@ for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
 -- (any other live entry -- cross-identity or cross-type; takeovers end by decay, never by another
 -- takeover). Returns "refreshed" or "rejected" when existing state decides the call, nil when
 -- _mutate proceeds to a fresh apply. Split out of _mutate to stay under the complexity cap.
-local function _try_existing(mut, existing, smart_id, identity, now)
+local function _resolve_entry(mut, existing, smart_id, identity, now)
     if mut.refresh and existing and existing.faction == identity then
         existing[mut.ts_field] = now
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s (refresh)", mut.name, smart_id, mut.id_word, identity)
@@ -268,7 +268,7 @@ local function _mutate(mut, smart_id, identity, level_id)
     if not cfg or not cfg[mut.mutate_cfg] then return false end
     local tbl = _state[mut.name]
     local now = xtime.game_sec()
-    local handled = _try_existing(mut, tbl[smart_id], smart_id, identity, now)
+    local handled = _resolve_entry(mut, tbl[smart_id], smart_id, identity, now)
     if handled then return handled == "refreshed" end
     if mut.allow and not mut.allow[identity] then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (not in allowlist)", mut.name, smart_id, mut.id_word, identity)
@@ -367,7 +367,7 @@ end
 -- @cost O(roles) * O(conquered) meter
 -- Live count of one role for this faction on the level when it is still eligible for this plan
 -- (has a trade config, not already in the plan's taken set), else nil. Split for the nesting cap.
-local function _eligible_role_count(data, role, taken)
+local function _get_eligible_role_count(data, role, taken)
     if taken[role] or not _role_cfg_path(data.faction, role) then return nil end
     return _faction_role_count_on_level(data.level_id, data.faction, role)
 end
@@ -376,7 +376,7 @@ local function _pick_service_role(data, taken)
     local best_role, best_count
     for i = 1, #SERVICE_ROLES do
         local role = SERVICE_ROLES[i]
-        local count = _eligible_role_count(data, role, taken)
+        local count = _get_eligible_role_count(data, role, taken)
         if count and (not best_count or count < best_count) then
             best_role, best_count = role, count
         end
@@ -605,7 +605,7 @@ end
 
 -- Initialise the trade config on an uninitialised online member, or re-init it when the config drifted
 -- off the role (cfg_ltx compare); the shelf restocks lazily on-use. Split from _try_stock for the nesting cap.
-local function _stock_or_refresh(go, member_id, cfg_path, entry)
+local function _ensure_trade_config(go, member_id, cfg_path, entry)
     if entry.stocked then
         if trade_manager.get_trade_profile(member_id, "cfg_ltx") == cfg_path then return end
         ap_core_debug.debug("[MUTATOR.SMART] service_cfg_drift: smart=%d role=%s npc=%d",
@@ -631,7 +631,7 @@ local function _try_stock(squad_id, entry)
     for member_id in xsquad.iter_member_ids(squad) do
         local go = xobject.go(member_id)
         if go then
-            _stock_or_refresh(go, member_id, cfg_path, entry)
+            _ensure_trade_config(go, member_id, cfg_path, entry)
             _ensure_service_icon(go, member_id, entry.role)
             return
         end
@@ -737,7 +737,7 @@ end
 
 -- Decay teardown (user rulings 2026-08-01): remove OUR state and rows, leave the world alone.
 -- Guard squads stay behind untouched as ordinary residents (only their ledger entries drop);
--- services dissolve per _dissolve_service. Called from _decay_one.
+-- services dissolve per _dissolve_service. Called from _decay_entry.
 -- @cost O(n) held squads | unmake or remove per service at this smart
 local function _release_holds_for_smart(smart_id, smart, data)
     _clear_plan_rows(smart, data)
@@ -757,7 +757,7 @@ end
 
 -- Clear the respawn entry for one decayed record and log it. Conquest also tears down its outpost:
 -- release the held guards / services and clear their respawn entries.
-local function _decay_one(mut, smart_id, data, ts, now)
+local function _decay_entry(mut, smart_id, data, ts, now)
     local smart = xobject.se(smart_id)
     if smart then
         mut.clear(smart, mut.key)
@@ -772,7 +772,7 @@ end
 -- pass re-applies the rows for the load path and the on_try_respawn handler re-asserts the faction
 -- per respawn; faction_controlled is not reverted by the engine, only cleared at decay. Respawn
 -- TIMING is never touched -- pacing belongs to the world (vanilla respawn_idle, ZCP's config, AlifeBalance).
-local function _reapply_one(mut, smart_id, data)
+local function _reapply_entry(mut, smart_id, data)
     local smart = xobject.se(smart_id)
     if not smart then return end
     mut.apply(smart, mut.key, data.faction, cfg[mut.num_cfg])
@@ -785,7 +785,7 @@ end
 
 -- Re-apply live entries and decay expired ones for one mutation type.
 -- @cost O(n) entries of this type | 1 luabind (xobject.se) per entry
-local function _update(mut, now)
+local function _update_entries(mut, now)
     if not cfg or not cfg[mut.mutate_cfg] then return end
     local tbl = _state[mut.name]
     local decay_sec = cfg[mut.decay_cfg] * 3600
@@ -793,11 +793,11 @@ local function _update(mut, now)
     for smart_id, data in pairs(tbl) do
         local ts = data[mut.ts_field]
         if decay_sec > 0 and ts and (now - ts) > decay_sec then
-            _decay_one(mut, smart_id, data, ts, now)
+            _decay_entry(mut, smart_id, data, ts, now)
             count = count + 1
             _decay_collector[count] = smart_id
         else
-            _reapply_one(mut, smart_id, data)
+            _reapply_entry(mut, smart_id, data)
         end
     end
     for i = 1, count do
@@ -815,7 +815,7 @@ local function _update_mutations()
     local now = xtime.game_sec()
     local prof = xprofiler.new_if(ap_core_debug.enabled())
     prof:reset():start()
-    for _, mut in pairs(MUTATIONS) do _update(mut, now) end
+    for _, mut in pairs(MUTATIONS) do _update_entries(mut, now) end
     prof:stop(); local update_ms = prof:get_ms()
     prof:reset():start()
     _pin_stationed_services(now)
@@ -1058,7 +1058,7 @@ end
 -- npc -> its _held_squads entry when it is an outpost SERVICE (trader / barman / mechanic / medic),
 -- else nil. Guards and non-outpost NPCs return nil; an empty ledger returns before the
 -- get_object_squad engine lookup, so with no outposts anywhere the wrapper costs one hash probe.
-local function _held_service_entry(npc)
+local function _get_service_entry(npc)
     if not next(_held_squads) then return nil end
     local squad = get_object_squad(npc)
     local entry = squad and _held_squads[squad.id]
@@ -1230,7 +1230,7 @@ end
 -- (preempted or vanilla).
 local _org_trade_update
 local function _trade_update(npc, force_refresh)
-    local entry = npc and _held_service_entry(npc)
+    local entry = npc and _get_service_entry(npc)
     if not entry or not cfg then return _org_trade_update(npc, force_refresh) end
     local id = npc:id()
     local stamp = trade_manager.get_trade_profile(id, "resupply_time")
@@ -1252,7 +1252,7 @@ end
 local _org_get_trader_type
 local _trader_type_by_role
 local function _get_trader_type(npc)
-    local entry = npc and _held_service_entry(npc)
+    local entry = npc and _get_service_entry(npc)
     local trader_type = entry and _trader_type_by_role[entry.role]
     if trader_type then return trader_type end
     return _org_get_trader_type(npc)
@@ -1302,7 +1302,7 @@ end
 -- allows: preconditions resolve by NAME on every evaluation (PhraseScript.cpp:185-218), never bound
 -- at dialog load. dm_ordered_task_completed_dialog is deliberately left open, so a mission taken
 -- before this gate existed can still be turned in.
--- @cost O(1) | 1 luabind (who_is_npc) + the _held_service_entry probe, on dialog open only
+-- @cost O(1) | 1 luabind (who_is_npc) + the _get_service_entry probe, on dialog open only
 local function _make_hub_gate(org)
     return function(first_speaker, second_speaker)
         local npc = first_speaker and second_speaker
