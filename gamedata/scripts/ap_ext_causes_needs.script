@@ -302,12 +302,11 @@ function on_game_start()
         -- Cross-map peer row. INV_AGGRESSION pairs with GREED so peaceful greedy factions
         -- (Ecologists, Clear Sky, Loners, Freedom) travel to other-map traders; aggressive
         -- factions stay home. Alignment widens to the off-map traveler set; the on-map
-        -- SUPPLY_TRADER stays alignment_human. Filter is the same prop-only
-        -- has_service_npc_at_smart used on-map; it is cross-level safe via ap_core_cache's
-        -- standalone-role index (id-sets keyed by smart_id, populated from CSE positions at
-        -- warmup, no online dependency).
+        -- SUPPLY_TRADER stays alignment_human. Filter is prop-only xsmart.is_base -- a faction base
+        -- is where a trader sits; offline / cross-level safe (base is an LTX prop). The trade never
+        -- executes off-map (commander offline); arrival resets the supply need.
         { cause = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap", need = "supply",
-          filter = ap_core_util.has_service_npc_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
+          filter = xsmart.is_base, alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
         -- Barter: peer answer to the supply drive alongside the trader causes. Instead of a service
         -- NPC it routes to any non-hostile occupied smart (has_peer_squad_at_smart + exclude_enemy)
@@ -317,11 +316,13 @@ function on_game_start()
         { cause = CAUSE.BARTER, name = "barter", need = "supply",
           filter = ap_core_util.has_peer_squad_at_smart, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.RELATION } },
-        -- Cross-map peer row, mirror of supply_trader_offmap: peaceful greedy factions travel to a
-        -- neighbor map to barter; aggressive factions stay home. Alignment widens to the off-map
-        -- traveler set; filter stays the prop-only occupancy check (cross-level safe).
+        -- Cross-map peer row: peaceful greedy factions travel to a neighbor map to barter; aggressive
+        -- factions stay home. Distinct from supply_trader_offmap's base target -- routes to an occupied
+        -- NON-base smart (a field camp), so trade-at-a-base and barter-in-the-field don't overlap.
+        -- has_peer_squad_at_smart (SIMBOARD roster) and is_base (LTX prop) are both cross-level safe.
         { cause = CAUSE.BARTER_OFFMAP, name = "barter_offmap", need = "supply",
-          filter = ap_core_util.has_peer_squad_at_smart, alignment = _alignment_offmap, exclude_enemy = true,
+          filter = function(s) return ap_core_util.has_peer_squad_at_smart(s) and not xsmart.is_base(s) end,
+          alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
           filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_stalker_jobs(s) end,
@@ -358,14 +359,12 @@ function on_game_start()
         { cause = CAUSE.SOCIAL_BASE,      name = "social_base",      need = "social",
           filter = xsmart.is_base,            alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.TERRITORY } },
-        -- Cross-map peer row. INV_AGGRESSION pairs with RELATION so peaceful sociable factions
-        -- (Ecologists, Clear Sky, Freedom, Loners) visit other bases for company; aggressive
-        -- factions stay home. Alignment widens to the off-map traveler set; the on-map
-        -- SOCIAL_BASE stays principled-only. Filter is prop-only xsmart.is_base (no
-        -- has_animated_stalker_jobs) because stalker_jobs is nil for off-actor-level smarts
-        -- (smart_terrain.script:462).
+        -- Cross-map peer row of SOCIAL_CAMPFIRE (not SOCIAL_BASE): peaceful sociable factions travel to a
+        -- neighbor-map campfire to gather; aggressive factions stay home. Targets has_campfire (the static
+        -- xdata.campfire_smarts set, offline / cross-level safe) so social off-map goes to a fire, distinct
+        -- from supply_trader_offmap's base target -- no collision on bases.
         { cause = CAUSE.SOCIAL_OFFMAP,    name = "social_offmap",    need = "social",
-          filter = xsmart.is_base,            alignment = _alignment_offmap, exclude_enemy = true,
+          filter = xsmart.has_campfire,       alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.RELATION, PERSONALITY.INV_AGGRESSION }, offmap = true },
     }
 

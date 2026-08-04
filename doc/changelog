@@ -1,5 +1,5 @@
 next
-  Summary: outpost mini bases, population-driven conquest, trader bankroll, world respawn pacing, loot-claim messages, outpost service cleanup, log flush toggle
+  Summary: outpost mini bases, population-driven conquest, trader bankroll, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, level-transition performance, log flush toggle
 
   Territory
     - Conquered areas now grow into mini bases: each rolls its own plan of service NPCs (different roles, up to the MCM count) plus resident guard squads that stay and defend it.
@@ -20,8 +20,14 @@ next
       - Fixed loot-ownership lines firing for kills the speaking NPC was too far from or could not see.
         A stalker now comments on a kill only when it stands within 30m of both the body and the one it addresses, and can see each. (reported by Bazinga)
 
+  Needs
+    - Changed off-map travel so each drive heads to its own kind of place: a supply run to a faction base, a barter run to an occupied field camp, and a social visit to a campfire.
+
   Development
     - Added a Flush log every line option, which writes each log line to disk at once instead of buffering, so a crash keeps its final log lines for a bug report.
+
+  Performance
+    - Reduced save-load and level-transition cost by removing a per-transition scan of the entire alife object pool; off-map routing now reads static map data instead.
 
 1.8.6
   Summary: lean outpost shelves, service posts, service looks, service placement, service sidearm, service rank, old service reset, trader addon support, service scope, reliable posting, kept artefacts and devices

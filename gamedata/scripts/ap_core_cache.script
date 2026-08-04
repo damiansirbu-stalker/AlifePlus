@@ -1,41 +1,29 @@
---- ap_core_cache: Per-level smart, stash, squad, and standalone-role-NPC indexes for
---- level-scoped finders. Four buckets, all built at actor_on_first_update via xslice
---- (frame-spread):
+--- ap_core_cache: Per-level smart, stash, and squad indexes for level-scoped finders. Three
+--- buckets, all built frame-spread (xslice) at actor_on_first_update:
 ---   _smarts_by_level over SIMBOARD smarts (step=50)
 ---   _stashes_by_level over treasure_manager.caches (step=3)
 ---   _squads_by_level over SIMBOARD squads (step=50)
----   _standalone_role_npcs over the full alife CSE pool (step=50) keyed by smart_id (cross-level)
---- Step sizes target ~0.5ms per tick (~5us per smart/squad bucketing, ~12us per stash).
---- Per-tick cost is bounded well under the 2ms ceiling per architecture.md "Invariants".
---- Wall-clock warmup: ~0.1-1s for smart/squad/standalone, ~2-3s for stash. Consumers pass
---- the per-level table as opts.source to xsmart.find_smart, xstash.find_stashes, and
---- xsquad.find_squads / find_squad so the finders skip the global pool walk.
+--- Step sizes target ~0.5ms per tick. Per-tick cost is bounded well under the 2ms ceiling per
+--- architecture.md "Invariants". Consumers pass the per-level table as opts.source to
+--- xsmart.find_smart, xstash.find_stashes, and xsquad.find_squads / find_squad so the finders
+--- skip the global pool walk.
 ---
---- Bucket builders run uninstrumented: per-tick observe() at DEBUG adds ~30-50us per
---- entity (xtrace push/pop, xprofiler, log.debug format), enough to drop heavy-save
---- engines to ~30fps during the 200-op/frame warmup. Mechanical xslice fill produces
---- no useful per-op diagnostic; the on_done log marks completion.
+--- Bucket builders run uninstrumented: per-tick observe() at DEBUG adds ~30-50us per entity
+--- (xtrace push/pop, xprofiler, log.debug format), enough to drop heavy-save engines to ~30fps
+--- during the warmup. Mechanical xslice fill produces no useful per-op diagnostic; the on_done
+--- log marks completion.
 ---
---- Smarts and stashes: no invalidation. Both spawn from LTX with a fixed m_tGraphID
---- and never reach the synchronize_location path that mutates it
---- (alife_dynamic_object.cpp:93-126), so level_id is fixed for the life of the entity.
+--- Smarts and stashes: no invalidation. Both spawn from LTX with a fixed m_tGraphID and never
+--- reach the synchronize_location path that mutates it (alife_dynamic_object.cpp:93-126), so
+--- level_id is fixed for the life of the entity.
 ---
---- Squads: incremental update. squad.m_game_vertex_id mutates when a squad crosses
---- levels (offmap transit, engine cross-level routing). Vanilla
---- sim_squad_scripted:update() sends squad_on_after_level_change(squad, from_name,
---- to_name) only when cur_lvl ~= self.level_name (sim_squad_scripted.script:244-247),
---- so a single per-event handler moves the squad between buckets. server_entity_on_register
---- / on_unregister cover spawn / despawn. Safety net for any path that bypasses the
---- callbacks: xsquad._squad_base_valid level gate is first (xsquad.script:325, cached
---- xlevel.get_level_id lookup), so stale entries reject at ~0 cost.
----
---- Standalone role NPCs: full rebuild per level transition, no incremental upkeep. Scope
---- is the full alife pool (cross-level), snapshotted via sim:iterate_objects. The earlier
---- 1.7.1 path used alife():iterate_level_objects_of_clsid which walks graph().level().objects()
---- — the engine's switched-in registry, not the full per-level alife pool — and silently
---- dropped offline NPCs and members of offline squads. Cross-level scope also unlocks
---- off-map destinations resolving traders on neighbor levels. Mid-level death/spawn drift
---- is tolerated: consumers walk by id and skip dead refs via xobject.go() / .alive() nil checks.
+--- Squads: incremental update. squad.m_game_vertex_id mutates when a squad crosses levels
+--- (offmap transit, engine cross-level routing). Vanilla sim_squad_scripted:update() sends
+--- squad_on_after_level_change(squad, from_name, to_name) only when cur_lvl ~= self.level_name
+--- (sim_squad_scripted.script:244-247), so a single per-event handler moves the squad between
+--- buckets. server_entity_on_register / on_unregister cover spawn / despawn. Safety net for any
+--- path that bypasses the callbacks: xsquad._squad_base_valid level gate is first
+--- (xsquad.script:325, cached xlevel.get_level_id lookup), so stale entries reject at ~0 cost.
 ---
 --- Lifecycle: every actor level transition wipes the Lua VM. Proof chain:
 --- M_CHANGE_LEVEL packet -> Level_network_messages.cpp:308-333 -> MakeReconnect
@@ -49,28 +37,16 @@
 --- Each bucket's guard (`if _xxx then return end`) plus xslice.is_active makes any
 --- re-fire within the same VM a no-op.
 ---
---- Warmup semantic per bucket. All four buckets expose partial state as they grow:
---- *_on_level / standalone_role_at_smart return nil if nothing yet, partial otherwise,
---- full once xslice finishes. xsmart.find_smart / xstash.find_stashes / xsquad.find_squads
---- accept opts.source = nil and fall back to the un-bucketed SIMBOARD walk via the standard
---- `or SIMBOARD.X` pattern; standalone_role_at_smart consumers (ap_core_util) fall back to
---- the dynamic xsmart.has_<role>_at_smart / get_<role>_at_smart online walk. Consumers stay
---- correct during the warmup window at the cost of one slow scan until the bucket fills.
+--- Warmup semantic per bucket. All three buckets expose partial state as they grow:
+--- *_on_level return nil if nothing yet, partial otherwise, full once xslice finishes.
+--- xsmart.find_smart / xstash.find_stashes / xsquad.find_squads accept opts.source = nil and
+--- fall back to the un-bucketed SIMBOARD walk via the standard `or SIMBOARD.X` pattern.
 
-local pairs, tostring, RegisterScriptCallback = pairs, tostring, RegisterScriptCallback
-local xdata, xlevel, xsmart, xsquad, xobject, xslice, xprofiler =
-    xdata, xlevel, xsmart, xsquad, xobject, xslice, xprofiler
-local IsStalker, IsTrader = IsStalker, IsTrader
+local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
+local xlevel, xsmart, xsquad, xobject, xslice = xlevel, xsmart, xsquad, xobject, xslice
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
--- zone_campfire CSE class (object_factory_register.cpp:395 CLSID_Z_CAMPFIRE). Single clsid for
--- client + server, no _s split, so it matches on the server object during the offline pool walk.
-local CLSID_CAMPFIRE = clsid.zone_campfire
-
--- smart.ini section name where gulag_general.script:1358-1364 reads exclusive job
--- assignments. Used by _read_exclusive_section to build the section->smart_id reverse map.
-local EXCLUSIVE_SECTION = "exclusive"
 
 local SMART_BUILD_QUEUE = "ap_core_cache_smarts"
 local SMART_BUILD_STEP = 50
@@ -78,21 +54,10 @@ local STASH_BUILD_QUEUE = "ap_core_cache_stashes"
 local STASH_BUILD_STEP = 3
 local SQUAD_BUILD_QUEUE = "ap_core_cache_squads"
 local SQUAD_BUILD_STEP = 50
-local STANDALONE_BUILD_QUEUE = "ap_core_cache_standalone"
-local STANDALONE_BUILD_STEP = 50
 
 local _smarts_by_level = nil
 local _stashes_by_level = nil
 local _squads_by_level = nil
-local _standalone_role_npcs = nil
--- Reverse map of NPC section -> smart_id, built once per VM from each smart's [exclusive]
--- section in its loaded smart.ini. Authoritative for offline exclusive-job NPCs (Loris,
--- Sidorovich, all curated traders / medics / mechanics): smart.npc_info populates only when
--- the NPC's gulag logic activates online, so an offline NPC's owning smart can't be read
--- from npc_info. Reading smart.ini "exclusive" mirrors how gulag_general.script:1358-1364
--- creates the exclusive jobs at smart load. ~500 smarts * ~5-10 entries each = single-pass
--- build at actor_on_first_update; lookup O(1) per NPC thereafter.
-local _exclusive_owner = nil
 local _initialized = false
 
 -- Bucket one smart into _smarts_by_level. Returns true to drain (xslice survivor protocol).
@@ -272,231 +237,6 @@ local function _on_squad_level_change(squad, from_level_name, to_level_name)
     bucket[id] = true
 end
 
--- Collect ALL service roles a section is curated for. Multi-role NPCs (mechanics with
--- dm_init_trader, Yar = medic+trader) get added to every applicable role bucket.
--- Returns nil when the NPC has no service role (quest/leader/guide-only entries).
--- @cost O(1) | 3 hash lookups in xdata buckets
-local function _resolve_roles(section)
-    local roles = nil
-    if xdata.traders[section]   then roles = roles or {}; roles[#roles+1] = "trader"   end
-    if xdata.medics[section]    then roles = roles or {}; roles[#roles+1] = "medic"    end
-    if xdata.mechanics[section] then roles = roles or {}; roles[#roles+1] = "mechanic" end
-    return roles
-end
-
--- Read one smart's [exclusive] section and merge its NPC sections into _exclusive_owner.
--- @cost O(e) | e ~ 0-10 exclusive entries; 1 section_exist + 1 line_count + e * r_line.
-local function _read_exclusive_section(smart)
-    local ini = smart.ini
-    if not ini or not ini:section_exist(EXCLUSIVE_SECTION) then return end
-    local line_count = ini:line_count(EXCLUSIVE_SECTION)
-    for i = 0, line_count - 1 do
-        local _, key = ini:r_line(EXCLUSIVE_SECTION, i, "", "")
-        if key and key ~= "" then _exclusive_owner[key] = smart.id end
-    end
-end
-
--- Build the section->smart_id reverse map from every smart's [exclusive] section in its
--- loaded smart.ini. Mirrors how gulag_general.script:1358-1364 reads exclusive job assignments.
--- Each [exclusive] line is "<npc_section> = <logic_ltx_path>"; we map npc_section -> smart.id
--- so offline exclusive NPCs can resolve their owning smart authoritatively without relying
--- on smart.npc_info (online-only) or find_smart-by-centroid (geometric approximation).
--- @cost O(s * e) one-time | s ~ 500 smarts, e ~ 0-10 exclusive entries per smart.
-local function _build_exclusive_owner_map()
-    if _exclusive_owner then return end
-    _exclusive_owner = {}
-    local smarts = xsmart.smarts_by_names()
-    if not smarts then return end
-    for _, smart in pairs(smarts) do
-        _read_exclusive_section(smart)
-    end
-end
-
--- Stage 1 of the smart-binding cascade: engine online roster. Walks
--- smart.npc_info[se.id] across every smart. Returns smart_id when the NPC's gulag logic
--- has placed it; nil otherwise.
-local function _bind_via_npc_info(se_id)
-    local smarts = xsmart.smarts_by_names()
-    if not smarts then return nil end
-    for _, smart in pairs(smarts) do
-        if smart.npc_info and smart.npc_info[se_id] then return smart.id end
-    end
-    return nil
-end
-
--- Stage 3 of the smart-binding cascade: geometric last-resort by smart centroid on the
--- entity's level. Logs at debug level when all three stages of the resolver have failed
--- so the section + level_id show up in one place.
-local function _bind_via_centroid(se, section)
-    local level_id = xlevel.get_level_id(se)
-    if not level_id then return nil end
-    local smart = xsmart.find_smart(se.position, { level_id = level_id })
-    if smart then return smart.id end
-    ap_core_debug.debug("[CORE.CACHE] _index_standalone no smart resolved section=%s id=%d level_id=%s", section, se.id, tostring(level_id))
-    return nil
-end
-
--- Resolve owning smart_id via the three-stage cascade, most-authoritative first:
---   (1) smart.npc_info hash walk: engine online roster
---   (2) _exclusive_owner reverse map: offline-authoritative reverse index of smart.ini [exclusive]
---   (3) xsmart.find_smart by centroid: geometric last-resort approximation
--- Returns nil when no stage resolves.
--- @cost typical O(s_level) hash walk + O(1) fallbacks; s_level ~ smarts on entity level
-local function _resolve_owning_smart_id(se, section)
-    return _bind_via_npc_info(se.id)
-        or (_exclusive_owner and _exclusive_owner[section])
-        or _bind_via_centroid(se, section)
-end
-
--- Class-gates Stalker OR Trader, looks up curated roles via xdata.npc_roles, resolves the
--- owning smart, and inserts the NPC into EVERY applicable role bucket (multi-role NPCs are
--- in trader AND mechanic / medic AND trader / etc as their curation declares). Class check
--- is the safety belt against pure-virtual on section_name for non-matching entities. Smart
--- binding via _resolve_owning_smart_id (3-stage cascade above). xdata.npc_roles maps section
--- -> roles for both pools: stalker NPCs (medics, mechanics, curated traders) and
--- Script_Trader story NPCs (Sidorovich-class).
--- @cost O(1) for non-matching entities. For matches: smart.npc_info hash walk (~ smarts on
---       level), or _exclusive_owner hash lookup (~0), or find_smart, plus one bucket insert
---       per role (typically 1-2).
-local function _index_standalone(se)
-    if not se then return end
-    local cls = se:clsid()
-    if not (IsStalker(nil, cls) or IsTrader(nil, cls)) then return end
-    local section = se:section_name()
-    if not section then return end
-    local roles = _resolve_roles(section)
-    if not roles then return end
-    local owning_smart_id = _resolve_owning_smart_id(se, section)
-    if not owning_smart_id then return end
-    local by_role = _standalone_role_npcs[owning_smart_id]
-    if not by_role then
-        by_role = {}
-        _standalone_role_npcs[owning_smart_id] = by_role
-    end
-    for i = 1, #roles do
-        local role = roles[i]
-        local by_id = by_role[role]
-        if not by_id then
-            by_id = {}
-            by_role[role] = by_id
-        end
-        by_id[se.id] = true
-    end
-end
-
--- Record a map-placed campfire's owning smart into xsmart's static set so has_campfire answers
--- offline (bind_campfire's db.campfire_table_by_smart_names is online-scope only, collapsing the
--- effective campfire-filter reach for far squads). Clsid-gated first as the pure-virtual safety
--- belt, same as _index_standalone. se:name() carries the SDK name <smart>_campfire_N;
--- xsmart.note_campfire_object mirrors bind_campfire's strip + SIMBOARD ownership gate. Rides the
--- shared alife-pool walk below -- no extra iterate_objects pass.
--- @cost O(1) non-campfire (1 luabind clsid early-out); per campfire: 1 luabind name + hash gate.
--- @src anomaly/bind_campfire.script(251-278), object_factory_register.cpp(395) zone_campfire clsid
-local function _index_campfire(se)
-    if not se then return end
-    if se:clsid() ~= CLSID_CAMPFIRE then return end
-    xsmart.note_campfire_object(se:name())
-end
-
--- Re-resolve via xobject.se(id) per tick (which wraps alife_object): the queue captures IDs
--- (not refs) so an entity destroyed between enumeration and processing returns nil here.
--- Holding a CSE_Abstract ref across frames hits pure-virtual on section_name when the C++
--- vtable is replaced mid-destruction (xrCore/xrDebugNew.cpp:1045 "pure virtual function call").
--- pcall cannot catch this per doc/library/modding/pcall-safety.md:50-57. One se fetch feeds every
--- per-CSE indexer (standalone roles, campfire map); each self-gates by clsid.
-local function _bucket_one_cse(id)
-    if not id then return true end
-    local se = xobject.se(id)
-    if not se then return true end
-    _index_standalone(se)
-    _index_campfire(se)
-    return true
-end
-
-local function _on_standalone_build_done()
-    ap_core_debug.debug("[CORE.CACHE] standalone role bucket built")
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[CORE.CACHE] campfire map: %d smarts", xsmart.campfire_map_count())
-    end
-end
-
--- Snapshot every CSE in the full alife pool via sim:iterate_objects. The earlier 1.7.1
--- approach using alife():iterate_level_objects_of_clsid walks graph().level().objects() which
--- is the engine's switched-in registry, not the full per-level CSE pool: it silently drops
--- offline NPCs outside actor's switch_distance and members of currently-offline squads,
--- missing most curated trader/medic/mechanic entries (probed on Cordon: 6 of 8 curated NPCs
--- missing including Loris, mil trader, mechanics). The full-pool walk catches everyone;
--- _bucket_one_cse fans each CSE out to _index_standalone (Stalker + Trader role buckets) and
--- _index_campfire (map-campfire set in xsmart), both clsid-gated so non-matching CSEs early-out.
--- Cache is cross-level (no actor-level filter at snapshot time) so off-map destinations can
--- resolve traders on neighbor levels and offline campfire smarts resolve at full scan range.
--- @cost O(n) total alife CSEs for snapshot (~40k on heavy GAMMA saves); xslice ticks pay
---       1 alife_object + class check (early-out for non-stalker/trader, typical 90%+) +
---       section lookup + smart binding on curated matches.
-local function _build_standalone_role_bucket()
-    if _standalone_role_npcs then return end
-    if xslice.is_active(STANDALONE_BUILD_QUEUE) then return end
-    local sim = alife()
-    if not sim then return end
-    -- Build the section -> smart_id reverse map before the bucket fill so per-NPC binding
-    -- can consult it without falling through to find_smart-by-centroid for offline NPCs.
-    _build_exclusive_owner_map()
-    _standalone_role_npcs = {}
-    local queue = {}
-    -- The snapshot is the one un-spread step: a single iterate_objects walk over the full CSE pool
-    -- (~40k on heavy GAMMA saves), building the id queue before the frame-spread xslice fill. It runs
-    -- once at actor_on_first_update. Timed only when debug is on (null profiler = zero overhead
-    -- otherwise) so a real breach of the frame budget surfaces in the log instead of staying unmeasured.
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
-    prof:start()
-    sim:iterate_objects(function(se)
-        if se then queue[#queue + 1] = se.id end
-    end)
-    prof:stop()
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("[CORE.CACHE] standalone snapshot: %d CSEs in %.2fms", #queue, prof:get_ms())
-    end
-    xslice.start(STANDALONE_BUILD_QUEUE, queue, {
-        step = STANDALONE_BUILD_STEP,
-        func = _bucket_one_cse,
-        on_done = _on_standalone_build_done,
-    })
-end
-
---- Get the standalone service NPC id-set for (smart_id, role).
---- Returns nil before actor_on_first_update has fired, when no role bucket exists for
---- the smart, or when no curated standalone matches. Bucket populates incrementally
---- during xslice warmup; consumers walk what's there.
---- @safety SAFE - pure Lua hash read, nil-guarded
---- @cost O(1) | 0 luabind
---- @param smart_id number Smart terrain server id
---- @param role string "trader" | "medic" | "mechanic"
---- @return table|nil { [npc_id] = true, ... } or nil
-function standalone_role_at_smart(smart_id, role)
-    if not _standalone_role_npcs then return nil end
-    local by_role = _standalone_role_npcs[smart_id]
-    if not by_role then return nil end
-    return by_role[role]
-end
-
---- Get the first online live game_object for any standalone NPC of (smart_id, role).
---- Walks standalone_role_at_smart's id-set, returns the first xobject.go(id) that is
---- alive. Online-only resolution; offline NPCs return nil from xobject.go.
---- @safety SAFE - delegates to standalone_role_at_smart + xobject.go, all nil-guarded
---- @cost O(k) ids per (smart_id, role) ~1-3 typical | per id: 1 medium (xobject.go) + 1 trivial (alive)
---- @param smart_id number Smart terrain server id
---- @param role string "trader" | "medic" | "mechanic"
---- @return game_object|nil Online live NPC of this role at this smart, or nil
-function first_online_role_npc_at_smart(smart_id, role)
-    local by_id = standalone_role_at_smart(smart_id, role)
-    if not by_id then return nil end
-    for npc_id in pairs(by_id) do
-        local go = xobject.go(npc_id)
-        if go and go:alive() then return go end
-    end
-    return nil
-end
-
 -- Add squad to its level bucket; lazily allocs the bucket on first squad of the level.
 local function _register_squad(se_obj)
     if not _squads_by_level then return end
@@ -525,10 +265,7 @@ local function _unregister_squad(se_obj)
     end
 end
 
--- Dispatch entity register to the squad bucket handler. Standalone (stalker/trader) bucket
--- does not subscribe: it rebuilds in full at actor_on_first_update via xslice, sees fresh
--- state per level transition (VM reinit wipes module locals), and tolerates mid-level
--- death/spawn drift because consumers walk by id and skip dead refs.
+-- Dispatch entity register to the squad bucket handler.
 -- @cost O(1) | 1 luabind (clsid)
 local function _on_entity_register(se_obj)
     if not se_obj then return end
@@ -537,8 +274,7 @@ local function _on_entity_register(se_obj)
     end
 end
 
--- Dispatch entity unregister to the squad bucket handler. See _on_entity_register for why
--- the standalone bucket does not subscribe.
+-- Dispatch entity unregister to the squad bucket handler.
 -- @cost O(1) typical | 1 luabind (clsid); O(levels) on squad fallback scan
 local function _on_entity_unregister(se_obj)
     if not se_obj then return end
@@ -557,7 +293,6 @@ local function _on_actor_first_update()
     _build_smart_bucket()
     _build_stash_bucket()
     _build_squad_bucket()
-    _build_standalone_role_bucket()
     if not _initialized then
         _initialized = true
         ap_core_debug.info("[CORE.CACHE] Initialized")

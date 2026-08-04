@@ -227,9 +227,8 @@ end
 
 --- Dynamic-walk dispatch tables for the role resolvers. Dynamic walk (xsmart.get_<role>_at_smart)
 --- uses the engine-authoritative smart.npc_info roster + xsmart.get_npc_roles (Demonized-style
---- trade= classifier, multi-role set). Cache (ap_core_cache) is a fallback that holds curated
---- xdata.npc_roles entries (cross-level, indexed by smart). _get_role_at_smart below queries
---- dynamic first, cache second: engine truth wins, curated data fills gaps when smart is offline.
+--- trade= classifier, multi-role set). Online-only: npc_info is empty for offline / off-actor-level
+--- smarts. Off-map trader routing (SUPPLY_TRADER_OFFMAP) uses xsmart.is_base instead (a base is where a trader sits).
 local _DYN_GET = {
     trader   = function(s) return xsmart.get_trader_at_smart(s)   end,
     medic    = function(s) return xsmart.get_medic_at_smart(s)    end,
@@ -242,28 +241,24 @@ local _DYN_HAS = {
     mechanic = function(s) return xsmart.has_mechanic_at_smart(s) end,
 }
 
---- Resolve a service NPC at a smart by role. Engine-authoritative dynamic walk via
---- smart.npc_info first (online truth, smart's actual roster), cache fallback for offline
---- smarts (where npc_info is empty). Cache is now cross-level so it covers neighbor-level
---- smarts that are offline relative to actor.
+--- Resolve a service NPC at a smart by role via the engine-authoritative dynamic walk
+--- (smart.npc_info, online truth). Returns nil for offline smarts (npc_info empty); arrival trade
+--- always runs online (commander gate), so the online answer is the one that matters for the exchange.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return game_object|nil Online live NPC of this role at this smart, or nil
 local function _get_role_at_smart(smart, role)
     if not smart then return nil end
-    return (_DYN_GET[role] and _DYN_GET[role](smart))
-        or ap_core_cache.first_online_role_npc_at_smart(smart.id, role)
+    return _DYN_GET[role] and _DYN_GET[role](smart)
 end
 
---- Boolean predicate. Dynamic walk first (online truth), cache fallback.
+--- Boolean predicate. Dynamic walk (online truth); false for offline smarts.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return boolean
 local function _has_role_at_smart(smart, role)
     if not smart then return false end
-    if _DYN_HAS[role] and _DYN_HAS[role](smart) then return true end
-    local ids = ap_core_cache.standalone_role_at_smart(smart.id, role)
-    return ids and next(ids) ~= nil or false
+    return _DYN_HAS[role] and _DYN_HAS[role](smart) or false
 end
 
 local SERVICE_ROLES = { "trader", "medic", "mechanic" }

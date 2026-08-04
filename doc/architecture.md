@@ -97,7 +97,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
-| ap_core_cache | Per-level smart / stash / squad indexes plus a cross-level standalone-role-NPC index, built frame-spread (xslice) at actor_on_first_update; the same walk feeds xsmart's map-campfire set. Finders take them as opts.source. Mechanism in the module header |
+| ap_core_cache | Per-level smart / stash / squad indexes, built frame-spread (xslice) at actor_on_first_update. Finders take them as opts.source. Mechanism in the module header |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
 | ap_core_callbacks | Synthetic callbacks AP declares and fires: ap_squad_on_change (the radiant heartbeat sweep) and ap_npc_medkit_use. Canonical section: Pipeline -> Synthetic callbacks |
@@ -593,7 +593,7 @@ AlifePlus stacks safety layers on top of the engine capability:
 |-------|-----------|------|
 | Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap`, window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter` offmap counter (see Rate limiting) |
 | Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
-| Cross-level filter | prop-only predicates (`xsmart.is_base`, `_is_unclaimed`); `has_animated_stalker_jobs` omitted because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
+| Cross-level filter | prop-only / SIMBOARD / static-set predicates (`xsmart.is_base`, `xsmart.has_campfire`, `_is_unclaimed`, occupied-non-base); `has_animated_stalker_jobs` / dynamic `npc_info` omitted because `stalker_jobs` / `npc_info` are empty for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
 | Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart_observed` |
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `script_squad` + `_commit_arrival` |
 | Settle terminal | after the gulag hold, `_unscript_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
