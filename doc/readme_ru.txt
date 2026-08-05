@@ -7,9 +7,9 @@ AlifePlus: эмерджентная A-Life для STALKER Anomaly, автор Da
 - Bugs, suggestions: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
 Alife Collection:
-AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
 AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
 AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
+AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
 AlifeTactics: https://www.moddb.com/mods/stalker-anomaly/addons/alifetactics
 
 ! Пожалуйста, используйте кнопку RESET в MCM при обновлении на новую версию !
