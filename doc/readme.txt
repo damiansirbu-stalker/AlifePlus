@@ -11,6 +11,8 @@ AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
 AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
 AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
 AlifeTactics: https://www.moddb.com/mods/stalker-anomaly/addons/alifetactics
+AlifeDiegetic: https://www.moddb.com/mods/stalker-anomaly/addons/diegetic-audio-control-100
+AlifeSpooks: https://github.com/damiansirbu-stalker/AlifeSpooks
 
 ! Please use the RESET button in MCM when updating to a new version !
 
