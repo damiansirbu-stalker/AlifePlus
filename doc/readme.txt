@@ -319,9 +319,10 @@ These patches are global and affect every squad, not only AlifePlus's. If anothe
 
 Performance:
 
+Performance comes first here, ahead of any feature. When a feature cannot fit the budget, it is reworked, replaced, dropped, or removed with an X-Ray engine modification rather than allowed to slow the game. Features are negotiable; the frame budget is not.
 AlifePlus does no work when the engine fires no event, and its own event stream costs the same whether the Zone holds fifty squads or eight hundred. You decide how much happens per minute, and that is exactly what it produces.
 Everything expensive is bounded by design. Long scans spread across frames, lookups hit per-level caches instead of walking the world, throttles run on the real clock while world limits run on game time and survive save and sleep, and every measured flow targets 0.1ms per call with a hard 2ms ceiling, cold start and level transitions included.
-The engine is touched as little as possible. AlifePlus writes a single engine field, the squad's destination, and everything underneath is xlibs, built and validated against the X-Ray C++ source. Below DEBUG, profiling and tracing collapse to no-ops and the hot path makes no allocations.
+AlifePlus leans on the engine rather than working around it. It drives the engine's own mechanisms through xlibs, built and validated against the X-Ray C++ source, and makes the most of what is already there: squad targeting is one native field, the destination, and the engine's chain does the rest. Where the stock behavior falls short it nudges or corrects it, and only when that is not enough does it change the engine itself. Below DEBUG, profiling and tracing collapse to no-ops and the hot path makes no allocations.
 
 [BENCHMARKS: screenshots side by side]
 
@@ -415,6 +416,7 @@ Map markers are debug-only and may glitch on some versions. Each marker shows th
 Validation:
 
 luacheck and selene for static analysis, ast-grep for AST checks, contract rules (API safety, complexity, standards), lua54 integration tests against X-Ray engine stubs, gitleaks and trufflehog for secret scanning. Full report: doc/test-report.log.
+Beyond static checks, each release is soak-tested under chaos load: the A-Life rate and spawn density pushed far past normal play, hundreds of squads and outposts live at once, every flow timed. Performance is measured on the engine built from the latest source with no multithreading and no optimizations, so the timings are worst-case; the optimized multithreaded build you run is always faster.
 
 Localization:
 The mod includes English and Russian translations.
