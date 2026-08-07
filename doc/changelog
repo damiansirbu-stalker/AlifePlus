@@ -1,19 +1,17 @@
 next
-  Summary: outpost mini bases, population-driven conquest, trader bankroll, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, level-transition performance, log flush toggle
+  Summary: outpost mini bases, population-driven conquest, trader bankroll, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, level-transition performance, log flush toggle, world trace log, tracing performance
 
   Territory
-    - Conquered areas now grow into mini bases: each rolls its own plan of service NPCs (different roles, up to the MCM count) plus resident guard squads that stay and defend it.
-      The game's own respawn keeps the base manned while the area is held, so a killed trader is replaced the world's normal way, never in your view, and the base dissolves only when the hold decays.
-    - Conquest is now population-driven: factions with little presence on a level conquer more, the dominant one less, and each faction holds a bounded number of areas per level.
-      Mutants follow the same law as a class, swarming and nesting more where they are few.
-    - An outpost service now holds a money bankroll, reset at every restock (money row in ap_outpost_stock_policy.ltx), so selling him loot for cash dries up until his next restock.
-    - Outpost services now live at their area like residents, on the area's own jobs, instead of standing fixed at one point.
-      Each carries a sidearm from the moment he spawns, keeps his role shop, map icon, and rank-and-file rank, and trader stock addons recognize him on any job, not only at a posted counter.
-    - Decay now leaves the world alone: resident guards stay behind as ordinary squads, a service you are watching is demoted to an ordinary stalker on the spot, and unseen services are removed quietly.
-    - Removed the three Area respawn (minutes) sliders: conquered, swarmed, and infested areas repopulate at the world's own pacing, so a takeover never spawns faster than the game itself does.
-    - Removed the outpost model dressing: a service now wears his own profile's look.
-    - Outpost services from every earlier version are cleared on first load, including NPCs left squadless by old builds that no squad sweep could see,
-      so a stray area trader can no longer linger apart from its outpost, wander the map, or hand out missions. Held areas roll a fresh base plan under the new rules.
+    - Conquered areas now grow into mini bases: a plan of service NPCs (varied roles, up to the MCM count) plus resident guard squads that defend it.
+      The engine's own respawn keeps the base manned while held, and it dissolves when the hold decays.
+    - Conquest is now population-driven: weak factions on a level conquer more, dominant ones less, each capped at a bounded area count. Mutants swarm and nest by the same rule.
+    - Outpost services now hold a cash bankroll, reset each restock (money row in ap_outpost_stock_policy.ltx), so selling them loot dries up until they restock.
+    - Outpost services now live on the area's own jobs instead of a fixed post, each spawning with a sidearm, role shop, map icon, and rank-and-file rank. Trader stock addons recognize them on any job.
+    - On decay, resident guards stay as ordinary squads, a watched service is demoted to an ordinary stalker in place, and unseen services are removed.
+    - Removed the 3 Area respawn (minutes) sliders: conquered, swarmed, and infested areas now repopulate at the world's own pacing.
+    - Removed the outpost model dressing: a service wears his own profile's look.
+    - Outpost services from earlier versions are cleared on first load, including squadless NPCs old builds left behind, so no stray area trader lingers, wanders, or hands out missions.
+      Held areas roll a fresh base plan under the new rules.
 
   Economy
     Loot claim
@@ -25,9 +23,14 @@ next
 
   Development
     - Added a Flush log every line option, which writes each log line to disk at once instead of buffering, so a crash keeps its final log lines for a bug report.
+    - Added a World trace log option that writes periodic simulation state dumps (smarts, squads, the controlled-squad roster, trader inventories) to a separate alifeplus_world.log,
+      so the main log stays a clean record of A-Life decisions.
 
   Performance
-    - Reduced save-load and level-transition cost by removing a per-transition scan of the entire alife object pool; off-map routing now reads static map data instead.
+    - Improved level-transition and save-load performance by simplification: a per-transition scan of the entire alife object pool, and the service-NPC cache it fed, are removed outright instead of optimized.
+      Off-map routing and campfire checks now read static map data, so the framework holds less state and does less work on every load and level change.
+    - Improved A-Life pipeline performance by simplification: the per-call trace wrapper that ran on every cause and consequence evaluation is removed, and each flow now times itself inline,
+      so the framework allocates nothing for tracing at the default log level.
 
 1.8.6
   Summary: lean outpost shelves, service posts, service looks, service placement, service sidearm, service rank, old service reset, trader addon support, service scope, reliable posting, kept artefacts and devices
