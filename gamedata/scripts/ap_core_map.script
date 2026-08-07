@@ -6,7 +6,7 @@ local pairs, clock, tostring, RegisterScriptCallback = pairs, os.clock, tostring
 local table_concat = table.concat
 local xobject, xlevel, xpda, xprofiler, xtable = xobject, xlevel, xpda, xprofiler, xtable
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
-local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
+local ap_core_debug, ap_core_record, ap_core_broker = ap_core_debug, ap_core_record, ap_core_broker
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
@@ -142,7 +142,7 @@ local function _validate_markers()
     for squad_id, state in pairs(_marker_state) do
         local entry = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
         local se = entry and xobject.se(squad_id)
-        local should_linger = not entry or not se or not se.scripted_target
+        local should_linger = not entry or not se or not ap_core_broker.is_routing(squad_id)
         if should_linger and not state.remove_at then
             state.remove_at = now + ap_core_const.MARKER_LINGER_SEC
             local reason = (not entry) and "evicted" or (not se and "dead" or "unscripted")

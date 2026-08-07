@@ -187,6 +187,20 @@ function is_offmap_dispatched(squad_id)
     return data ~= nil and data.offmap == true
 end
 
+--- True while AP is actively directing this squad: a live scripted dispatch (scripted_target set)
+--- or a squad/actor chase (is_chase). A released off-map dwell remnant (tracked only for the despawn
+--- net, no target and no chase) returns false. The PDA map-marker lifecycle reads this instead of the
+--- raw engine scripted_target field, which squad-target chases never set (they drive the
+--- get_script_target method hook, not the field).
+--- @safety SAFE - pure Lua hash lookup
+--- @cost O(1) | 0 luabind
+--- @param squad_id number Squad id
+--- @return boolean true if AP is actively routing or chasing this squad
+function is_routing(squad_id)
+    local data = _ap_scripted_squads[squad_id]
+    return data ~= nil and (data.scripted_target ~= nil or data.is_chase == true)
+end
+
 
 --- Release squad from AP scripted control. Accepts squad_id (number) for "entity already gone"
 --- cleanup path, or squad userdata for "entity still live" release path. Number skips the
