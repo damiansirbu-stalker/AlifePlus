@@ -1,6 +1,7 @@
 --- ap_ext_consequences_alpha: Registers new alpha mutants and updates alpha level (alpha_promote)
 
-local xobject, xsquad, xtable = xobject, xsquad, xtable
+local tostring = tostring
+local xobject, xsquad, xtable, xprofiler = xobject, xsquad, xtable, xprofiler
 local ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator =
     ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator
 
@@ -9,36 +10,25 @@ local REASON = ap_core_const.REASON
 local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local TRACE = ap_core_const.TRACE
 local LOG = ap_core_debug.bracket(CONSEQUENCE.ALPHA_PROMOTE)
 
 local cfg = ap_core_mcm.cfg
 
 local function _handler(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.ALPHA_PROMOTE, function()
-        local killer_id = event_data.killer_id
-        if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
+    local killer_id = event_data.killer_id
+    if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
+    local is_new = not ap_ext_tracker.is_alpha(killer_id)
+    if is_new and xtable.count(ap_ext_tracker.get_alphas()) >= cfg.consequence_alpha_promote_max_alphas then
+        return { code = RESULT.FAILED_RULES, reason = REASON.MAX_ALPHAS }
+    end
 
-        local is_new = not ap_ext_tracker.is_alpha(killer_id)
-        if is_new and xtable.count(ap_ext_tracker.get_alphas()) >= cfg.consequence_alpha_promote_max_alphas then
-            return { code = RESULT.FAILED_RULES, reason = REASON.MAX_ALPHAS }
-        end
-
-        local level_id = event_data.level_id
-        local level = event_data.level
-        local kills = event_data.kills
-
-        local updated
-        ap_core_debug.observe(trace, PHASE.UPDATE_ALPHA, function()
-            updated = ap_ext_tracker.update_alpha(killer_id, { kills = kills })
-            if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
-            return { code = TRACE.OK, id = killer_id, level = level }
-        end)
-        if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
+    local level_id, level, kills = event_data.level_id, event_data.level, event_data.kills
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local updated = ap_ext_tracker.update_alpha(killer_id, { kills = kills })
+    if updated then
         ap_ext_object_mutator.set_alpha_effects(killer_id, level)
-
         local killer_squad = xsquad.get_squad_by_member(killer_id)
         if killer_squad then
             local se = xobject.se(killer_id)
@@ -48,9 +38,14 @@ local function _handler(event_data)
                 smart = smart, level_id = level_id,
             })
         end
-
-        return { code = RESULT.SUCCESS, reason = REASON.ALPHA_PROMOTED, id = killer_id, level = level, level_id = level_id }
-    end)
+    end
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s id=%d level=%s [%.2fms]", LOG, tid,
+            updated and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. REASON.REGISTER_FAILED), killer_id, tostring(level), tmr:get_ms())
+    end
+    if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
+    return { code = RESULT.SUCCESS }
 end
 
 function on_game_start()

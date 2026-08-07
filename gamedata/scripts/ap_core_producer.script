@@ -5,6 +5,7 @@
 --- path), reactive (PACER->RATIO->EVAL) on engine event callbacks.
 local pairs, type, unpack = pairs, type, unpack
 local RegisterScriptCallback = RegisterScriptCallback
+local xprofiler, xtrace = xprofiler, xtrace
 local ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter = ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -107,8 +108,19 @@ end
 --- Publish a cause result. Rate-limit is enforced upstream (pre-handler check on entry.category
 --- in _eval_*); by the time we reach here the publish is guaranteed to go through. Increment
 --- counter keyed on entry.category so the next pre-check sees the +1.
-local function _try_publish(on_map, result, trace, category, cause_type)
-    result._trace = trace
+-- Log a cause evaluation outcome: the cause it fired, a rejection code:reason, or nil.
+local function _log_cause(log_prefix, tid, result, ms)
+    if result == nil then
+        ap_core_debug.debug("%s [tid=%d] nil [%.2fms]", log_prefix, tid, ms)
+    elseif result.cause then
+        ap_core_debug.debug("%s [tid=%d] fired=%s [%.2fms]", log_prefix, tid, result.cause, ms)
+    else
+        ap_core_debug.debug("%s [tid=%d] %s%s [%.2fms]", log_prefix, tid, result.code or "?",
+            result.reason and ":" .. result.reason or "", ms)
+    end
+end
+
+local function _try_publish(on_map, result, category, cause_type)
     result.cause_type = cause_type
     ap_core_util.event_publish(result.cause, result)
     if hud_collecting() then hud.inc_pub(cause_type) end
@@ -126,12 +138,17 @@ end
 -- observe() wraps the predicate so every call logs name, code, reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_reactive(on_map, entry, args, sc)
-    local trace = ap_core_debug.trace()
-    local result = ap_core_debug.observe(trace, entry.name, entry.handler, unpack(args))
+    local dbg = ap_core_debug.enabled()
+    local tid = dbg and xtrace.new().id or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = entry.handler(unpack(args))
+    tmr:stop()
     if sc then sx.causes = sx.causes + 1 end
+    if dbg then _log_cause(entry.log_prefix, tid, result, tmr:get_ms()) end
     if not result then return end
     if result.cause then
-        _try_publish(on_map, result, trace, entry.category, entry.cause_type)
+        result.tid = tid
+        _try_publish(on_map, result, entry.category, entry.cause_type)
         return
     end
     if sc then hud.classify_cause(result, false) end
@@ -171,12 +188,17 @@ end
 -- observe() wraps the cascade entry so every call logs name, code, reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_radiant(on_map, squad, entry, sc)
-    local trace = ap_core_debug.trace()
-    local result = ap_core_debug.observe(trace, entry.name, entry.handler, squad)
+    local dbg = ap_core_debug.enabled()
+    local tid = dbg and xtrace.new().id or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = entry.handler(squad)
+    tmr:stop()
     if sc then sr.causes = sr.causes + 1 end
+    if dbg then _log_cause(entry.log_prefix, tid, result, tmr:get_ms()) end
     if not result then return false end
     if result.cause then
-        _try_publish(on_map, result, trace, entry.category, entry.cause_type)
+        result.tid = tid
+        _try_publish(on_map, result, entry.category, entry.cause_type)
         return true
     end
     if sc then hud.classify_cause(result, true) end
@@ -356,7 +378,7 @@ function register(config, handler)
     end
     local entries = _handlers[callback]
     local existing_idx = _find_handler_index_by_handler(entries, handler)
-    local entry = { handler = handler, cause_type = cause_type, category = category, name = name }
+    local entry = { handler = handler, cause_type = cause_type, category = category, name = name, log_prefix = ap_core_debug.bracket(name) }
     entries[existing_idx or #entries + 1] = entry
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true

@@ -12,7 +12,7 @@
 
 local type, tostring, rawget, RegisterScriptCallback = type, tostring, rawget, RegisterScriptCallback
 local string_format, math_random = string.format, math.random
-local xevent, xttltable, xcreature, xsquad = xevent, xttltable, xcreature, xsquad
+local xevent, xttltable, xcreature, xsquad, xprofiler = xevent, xttltable, xcreature, xsquad, xprofiler
 local xtime, xobject, xpda, xinventory, xcombat = xtime, xobject, xpda, xinventory, xcombat
 local INVALID_BONE_ID = xconst.INVALID_BONE_ID
 local level, game, game_relations, game_object = level, game, game_relations, game_object
@@ -398,6 +398,8 @@ local function _claim_owner(corpse)
     local id = corpse:id()
     local v = id and _owner:get(id)
     if not v then return nil end
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local owner, why
     if v.killer == _ac_id then
         why = "own_kill"
@@ -407,12 +409,10 @@ local function _claim_owner(corpse)
         owner = _npc_claimer(v, _corpse_pos(corpse), cfg.loot_block_npc_radius)
         if not owner then why = "owner_absent" end
     end
-    if ap_core_debug.enabled() then
-        if owner then
-            ap_core_debug.debug("%s claim corpse=%s -> claimed by %s", LOG, id, owner:id())
-        else
-            ap_core_debug.debug("%s claim corpse=%s -> void:%s", LOG, id, why)
-        end
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s claim corpse=%s -> %s [%.2fms]", LOG, id,
+            owner and ("claimed by " .. owner:id()) or ("void:" .. tostring(why)), tmr:get_ms())
     end
     return owner
 end

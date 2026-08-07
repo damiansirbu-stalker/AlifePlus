@@ -1,7 +1,7 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 17 specific causes (answers). Picker emits one specific cause per call.
 
-local table_sort, next, math_random = table.sort, next, math.random
+local table_sort, next, math_random, xprofiler = table.sort, next, math.random, xprofiler
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker =
     ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
@@ -139,7 +139,7 @@ end
 
 -- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
 -- budget: per-_on_smart table { remaining = N }. RULES rejections free; SCAN reaches consume one slot.
-local function _try_cause(trace, squad, level_id, entry, budget)
+local function _try_cause(squad, level_id, entry, budget)
     if not cfg["cause_" .. entry.name .. "_enabled"] then
         return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
     end
@@ -174,9 +174,9 @@ local function _try_cause(trace, squad, level_id, entry, budget)
     budget.remaining = budget.remaining - 1
     local smart
     if entry.offmap then
-        smart = ap_core_util.find_first_smart_observed(trace, opts)
+        smart = ap_core_util.find_first_smart(opts)
     else
-        smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
+        smart = ap_core_util.find_smart(squad.position, opts)
     end
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
@@ -217,29 +217,32 @@ end
 -- result on SUCCESS, nil otherwise. observe() wraps _try_cause so every attempt logs.
 -- period_mismatch needs are walked only at DEBUG (see _find_overdue_needs); each cause emits
 -- a failed_rules:wrong_period observe line so dormant/active drops are no longer silent.
-local function _try_one_need_cause(trace, squad, level_id, overdue_entry, entry, budget)
+local function _try_one_need_cause(squad, level_id, overdue_entry, entry, budget)
     if entry.need ~= overdue_entry.need.need then return nil end
+    local dbg = ap_core_debug.enabled()
     if overdue_entry.period_mismatch then
-        ap_core_debug.observe(trace, entry.cause, function()
-            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD }
-        end)
+        if dbg then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
         return nil
     end
-    local cause_result = ap_core_debug.observe(trace, entry.cause, _try_cause, squad, level_id, entry, budget)
-    if not cause_result or cause_result.code ~= RESULT.SUCCESS then return nil end
+    local tmr = xprofiler.new_if(dbg):start()
+    local cause_result = _try_cause(squad, level_id, entry, budget)
+    tmr:stop()
+    if dbg then ap_core_debug.debug("%s %s%s [%.2fms]", entry.log_prefix,
+        cause_result.code or "?", cause_result.reason and ":" .. cause_result.reason or "", tmr:get_ms()) end
+    if cause_result.code ~= RESULT.SUCCESS then return nil end
     return _make_result(squad, level_id, overdue_entry, entry, cause_result.smart)
 end
 
 --- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
-local function _try_need(trace, squad, level_id, overdue_entry, budget)
+local function _try_need(squad, level_id, overdue_entry, budget)
     for j = 1, #CAUSES do
-        local result = _try_one_need_cause(trace, squad, level_id, overdue_entry, CAUSES[j], budget)
+        local result = _try_one_need_cause(squad, level_id, overdue_entry, CAUSES[j], budget)
         if result then return result end
     end
     return nil
 end
 
-local function _on_smart(trace, squad)
+local function _on_smart(squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
     if not level.present() then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
@@ -265,7 +268,7 @@ local function _on_smart(trace, squad)
     local budget = { remaining = MAX_SCANS_PER_GENERATOR }
     local result
     for i = 1, #overdue do
-        if not result then result = _try_need(trace, squad, level_id, overdue[i], budget) end
+        if not result then result = _try_need(squad, level_id, overdue[i], budget) end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 

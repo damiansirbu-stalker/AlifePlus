@@ -1,5 +1,5 @@
 --- ap_ext_util: Ext-layer utilities (period gates, alignment gates, personality gates, tactics gate)
-local math_random = math.random
+local math_random, xcreature = math.random, xcreature
 
 local PERSONALITY = ap_ext_const.PERSONALITY
 local _alignment_mutant_night = ap_ext_const.alignment_mutant_night
@@ -89,6 +89,24 @@ function check_personality(traits, community)
     if chance > p_max then chance = p_max end
     local roll = math_random()
     return roll < chance, avg, chance, roll
+end
+
+--- Keep candidates whose mutant species is in species_set and that pass the personality roll
+--- Shared by the mutant reactive consequences (scavenge, hunt, haunt); species resolved per squad
+--- @param candidates table Array of squad server objects
+--- @param species_set table Hash set { [species] = true }
+--- @param personality table Array of PERSONALITY trait keys
+--- @return table Array of eligible squads
+function filter_mutant_squads(candidates, species_set, personality)
+    local out = {}
+    for i = 1, #candidates do
+        local squad = candidates[i]
+        local species = xcreature.get_mutant_species(squad.id)
+        if species and species_set[species] and check_personality(personality, species) then
+            out[#out + 1] = squad
+        end
+    end
+    return out
 end
 
 --- Roll a tactical-soundness check against random; true when candidate passes

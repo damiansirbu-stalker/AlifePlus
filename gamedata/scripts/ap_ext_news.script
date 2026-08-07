@@ -19,11 +19,8 @@ local alignment_human = ap_ext_const.alignment_human
 local cfg = ap_core_mcm.cfg
 local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "compose_tick"
+local NEWS_LOG = "[EXT.NEWS]"
 
-local OP_COMPOSE       = "news:compose"
-local OP_COLLECT       = "news:collect"
-local OP_PICK_SPEAKER  = "news:pick_speaker"
-local OP_DISPATCH      = "news:dispatch"
 
 local MAX_TEMPLATE_VARIANTS = 20
 
@@ -252,16 +249,15 @@ end
 -- Engine dispatch. Routes through dynamic_news_manager.PushToChannel when initialized;
 -- falls back to xpda.send during the ~27s cold-start window. Engine-side drops (enable_news,
 -- NewsToggle, is_pda_charged, counter cap) are not duplicated here.
--- Called from compose_tick AFTER the OP_COMPOSE observe span closes, so vanilla engine cost
--- (PushToChannel: UI texture lookup, sound init, shared_str ops) is NOT attributed to AP
--- measurements. Engine time is captured separately and surfaced as engine_ms on the
--- OP_DISPATCH log line.
-local function _do_engine_dispatch(trace, picked, msg)
+-- Called from compose_tick AFTER the compose timer stops, so vanilla engine cost (PushToChannel:
+-- UI texture lookup, sound init, shared_str ops) is timed and logged on its own dispatch line,
+-- never attributed to the AP compose measurement.
+local function _do_engine_dispatch(picked, msg)
     local dnm = dynamic_news_manager and dynamic_news_manager.get_dynamic_news
                 and dynamic_news_manager.get_dynamic_news() or nil
     local use_queued = dnm and dnm.PushToChannel
-    local engine_timer = xprofiler.new_if(ap_core_debug.enabled())
-    engine_timer:start()
+    local dbg = ap_core_debug.enabled()
+    local engine_timer = xprofiler.new_if(dbg):start()
     if use_queued then
         dnm:PushToChannel(picked.channel, {
             Mg = msg, Se = picked.name, Ic = picked.icon,
@@ -271,12 +267,8 @@ local function _do_engine_dispatch(trace, picked, msg)
         xpda.send(picked.name, msg, picked.icon)
     end
     engine_timer:stop()
-    ap_core_debug.observe(trace, OP_DISPATCH, function()
-        return { code = TRACE.OK,
-            path = use_queued and "queued" or "fallback",
-            sender = picked.name, channel = picked.channel, msg = msg,
-            engine_ms = engine_timer:get_ms() }
-    end)
+    if dbg then ap_core_debug.debug("%s dispatch %s sender=%s channel=%s [%.2fms]", NEWS_LOG,
+        use_queued and "queued" or "fallback", picked.name, tostring(picked.channel), engine_timer:get_ms()) end
 end
 
 -- ============================================================================
@@ -382,7 +374,7 @@ local function _pick_template(entry)
     return _templates_by_consequence[cons_name], cons_name
 end
 
-local function _compose_tick_impl(trace)
+local function _compose_tick_impl()
     local current_locale = _detect_locale()
     if current_locale ~= _locale then
         _locale = current_locale
@@ -394,9 +386,7 @@ local function _compose_tick_impl(trace)
                 and dynamic_news_manager.get_dynamic_news() or nil
     local channel_status = dnm and dnm.channel_status or nil
     if not channel_status then return { code = TRACE.NONE } end
-    local entries = ap_core_debug.observe(trace, OP_COLLECT, function()
-        return _collect_eligible()
-    end)
+    local entries = _collect_eligible()
     if #entries == 0 then return { code = TRACE.NONE } end
     local entry = entries[math_random(#entries)]
     local pool, cons_name = _pick_template(entry)
@@ -414,30 +404,32 @@ local function _compose_tick_impl(trace)
     local msg = _clean_output(_substitute(template, slots))
     if not msg then return { code = TRACE.NO_MSG, cons = cons_name or "?" } end
     local actor_comm = get_actor_true_community()
-    local picked = ap_core_debug.observe(trace, OP_PICK_SPEAKER, function()
-        return _pick_speaker(actor_comm, cfg.news_scope, channel_status)
-    end)
+    local picked = _pick_speaker(actor_comm, cfg.news_scope, channel_status)
     if not picked then
         return { code = TRACE.NO_SENDER, scope = cfg.news_scope,
             actor_comm = actor_comm or "?", channels = _format_channels(channel_status) }
     end
-    _pending_dispatch = { trace = trace, picked = picked, msg = msg }
+    _pending_dispatch = { picked = picked, msg = msg }
     ap_core_record.mark_reported(entry.cons_id)
     return { code = TRACE.SENT, sender = picked.name }
 end
 
---- compose_tick: news pipeline tick. AP-side compose runs under OP_COMPOSE observe;
---- engine dispatch (vanilla dnm:PushToChannel / xpda.send) runs AFTER the span closes
---- so vanilla cost is not attributed to AP timings. Dispatch is emitted as a peer
---- OP_DISPATCH log line (same trace, same tid) carrying engine_ms as a side-stat.
+--- compose_tick: news pipeline tick. AP-side compose is timed as one span; engine dispatch
+--- (vanilla dnm:PushToChannel / xpda.send) runs AFTER the timer stops so vanilla cost is not
+--- attributed to the AP compose measurement, and is logged on its own dispatch line.
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
     _pending_dispatch = nil
-    local result = ap_core_debug.observe(nil, OP_COMPOSE, _compose_tick_impl)
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = _compose_tick_impl()
+    tmr:stop()
+    if dbg then ap_core_debug.debug("%s compose %s%s [%.2fms]", NEWS_LOG, result.code or "?",
+        result.reason and ":" .. result.reason or "", tmr:get_ms()) end
     local pending = _pending_dispatch
     if pending then
         _pending_dispatch = nil
-        _do_engine_dispatch(pending.trace, pending.picked, pending.msg)
+        _do_engine_dispatch(pending.picked, pending.msg)
     end
     return result
 end

@@ -19,7 +19,7 @@ local _cooldown
 
 local ALPHAKILL_COOLDOWN_MS = 60000
 
-local function _on_death(trace, squad, npc, killer)
+local function _on_death(squad, npc, killer)
     if not cfg.cause_alphakill_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }

@@ -4,8 +4,6 @@ local game_relations, get_actor_true_community = game_relations, get_actor_true_
 local xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature = xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
 
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local TRACE = ap_core_const.TRACE
 local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
 
@@ -105,20 +103,6 @@ function find_squads(pos, opts)
     return preempt_result
 end
 
---- Find squads with FIND_TARGETS observe wrapper. Returns squads array (may be empty).
---- @param trace table Trace from event_data._trace
---- @param position vector Origin position
---- @param opts table Options (forwarded to ap_core_util.find_squads)
---- @return table Array of squad server objects
-function find_squads_observed(trace, position, opts)
-    local squads
-    ap_core_debug.observe(trace, PHASE.FIND_TARGETS, function()
-        squads = find_squads(position, opts)
-        return ap_core_debug.result_squads(squads)
-    end)
-    return squads
-end
-
 --- Short-circuiting boolean any-match against the squad pool.
 --- Same protection + level-scope source layering as find_squads. No preempt — boolean answer
 --- is final. Use when the consumer is yes/no (does any X exist nearby?) and find_squads'
@@ -133,20 +117,6 @@ function has_squad(pos, opts)
         opts.source = ap_core_cache.squads_on_level(opts.level_id)
     end
     return xsquad.has_squad(pos, opts)
-end
-
---- has_squad with FIND_TARGETS observe wrapper.
---- @param trace table Trace from event_data._trace
---- @param position vector Origin position
---- @param opts table Options (forwarded to ap_core_util.has_squad)
---- @return boolean
-function has_squad_observed(trace, position, opts)
-    local found
-    ap_core_debug.observe(trace, PHASE.FIND_TARGETS, function()
-        found = has_squad(position, opts)
-        return { code = found and TRACE.OK or TRACE.EMPTY }
-    end)
-    return found
 end
 
 --- Find nearest smart terrain matching filter criteria
@@ -186,43 +156,17 @@ function find_smart(pos, opts)
     return result
 end
 
---- Find nearest smart with FIND_DESTINATION observe wrapper. Returns smart or nil.
---- @param trace table Trace from event_data._trace
---- @param position vector Origin position
---- @param opts table Options (forwarded to ap_core_util.find_smart)
---- @return table|nil Smart server object or nil
-function find_smart_observed(trace, position, opts)
-    local smart
-    ap_core_debug.observe(trace, PHASE.FIND_DESTINATION, function()
-        smart = find_smart(position, opts)
-        if not smart then return { code = TRACE.EMPTY } end
-        return { code = TRACE.OK, id = smart.id }
-    end)
-    return smart
-end
-
---- Find first matching smart (distance-free) with FIND_DESTINATION observe wrapper.
---- Use when the caller has no comparable position frame (cross-level dispatch).
---- Injects ap_core_cache.smarts_on_level as opts.source when opts.level_id is set.
---- @param trace table Trace from event_data._trace
+--- Find first matching smart (distance-free). Use when the caller has no comparable position
+--- frame (cross-level dispatch). Injects ap_core_cache.smarts_on_level when opts.level_id is set.
 --- @param opts table Options (forwarded to xsmart.find_first_smart)
 --- @return table|nil Smart server object or nil
-function find_first_smart_observed(trace, opts)
-    local smart
-    ap_core_debug.observe(trace, PHASE.FIND_DESTINATION, function()
-        local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
-        if source then
-            local local_opts = {}
-            for k, v in pairs(opts) do local_opts[k] = v end
-            local_opts.source = source
-            smart = xsmart.find_first_smart(local_opts)
-        else
-            smart = xsmart.find_first_smart(opts)
-        end
-        if not smart then return { code = TRACE.EMPTY } end
-        return { code = TRACE.OK, id = smart.id }
-    end)
-    return smart
+function find_first_smart(opts)
+    local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
+    if not source then return xsmart.find_first_smart(opts) end
+    local local_opts = {}
+    for k, v in pairs(opts) do local_opts[k] = v end
+    local_opts.source = source
+    return xsmart.find_first_smart(local_opts)
 end
 
 --- Dynamic-walk dispatch tables for the role resolvers. Dynamic walk (xsmart.get_<role>_at_smart)

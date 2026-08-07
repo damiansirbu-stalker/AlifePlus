@@ -4,8 +4,8 @@
 --- massacre_loot: outlaw stalkers strip the corpses
 
 local ipairs = ipairs
-local xcreature, xtable = xcreature, xtable
-local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util
+local xtable, xprofiler = xtable, xprofiler
+local ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util = ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -13,10 +13,12 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE.MASSACRE)
+local LOG_INVESTIGATE = ap_core_debug.bracket(CONSEQUENCE.MASSACRE_INVESTIGATE)
+local LOG_SCAVENGE = ap_core_debug.bracket(CONSEQUENCE.MASSACRE_SCAVENGE)
+local LOG_LOOT = ap_core_debug.bracket(CONSEQUENCE.MASSACRE_LOOT)
 
 local cfg = ap_core_mcm.cfg
 
@@ -31,143 +33,128 @@ local _alignment_loot = ap_ext_const.alignment_outlaw
 local _personality_loot = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
 
 local function _handler_investigate(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_INVESTIGATE, function()
-        local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
-        if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
+    if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local investigate_faction = event_data.faction
+    if not investigate_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
+    if not ap_ext_util.check_alignment(_alignment_investigate, investigate_faction) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
+    end
+    if not ap_ext_util.check_personality(_personality_investigate, investigate_faction) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
+    end
 
-        local investigate_faction = event_data.faction
-        if not investigate_faction then return { code = RESULT.FAILED_RULES, reason = REASON.NO_FACTION } end
-        if not ap_ext_util.check_alignment(_alignment_investigate, investigate_faction) then
-            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = investigate_faction }
-        end
-        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_investigate, investigate_faction)
-        if not p_ok then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
-        end
-
-        local squads = ap_core_util.find_squads_observed(trace, position, {
-            factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
-            level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
-            exclude_at_smart_id = smart.id, allow_preempt = true,
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local squads = ap_core_util.find_squads(position, {
+        factions = investigate_faction, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+        level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
+        exclude_at_smart_id = smart.id, allow_preempt = true,
+    })
+    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+        rush = cfg.consequence_massacre_investigate_rush,
+        pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_INVESTIGATE,
+        interruptable = false,
+    })
+    tmr:stop()
+    local code, reason = RESULT.SUCCESS, nil
+    if #squads == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
+    elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s dst=%d moved=%d [%.2fms]", LOG_INVESTIGATE, tid,
+            reason and (code .. ":" .. reason) or code, smart.id, #moved, tmr:get_ms())
+    end
+    if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
+    for i = 1, #moved do
+        ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
+            action_key = ACTION.MASSACRE_INVESTIGATE,
+            other_squad = event_data.killer_squad,
+            smart = smart, level_id = level_id,
         })
-        if #squads == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-
-        local moved = {}
-        local last_reason
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg.consequence_massacre_investigate_rush,
-                    pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_INVESTIGATE,
-                    interruptable = false,
-                })
-                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do
-            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_INVESTIGATE, {
-                action_key = ACTION.MASSACRE_INVESTIGATE,
-                other_squad = event_data.killer_squad,
-                smart = smart, level_id = level_id,
-            })
-        end
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = smart.id, faction = investigate_faction })
-    end)
+    end
+    return { code = RESULT.SUCCESS }
 end
 
 local function _handler_scavenge(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_SCAVENGE, function()
-        local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
-        if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
+    if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local candidates = ap_core_util.find_squads_observed(trace, position, {
-            factions = _alignment_scavenge, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
-            level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
-            exclude_at_smart_id = smart.id, allow_preempt = true,
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local candidates = ap_core_util.find_squads(position, {
+        factions = _alignment_scavenge, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
+        level_id = level_id, max_count = cfg.consequence_massacre_scavenge_max_squads,
+        exclude_at_smart_id = smart.id, allow_preempt = true,
+    })
+    local squads = ap_ext_util.filter_mutant_squads(candidates, _species_scavenge, _personality_scavenge)
+    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+        rush = cfg.consequence_massacre_scavenge_rush,
+        pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_SCAVENGE,
+        interruptable = false,
+    })
+    tmr:stop()
+    local code, reason = RESULT.SUCCESS, nil
+    if #candidates == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
+    elseif #squads == 0 then code, reason = RESULT.FAILED_RULES, REASON.NO_ELIGIBLE_SQUAD
+    elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s dst=%d moved=%d [%.2fms]", LOG_SCAVENGE, tid,
+            reason and (code .. ":" .. reason) or code, smart.id, #moved, tmr:get_ms())
+    end
+    if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
+    for i = 1, #moved do
+        ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_SCAVENGE, {
+            action_key = ACTION.MASSACRE_SCAVENGE,
+            other_squad = event_data.victim_squad,
+            smart = smart, level_id = level_id,
         })
-        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-        local squads = {}
-        for _, squad in ipairs(candidates) do
-            local species = xcreature.get_mutant_species(squad.id)
-            if not species or not _species_scavenge[species] then goto continue end
-            if not ap_ext_util.check_personality(_personality_scavenge, species) then goto continue end
-            squads[#squads + 1] = squad
-            ::continue::
-        end
-        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ELIGIBLE_SQUAD } end
-
-        local moved = {}
-        local last_reason
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg.consequence_massacre_scavenge_rush,
-                    pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_SCAVENGE,
-                    interruptable = false,
-                })
-                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do
-            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_SCAVENGE, {
-                action_key = ACTION.MASSACRE_SCAVENGE,
-                other_squad = event_data.victim_squad,
-                smart = smart, level_id = level_id,
-            })
-        end
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = smart.id, species = "cowardly" })
-    end)
+    end
+    return { code = RESULT.SUCCESS }
 end
 
 local function _handler_loot(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.MASSACRE_LOOT, function()
-        local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
-        if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
+    if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local candidates = ap_core_util.find_squads_observed(trace, position, {
-            factions = _alignment_loot, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
-            level_id = level_id, max_count = cfg.consequence_massacre_loot_max_squads,
-            exclude_at_smart_id = smart.id, allow_preempt = true,
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local candidates = ap_core_util.find_squads(position, {
+        factions = _alignment_loot, min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+        level_id = level_id, max_count = cfg.consequence_massacre_loot_max_squads,
+        exclude_at_smart_id = smart.id, allow_preempt = true,
+    })
+    local squads = {}
+    for _, squad in ipairs(candidates) do
+        if ap_ext_util.check_personality(_personality_loot, squad.player_id) then
+            squads[#squads + 1] = squad
+        end
+    end
+    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+        rush = cfg.consequence_massacre_loot_rush,
+        pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_LOOT,
+        interruptable = false,
+    })
+    tmr:stop()
+    local code, reason = RESULT.SUCCESS, nil
+    if #candidates == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
+    elseif #squads == 0 then code, reason = RESULT.FAILED_RULES, REASON.LOW_PERSONALITY
+    elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s dst=%d moved=%d [%.2fms]", LOG_LOOT, tid,
+            reason and (code .. ":" .. reason) or code, smart.id, #moved, tmr:get_ms())
+    end
+    if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
+    for i = 1, #moved do
+        ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_LOOT, {
+            action_key = ACTION.MASSACRE_LOOT,
+            other_squad = event_data.victim_squad,
+            smart = smart, level_id = level_id,
         })
-        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-        local squads = {}
-        for _, squad in ipairs(candidates) do
-            if ap_ext_util.check_personality(_personality_loot, squad.player_id) then
-                squads[#squads + 1] = squad
-            end
-        end
-        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY } end
-
-        local moved = {}
-        local last_reason
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg.consequence_massacre_loot_rush,
-                    pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_LOOT,
-                    interruptable = false,
-                })
-                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = smart.id, rejected = #squads - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do
-            ap_core_record.add_record(moved[i], CAUSE.MASSACRE, CONSEQUENCE.MASSACRE_LOOT, {
-                action_key = ACTION.MASSACRE_LOOT,
-                other_squad = event_data.victim_squad,
-                smart = smart, level_id = level_id,
-            })
-        end
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = smart.id })
-    end)
+    end
+    return { code = RESULT.SUCCESS }
 end
 
 function on_game_start()

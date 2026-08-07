@@ -18,7 +18,7 @@
 
 local string_sub = string.sub
 local table_concat, table_sort = table.concat, table.sort
-local xobject, xtime, xstash, xinventory = xobject, xtime, xstash, xinventory
+local xobject, xtime, xstash, xinventory, xprofiler, xtrace = xobject, xtime, xstash, xinventory, xprofiler, xtrace
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_ext_tracker = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
@@ -27,9 +27,7 @@ local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
-local TRACE = ap_core_const.TRACE
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_LOOT = ap_core_debug.bracket(CONSEQUENCE.STASH_LOOT)
@@ -261,24 +259,26 @@ local function _arrive_loot(squad, args)
         return
     end
 
-    ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_LOOT, function(trace)
-        local taken_secs = {}
-        local index = _index_with_cost(sections)
-        _loot_by_category({
-            index       = index,
-            member_ids  = member_ids,
-            member_opts = member_opts,
-            counts      = counts,
-            taken_secs  = taken_secs,
-            rules       = STASH_POLICY.rules,
-        })
-        _loot_extras(index, member_ids, taken_secs)
-        ap_core_debug.observe(trace, PHASE.LOOT_STASH, function()
-            return xstash.loot_stash(stash_id)
-        end)
-        return { code = TRACE.OK, stash = stash_id, squad = squad.id, taken = #taken_secs, items = #sections,
-            looted = table_concat(taken_secs, ",") }
-    end)
+    local dbg = ap_core_debug.enabled()
+    local tid = dbg and xtrace.new().id or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local taken_secs = {}
+    local index = _index_with_cost(sections)
+    _loot_by_category({
+        index       = index,
+        member_ids  = member_ids,
+        member_opts = member_opts,
+        counts      = counts,
+        taken_secs  = taken_secs,
+        rules       = STASH_POLICY.rules,
+    })
+    _loot_extras(index, member_ids, taken_secs)
+    xstash.loot_stash(stash_id)
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] complete stash=%d squad=%d taken=%d items=%d looted=%s [%.2fms]", LOG_LOOT, tid,
+            stash_id, squad.id, #taken_secs, #sections, table_concat(taken_secs, ","), tmr:get_ms())
+    end
 end
 
 local function _arrive_ambush(squad, args)
@@ -333,32 +333,31 @@ local function _arrive_fill(squad, args)
         return
     end
 
-    ap_core_debug.observe(nil, PHASE.COMPLETE_STASH_FILL, function(trace)
-        local picks = _collect_fill_picks(squad, STASH_POLICY.fill_max)
-        if #picks == 0 then
-            return { code = TRACE.NO_ITEMS, stash = stash_id, squad = squad.id }
-        end
-
-        local secs = {}
-        for i = 1, #picks do
-            local itm = picks[i]
-            secs[i] = xinventory.get_section(itm)
-            xinventory.release_item(itm)
-        end
-
-        local ok
-        ap_core_debug.observe(trace, PHASE.FILL_STASH, function()
-            ok = xstash.fill_stash(stash_id, secs, false)
-            return { code = ok and TRACE.OK or TRACE.NONE }
-        end)
-
-        if not ok then
-            ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d fill_failed", stash_id, squad.id)
-            return { code = TRACE.NONE, stash = stash_id, squad = squad.id, reason = REASON.FILL_FAILED }
-        end
-        return { code = TRACE.OK, stash = stash_id, squad = squad.id, items = #secs,
-            deposited = table_concat(secs, ",") }
-    end)
+    local dbg = ap_core_debug.enabled()
+    local tid = dbg and xtrace.new().id or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local picks = _collect_fill_picks(squad, STASH_POLICY.fill_max)
+    if #picks == 0 then
+        tmr:stop()
+        if dbg then ap_core_debug.debug("%s [tid=%d] complete stash=%d squad=%d no_items [%.2fms]", LOG_FILL, tid, stash_id, squad.id, tmr:get_ms()) end
+        return
+    end
+    local secs = {}
+    for i = 1, #picks do
+        local itm = picks[i]
+        secs[i] = xinventory.get_section(itm)
+        xinventory.release_item(itm)
+    end
+    local ok = xstash.fill_stash(stash_id, secs, false)
+    tmr:stop()
+    if not ok then
+        ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d fill_failed", stash_id, squad.id)
+        return
+    end
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] complete stash=%d squad=%d items=%d deposited=%s [%.2fms]", LOG_FILL, tid,
+            stash_id, squad.id, #secs, table_concat(secs, ","), tmr:get_ms())
+    end
 end
 
 local CONFIGS = {
@@ -388,37 +387,43 @@ end
 
 local function _make_handler(entry)
     return function(event_data)
-        local trace = event_data._trace
-        return ap_core_debug.observe(trace, entry.consequence, function()
-            local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-            local smart = xobject.se(event_data.dst_smart_id)
-            if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-            local res
-            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-                res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg["consequence_" .. entry.name .. "_rush"],
-                    on_arrive = entry.consequence,
-                    on_arrive_args = { stash_id = event_data.stash_id, dto_field = event_data.dto_field },
-                    pre_release_gulag = entry.pre_release_gulag,
-                    interruptable = entry.interruptable,
-                })
-                return res
-            end)
-            if res.code ~= RESULT.SUCCESS then
-                return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
-            end
-            ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
-                action_key = entry.action,
-                smart = smart, level_id = event_data.level_id,
-            })
-            return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, stash_id = event_data.stash_id, community = event_data.community }
-        end)
+        local dbg = ap_core_debug.enabled()
+        local tid = event_data.tid or 0
+        local squad = xobject.se(event_data.squad_id)
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+        local smart = xobject.se(event_data.dst_smart_id)
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+
+        local tmr = xprofiler.new_if(dbg):start()
+        local res = ap_core_broker.script_squad(squad, smart, {
+            rush = cfg["consequence_" .. entry.name .. "_rush"],
+            on_arrive = entry.consequence,
+            on_arrive_args = { stash_id = event_data.stash_id, dto_field = event_data.dto_field },
+            pre_release_gulag = entry.pre_release_gulag,
+            interruptable = entry.interruptable,
+        })
+        tmr:stop()
+        local ok = res.code == RESULT.SUCCESS
+        if dbg then
+            ap_core_debug.debug("%s [tid=%d] %s dst=%d [%.2fms]", entry.log_prefix, tid,
+                ok and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. (res.reason or REASON.MOVE_FAILED)), smart.id, tmr:get_ms())
+        end
+        if not ok then
+            return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
+        end
+        ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
+            action_key = entry.action,
+            smart = smart, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS }
     end
 end
 
 function on_game_start()
     _load_stash_policy()
+    for i = 1, #CONFIGS do
+        CONFIGS[i].log_prefix = ap_core_debug.bracket(CONFIGS[i].consequence)
+    end
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
         ap_core_consumer.register(entry.consequence, {

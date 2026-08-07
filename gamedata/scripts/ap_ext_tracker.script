@@ -3,11 +3,10 @@ local pairs, tostring, type = pairs, tostring, type
 local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
-local xtable, xttltable, xcreature, xconst = xtable, xttltable, xcreature, xconst
+local xtable, xttltable, xcreature, xconst, xprofiler = xtable, xttltable, xcreature, xconst, xprofiler
 local ap_core_debug, ap_core_util = ap_core_debug, ap_core_util
 
 local CALLBACK = ap_core_const.CALLBACK
-local TRACE = ap_core_const.TRACE
 local ALPHA_MAX_LEVEL = 10
 local DEAD_GRACE_SEC = 3600
 local NEED_FIELDS = ap_ext_const.NEED_FIELDS
@@ -249,17 +248,19 @@ function reset_squad_opportunity(squad_id, key, now)
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
-    return ap_core_debug.observe(nil, "tracker:death", function()
-        local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
-        local killer_id = ap_core_util.get_entity_id(killer)
-        if killer_id and xcreature.is_npc(killer_id) then
-            _register_kill(killer_id, victim_id)
-        end
-        if victim_id then
-            _unregister_entity(victim_id)
-        end
-        return { code = TRACE.OK, killer_id = killer_id, victim_id = victim_id }
-    end)
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
+    local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
+    local killer_id = ap_core_util.get_entity_id(killer)
+    if killer_id and xcreature.is_npc(killer_id) then
+        _register_kill(killer_id, victim_id)
+    end
+    if victim_id then
+        _unregister_entity(victim_id)
+    end
+    tmr:stop()
+    if dbg then ap_core_debug.debug("[TRACKER] death killer=%s victim=%s [%.2fms]",
+        tostring(killer_id), tostring(victim_id), tmr:get_ms()) end
 end
 
 -- Clear kill/alpha state when an entity despawns without a death event (AlifeGuard release,

@@ -7,7 +7,7 @@
 --- (medkit / bandage / stim usage in combat) is independent and untouched.
 
 local table_concat = table.concat
-local xobject, xtime, xcreature = xobject, xtime, xcreature
+local xobject, xtime, xcreature, xprofiler, xtrace = xobject, xtime, xcreature, xprofiler, xtrace
 local ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer =
     ap_core_util, ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer
 local ap_ext_trade, ap_ext_barter, ap_ext_tracker = ap_ext_trade, ap_ext_barter, ap_ext_tracker
@@ -18,8 +18,6 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local TRACE = ap_core_const.TRACE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
@@ -28,22 +26,21 @@ local cfg = ap_core_mcm.cfg
 
 --- Trade arrival action: trade visitor inventory with any service NPC at the destination smart.
 --- Delegates to ap_ext_trade.trade; trade uses the per-rank LTX policy for categories and the
---- MCM trade_profit_max cap (economy > trade). Wraps observe so the trade is one PHASE.ARRIVE entry.
-local function _arrive_action_trade(trace, visitor_go, args)
-    ap_core_debug.observe(trace, PHASE.ARRIVE, function()
-        local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
-        if not smart_se then return { code = TRACE.NONE, reason = REASON.NO_SMART } end
-        local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
-        if not trader_go then
-            ap_core_debug.debug(args.log_prefix .. " arrive trade: no service NPC online at smart=%d", args.dst_smart_id)
-            return { code = TRACE.NONE, reason = REASON.NO_TRADER }
-        end
-        local result = ap_ext_trade.trade(visitor_go, trader_go)
-        local sold, bought = result.sold, result.bought
-        local fired = (#sold > 0) or (#bought > 0)
-        return { code = fired and TRACE.OK or TRACE.NONE,
-            sold = table_concat(sold, ","), bought = table_concat(bought, ",") }
-    end)
+--- MCM trade_profit_max cap (economy > trade). One inline trade timer + line.
+local function _arrive_action_trade(tid, visitor_go, args)
+    local dbg = ap_core_debug.enabled()
+    local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
+    if not smart_se then return end
+    local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
+    if not trader_go then
+        ap_core_debug.debug("%s arrive trade: no service NPC online at smart=%d", args.log_prefix, args.dst_smart_id)
+        return
+    end
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = ap_ext_trade.trade(visitor_go, trader_go)
+    tmr:stop()
+    if dbg then ap_core_debug.debug("%s [tid=%d] trade sold=%s bought=%s [%.2fms]", args.log_prefix, tid,
+        table_concat(result.sold, ","), table_concat(result.bought, ","), tmr:get_ms()) end
 end
 
 --- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
@@ -51,21 +48,20 @@ end
 --- ways with no money via the per-rank ap_barter_policy.ltx. The peer pick excludes the arriving
 --- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
 --- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER). One PHASE.ARRIVE entry.
-local function _arrive_action_barter(trace, visitor_go, args)
-    ap_core_debug.observe(trace, PHASE.ARRIVE, function()
-        local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
-        if not smart_se then return { code = TRACE.NONE, reason = REASON.NO_SMART } end
-        local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id, xcreature.community(visitor_go))
-        if not peer_go then
-            ap_core_debug.debug(args.log_prefix .. " arrive barter: no stalker peer online at smart=%d", args.dst_smart_id)
-            return { code = TRACE.NONE, reason = REASON.NO_PEER }
-        end
-        local result = ap_ext_barter.barter(visitor_go, peer_go)
-        local given, received = result.given, result.received
-        local fired = (#given > 0) or (#received > 0)
-        return { code = fired and TRACE.OK or TRACE.NONE,
-            given = table_concat(given, ","), received = table_concat(received, ",") }
-    end)
+local function _arrive_action_barter(tid, visitor_go, args)
+    local dbg = ap_core_debug.enabled()
+    local smart_se = args.dst_smart_id and xobject.se(args.dst_smart_id)
+    if not smart_se then return end
+    local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id, xcreature.community(visitor_go))
+    if not peer_go then
+        ap_core_debug.debug("%s arrive barter: no stalker peer online at smart=%d", args.log_prefix, args.dst_smart_id)
+        return
+    end
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = ap_ext_barter.barter(visitor_go, peer_go)
+    tmr:stop()
+    if dbg then ap_core_debug.debug("%s [tid=%d] barter given=%s received=%s [%.2fms]", args.log_prefix, tid,
+        table_concat(result.given, ","), table_concat(result.received, ","), tmr:get_ms()) end
 end
 
 local CONFIGS = {
@@ -112,13 +108,13 @@ local CONFIGS = {
 -- Invoke entry.arrive_action on the commander, gated by MCM enabled flag and commander
 -- liveness. Returns the skip reason string if the action did not run (caller logs it),
 -- or nil on success. Split out so _make_on_arrive stays at depth 2.
-local function _invoke_arrive_action(entry, trace, squad, args)
+local function _invoke_arrive_action(entry, tid, squad, args)
     if cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] == false then
         return "arrive_action_disabled"
     end
     local st = db.storage[squad:commander_id()]
     if not (st and st.object) then return "commander_offline" end
-    entry.arrive_action(trace, st.object, args)
+    entry.arrive_action(tid, st.object, args)
     return nil
 end
 
@@ -128,14 +124,19 @@ end
 local function _make_on_arrive(entry)
     return function(squad, args)
         if not args or not args.dto_field then return end
-        ap_core_debug.observe(nil, PHASE.COMPLETE_NEEDS, function(trace)
-            ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.game_sec())
-            local skip
-            if entry.arrive_action then
-                skip = _invoke_arrive_action(entry, trace, squad, args)
-            end
-            return { code = TRACE.OK, squad = squad.id, need = entry.name, dst = args.dst_name, skip = skip }
-        end)
+        local dbg = ap_core_debug.enabled()
+        local tid = dbg and xtrace.new().id or 0
+        local tmr = xprofiler.new_if(dbg):start()
+        ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.game_sec())
+        local skip
+        if entry.arrive_action then
+            skip = _invoke_arrive_action(entry, tid, squad, args)
+        end
+        tmr:stop()
+        if dbg then
+            ap_core_debug.debug("%s [tid=%d] complete need=%s dst=%s%s [%.2fms]", entry.log_prefix, tid,
+                entry.name, args.dst_name or "?", skip and (" skip=" .. skip) or "", tmr:get_ms())
+        end
     end
 end
 
@@ -145,36 +146,38 @@ end
 
 local function _make_handler(entry)
     return function(event_data)
-        local trace = event_data._trace
-        return ap_core_debug.observe(trace, entry.consequence, function()
-            local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-            local smart = xobject.se(event_data.dst_smart_id)
-            if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        local dbg = ap_core_debug.enabled()
+        local tid = event_data.tid or 0
+        local squad = xobject.se(event_data.squad_id)
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+        local smart = xobject.se(event_data.dst_smart_id)
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
-            local res
-            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-                res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg["consequence_" .. entry.name .. "_rush"],
-                    on_arrive = entry.consequence,
-                    on_arrive_args = { dto_field = event_data.dto_field,
-                        dst_name = smart:name(), dst_smart_id = smart.id,
-                        squad_id = event_data.squad_id, log_prefix = entry.log_prefix },
-                    pre_release_gulag = entry.pre_release_gulag,
-                    offmap = entry.offmap,
-                    interruptable = not entry.offmap,
-                })
-                return res
-            end)
-            if res.code ~= RESULT.SUCCESS then
-                return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
-            end
-            ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
-                action_key = entry.action,
-                smart = smart, level_id = event_data.level_id,
-            })
-            return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community }
-        end)
+        local tmr = xprofiler.new_if(dbg):start()
+        local res = ap_core_broker.script_squad(squad, smart, {
+            rush = cfg["consequence_" .. entry.name .. "_rush"],
+            on_arrive = entry.consequence,
+            on_arrive_args = { dto_field = event_data.dto_field,
+                dst_name = smart:name(), dst_smart_id = smart.id,
+                squad_id = event_data.squad_id, log_prefix = entry.log_prefix },
+            pre_release_gulag = entry.pre_release_gulag,
+            offmap = entry.offmap,
+            interruptable = not entry.offmap,
+        })
+        tmr:stop()
+        local ok = res.code == RESULT.SUCCESS
+        if dbg then
+            ap_core_debug.debug("%s [tid=%d] %s dst=%d [%.2fms]", entry.log_prefix, tid,
+                ok and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. (res.reason or REASON.MOVE_FAILED)), smart.id, tmr:get_ms())
+        end
+        if not ok then
+            return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
+        end
+        ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
+            action_key = entry.action,
+            smart = smart, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS }
     end
 end
 

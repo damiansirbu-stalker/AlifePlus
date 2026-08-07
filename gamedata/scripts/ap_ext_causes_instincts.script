@@ -2,7 +2,7 @@
 --- CAUSES table holds 7 specific causes (slumber splits 3 ways by shelter type). Picker emits
 --- one specific cause per call.
 
-local table_sort, pairs, math_random = table.sort, pairs, math.random
+local table_sort, pairs, math_random, xprofiler = table.sort, pairs, math.random, xprofiler
 local xobject, xsmart, xtime, xlevel, xcreature = xobject, xsmart, xtime, xlevel, xcreature
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
@@ -110,8 +110,8 @@ local function _build_pack_filter(community, exclude_smart_id)
     end
 end
 
-local function _has_nearby_threat(trace, pos, level_id, squad_id, threats)
-    return ap_core_util.has_squad_observed(trace, pos, {
+local function _has_nearby_threat(pos, level_id, squad_id, threats)
+    return ap_core_util.has_squad(pos, {
         factions = _alignment_mutant,
         level_id = level_id,
         max_distance = RANGE_SCENT,
@@ -138,13 +138,13 @@ local function _build_scatter_filter(threats, player_id)
 end
 
 --- Resolve which filter to use for a scatter cause (pre-checked threats by tier).
-local function _scatter_smart(trace, squad, level_id, species)
+local function _scatter_smart(squad, level_id, species)
     local tier = _food_chain_tier[species]
     local threats = tier and _scatter_from[tier]
     local smart
-    if threats and _has_nearby_threat(trace, squad.position, level_id, squad.id, threats) then
+    if threats and _has_nearby_threat(squad.position, level_id, squad.id, threats) then
         local filter = _build_scatter_filter(threats, squad.player_id)
-        smart = ap_core_util.find_smart_observed(trace, squad.position, {
+        smart = ap_core_util.find_smart(squad.position, {
             level_id = level_id, filter = filter,
             max_distance = RANGE_SCENT, exclude_id = squad.smart_id,
         })
@@ -154,7 +154,7 @@ end
 
 -- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
 -- budget: per-_on_smart table { remaining = N }. RULES rejections free; SCAN reaches consume one slot.
-local function _try_cause(trace, squad, level_id, species, entry, budget)
+local function _try_cause(squad, level_id, species, entry, budget)
     if not cfg["cause_" .. entry.name .. "_enabled"] then
         return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
     end
@@ -171,13 +171,13 @@ local function _try_cause(trace, squad, level_id, species, entry, budget)
     budget.remaining = budget.remaining - 1
     local smart
     if entry.scan == "scatter" then
-        smart = _scatter_smart(trace, squad, level_id, species)
+        smart = _scatter_smart(squad, level_id, species)
     else
         local filter = entry.make_filter(squad)
         local opts = entry.find_opts and entry.find_opts(squad) or { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }
         opts.level_id = level_id
         opts.filter = filter
-        smart = ap_core_util.find_smart_observed(trace, squad.position, opts)
+        smart = ap_core_util.find_smart(squad.position, opts)
     end
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
@@ -206,24 +206,27 @@ end
 -- period_mismatch drives are walked only at DEBUG (see _find_overdue_drives); each cause emits
 -- a failed_rules:wrong_period observe line so dormant/active drops are no longer silent.
 -- opts: { species, overdue, entry, drive }
-local function _try_one_drive_cause(trace, squad, level_id, opts, budget)
+local function _try_one_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end
+    local dbg = ap_core_debug.enabled()
     if opts.overdue.period_mismatch then
-        ap_core_debug.observe(trace, opts.entry.cause, function()
-            return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD }
-        end)
+        if dbg then ap_core_debug.debug("%s failed_rules:wrong_period", opts.entry.log_prefix) end
         return nil
     end
-    local cause_result = ap_core_debug.observe(trace, opts.entry.cause, _try_cause, squad, level_id, opts.species, opts.entry, budget)
-    if not cause_result or cause_result.code ~= RESULT.SUCCESS then return nil end
+    local tmr = xprofiler.new_if(dbg):start()
+    local cause_result = _try_cause(squad, level_id, opts.species, opts.entry, budget)
+    tmr:stop()
+    if dbg then ap_core_debug.debug("%s %s%s [%.2fms]", opts.entry.log_prefix,
+        cause_result.code or "?", cause_result.reason and ":" .. cause_result.reason or "", tmr:get_ms()) end
+    if cause_result.code ~= RESULT.SUCCESS then return nil end
     return _make_result(squad, level_id, opts.overdue, opts.entry, cause_result.smart, opts.species)
 end
 
 --- Walk CAUSES for one overdue drive; first cause that publishes wins.
-local function _try_drive(trace, squad, level_id, species, overdue_entry, budget)
+local function _try_drive(squad, level_id, species, overdue_entry, budget)
     local drive_name = overdue_entry.instinct.instinct
     for j = 1, #CAUSES do
-        local result = _try_one_drive_cause(trace, squad, level_id,
+        local result = _try_one_drive_cause(squad, level_id,
             { species = species, overdue = overdue_entry, entry = CAUSES[j], drive = drive_name }, budget)
         if result then return result end
     end
@@ -273,7 +276,7 @@ local function _init_dto(dto, now, species, squad_id)
     end
 end
 
-local function _on_smart(trace, squad)
+local function _on_smart(squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_mutant[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
 
@@ -302,7 +305,7 @@ local function _on_smart(trace, squad)
     local budget = { remaining = MAX_SCANS_PER_GENERATOR }
     local result
     for i = 1, #overdue do
-        if not result then result = _try_drive(trace, squad, level_id, species, overdue[i], budget) end
+        if not result then result = _try_drive(squad, level_id, species, overdue[i], budget) end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
@@ -340,6 +343,10 @@ function on_game_start()
           make_filter = function(sq) return _build_pack_filter(sq.player_id, sq.smart_id) end,
           personality = { PERSONALITY.RELATION } },
     }
+
+    for i = 1, #CAUSES do
+        CAUSES[i].log_prefix = ap_core_debug.bracket(CAUSES[i].cause)
+    end
 
     local radiant = ap_core_const.RADIANT_CALLBACKS
     for i = 1, #radiant do

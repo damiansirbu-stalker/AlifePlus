@@ -4,8 +4,8 @@
 
 local ipairs = ipairs
 local game_relations, get_actor_true_community = game_relations, get_actor_true_community
-local xobject, xcreature = xobject, xcreature
-local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util
+local xobject, xprofiler = xobject, xprofiler
+local ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util = ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util
 
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
@@ -13,9 +13,10 @@ local CAUSE = ap_core_const.CAUSE
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE.HARVEST)
+local LOG_ROB = ap_core_debug.bracket(CONSEQUENCE.HARVEST_ROB)
+local LOG_HAUNT = ap_core_debug.bracket(CONSEQUENCE.HARVEST_HAUNT)
 
 local cfg = ap_core_mcm.cfg
 
@@ -32,118 +33,116 @@ local _move_actor_chasers = ap_ext_common.move_actor_chasers
 
 local _move_squad_chasers = ap_ext_common.move_squad_chasers
 
+-- Keep chasers hostile to the taker's community that pass the rob personality roll.
+local function _eligible_robbers(chasers, target_community)
+    local robbers = {}
+    for _, squad in ipairs(chasers) do
+        if game_relations.is_factions_enemies(squad.player_id, target_community)
+            and ap_ext_util.check_personality(_personality_rob, squad.player_id) then
+            robbers[#robbers + 1] = squad
+        end
+    end
+    return robbers
+end
+
 local function _handler_rob(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.HARVEST_ROB, function()
-        local taker_is_player = event_data.taker_is_player
-        local taker_squad_id = event_data.taker_squad_id
-        local position, level_id = event_data.position, event_data.level_id
-        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local taker_is_player = event_data.taker_is_player
+    local taker_squad_id = event_data.taker_squad_id
+    local position, level_id = event_data.position, event_data.level_id
+    if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local target_squad, target_community
+    local target_squad, target_community
+    if taker_is_player then
+        target_community = get_actor_true_community()
+    else
+        target_squad = xobject.se(taker_squad_id)
+        if not target_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_TARGET_SQUAD } end
+        target_community = target_squad.player_id
+    end
+
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local chasers = ap_core_util.find_squads(position, {
+        factions = _alignment_rob,
+        min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
+        level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
+        exclude_squad_id = event_data.taker_squad_id,
+        allow_preempt = true,
+    })
+    local robbers = _eligible_robbers(chasers, target_community)
+    local moved = {}
+    local code, reason = RESULT.SUCCESS, nil
+    if #chasers == 0 then
+        code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
+    elseif #robbers == 0 then
+        code, reason = RESULT.FAILED_RULES, REASON.NO_ELIGIBLE_SQUAD
+    else
         if taker_is_player then
-            target_community = get_actor_true_community()
+            _move_actor_chasers(robbers, moved, { check_relation = true })
         else
-            target_squad = xobject.se(taker_squad_id)
-            if not target_squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_TARGET_SQUAD } end
-            target_community = target_squad.player_id
+            _move_squad_chasers(robbers, taker_squad_id, moved, { check_relation = true })
         end
-
-        local chasers = ap_core_util.find_squads_observed(trace, position, {
-            factions = _alignment_rob,
-            min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
-            level_id = level_id, max_count = cfg.consequence_harvest_rob_max_squads,
-            exclude_squad_id = event_data.taker_squad_id,
-            allow_preempt = true,
+        if #moved == 0 then code, reason = RESULT.FAILED_ACTION, REASON.MOVE_FAILED end
+    end
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s moved=%d [%.2fms]", LOG_ROB, tid,
+            reason and (code .. ":" .. reason) or code, #moved, tmr:get_ms())
+    end
+    if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
+    for i = 1, #moved do
+        ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
+            action_key = ACTION.HARVEST_ROB,
+            other_squad = target_squad,
+            level_id = level_id,
         })
-        if #chasers == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-
-        local robbers = {}
-        for _, squad in ipairs(chasers) do
-            if game_relations.is_factions_enemies(squad.player_id, target_community)
-                and ap_ext_util.check_personality(_personality_rob, squad.player_id) then
-                robbers[#robbers + 1] = squad
-            end
-        end
-        if #robbers == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ELIGIBLE_SQUAD } end
-
-        local moved = {}
-        local dst_id = 0
-        local dst_smart = nil
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            if taker_is_player then
-                _move_actor_chasers(robbers, moved, { check_relation = true })
-            else
-                -- Faction chase: disengages if relation flips friendly; stays within the map.
-                _move_squad_chasers(robbers, taker_squad_id, moved, { check_relation = true })
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = dst_id, rejected = #robbers - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED } end
-
-        for i = 1, #moved do
-            ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
-                action_key = ACTION.HARVEST_ROB,
-                other_squad = target_squad,
-                smart = dst_smart, level_id = level_id,
-            })
-        end
-
-        return ap_core_debug.result_squads(moved, {
-            code = RESULT.SUCCESS, dst_id = dst_id,
-        })
-    end)
+    end
+    return { code = RESULT.SUCCESS }
 end
 
 --- harvest_haunt: aberrant mutants converge on pickup site
 
 local function _handler_haunt(event_data)
-    local trace = event_data._trace
-    return ap_core_debug.observe(trace, CONSEQUENCE.HARVEST_HAUNT, function()
-        local position, level_id = event_data.position, event_data.level_id
-        if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
+    local position, level_id = event_data.position, event_data.level_id
+    if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-        local target_smart = ap_core_util.find_smart_observed(trace, position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
-        if not target_smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-
-        local candidates = ap_core_util.find_squads_observed(trace, position, {
+    local dbg = ap_core_debug.enabled()
+    local tid = event_data.tid or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    local target_smart = ap_core_util.find_smart(position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
+    local moved, last_reason
+    local code, reason = RESULT.SUCCESS, nil
+    if not target_smart then
+        code, reason = RESULT.FAILED_SCAN, REASON.NO_SMART
+    else
+        local candidates = ap_core_util.find_squads(position, {
             factions = _alignment_haunt,
             min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_SCENT,
             level_id = level_id, max_count = cfg.consequence_harvest_haunt_max_squads,
             exclude_at_smart_id = target_smart.id,
             allow_preempt = true,
         })
-        if #candidates == 0 then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-
-        local squads = {}
-        for _, squad in ipairs(candidates) do
-            local species = xcreature.get_mutant_species(squad.id)
-            if not species or not _species_haunt[species] then goto continue end
-            if not ap_ext_util.check_personality(_personality_haunt, species) then goto continue end
-            squads[#squads + 1] = squad
-            ::continue::
-        end
-        if #squads == 0 then return { code = RESULT.FAILED_RULES, reason = REASON.NO_ELIGIBLE_SQUAD } end
-
-        local moved = {}
-        local last_reason
-        ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-            for _, squad in ipairs(squads) do
-                local res = ap_core_broker.script_squad(squad, target_smart, { rush = cfg.consequence_harvest_haunt_rush, interruptable = false })
-                if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
-            end
-            return ap_core_debug.result_squads(moved, { dst_id = target_smart.id, rejected = #squads - #moved })
-        end)
-        if #moved == 0 then return { code = RESULT.FAILED_ACTION, reason = last_reason or REASON.MOVE_FAILED } end
-        for i = 1, #moved do
-            ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT, {
-                action_key = ACTION.HARVEST_HAUNT,
-                other_squad = event_data.taker_squad,
-                smart = target_smart, level_id = level_id,
-            })
-        end
-        return ap_core_debug.result_squads(moved, { code = RESULT.SUCCESS, dst_id = target_smart.id, species = "aberrant" })
-    end)
+        local squads = ap_ext_util.filter_mutant_squads(candidates, _species_haunt, _personality_haunt)
+        moved, last_reason = ap_ext_common.move_squads(squads, target_smart, { rush = cfg.consequence_harvest_haunt_rush, interruptable = false })
+        if #candidates == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
+        elseif #squads == 0 then code, reason = RESULT.FAILED_RULES, REASON.NO_ELIGIBLE_SQUAD
+        elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end
+    end
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] %s dst=%d moved=%d [%.2fms]", LOG_HAUNT, tid,
+            reason and (code .. ":" .. reason) or code, target_smart and target_smart.id or 0, moved and #moved or 0, tmr:get_ms())
+    end
+    if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
+    for i = 1, #moved do
+        ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_HAUNT, {
+            action_key = ACTION.HARVEST_HAUNT,
+            other_squad = event_data.taker_squad,
+            smart = target_smart, level_id = level_id,
+        })
+    end
+    return { code = RESULT.SUCCESS }
 end
 
 function on_game_start()

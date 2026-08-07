@@ -1,6 +1,6 @@
 --- ap_ext_consequences_instincts: Action-only mutant instinct consequences (7 entries, all 1:1 with cause).
 
-local xobject, xtime = xobject, xtime
+local xobject, xtime, xprofiler, xtrace = xobject, xtime, xprofiler, xtrace
 local ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_ext_tracker = ap_core_debug, ap_core_broker, ap_core_record, ap_core_consumer, ap_ext_tracker
 
 local CAUSE = ap_core_const.CAUSE
@@ -9,8 +9,6 @@ local REASON = ap_core_const.REASON
 local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
-local PHASE = ap_core_const.CONSEQUENCE_PHASE
-local TRACE = ap_core_const.TRACE
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
 local LOG = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
@@ -36,12 +34,17 @@ local CONFIGS = {
 
 local function _on_arrive(squad, args)
     if not args then return end
-    ap_core_debug.observe(nil, PHASE.COMPLETE_INSTINCTS, function()
-        if args.dto_field then
-            ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
-        end
-        return { code = TRACE.OK, squad = squad.id, instinct = args.name, dst = args.dst_name }
-    end)
+    local dbg = ap_core_debug.enabled()
+    local tid = dbg and xtrace.new().id or 0
+    local tmr = xprofiler.new_if(dbg):start()
+    if args.dto_field then
+        ap_ext_tracker.reset_mutant_instinct(squad.id, args.dto_field, xtime.game_sec())
+    end
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s [tid=%d] complete instinct=%s dst=%s [%.2fms]", LOG, tid,
+            args.name or "?", args.dst_name or "?", tmr:get_ms())
+    end
 end
 
 local function _make_condition(enabled_key)
@@ -50,37 +53,42 @@ end
 
 local function _make_handler(entry)
     return function(event_data)
-        local trace = event_data._trace
-        return ap_core_debug.observe(trace, entry.consequence, function()
-            local squad = xobject.se(event_data.squad_id)
-            if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-            local smart = xobject.se(event_data.dst_smart_id)
-            if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
+        local dbg = ap_core_debug.enabled()
+        local tid = event_data.tid or 0
+        local squad = xobject.se(event_data.squad_id)
+        if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
+        local smart = xobject.se(event_data.dst_smart_id)
+        if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
-            local res
-            ap_core_debug.observe(trace, PHASE.MOVE_SQUAD, function()
-                res = ap_core_broker.script_squad(squad, smart, {
-                    rush = cfg["consequence_" .. entry.name .. "_rush"],
-                    on_arrive = entry.consequence,
-                    on_arrive_args = { dto_field = event_data.dto_field, name = entry.name, dst_name = smart:name() },
-                    pre_release_gulag = entry.pre_release_gulag,
-                    interruptable = true,
-                })
-                return res
-            end)
-            if res.code ~= RESULT.SUCCESS then
-                return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
-            end
-            ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
-                action_key = entry.action,
-                smart = smart, level_id = event_data.level_id,
-            })
-            return { code = RESULT.SUCCESS, id = squad.id, dst_id = smart.id, level_id = event_data.level_id, community = event_data.community, species = event_data.species }
-        end)
+        local tmr = xprofiler.new_if(dbg):start()
+        local res = ap_core_broker.script_squad(squad, smart, {
+            rush = cfg["consequence_" .. entry.name .. "_rush"],
+            on_arrive = entry.consequence,
+            on_arrive_args = { dto_field = event_data.dto_field, name = entry.name, dst_name = smart:name() },
+            pre_release_gulag = entry.pre_release_gulag,
+            interruptable = true,
+        })
+        tmr:stop()
+        local ok = res.code == RESULT.SUCCESS
+        if dbg then
+            ap_core_debug.debug("%s [tid=%d] %s dst=%d [%.2fms]", entry.log_prefix, tid,
+                ok and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. (res.reason or REASON.MOVE_FAILED)), smart.id, tmr:get_ms())
+        end
+        if not ok then
+            return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
+        end
+        ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
+            action_key = entry.action,
+            smart = smart, level_id = event_data.level_id,
+        })
+        return { code = RESULT.SUCCESS }
     end
 end
 
 function on_game_start()
+    for i = 1, #CONFIGS do
+        CONFIGS[i].log_prefix = ap_core_debug.bracket(CONFIGS[i].consequence)
+    end
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
         local enabled_key = "consequence_" .. entry.name .. "_enabled"

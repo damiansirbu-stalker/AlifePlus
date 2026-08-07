@@ -4,7 +4,7 @@
 --- MARKER_LINGER_SEC after the record evicts / entity dies / squad unscripts.
 local pairs, clock, tostring, RegisterScriptCallback = pairs, os.clock, tostring, RegisterScriptCallback
 local table_concat = table.concat
-local xobject, xlevel, xpda = xobject, xlevel, xpda
+local xobject, xlevel, xpda, xprofiler, xtable = xobject, xlevel, xpda, xprofiler, xtable
 local INVALID_LEVEL_VERTEX_ID = xconst.INVALID_LEVEL_VERTEX_ID
 local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
 
@@ -159,12 +159,18 @@ end
 local function _update_markers()
     ResetTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
     if not cfg.map_markers then return false end
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local now = clock()
     if (now - _last_validate_at) >= VALIDATE_MARKERS_SEC then
         _last_validate_at = now
         _validate_markers()
     end
     _apply_markers()
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("[CORE.MAP] update: marked=%d [%.2fms]", xtable.count(_marker_state), tmr:get_ms())
+    end
     return false
 end
 

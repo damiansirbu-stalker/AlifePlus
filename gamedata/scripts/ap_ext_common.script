@@ -1,8 +1,25 @@
---- ap_ext_common: Shared ext-domain chase dispatch (actor- and squad-target).
+--- ap_ext_common: Shared ext-domain squad dispatch (move-to-smart, actor-chase, squad-chase).
 
 local ipairs, pairs = ipairs, pairs
 
 local RESULT = ap_core_const.RESULT
+
+--- Move each squad to a smart terrain; returns the moved squads and the last failure reason.
+--- The move-to-smart sibling of the chase dispatchers: same loop over ap_core_broker.script_squad,
+--- collecting the squads that took the assignment.
+--- @param squads table Candidate squads
+--- @param smart table Destination smart terrain server object
+--- @param opts table Forwarded to ap_core_broker.script_squad (rush, pre_release_gulag, interruptable)
+--- @return table moved, string|nil last_reason
+function move_squads(squads, smart, opts)
+    local moved = {}
+    local last_reason
+    for _, squad in ipairs(squads) do
+        local res = ap_core_broker.script_squad(squad, smart, opts)
+        if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
+    end
+    return moved, last_reason
+end
 
 --- Dispatch chasers via engine actor targeting (no arrival detection; the engine homes on the
 --- player). Used when the chase target is the player.
