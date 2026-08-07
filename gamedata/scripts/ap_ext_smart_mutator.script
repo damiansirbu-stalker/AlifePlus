@@ -13,13 +13,16 @@
 --- spawns and replaces them at the world's own pacing (try_respawn: one spawn per cycle, per-row
 --- live counters, never in the player's view). Every spawn is pinned at birth via scripted_target,
 --- ranked 0 and armed with a sidearm; a service gets its role trade config once online, a money
---- bankroll per restock, and the engine PDA role icon. Timing is never touched: no respawn_idle
---- writes, no growth clock -- the plan rows are the whole mechanism. Decay removes AP state and
+--- bankroll per restock, and the engine PDA role icon. WHAT spawns is the plan rows; WHEN is a
+--- per-mutation MCM interval (mutator_area_*_respawn_minutes, game-minutes) that paces refills through
+--- the engine's own last_respawn_update stamp -- the field vanilla try_respawn and ZCP
+--- smr_pop.smart_can_respawn both gate on, so it bites on GAMMA and vanilla alike; smart.respawn_idle
+--- (which ZCP ignores) is never written. Decay removes AP state and
 --- rows only: online services are unmade in place, offline services deleted, guards stay behind
 --- as ordinary residents holding the ruins.
 
 local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
-local math_floor, math_random, string_match, string_sub = math.floor, math.random, string.match, string.sub
+local math_floor, math_random, string_match, string_sub, string_format = math.floor, math.random, string.match, string.sub, string.format
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
 local xsquad, xcreature, xinventory, xevent, xpda = xsquad, xcreature, xinventory, xevent, xpda
 local get_object_squad, alife_release = get_object_squad, alife_release
@@ -85,6 +88,11 @@ local SERVICE_KEY_PREFIX = "ap_service_"
 -- faction's danger-tier pool. Guards are ordinary faction combat squads that live as pinned
 -- residents; they carry no trade, no icon, no loot-null -- only the pin.
 local GUARD_KEY = "ap_guard"
+-- Service suitability floor: a conquered smart grows a service (trader/barman/mechanic/medic) only
+-- with room for a squad AND a gathering anchor (campfire or surge shelter); else it stays guard-only.
+-- The floor is deliberately low (excludes only max_pop 0 dead spots) -- the campfire/surge anchor is
+-- the real "inhabited camp" discriminator, since most Zone camps read max_pop 1.
+local SERVICE_MIN_MAX_POP = 1
 -- The generic assortment every stalker starts with (xr_logic.script:113 default); what an unmade
 -- leftover service is re-inited to at decay-in-view.
 local GENERIC_TRADE = "items\\trade\\trade_generic.ltx"
@@ -129,6 +137,8 @@ local _decay_collector = {}
 local _held_squads = {}
 local _held_pending = nil
 local _hold_drop_collector = {}
+-- Per-smart ephemeral game-sec clock for the mutator's own respawn cadence (never saved).
+local _respawn_stamp = {}
 
 --- Check if a smart terrain is infested
 --- @param smart_id number
@@ -208,6 +218,7 @@ local MUTATIONS = {
         mutate_cfg = "mutator_area_conquest_mutate_smart",
         decay_cfg = "mutator_area_conquest_decay_hours",
         num_cfg = "mutator_area_conquest_spawn_num",
+        respawn_idle_cfg = "mutator_area_conquest_respawn_minutes",
         ts_field = "conquered_at", save_key = "conquered_smarts",
     },
     swarm = {
@@ -216,6 +227,7 @@ local MUTATIONS = {
         mutate_cfg = "mutator_area_swarm_mutate_smart",
         decay_cfg = "mutator_area_swarm_decay_hours",
         num_cfg = "mutator_area_swarm_spawn_num",
+        respawn_idle_cfg = "mutator_area_swarm_respawn_minutes",
         ts_field = "swarmed_at", save_key = "swarmed_smarts",
     },
     infest = {
@@ -224,6 +236,7 @@ local MUTATIONS = {
         mutate_cfg = "mutator_area_infest_mutate_smart",
         decay_cfg = "mutator_area_infest_decay_hours",
         num_cfg = "mutator_area_infest_spawn_num",
+        respawn_idle_cfg = "mutator_area_infest_respawn_minutes",
         ts_field = "infested_at", save_key = "infested_smarts",
     },
 }
@@ -287,7 +300,9 @@ local function _mutate(mut, smart_id, identity, level_id)
     local entry = { faction = identity, level_id = level_id, [mut.ts_field] = now }
     if mut.grows_services then _roll_plan(entry, smart_id) end
     tbl[smart_id] = entry
-    ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d", mut.name, smart_id, mut.id_word, identity, level_id)
+    if ap_core_debug.enabled() then
+        ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d base=%s", mut.name, smart_id, mut.id_word, identity, level_id, tostring(xsmart.is_base(smart)))
+    end
     return true
 end
 
@@ -394,7 +409,12 @@ end
 -- @cost O(rolled roles * conquered) meters, at conquest only
 _roll_plan = function(entry, smart_id)
     entry.services = {}
-    local want = cfg.mutator_area_conquest_grow_services
+    -- Suitability gate: services only grow at a smart that reads as an inhabited camp (offline-safe
+    -- place-types, since conquest can fire off the actor level). Unsuitable -> want 0 = guard-only.
+    local smart = xobject.se(smart_id)
+    local suitable = smart and (smart.max_population or 0) >= SERVICE_MIN_MAX_POP
+        and (xsmart.has_campfire(smart) or xsmart.has_surge_shelter(smart))
+    local want = (suitable and cfg.mutator_area_conquest_grow_services)
         and math_random(1, cfg.mutator_area_conquest_services_per_smart) or 0
     local budget = cfg.mutator_area_conquest_services_max_per_level - _service_count_on_level(entry.level_id)
     if want > budget then want = budget end
@@ -410,6 +430,12 @@ _roll_plan = function(entry, smart_id)
         for role in pairs(entry.services) do roles[#roles + 1] = role end
         ap_core_debug.debug("[MUTATOR.SMART] plan: smart=%d faction=%s services=%s guards=%d",
             smart_id, entry.faction, (#roles > 0) and table.concat(roles, ",") or "-", entry.guards)
+        if smart then
+            ap_core_debug.debug("[MUTATOR.SMART] suitability: smart=%d name=%s max_pop=%d campfire=%s surge=%s suitable=%s want=%d",
+                smart_id, smart:name(), smart.max_population or 0,
+                tostring(xsmart.has_campfire(smart)), tostring(xsmart.has_surge_shelter(smart)),
+                tostring(suitable and true or false), want)
+        end
     end
 end
 
@@ -553,7 +579,14 @@ local function _update_service(squad_id, entry)
             entry.smart_id, entry.role, squad_id, squad and "unledgered" or "gone")
         return false
     end
-    xsquad.reassert_target(squad, entry.smart_name)
+    local dbg = ap_core_debug.enabled()
+    local prev_target = dbg and squad.scripted_target
+    if xsquad.reassert_target(squad, entry.smart_name) and dbg then
+        local cur = xobject.se(squad.smart_id)
+        ap_core_debug.debug("[MUTATOR.SMART] pin_lost: smart=%d(%s) role=%s squad=%d prev_target=%s cur_smart=%s base=%s",
+            entry.smart_id, entry.smart_name, entry.role, squad_id,
+            tostring(prev_target), tostring(squad.smart_id), tostring(cur and xsmart.is_base(cur)))
+    end
     return true
 end
 
@@ -584,8 +617,14 @@ end
 local function _ensure_service_icon(go, member_id, role)
     local spot = SERVICE_ICON[role]
     if not spot or not db.actor then return end
-    if go:general_goodwill(db.actor) <= -1000 then return end
-    xpda.mark_entity(member_id, { marker_type = spot.icon, label = spot.hint })
+    local goodwill = go:general_goodwill(db.actor)
+    if goodwill <= -1000 then
+        ap_core_debug.debug("[MUTATOR.SMART] service_icon_skip: npc=%d role=%s goodwill=%d (hostile)", member_id, role, goodwill)
+        return
+    end
+    local add_ok = xpda.mark_entity(member_id, { marker_type = spot.icon, label = spot.hint })
+    ap_core_debug.debug("[MUTATOR.SMART] service_icon: npc=%d role=%s goodwill=%d marker=%s add_ok=%s",
+        member_id, role, goodwill, spot.icon, tostring(add_ok))
 end
 
 -- Register the trade config on one online service member (trade_init only, NOT a proactive buy_supplies).
@@ -638,22 +677,39 @@ local function _try_stock(squad_id, entry)
     end
 end
 
--- Debug-only ledger dump: one line per held SERVICE squad per scan (guards skipped) -- smart,
--- role, stocked, and the member's online state + active job section. Observation only, guarded
+-- Debug-only ledger dump: one line per held squad per scan (services and guards) -- smart,
+-- role, stocked, live pin (scripted_target), current smart_id + whether it is a base (drift
+-- catch), and the member's online state + active job section. Observation only, guarded
 -- leaf on the scan; skipped entirely when debug is off. Hub traders are outside this ledger
 -- (trade_manager's registry is local); their per-view state logs on trade open in ap_ext_market.
 -- @cost debug on only | O(services); 1-2 luabind per entry (member resolve)
+-- Live talk/trade/meet snapshot for one online service member ("online=false" when offline).
+-- Split from _log_service_entry to keep both under the complexity cap.
+local function _service_diag(member_id)
+    local go = member_id and xobject.go(member_id)
+    if not go then return "online=false" end
+    local st = db.storage[member_id]
+    local mm = st and st.meet and st.meet.meet_manager
+    return string_format("online=true name=%s job=%s talk=%s use=%s trade_en=%s director=%s rel=%s",
+        tostring(go:name()), tostring(st and st.active_section),
+        tostring(go:is_talk_enabled()), tostring(mm and mm.use), tostring(mm and mm.trade_enable),
+        tostring(mm and mm.npc_is_camp_director), tostring(db.actor and go:relation(db.actor)))
+end
+
 local function _log_service_entry(squad_id, entry)
-    if entry.role == "guard" then return end
     local member_id
     local squad = _resolve_held(squad_id, entry)
     if squad then
         for id in xsquad.iter_member_ids(squad) do member_id = id break end
     end
-    local st = member_id and db.storage[member_id]
-    ap_core_debug.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s online=%s job=%s",
-        entry.smart_id, entry.smart_name, entry.role, squad_id, tostring(entry.stocked or false),
-        tostring(member_id and xobject.go(member_id) ~= nil), tostring(st and st.active_section))
+    local cur = squad and xobject.se(squad.smart_id)
+    ap_core_debug.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s pin=%s cur_smart=%s base=%s %s",
+        entry.smart_id, entry.smart_name, entry.role, squad_id,
+        tostring(entry.stocked or false),
+        tostring(squad and squad.scripted_target),
+        tostring(squad and squad.smart_id),
+        tostring(cur and xsmart.is_base(cur)),
+        _service_diag(member_id))
 end
 
 local function _log_services()
@@ -735,6 +791,19 @@ local function _dissolve_service(squad_id, entry)
     else _remove_service_squad(squad) end
 end
 
+-- Debug-only: log a held squad's last-known pin state at the instant decay drops its ledger entry
+-- and reassert stops for good -- the handoff point past which a cleared pin is never restored.
+-- @cost noop when debug off (single enabled() gate); on decay only
+local function _log_hold_release(smart_id, entry, squad_id)
+    if not ap_core_debug.enabled() then return end
+    local sq = xobject.se(squad_id)
+    local cur = sq and xobject.se(sq.smart_id)
+    ap_core_debug.debug("[MUTATOR.SMART] hold_release: smart=%d role=%s squad=%d pin=%s cur_smart=%s base=%s (no reassert after this)",
+        smart_id, entry.role, squad_id,
+        tostring(sq and sq.scripted_target), tostring(sq and sq.smart_id),
+        tostring(cur and xsmart.is_base(cur)))
+end
+
 -- Decay teardown (user rulings 2026-08-01): remove OUR state and rows, leave the world alone.
 -- Guard squads stay behind untouched as ordinary residents (only their ledger entries drop);
 -- services dissolve per _dissolve_service. Called from _decay_entry.
@@ -745,6 +814,7 @@ local function _release_holds_for_smart(smart_id, smart, data)
     for squad_id, entry in pairs(_held_squads) do
         if entry.smart_id == smart_id then
             if entry.role ~= "guard" then _dissolve_service(squad_id, entry) end
+            _log_hold_release(smart_id, entry, squad_id)
             drop = drop + 1
             _hold_drop_collector[drop] = squad_id
         end
@@ -806,6 +876,68 @@ local function _update_entries(mut, now)
     end
 end
 
+-- true when any exclusive respawn row has fewer live spawns than its quota. row.num is a PARSED
+-- CONDLIST (set_exclusive_spawn_section stores xr_logic.parse_condlist output, not a number, so a bare
+-- tonumber reads nil), so resolve it exactly the way the engine's own gate does at
+-- smart_terrain.script:1669 before comparing against the already_spawned counter.
+-- @cost O(rows) | pure Lua (condlist eval, no bridge)
+local function _is_below_quota(smart)
+    local rp, spawned = smart.respawn_params, smart.already_spawned
+    if not rp or not spawned then return false end
+    for key, row in pairs(rp) do
+        local target = tonumber(xr_logic.pick_section_from_condlist(db.actor, smart, row.num) or 0) or 0
+        local have = spawned[key] and spawned[key].num or 0
+        if have < target then return true end
+    end
+    return false
+end
+
+-- Pace one held smart's refill. ACCELERATE-ONLY: below quota and our interval elapsed since the last
+-- spawn -> nil last_respawn_update so the engine's next try_respawn fires (still radius-gated, so never
+-- in view); otherwise leave the engine alone, so the outpost fills at the world's own cadence and a
+-- fresh conquest is never frozen. Owns last_respawn_update only (the field both vanilla try_respawn and
+-- ZCP smr_pop.smart_can_respawn gate on); smart.respawn_idle is never written, so the interval bites on
+-- GAMMA and vanilla identically. The game-sec clock starts when the smart drops below quota and resets
+-- on an actual spawn (_on_npc_creation). The interval speeds up a slow world; it does not throttle a
+-- fast one -- throttling meant holding the stamp, which froze fresh outposts for a full interval.
+-- @cost O(rows) pure Lua | 0 luabind (last_respawn_update is a Lua field)
+local function _pace_respawn(mut, smart_id, interval_sec, now)
+    local smart = xobject.se(smart_id)
+    if not smart then return end
+    if not _is_below_quota(smart) then
+        _respawn_stamp[smart_id] = nil
+        return
+    end
+    local stamp = _respawn_stamp[smart_id]
+    if not stamp then _respawn_stamp[smart_id] = now; return end
+    local age = now - stamp
+    if age >= interval_sec then
+        smart.last_respawn_update = nil
+        ap_core_debug.debug("[MUTATOR.SMART] respawn_due: smart=%d %s waited=%ds", smart_id, mut.name, age)
+    else
+        ap_core_debug.debug("[MUTATOR.SMART] respawn_wait: smart=%d %s age=%ds/%ds", smart_id, mut.name, age, interval_sec)
+    end
+end
+
+-- Pace one mutation type's held smarts on cfg[mut.respawn_idle_cfg] game-minutes. A zero/absent
+-- interval opts the mutation out (its smarts keep the world's own pacing).
+-- @cost O(held smarts of this type) | _pace_respawn each
+local function _pace_mutation(mut, now)
+    local minutes = mut.respawn_idle_cfg and cfg[mut.respawn_idle_cfg]
+    if not minutes or minutes <= 0 then return end
+    local interval_sec = minutes * 60
+    for smart_id in pairs(_state[mut.name]) do
+        _pace_respawn(mut, smart_id, interval_sec, now)
+    end
+end
+
+-- Pace every mutation type's held smarts.
+local function _pace_respawns(now)
+    for _, mut in pairs(MUTATIONS) do
+        _pace_mutation(mut, now)
+    end
+end
+
 -- 60s re-apply + decay pass over every mutation type. Timed when debug is on (null profiler = zero
 -- overhead otherwise), so a real breach of the frame budget surfaces in the log.
 -- ResetTimeEvent FIRST: an error mid-body would otherwise leave the event due and refiring every
@@ -826,10 +958,13 @@ local function _update_mutations()
     prof:reset():start()
     _stock_services()
     prof:stop(); local stock_ms = prof:get_ms()
+    prof:reset():start()
+    _pace_respawns(now)
+    prof:stop(); local pace_ms = prof:get_ms()
     if ap_core_debug.enabled() then
         _log_services()
-        ap_core_debug.debug("[MUTATOR.SMART] scan: update=%.2f adopt=%.2f holds=%.2f stock=%.2f ms",
-            update_ms, adopt_ms, holds_ms, stock_ms)
+        ap_core_debug.debug("[MUTATOR.SMART] scan: update=%.2f adopt=%.2f holds=%.2f stock=%.2f pace=%.2f ms",
+            update_ms, adopt_ms, holds_ms, stock_ms, pace_ms)
     end
 end
 
@@ -999,7 +1134,11 @@ local function _on_npc_creation(squad, se_obj, spawn_smart)
     if not spawn_smart then return end
     local sec = squad and squad.section_name and squad:section_name()
     if sec and sec:sub(1, #SERVICE_KEY_PREFIX) == SERVICE_KEY_PREFIX then _set_service_rank(se_obj) end
-    if not _state.conquest[spawn_smart.id] and not ap_core_debug.enabled() then return end
+    local smart_id = spawn_smart.id
+    if _state.conquest[smart_id] or _state.swarm[smart_id] or _state.infest[smart_id] then
+        _respawn_stamp[smart_id] = xtime.game_sec()
+    end
+    if not _state.conquest[smart_id] and not ap_core_debug.enabled() then return end
     CreateTimeEvent("ap_spawn_deferred", squad.id, 0, _on_spawn_deferred, squad.id, spawn_smart.id)
 end
 
@@ -1380,6 +1519,7 @@ function on_game_start()
     end
     _held_squads = {}
     _held_pending = nil
+    _respawn_stamp = {}
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load_state)
     RegisterScriptCallback(CALLBACK.ON_GAME_LOAD, _on_game_load)
