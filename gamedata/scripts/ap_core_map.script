@@ -142,8 +142,8 @@ local function _validate_markers()
     for squad_id, state in pairs(_marker_state) do
         local entry = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
         local se = entry and xobject.se(squad_id)
-        local should_linger = not entry or not se or not ap_core_broker.is_routing(squad_id)
-        if should_linger and not state.remove_at then
+        local routing = entry and se and ap_core_broker.is_routing(squad_id)
+        if not routing and not state.remove_at then
             state.remove_at = now + ap_core_const.MARKER_LINGER_SEC
             local reason = (not entry) and "evicted" or (not se and "dead" or "unscripted")
             ap_core_debug.debug("[CORE.MAP] mark_linger: squad=%d reason=%s", squad_id, reason)
