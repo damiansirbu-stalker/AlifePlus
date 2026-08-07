@@ -53,14 +53,11 @@ end
 
 local function _make_handler(entry)
     return function(event_data)
-        local dbg = ap_core_debug.enabled()
-        local tid = event_data.tid or 0
         local squad = xobject.se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
         local smart = xobject.se(event_data.dst_smart_id)
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
-        local tmr = xprofiler.new_if(dbg):start()
         local res = ap_core_broker.script_squad(squad, smart, {
             rush = cfg["consequence_" .. entry.name .. "_rush"],
             on_arrive = entry.consequence,
@@ -68,13 +65,7 @@ local function _make_handler(entry)
             pre_release_gulag = entry.pre_release_gulag,
             interruptable = true,
         })
-        tmr:stop()
-        local ok = res.code == RESULT.SUCCESS
-        if dbg then
-            ap_core_debug.debug("%s [tid=%d] %s dst=%d [%.2fms]", entry.log_prefix, tid,
-                ok and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. (res.reason or REASON.MOVE_FAILED)), smart.id, tmr:get_ms())
-        end
-        if not ok then
+        if res.code ~= RESULT.SUCCESS then
             return { code = RESULT.FAILED_ACTION, reason = res.reason or REASON.MOVE_FAILED }
         end
         ap_core_record.add_record(squad, event_data.cause, entry.consequence, {
@@ -86,9 +77,6 @@ local function _make_handler(entry)
 end
 
 function on_game_start()
-    for i = 1, #CONFIGS do
-        CONFIGS[i].log_prefix = ap_core_debug.bracket(CONFIGS[i].consequence)
-    end
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
         local enabled_key = "consequence_" .. entry.name .. "_enabled"

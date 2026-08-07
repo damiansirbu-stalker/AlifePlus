@@ -2,9 +2,8 @@
 --- harvest_rob: outlaws pursue artefact taker (chase)
 --- harvest_haunt: aberrant mutants converge on pickup site
 
-local ipairs = ipairs
+local ipairs, xobject = ipairs, xobject
 local game_relations, get_actor_true_community = game_relations, get_actor_true_community
-local xobject, xprofiler = xobject, xprofiler
 local ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util = ap_core_debug, ap_ext_common, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_util
 
 local RESULT = ap_core_const.RESULT
@@ -15,8 +14,6 @@ local ACTION = ap_core_const.ACTION
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 local LOG_INIT = ap_core_debug.bracket(CAUSE.HARVEST)
-local LOG_ROB = ap_core_debug.bracket(CONSEQUENCE.HARVEST_ROB)
-local LOG_HAUNT = ap_core_debug.bracket(CONSEQUENCE.HARVEST_HAUNT)
 
 local cfg = ap_core_mcm.cfg
 
@@ -60,9 +57,6 @@ local function _handler_rob(event_data)
         target_community = target_squad.player_id
     end
 
-    local dbg = ap_core_debug.enabled()
-    local tid = event_data.tid or 0
-    local tmr = xprofiler.new_if(dbg):start()
     local chasers = ap_core_util.find_squads(position, {
         factions = _alignment_rob,
         min_distance = ap_core_const.RADIUS_CLOSE_MAX, max_distance = ap_core_const.RANGE_RADIO,
@@ -85,11 +79,6 @@ local function _handler_rob(event_data)
         end
         if #moved == 0 then code, reason = RESULT.FAILED_ACTION, REASON.MOVE_FAILED end
     end
-    tmr:stop()
-    if dbg then
-        ap_core_debug.debug("%s [tid=%d] %s moved=%d [%.2fms]", LOG_ROB, tid,
-            reason and (code .. ":" .. reason) or code, #moved, tmr:get_ms())
-    end
     if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
     for i = 1, #moved do
         ap_core_record.add_record(moved[i], CAUSE.HARVEST, CONSEQUENCE.HARVEST_ROB, {
@@ -107,9 +96,6 @@ local function _handler_haunt(event_data)
     local position, level_id = event_data.position, event_data.level_id
     if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
-    local dbg = ap_core_debug.enabled()
-    local tid = event_data.tid or 0
-    local tmr = xprofiler.new_if(dbg):start()
     local target_smart = ap_core_util.find_smart(position, { level_id = level_id, max_distance = ap_core_const.RANGE_SCENT })
     local moved, last_reason
     local code, reason = RESULT.SUCCESS, nil
@@ -128,11 +114,6 @@ local function _handler_haunt(event_data)
         if #candidates == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
         elseif #squads == 0 then code, reason = RESULT.FAILED_RULES, REASON.NO_ELIGIBLE_SQUAD
         elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end
-    end
-    tmr:stop()
-    if dbg then
-        ap_core_debug.debug("%s [tid=%d] %s dst=%d moved=%d [%.2fms]", LOG_HAUNT, tid,
-            reason and (code .. ":" .. reason) or code, target_smart and target_smart.id or 0, moved and #moved or 0, tmr:get_ms())
     end
     if code ~= RESULT.SUCCESS then return { code = code, reason = reason } end
     for i = 1, #moved do

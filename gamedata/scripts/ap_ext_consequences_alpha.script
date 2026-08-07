@@ -1,7 +1,6 @@
 --- ap_ext_consequences_alpha: Registers new alpha mutants and updates alpha level (alpha_promote)
 
-local tostring = tostring
-local xobject, xsquad, xtable, xprofiler = xobject, xsquad, xtable, xprofiler
+local xobject, xsquad, xtable = xobject, xsquad, xtable
 local ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator =
     ap_core_debug, ap_core_record, ap_core_consumer, ap_core_util, ap_ext_tracker, ap_ext_object_mutator
 
@@ -23,9 +22,6 @@ local function _handler(event_data)
     end
 
     local level_id, level, kills = event_data.level_id, event_data.level, event_data.kills
-    local dbg = ap_core_debug.enabled()
-    local tid = event_data.tid or 0
-    local tmr = xprofiler.new_if(dbg):start()
     local updated = ap_ext_tracker.update_alpha(killer_id, { kills = kills })
     if updated then
         ap_ext_object_mutator.set_alpha_effects(killer_id, level)
@@ -38,11 +34,6 @@ local function _handler(event_data)
                 smart = smart, level_id = level_id,
             })
         end
-    end
-    tmr:stop()
-    if dbg then
-        ap_core_debug.debug("%s [tid=%d] %s id=%d level=%s [%.2fms]", LOG, tid,
-            updated and RESULT.SUCCESS or (RESULT.FAILED_ACTION .. ":" .. REASON.REGISTER_FAILED), killer_id, tostring(level), tmr:get_ms())
     end
     if not updated then return { code = RESULT.FAILED_ACTION, reason = REASON.REGISTER_FAILED } end
     return { code = RESULT.SUCCESS }

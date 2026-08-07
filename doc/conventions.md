@@ -140,7 +140,7 @@ Gate order within rules: alignment -> species -> personality -> match -> validat
 
 ### Result Codes
 
-Each code names the template phase that answered: SUCCESS (action), FAILED_RULES (rules), FAILED_SCAN (scan), FAILED_ACTION (action), plus the consumer-emitted DISABLED. Canonical definitions and dispatch semantics: architecture.md -> Dispatch Pipeline -> Per-handler dispatch.
+Each code names the template phase that answered: SUCCESS (action), FAILED_RULES (rules), FAILED_SCAN (scan), FAILED_ACTION (action), plus DISABLED, the consumer condition pre-gate skip (never a handler return). Canonical definitions and dispatch semantics: architecture.md -> Dispatch Pipeline -> Per-handler dispatch.
 
 ### MCM Fields
 
@@ -185,7 +185,7 @@ Pipeline labels are composed by `ap_core_debug.bracket(constant)` (uppercase, `:
 
 ### Tracing
 
-Correlation is a plain integer `tid` (a monotonic counter from `xtrace.new().id`), carried on the payload as `result.tid`. There is no path and no span hierarchy. The producer writes the tid on the cause result; a synchronous consequence reads `event_data.tid` and logs under the same tid. Deferred arrivals mint a fresh tid and correlate by `dst=` / `sq=`, not by tid (the counter resets on VM reinit, so a stored tid would collide after a save). Per-candidate cause lines inside a radiant family are tid-less; the producer's family outcome line carries the tid.
+Correlation is a plain integer `tid` (a monotonic counter from `xtrace.new().id`), carried on the payload as `result.tid`. There is no path and no span hierarchy. The producer writes the tid on the cause result; the consumer (`_dispatch_entry`) reads `event_data.tid` and logs each consequence outcome under the same tid. Deferred arrivals mint a fresh tid and correlate by `dst=` / `sq=`, not by tid (the counter resets on VM reinit, so a stored tid would collide after a save). Per-candidate cause lines inside a radiant family are tid-less; the producer's family outcome line carries the tid.
 
 ### Scan tracing (`find_smart`, `find_squads`, `find_first_smart`)
 

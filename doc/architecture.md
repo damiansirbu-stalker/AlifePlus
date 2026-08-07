@@ -251,7 +251,7 @@ Both pipelines measure gate span and eval span. Gate span: time from first eligi
 
 ### Dispatch Pipeline (ap_core_consumer)
 
-After a cause publishes to xbus, the consumer receives the event and iterates registered consequence handlers. Loop in ap_core_consumer._process; per-handler steps in _dispatch_entry.
+After a cause publishes to xbus, the consumer receives the event and iterates registered consequence handlers. Loop in ap_core_consumer._process; per-handler steps in _dispatch_entry. _dispatch_entry times each handler call (xprofiler, DEBUG-gated) and logs one outcome line under the consequence bracket (entry.log_prefix, built at register from ap_core_debug.bracket(name)). Handlers are pure: they return { code, reason } and never time or log their own outcome, so a RULES rejection that returns before any world query logs the same way as a SUCCESS.
 
 #### Per-handler dispatch
 
@@ -263,7 +263,7 @@ Per consequence:
 4. Handler runs. Returns { code = RESULT.X, reason = "..." }. FAILED_RULES (business rules rejected: alignment, personality, species, validation), FAILED_SCAN (rules passed but world query empty), FAILED_ACTION (rules and scan passed but the action failed: script_squad could not route, registration call returned false), SUCCESS.
 5. On SUCCESS: increment per-consequence counter; for radiant only, increment global radiant counter; set event_data._fired = true. For radiant, also stop the loop (rule 5 below).
 
-DISABLED is the rules-layer skip for a consequence whose MCM toggle is off. Semantically equivalent to a FAILED_RULES with reason="disabled"; emitted by the consumer pre-gate so the handler is not called. The four phase codes are still what the handler returns when it runs.
+A consequence whose MCM toggle is off is skipped by the consumer condition pre-gate before any timer or handler call, so it produces no outcome line (the same disabled-skip-before-timer contract ap_ext_util.try_cause applies on the cause side). The four phase codes are what the handler returns when it does run.
 
 #### Dispatch rules
 
@@ -305,15 +305,15 @@ The world tab in MCM houses the balance family. Pipeline family caps live under 
 
 ### Tracing
 
-Each big flow times itself inline with `xprofiler.new_if(dbg)` and logs one line. There is no per-call `observe()` wrapper and no span hierarchy. Correlation is a plain integer `tid` carried on the payload: the producer mints `xtrace.new().id` per evaluation, writes it to `result.tid`, and a synchronous consequence reads `event_data.tid` to log its line under the same tid. One tid links a cause to its synchronous consequence:
+Each big flow times itself inline with `xprofiler.new_if(dbg)` and logs one line. There is no per-call `observe()` wrapper and no span hierarchy. Correlation is a plain integer `tid` carried on the payload: the producer mints `xtrace.new().id` per evaluation, writes it to `result.tid`, and the consumer reads `event_data.tid` to log each consequence outcome under the same tid. The consumer (`_dispatch_entry`) is the single seam that times the handler and logs its outcome, so every consequence outcome logs the same way, a RULES rejection included; handlers stay pure and return `{ code, reason }` without logging. One tid links a cause to its consequence outcomes:
 
 ```
 [CAUSE.HUNGER_CAMPFIRE] failed_rules:low_personality [0.04ms]
 [NEEDS] [tid=42] fired=cause:hunger_campfire [0.15ms]
-[CONSEQUENCE.HEAL_SHELTER] [tid=42] complete need=heal dst=445 [0.83ms]
+[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42] success [0.42ms]
 ```
 
-The line format is `[LABEL] [tid=N] <outcome> [X.XXms]`. A debug line that carries a `[tid=N]` also carries its `[X.XXms]` duration (validator rule `alifeplus-debug-log-duration`).
+The line format is `[LABEL] [tid=N] <outcome> [X.XXms]`, `<outcome>` being the handler's `code` or `code:reason`. A debug line that carries a `[tid=N]` also carries its `[X.XXms]` duration (validator rule `alifeplus-debug-log-duration`). The consumer outcome line holds only the code and reason. The moved-squad count and target smart live in the activity records the handler writes on success (one add_record per moved squad), not on the outcome line.
 
 Radiant families (needs, instincts, area, stash) run alignment / scan / pick before a specific cause is known. Each per-candidate attempt runs through ap_ext_util.try_cause: a disabled cause is skipped before any timer and emits no line, otherwise the attempt logs a tid-less line under its own bracket (`[CAUSE.X] fired [X.XXms]` on publish, else `[CAUSE.X] code:reason [X.XXms]`, the first line above); the family outcome line the producer emits carries the tid (the second line). The tid is not threaded into generators. Deferred arrivals mint a FRESH `xtrace.new().id` and correlate to their dispatch by `dst=` / `sq=`, never by a stored tid: the counter resets on VM reinit, so a stored tid would collide after a save.
 
