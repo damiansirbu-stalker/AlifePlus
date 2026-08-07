@@ -145,12 +145,11 @@ end
 
 -- Inverse-share eligibility: pass chance = 1 - own share of the level's squad population. A
 -- zero-presence side always passes (intruders always have a door), the dominant side passes
--- rarely but is never banned (user ruling: less, not never). Returns pass, share (share for the
--- reject trace).
+-- rarely but is never banned (user ruling: less, not never).
 local function _check_census_share(census, count)
-    if not census or census.total == 0 then return true, 0 end
+    if not census or census.total == 0 then return true end
     local share = count / census.total
-    return math_random() >= share, share
+    return math_random() >= share
 end
 
 local function _squad_has_alpha(squad)
@@ -167,7 +166,7 @@ local function _read_dto_field(squad_id, field, now)
 end
 
 -- Per-cause RULES + SCAN. Returns publish payload (with .cause) on SUCCESS,
--- or { code = FAILED_*, reason = REASON.* } on rejection. observe() logs every call.
+-- or { code = FAILED_*, reason = REASON.* } on rejection. _try_eligible logs each call.
 local function _eligible_conquer(squad, now, level_id, budget)
     if not cfg.cause_area_conquer_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
@@ -176,14 +175,12 @@ local function _eligible_conquer(squad, now, level_id, budget)
     if elapsed <= cfg.cause_area_conquer_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_conquer, squad.player_id)
-    if not p_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
+    if not ap_ext_util.check_personality(_personality_conquer, squad.player_id) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
     local census = _get_census(level_id)
-    local share_ok, share = _check_census_share(census, census and (census.by_comm[squad.player_id] or 0) or 0)
-    if not share_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    if not _check_census_share(census, census and (census.by_comm[squad.player_id] or 0) or 0) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
     end
     if ap_ext_smart_mutator.conquest_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
@@ -195,9 +192,8 @@ local function _eligible_conquer(squad, now, level_id, budget)
     local smart = ap_core_util.find_smart(squad.position,
         { level_id = level_id, filter = _build_conquer_filter(squad.player_id), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
-    if not t_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
+    if not ap_ext_util.is_tactically_eligible(squad, smart) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
     return {
         cause = CAUSE.AREA_CONQUER,
@@ -220,14 +216,12 @@ local function _eligible_swarm(squad, species, now, level_id, budget)
     if elapsed <= cfg.cause_area_swarm_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_conquer, species)
-    if not p_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
+    if not ap_ext_util.check_personality(_personality_conquer, species) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
     local census = _get_census(level_id)
-    local share_ok, share = _check_census_share(census, census and census.mutant or 0)
-    if not share_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    if not _check_census_share(census, census and census.mutant or 0) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
     end
     if ap_ext_smart_mutator.swarm_count(level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
@@ -239,9 +233,8 @@ local function _eligible_swarm(squad, species, now, level_id, budget)
     local smart = ap_core_util.find_smart(squad.position,
         { level_id = level_id, filter = _make_swarm_filter(squad.player_id, species), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
-    if not t_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
+    if not ap_ext_util.is_tactically_eligible(squad, smart) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
     return {
         cause = CAUSE.AREA_SWARM,
@@ -265,15 +258,13 @@ local function _eligible_infest(squad, species, now, level_id, budget)
     if elapsed <= cfg.cause_area_infest_threshold * HOURS_TO_SECONDS then
         return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD }
     end
-    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(_personality_infest, species)
-    if not p_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
+    if not ap_ext_util.check_personality(_personality_infest, species) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
     if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
     local census = _get_census(level_id)
-    local share_ok, share = _check_census_share(census, census and census.mutant or 0)
-    if not share_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE, share = share }
+    if not _check_census_share(census, census and census.mutant or 0) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
     end
     if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
@@ -291,9 +282,8 @@ local function _eligible_infest(squad, species, now, level_id, budget)
     local smart = ap_core_util.find_smart(squad.position,
         { level_id = level_id, filter = filter, max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
-    if not t_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
+    if not ap_ext_util.is_tactically_eligible(squad, smart) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
     return {
         cause = CAUSE.AREA_INFEST,

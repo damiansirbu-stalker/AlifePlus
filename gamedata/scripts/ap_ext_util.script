@@ -60,11 +60,10 @@ end
 
 --- Check faction personality (probability layer, runs after alignment)
 --- Averages relevant traits for the faction, clamps to global PERSONALITY_FLOOR/CEILING, rolls.
---- INV_ traits are resolved as (1 - base_value) before averaging. On reject the caller can
---- spread avg/chance/roll into its FAILED_RULES result table; observe() auto-serializes them.
+--- INV_ traits are resolved as (1 - base_value) before averaging.
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
---- @return boolean passed, number avg, number chance, number roll
+--- @return boolean passed
 function check_personality(traits, community)
     if not traits or not community then return true end
     local faction_traits = PERSONALITY[community]
@@ -83,12 +82,10 @@ function check_personality(traits, community)
     if count == 0 then return true end
     local p_min = ap_ext_const.PERSONALITY_FLOOR
     local p_max = ap_ext_const.PERSONALITY_CEILING
-    local avg = sum / count
-    local chance = avg
+    local chance = sum / count
     if chance < p_min then chance = p_min end
     if chance > p_max then chance = p_max end
-    local roll = math_random()
-    return roll < chance, avg, chance, roll
+    return math_random() < chance
 end
 
 --- Keep candidates whose mutant species is in species_set and that pass the personality roll
@@ -112,14 +109,12 @@ end
 --- Roll a tactical-soundness check against random; true when candidate passes
 --- Score starts at 1.0; subtracts WEIGHT_LAST_OF_FACTION when removing squad leaves its source
 --- unguarded by its faction; subtracts WEIGHT_SMART_TARGETED when another scripted squad already
---- targets the destination. Radiant only; reactive consequences bypass. On reject the caller
---- can spread last_of_faction/smart_targeted/score into its FAILED_RULES result table; observe()
---- auto-serializes them.
+--- targets the destination. Radiant only; reactive consequences bypass.
 --- @safety SAFE - xsmart.has_squad_of_faction + ap_core_broker.is_smart_targeted (both nil-guarded)
 --- @cost typically <5 luabind total (xsmart short-circuits; is_smart_targeted is pure Lua)
 --- @param squad se_squad Candidate squad
 --- @param smart smart_terrain Destination smart resolved by find_smart
---- @return boolean passed, boolean last_of_faction, boolean smart_targeted, number score
+--- @return boolean passed
 function is_tactically_eligible(squad, smart)
     local last_of_faction = squad.smart_id ~= nil
         and not xsmart.has_squad_of_faction(squad.smart_id, squad.player_id, squad.id)
@@ -127,7 +122,7 @@ function is_tactically_eligible(squad, smart)
     local score = 1.0
     if last_of_faction then score = score - TACTICS_WEIGHT_LAST_OF_FACTION end
     if smart_targeted then score = score - TACTICS_WEIGHT_SMART_TARGETED end
-    return math_random() <= score, last_of_faction, smart_targeted, score
+    return math_random() <= score
 end
 
 --- Field smart: not a base and not already hosting a hub trader -- an ordinary contested smart the

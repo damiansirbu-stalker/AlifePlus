@@ -1,0 +1,78 @@
+--- ap_core_world_trace: the world log. Periodic and per-scan STATE dumps (smarts, squads, the
+--- controlled-squad roster, member jobs, killer registry, trader inventories, MCM settings) write
+--- to alifeplus_world.log, kept apart from the decision trace in alifeplus.log. One Development MCM
+--- toggle (world_trace_enabled); nothing runs while off, so it is zero cost by default. Mirrors
+--- AlifeTactics at_world_trace: the decision trace answers "what did AP decide and do", the world
+--- log answers "what state is the simulation in".
+local pairs, tostring, table_sort, table_concat = pairs, tostring, table.sort, table.concat
+local RegisterScriptCallback = RegisterScriptCallback
+local xlog, xlevel, xsmart, xsquad = xlog, xlevel, xsmart, xsquad
+local CALLBACK = ap_core_const.CALLBACK
+
+local DIAG_INTERVAL_SEC = 60
+local DIAG_TIMER_EV = "ap_world_diag"
+local DIAG_TIMER_ID = "dump"
+
+local log = xlog.get_logger("AP.WORLD", { outfile = "alifeplus_world.log", level = "DEBUG" })
+local _enabled = false
+
+--- True when the Development world-trace toggle is on. Dump sites gate on this.
+function enabled()
+    return _enabled
+end
+
+--- Write one world-log line, no-op when the toggle is off. Also the sink passed to xinventory.dump.
+function debug(fmt, ...)
+    if not _enabled then return end
+    log.debug(fmt, ...)
+end
+
+local function _log_mcm_settings()
+    local parts = {}
+    local mcm = ap_core_mcm.cfg
+    for key, _ in pairs(ap_core_mcm.defaults) do
+        parts[#parts + 1] = key .. "=" .. tostring(mcm[key])
+    end
+    table_sort(parts)
+    log.debug("[MCM] %s", table_concat(parts, " "))
+end
+
+-- Periodic [CORE.DIAG] dump of smarts (filtered to actor level) and squads. Registered only while
+-- the toggle is on. xsmart.dump_smarts and xsquad.dump_squads use cached role lookups.
+local function _diag_dump()
+    local sim = alife()
+    local actor_se = sim and sim:actor()
+    local level_id = actor_se and xlevel.get_level_id(actor_se) or nil
+    log.debug("[CORE.DIAG] %s", xsmart.dump_smarts(level_id))
+    log.debug("[CORE.DIAG] %s", xsquad.dump_squads(level_id))
+end
+
+local function _on_diag_timer()
+    _diag_dump()
+    log.flush()
+    ResetTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC)
+end
+
+-- Apply the world_trace_enabled toggle: dump the settings snapshot and register the diag timer when
+-- turning on, remove the timer and flush when turning off. Nothing runs while off.
+local function _apply_enabled()
+    local want = ap_core_mcm.get_config("world_trace_enabled") and true or false
+    if want == _enabled then return end
+    _enabled = want
+    if _enabled then
+        _log_mcm_settings()
+        RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
+        CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _on_diag_timer)
+        log.info("World trace enabled")
+    else
+        RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
+        log.info("World trace disabled")
+        log.flush()
+    end
+end
+
+function on_game_start()
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _apply_enabled)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _apply_enabled)
+    RegisterScriptCallback(CALLBACK.MCM_OPTION_RESTORE_DEFAULT, _apply_enabled)
+end

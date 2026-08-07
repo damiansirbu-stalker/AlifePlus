@@ -15,7 +15,7 @@
 
 local RegisterScriptCallback = RegisterScriptCallback
 local string_sub, table_sort, pairs = string.sub, table.sort, pairs
-local xinventory, xcreature, xobject = xinventory, xcreature, xobject
+local xinventory, xcreature, xobject, xprofiler = xinventory, xcreature, xobject, xprofiler
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 
@@ -140,6 +140,8 @@ local function _trim_npc_deferred(npc_id)
     local npc = xobject.go(npc_id)
     if not npc or not npc:alive() or xcreature.is_unscriptable(npc) then return true end
 
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local rules = LOOT_POLICY.rules
     local cat_opts = xinventory.get_category_opts(npc)
     -- Whole-inventory counts per policy key (ammo in rounds); the cap is measured against the full
@@ -151,8 +153,9 @@ local function _trim_npc_deferred(npc_id)
     for key, bucket in pairs(buckets) do
         released = released + _trim_key(npc_id, key, bucket, rules[key].max, counts[key] or 0)
     end
-    if ap_core_debug.enabled() then
-        ap_core_debug.debug("%s trim npc=%d released=%d", LOG, npc_id, released)
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s trim npc=%d released=%d [%.2fms]", LOG, npc_id, released, tmr:get_ms())
     end
     return true
 end

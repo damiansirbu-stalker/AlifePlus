@@ -252,15 +252,15 @@ function trade(npc, seller)
     return { sold = sold, bought = bought }
 end
 
--- Dump the trade partner's stock on debug when trade opens, via the shared xlibs util (aggregated,
--- one line). This is the trade feature's OWN hook, decoupled from the market and outpost-service
--- dumps, so any trader you open reports its shelf. No-op when debug is off.
+-- Dump the trade partner's stock to the world log when trade opens, via the shared xlibs util
+-- (aggregated, one line). This is the trade feature's OWN hook, decoupled from the market and
+-- outpost-service dumps, so any trader you open reports its shelf. No-op when world trace is off.
 local function _on_trade_started()
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_world_trace.enabled() then return end
     -- The partner is the actor's talk target. xactor.get_talking_npc wraps the engine primitive
     -- db.actor:get_talking_npc() (the authoritative GetTalkPartner); no raw engine call here.
     local npc = xactor.get_talking_npc()
-    if npc then xinventory.dump(npc, "trade", ap_core_debug.debug) end
+    if npc then xinventory.dump(npc, "trade", ap_core_world_trace.debug) end
 end
 
 function on_game_start()

@@ -630,10 +630,10 @@ end
 -- fallback once the ~6 fire vertices fill (xr_campfire_point.script:104-108) -- not visible here.
 -- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
 local function _log_member_jobs(squad, smart)
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_world_trace.enabled() then return end
     local sname = tostring(smart:name())
     if not (smart.online and smart.is_on_actor_level) then
-        ap_core_debug.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
+        ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
             squad.id, sname)
         return
     end
@@ -646,7 +646,7 @@ local function _log_member_jobs(squad, smart)
         counts[kind] = counts[kind] + 1
         parts[#parts + 1] = member_id .. "=" .. label
     end
-    ap_core_debug.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
+    ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
         squad.id, sname, #parts, counts.generic, counts.campfire, counts.other, counts.none,
         table_concat(parts, ", "))
 end
@@ -821,17 +821,17 @@ end
 -- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
 local function _log_tracked_entry(squad_id, data, now)
     if data.scripted_target then
-        ap_core_debug.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
+        ap_core_world_trace.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
             squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
             now - (data.tracked_at or now),
             tostring(data.offmap or false), tostring(data.arrived or false),
             tostring(data.interruptable or false))
-        -- Arrived squads (incl. save-restored) only pass through this debug-gated dump, never
+        -- Arrived squads (incl. save-restored) only pass through this world-trace dump, never
         -- _run_arrival again, so their member jobs are snapshotted here beside the tracked line.
         _log_squad_jobs(squad_id, data)
         return
     end
-    ap_core_debug.debug("[SQUAD] tracked: id=%d offmap_released age=%ds",
+    ap_core_world_trace.debug("[SQUAD] tracked: id=%d offmap_released age=%ds",
         squad_id, now - (data.dispatched_at or now))
 end
 
@@ -841,11 +841,12 @@ local function _update_scripted_squads()
     if xslice.is_active("broker_scan") then return end
     if not next(_ap_scripted_squads) then return end
     local debug_on = ap_core_debug.enabled()
-    local now = debug_on and xtime.game_sec()
+    local world_on = ap_core_world_trace.enabled()
+    local now = world_on and xtime.game_sec()
     local queue = {}
     for squad_id, data in pairs(_ap_scripted_squads) do
         queue[#queue + 1] = squad_id
-        if debug_on then _log_tracked_entry(squad_id, data, now) end
+        if world_on then _log_tracked_entry(squad_id, data, now) end
     end
     local count = #queue
     local scan_ms = 0

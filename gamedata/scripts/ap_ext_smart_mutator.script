@@ -703,7 +703,7 @@ local function _log_service_entry(squad_id, entry)
         for id in xsquad.iter_member_ids(squad) do member_id = id break end
     end
     local cur = squad and xobject.se(squad.smart_id)
-    ap_core_debug.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s pin=%s cur_smart=%s base=%s %s",
+    ap_core_world_trace.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s pin=%s cur_smart=%s base=%s %s",
         entry.smart_id, entry.smart_name, entry.role, squad_id,
         tostring(entry.stocked or false),
         tostring(squad and squad.scripted_target),
@@ -961,8 +961,8 @@ local function _update_mutations()
     prof:reset():start()
     _pace_respawns(now)
     prof:stop(); local pace_ms = prof:get_ms()
+    if ap_core_world_trace.enabled() then _log_services() end
     if ap_core_debug.enabled() then
-        _log_services()
         ap_core_debug.debug("[MUTATOR.SMART] scan: update=%.2f adopt=%.2f holds=%.2f stock=%.2f pace=%.2f ms",
             update_ms, adopt_ms, holds_ms, stock_ms, pace_ms)
     end
@@ -1488,7 +1488,7 @@ local function _on_squad_npc_death(squad, se_npc, _)
             entry.smart_id, entry.role, se_npc.id)
         return
     end
-    if ap_core_debug.enabled() then xinventory.dump(victim, "service", ap_core_debug.debug) end
+    if ap_core_world_trace.enabled() then xinventory.dump(victim, "service", ap_core_world_trace.debug) end
     victim:iterate_inventory(_release_item, victim)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
         entry.smart_id, entry.role, se_npc.id)

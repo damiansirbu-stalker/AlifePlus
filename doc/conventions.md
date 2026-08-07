@@ -97,7 +97,7 @@ Causes are predicates. Return `{ cause = CAUSE.X, ...payload }` or `nil`.
 
 ### Predicate Order
 
-enabled check -> rate self-gate -> world-state filter -> build payload -> self-observe (prof+trace:push+debug)
+enabled check -> rate self-gate -> world-state filter -> build payload. The producer times the predicate inline (`xprofiler.new_if(dbg)`) and logs its outcome line; the predicate does not log its own timing.
 
 Each predicate publishes exactly one specific cause. Umbrella cause files (`ap_ext_cause_<family>.script`) hold one predicate per cause; each predicate is independent.
 
@@ -174,31 +174,22 @@ Each code names the template phase that answered: SUCCESS (action), FAILED_RULES
 ### Format
 
 ```
-[{component}] [traceId={id} path={path}] {message} {key=value pairs}
+[{component}] [tid={id}] {message} [X.XXms]
 ```
+
+The `[tid={id}]` and the `[X.XXms]` duration appear together on a flow line; a line that carries a tid also carries its duration (validator rule `alifeplus-debug-log-duration`). Per-candidate cause lines and plain diagnostic lines carry neither.
 
 ### Component Prefixes
 
-Pipeline labels are composed by `ap_core_debug.bracket(constant)` (uppercase, `:` -> `.`): `[CAUSE.{NAME}]`, `[CONSEQUENCE.{NAME}]`, `[CONSEQUENCE_PHASE.{NAME}]`, plus the family roots (`[NEEDS]`, `[STASH]`, ...). Non-pipeline modules carry a literal `LOG` prefix: `[EXT.MARKET]`, `[EXT.LOOT]`, `[EXT.LOOTSEL]`, `[CALLBACKS.SQUAD]`, `[PIPELINE]`, `[STATS]`. No hardcoded `[CAUSE.X]` literals in pipeline files; each caches its bracket strings at module load.
+Pipeline labels are composed by `ap_core_debug.bracket(constant)` (uppercase, `:` -> `.`): `[CAUSE.{NAME}]`, `[CONSEQUENCE.{NAME}]`, plus the family roots (`[NEEDS]`, `[STASH]`, ...). Non-pipeline modules carry a literal `LOG` prefix: `[EXT.MARKET]`, `[EXT.LOOTSEL]`, `[CORE.CACHE]`, `[SQUAD]`, `[PRODUCER]`. No hardcoded `[CAUSE.X]` literals in pipeline files; each caches its bracket strings at module load (`entry.log_prefix`).
 
 ### Tracing
 
-| Term | Definition |
-|------|------------|
-| `traceId` | Unique ID for a trace (monotonic counter) |
-| `path` | Breadcrumb trail like `massacre(5)/loot(6)` |
+Correlation is a plain integer `tid` (a monotonic counter from `xtrace.new().id`), carried on the payload as `result.tid`. There is no path and no span hierarchy. The producer writes the tid on the cause result; a synchronous consequence reads `event_data.tid` and logs under the same tid. Deferred arrivals mint a fresh tid and correlate by `dst=` / `sq=`, not by tid (the counter resets on VM reinit, so a stored tid would collide after a save). Per-candidate cause lines inside a radiant family are tid-less; the producer's family outcome line carries the tid.
 
-No spanId - path contains operation names with counters.
+### Scan tracing (`find_smart`, `find_squads`, `find_first_smart`)
 
-### Scan tracing (`find_smart`, `find_squads`)
-
-`*_observed` wraps the scan in `observe(trace, PHASE.FIND_DESTINATION, ...)`. Plain `find_smart` / `find_squads` push no span (DEBUG line on miss only). Layered rule:
-
-| Context | Form | Why |
-|---|---|---|
-| Top-level destination/responder SCAN in handler | `*_observed(trace, ...)` | Primary SCAN; deserves its own FIND_DESTINATION span |
-| Inside a nested `observe(trace, PHASE.X, ...)` block (e.g. PHASE.MOVE_SQUAD) | plain | Parent PHASE captures the result via free scalars (`dst_id`, `count`, `ids`) and short-circuits with `code = TRACE.NO_SMART` on miss; an inner span would be redundant nesting |
-| Inside a deferred-tick fresh-trace envelope (`observe(nil, PHASE.CHASE_TARGET, ...)`) | plain | Original cause trace is gone (see **Synchronous payload only** under A-Life Rules); the deferred tick mints its own fresh trace via `xtrace.new()` |
+The finders are plain (no `*_observed` variant). `ap_core_util.find_squads` / `find_smart` emit a `[DISPATCH.FIND_*]` DEBUG line (count and params, or a no-smart line on miss) under `ap_core_debug.enabled()`; below DEBUG they run straight through with no line. The calling flow's own inline timer owns the timing; the finder pushes no span.
 
 ### Log Levels
 
@@ -207,21 +198,18 @@ No spanId - path contains operation names with counters.
 | ERROR | pcall failures, real errors | Handler failed |
 | WARN | Severe issues, degraded state | Failed to give item |
 | INFO | Startup, save/load summaries | Initialized, SAVE: N killers |
-| DEBUG | Everything else | Events, traces, timing, skips |
+| DEBUG | Everything else | Events, flow timing, skips |
 
 ### Rules
 
 | Rule | Detail |
 |------|--------|
-| observe() location | Lives in `ap_core_debug`. Guarded by `ap_core_debug.enabled()`. When debug off, straight pass-through with zero overhead. |
-| Generic serializer | Inside `observe()`. Iterates result table pairs, logs all scalar fields as `k=v`. Skips userdata, table, function, nil. Skips `code`/`reason`. |
-| Result builders | `ap_core_debug.result_squads(squads, extra)`, `ap_core_debug.result_squad(squad, extra)`. Never manually collect IDs. |
-| No engine calls for logging | Log only what's already computed. IDs over names. Never fetch names just for logging. |
-| Lazy name cache | Per-method in AlifePlus code. Uses xlib calls, never raw xray/luabind. |
-| Action closure returns | All closures must return standardized tables using result builders. |
-| Cause returns | Predicates return `{ cause, ...payload }` with all scalars auto-logged by generic serializer. |
-| Consequence outer returns | Enriched with free scalars: `count`, `ids`, `dst_id`, `faction` via result builders. |
-| Trace goal | Grep a `tid` -> see full cause->consequence->action chain with all linking IDs. |
+| Inline timing | Each big flow times itself with `xprofiler.new_if(dbg)` and logs one summary line. No per-call wrapper. |
+| Timer null below DEBUG | `xprofiler.new_if(false)` returns the shared null singleton (zero allocation, `get_ms()` returns 0); the tid is not minted. |
+| No engine calls for logging | Log only what's already computed. IDs over names. Never fetch names just for logging. Gate a DEBUG log whose args read userdata (e.g. `squad:section_name()`) behind `if ap_core_debug.enabled()`. |
+| code / reason | `code` and `reason` stay on result tables as control flow and HUD stats, not logging cruft. No other free scalars on result tables. |
+| Cause returns | Predicates return `{ cause, ...payload }` on success, `{ code, reason }` on rejection. |
+| Trace goal | Grep a `tid` -> see the cause line and its synchronous consequence line. |
 
 ---
 

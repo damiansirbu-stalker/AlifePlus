@@ -80,7 +80,7 @@ Project-wide constraints that hold across all pipelines and modules.
 - Cross-DTO read, single-writer write. Any cause generator may read any DTO; only the owning generator writes.
 - **Performance first.** Performance is the top priority and outranks features. A feature that cannot meet the budget below is reworked, replaced, dropped, or removed with an X-Ray engine modification (a themrdemonized / xray-monolith change) — never kept at the cost of the budget. Only correctness and the "never break base gameplay" invariant rank above it; everything else gives way. See `doc/standards/code-standards.md` "Performance is the priority".
 - **Use the engine, don't work around it.** Every capability comes from the engine and the Anomaly layer first, always through xlibs; our own code enters only where stock behavior falls short, escalating nudge / correct (callback, wrapped setter, monkey-patch, DLTX/DXML) then, as a last resort, changing the layer itself (an engine modification or a full-file vanilla override). Never reimplement in script what the engine already does. See `doc/standards/code-standards.md` "Use the engine, don't work around it".
-- Performance budget. Every measured flow (each bracketed `ap_core_debug.observe` label in the log: `[CONSEQUENCE_PHASE.FIND_TARGETS]`, `[CONSEQUENCE_PHASE.FIND_DESTINATION]`, `[STASH]`, ...) targets 0.1ms average per call and has a hard 2ms ceiling per call. No exceptions, including cold start, save load, and level transition. Any preload (index build, cache warm, registry walk) that would breach 2ms in a single tick must be frame-spread (xslice or equivalent), with the search path falling back to the un-indexed walk until the build completes. A flow that averages above 0.1ms, or that ever exceeds 2ms in a single call, is a regression and requires a perf task. See `doc/standards/code-standards.md` "Performance budget".
+- Performance budget. Every measured flow (each bracketed inline-timer line in the log: `[DISPATCH.FIND_SQUADS]`, the `[NEEDS]` / `[STASH]` cause families, the `[SQUAD]` broker sweep, `[CORE.CACHE]`, ...) targets 0.1ms average per call and has a hard 2ms ceiling per call. No exceptions, including cold start, save load, and level transition. Any preload (index build, cache warm, registry walk) that would breach 2ms in a single tick must be frame-spread (xslice or equivalent), with the search path falling back to the un-indexed walk until the build completes. A flow that averages above 0.1ms, or that ever exceeds 2ms in a single call, is a regression and requires a perf task. See `doc/standards/code-standards.md` "Performance budget".
 - Item transfer only. AlifePlus never invents new section names. Every materialized item is a section that already exists in vanilla configs. AP policy LTX files (`ap_trade_policy.ltx`, `ap_barter_policy.ltx`, `ap_stash_policy.ltx`, `ap_loot_policy.ltx`, `ap_market_policy.ltx`) declare category bands; the actual sections come from `xinventory.get_category_sections(category)`, which reads vanilla Parse_ITM buckets (`_ITM["outfit"]`, `_ITM["ammo"]`, etc.) and hand-curated sets of real vanilla sections (`_medkit_set`, `_grenade_set`, etc.). Some sections come from `character_desc [supplies]`, `trade_*.ltx [supplies_N]`, or `treasure_manager` tier configs. None are invented by AP.
 - Money flows match vanilla. NPCs gain money when they sell items above category max (`floor(cost * 0.5)`) and spend money when they buy items below category min (`floor(cost * 1.0)`). Cost reads `xinventory.get_cost(sec)` which wraps `ini_sys:r_float_ex(sec, "cost")`. Money moves only inside `ap_ext_trade.trade` via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow (see todo-demonized-exes.md n015 PR). No money moves through stash loot, stash fill, the faction market, barter (item transfer only, both directions), or any other AP path. The market's premium is not an AP money move: it overrides the engine's displayed price for tagged trader stock (`on_get_item_cost`), and the player pays it through the normal engine buy.
 
@@ -98,7 +98,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_api | Public integration facade over broker / record / consumer / producer: owner registry, script_squad / script_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
-| ap_core_debug | Logger, observe() tracing, bracket helper, result builders. Zero overhead below DEBUG |
+| ap_core_debug | Logger, bracket helper, MCM log-level, periodic [CORE.DIAG] dump. Zero overhead below DEBUG |
 | ap_core_cache | Per-level smart / stash / squad indexes, built frame-spread (xslice) at actor_on_first_update. Finders take them as opts.source. Mechanism in the module header |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
@@ -305,20 +305,23 @@ The world tab in MCM houses the balance family. Pipeline family caps live under 
 
 ### Tracing
 
-Hierarchical via observe() (consequences, internal phases) and prof + trace:push + debug pattern (cause generators) in ap_core_debug. Each trace carries a monotonic tid (trace ID) and a slash-separated path (span hierarchy). One tid links a cause through its consequence chain into individual actions:
+Each big flow times itself inline with `xprofiler.new_if(dbg)` and logs one line. There is no per-call `observe()` wrapper and no span hierarchy. Correlation is a plain integer `tid` carried on the payload: the producer mints `xtrace.new().id` per evaluation, writes it to `result.tid`, and a synchronous consequence reads `event_data.tid` to log its line under the same tid. One tid links a cause to its synchronous consequence:
 
 ```
-[NEEDS] [tid=42 path=needs] FAILED_RULES:WRONG_PERIOD sq=1337 [0.05ms]
-[CAUSE.HUNGER_CAMPFIRE] [tid=42 path=needs/cause:hunger_campfire] sq=1337 drive=hunger weight=4.2 [0.15ms]
-[CONSEQUENCE.HUNGER_CAMPFIRE] [tid=42 path=needs/cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE] success count=1 [0.83ms]
-[CONSEQUENCE_PHASE.FIND_DESTINATION] [tid=42 path=needs/cause:hunger_campfire/CONSEQUENCE.HUNGER_CAMPFIRE/CONSEQUENCE_PHASE.FIND_DESTINATION] ok id=445 [0.12ms]
+[CAUSE.HUNGER_CAMPFIRE] failed_rules:low_personality [0.04ms]
+[NEEDS] [tid=42] fired=cause:hunger_campfire [0.15ms]
+[CONSEQUENCE.HEAL_SHELTER] [tid=42] complete need=heal dst=445 [0.83ms]
 ```
 
-Path root is the registered name. Single-cause reactives register the specific cause (cause:massacre etc.) so the root IS the specific cause. Multi-cause radiants register the family string (stash, area, needs, instincts); generators have to run alignment / scan / pick code before a specific cause is known, so the root names the family and the picked cause nests one level under. First line in the example shows a pre-pick rejection (no cause picked, logs under family); subsequent lines show the picked-cause chain.
+The line format is `[LABEL] [tid=N] <outcome> [X.XXms]`. A debug line that carries a `[tid=N]` also carries its `[X.XXms]` duration (validator rule `alifeplus-debug-log-duration`).
 
-bracket(constant) in ap_core_debug composes log labels by uppercasing and replacing : with .: "cause:hunger_campfire" -> "[CAUSE.HUNGER_CAMPFIRE]". Each cause/consequence file caches its bracket strings at module load. No hardcoded [CAUSE.X] literals.
+Radiant families (needs, instincts, area, stash) run alignment / scan / pick before a specific cause is known. Each per-candidate attempt logs a tid-less line under its own bracket (`[CAUSE.X] code:reason [X.XXms]`, the first line above); the family outcome line the producer emits carries the tid (the second line). The tid is not threaded into generators. Deferred arrivals mint a FRESH `xtrace.new().id` and correlate to their dispatch by `dst=` / `sq=`, never by a stored tid: the counter resets on VM reinit, so a stored tid would collide after a save.
 
-Below DEBUG: observe() is a bare passthrough (calls the function, returns the result). trace() returns a null singleton. xprofiler.new_if(false) returns a null singleton. Cost: one enabled() check (~150ns) per call. All null singletons pre-allocated; no allocation at non-debug levels.
+bracket(constant) in ap_core_debug composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger_campfire"` -> `"[CAUSE.HUNGER_CAMPFIRE]"`. Each cause / consequence file caches its bracket strings at module load (`entry.log_prefix`). No hardcoded `[CAUSE.X]` literals.
+
+Coarse inline timers cover the big flows with no per-cause / per-param / per-branch timer spam: the producer cause evaluation, each consequence, the broker scripted-squad sweep (per-item accumulate plus an `on_done` total), the map-marker tick, the ap_core_cache bucket warmup (same accumulate-plus-total shape), the loot-claim and loot-select passes, the market reshape, the news compose tick, and the tracker death handler. One line per component. `ap_ext_object_mutator` before-hit is a hot path (over 10/sec) and stays untimed; a per-hit timer would distort it.
+
+Below DEBUG: `ap_core_debug.debug` early-returns on the `enabled()` check, `xprofiler.new_if(false)` returns the shared null singleton (zero allocation, `get_ms()` returns 0), and the tid is not minted (`dbg and xtrace.new().id or 0`). Cost is one `enabled()` check per flow. All null singletons are pre-allocated; no allocation at non-debug levels.
 
 ---
 
@@ -596,7 +599,7 @@ AlifePlus stacks safety layers on top of the engine capability:
 | Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap`, window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter` offmap counter (see Rate limiting) |
 | Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
 | Cross-level filter | prop-only / SIMBOARD / static-set predicates (`xsmart.is_base`, `xsmart.has_campfire`, `_is_unclaimed`, occupied-non-base); `has_animated_stalker_jobs` / dynamic `npc_info` omitted because `stalker_jobs` / `npc_info` are empty for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
-| Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart_observed` |
+| Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart` |
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `script_squad` + `_commit_arrival` |
 | Settle terminal | after the gulag hold, `_unscript_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
 | Despawn safety net | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` reclaims a squad that never settled at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker` `_check_offmap_despawn` |
@@ -947,7 +950,7 @@ Picker flow inside _on_smart:
 
 1. Score every drive via Hull (_find_overdue_drives for instincts, _find_overdue_needs for needs).
 2. Sort overdue drives descending by drive score.
-3. Walk overdue drives top-down. For each drive, walk CAUSES entries with matching parent drive. Per cause: RULES (per-cause enable, alignment subset, personality roll), then SCAN (filter + find_smart_observed). First cause that publishes wins. Stop.
+3. Walk overdue drives top-down. For each drive, walk CAUSES entries with matching parent drive. Per cause: RULES (per-cause enable, alignment subset, personality roll), then SCAN (filter + find_smart). First cause that publishes wins. Stop.
 4. Each generator's `_on_smart` caps its own internal cascade at RADIANT_MAX_SCANS_PER_GENERATOR SCAN reaches; RULES rejections are free.
 
 The DTO field is per-drive. When any of a drive's answers fires, the drive's timestamp resets (Hull drive reduction). Multiple answers compete to satisfy one drive.

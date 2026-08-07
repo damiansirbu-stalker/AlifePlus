@@ -4,7 +4,7 @@ local table_concat = table.concat
 local math_min, math_floor = math.min, math.floor
 local RegisterScriptCallback = RegisterScriptCallback
 local xtable, xttltable, xcreature, xconst, xprofiler = xtable, xttltable, xcreature, xconst, xprofiler
-local ap_core_debug, ap_core_util = ap_core_debug, ap_core_util
+local ap_core_debug, ap_core_util, ap_core_world_trace = ap_core_debug, ap_core_util, ap_core_world_trace
 
 local CALLBACK = ap_core_const.CALLBACK
 local ALPHA_MAX_LEVEL = 10
@@ -60,12 +60,12 @@ local function _on_load_state(m_data)
 end
 
 local function _dump_killers()
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_world_trace.enabled() then return end
     local parts = {}
     for id, count in pairs(_ap_killers) do
         parts[#parts + 1] = id .. "=" .. count
     end
-    ap_core_debug.debug("[TRACKER] killers: {%s}", table_concat(parts, ", "))
+    ap_core_world_trace.debug("[TRACKER] killers: {%s}", table_concat(parts, ", "))
 end
 
 --- Register a kill for entity

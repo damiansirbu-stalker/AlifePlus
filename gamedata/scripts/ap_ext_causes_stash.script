@@ -74,7 +74,7 @@ end
 
 -- Per-cause threshold + personality + SCAN for the cause picked by _pick_branch.
 -- Returns publish payload (with .cause) on SUCCESS, rejection result otherwise.
--- observe() wraps every call so each picked-cause attempt logs.
+-- _try_branch times and logs each picked-cause attempt.
 -- opts: { now, stash, items_count, cause_const }
 local function _try_picked_cause(squad, level_id, opts)
     local cause_const = opts.cause_const
@@ -89,9 +89,8 @@ local function _try_picked_cause(squad, level_id, opts)
     local pcfg = _personality_by_cause[cause_const]
     local dst_smart_id
     if pcfg then
-        local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(pcfg.traits, squad.player_id)
-        if not p_ok then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
+        if not ap_ext_util.check_personality(pcfg.traits, squad.player_id) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
         end
         if opts.budget.remaining <= 0 then
             return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -101,9 +100,8 @@ local function _try_picked_cause(squad, level_id, opts)
             level_id = level_id, filter = function(s) return not xsmart.is_base(s) end,
         })
         if not dst then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-        local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, dst)
-        if not t_ok then
-            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
+        if not ap_ext_util.is_tactically_eligible(squad, dst) then
+            return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
         end
         dst_smart_id = dst.id
     end

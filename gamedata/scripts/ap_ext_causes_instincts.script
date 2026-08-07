@@ -152,7 +152,7 @@ local function _scatter_smart(squad, level_id, species)
     return smart
 end
 
--- Per-cause RULES + SCAN. Returns result table with code/reason; observe() logs every call.
+-- Per-cause RULES + SCAN. Returns result table with code/reason; the caller logs each attempt.
 -- budget: per-_on_smart table { remaining = N }. RULES rejections free; SCAN reaches consume one slot.
 local function _try_cause(squad, level_id, species, entry, budget)
     if not cfg["cause_" .. entry.name .. "_enabled"] then
@@ -161,9 +161,8 @@ local function _try_cause(squad, level_id, species, entry, budget)
     if entry.alignment and not entry.alignment[species] then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
     end
-    local p_ok, p_avg, p_chance, p_roll = ap_ext_util.check_personality(entry.personality, species)
-    if not p_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY, avg = p_avg, chance = p_chance, roll = p_roll }
+    if not ap_ext_util.check_personality(entry.personality, species) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
     if budget.remaining <= 0 then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
@@ -180,9 +179,8 @@ local function _try_cause(squad, level_id, species, entry, budget)
         smart = ap_core_util.find_smart(squad.position, opts)
     end
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
-    local t_ok, t_last, t_targ, t_score = ap_ext_util.is_tactically_eligible(squad, smart)
-    if not t_ok then
-        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS, last_of_faction = t_last, smart_targeted = t_targ, score = t_score }
+    if not ap_ext_util.is_tactically_eligible(squad, smart) then
+        return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
     return { code = RESULT.SUCCESS, smart = smart }
 end
@@ -202,9 +200,9 @@ local function _make_result(squad, level_id, overdue_entry, entry, smart, specie
 end
 
 -- Per-cause attempt for one CAUSES entry under an overdue drive. Returns a published-payload
--- result on SUCCESS, nil otherwise. observe() wraps _try_cause so every attempt logs.
+-- result on SUCCESS, nil otherwise. Times _try_cause and logs the code:reason each attempt.
 -- period_mismatch drives are walked only at DEBUG (see _find_overdue_drives); each cause emits
--- a failed_rules:wrong_period observe line so dormant/active drops are no longer silent.
+-- a failed_rules:wrong_period line so dormant/active drops are no longer silent.
 -- opts: { species, overdue, entry, drive }
 local function _try_one_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end

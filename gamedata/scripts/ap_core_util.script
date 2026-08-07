@@ -18,9 +18,9 @@ function event_subscribe(event_name, callback, subscriber_name)
     return ok
 end
 
---- Publish an event (uses trace from event_data._trace if present)
+--- Publish an event to xbus subscribers
 --- @param event_name string Event name
---- @param event_data table Event payload (should include _trace from cause)
+--- @param event_data table Event payload (carries the cause tid for log correlation)
 function event_publish(event_name, event_data)
     local result = xbus.publish(event_name, event_data)
     ap_core_debug.debug("[EVENT.%s] published", event_name)

@@ -8,10 +8,10 @@
 --- xsmart.find_smart, xstash.find_stashes, and xsquad.find_squads / find_squad so the finders
 --- skip the global pool walk.
 ---
---- Bucket builders run uninstrumented: per-tick observe() at DEBUG adds ~30-50us per entity
---- (xtrace push/pop, xprofiler, log.debug format), enough to drop heavy-save engines to ~30fps
---- during the warmup. Mechanical xslice fill produces no useful per-op diagnostic; the on_done
---- log marks completion.
+--- Bucket builders time each per-item bucketing with xprofiler (debug-only, _NULL at WARN) and
+--- log the accumulated total at on_done ([CORE.CACHE] ... built: count=N [X.XXms]). The per-tick
+--- xslice fill itself stays mechanical, so no per-op line, only the completion total. Same shape
+--- as the ap_core_broker sweep (per-item accumulate + on_done total).
 ---
 --- Smarts and stashes: no invalidation. Both spawn from LTX with a fixed m_tGraphID and never
 --- reach the synchronize_location path that mutates it (alife_dynamic_object.cpp:93-126), so
@@ -43,7 +43,7 @@
 --- fall back to the un-bucketed SIMBOARD walk via the standard `or SIMBOARD.X` pattern.
 
 local pairs, RegisterScriptCallback = pairs, RegisterScriptCallback
-local xlevel, xsmart, xsquad, xobject, xslice = xlevel, xsmart, xsquad, xobject, xslice
+local xlevel, xsmart, xsquad, xobject, xslice, xprofiler = xlevel, xsmart, xsquad, xobject, xslice, xprofiler
 
 local CALLBACK = ap_core_const.CALLBACK
 local CLSID_SQUAD = clsid.online_offline_group_s
@@ -75,10 +75,6 @@ local function _bucket_one_smart(smart)
     return true
 end
 
-local function _on_smart_build_done()
-    ap_core_debug.debug("[CORE.CACHE] smart bucket built")
-end
-
 -- Snapshot smart refs into an array, start xslice. Per-tick: 50 smarts x ~5us = ~0.25ms.
 -- ~300-500 smarts -> ~6-10 ticks -> ~0.1-0.2s wall-clock at 60fps.
 -- @cost O(n) smarts for snapshot | 0 luabind; xslice ticks pay the per-smart bucketing cost
@@ -88,10 +84,21 @@ local function _build_smart_bucket()
     _smarts_by_level = {}
     local queue = {}
     for smart in xsmart.smart_iter() do queue[#queue + 1] = smart end
+    local debug_on = ap_core_debug.enabled()
+    local count = #queue
+    local build_ms = 0
     xslice.start(SMART_BUILD_QUEUE, queue, {
         step = SMART_BUILD_STEP,
-        func = _bucket_one_smart,
-        on_done = _on_smart_build_done,
+        func = function(smart)
+            local tmr = xprofiler.new_if(debug_on):start()
+            local drain = _bucket_one_smart(smart)
+            tmr:stop()
+            build_ms = build_ms + tmr:get_ms()
+            return drain
+        end,
+        on_done = function()
+            if debug_on then ap_core_debug.debug("[CORE.CACHE] smart bucket built: count=%d [%.2fms]", count, build_ms) end
+        end,
     })
 end
 
@@ -123,10 +130,6 @@ local function _bucket_one_stash(id)
     return true
 end
 
-local function _on_stash_build_done()
-    ap_core_debug.debug("[CORE.CACHE] stash bucket built")
-end
-
 -- Snapshot treasure_manager.caches keys into an array, start xslice. Per-tick: 3 stashes x ~12us = ~0.04ms.
 -- ~500 stashes -> ~167 ticks -> ~2.8s wall-clock at 60fps.
 -- @cost O(n) stashes for snapshot | 0 luabind; xslice ticks pay the alife_object cost
@@ -139,10 +142,21 @@ local function _build_stash_bucket()
     for stash_id in pairs(treasure_manager.caches) do
         queue[#queue + 1] = stash_id
     end
+    local debug_on = ap_core_debug.enabled()
+    local count = #queue
+    local build_ms = 0
     xslice.start(STASH_BUILD_QUEUE, queue, {
         step = STASH_BUILD_STEP,
-        func = _bucket_one_stash,
-        on_done = _on_stash_build_done,
+        func = function(stash_id)
+            local tmr = xprofiler.new_if(debug_on):start()
+            local drain = _bucket_one_stash(stash_id)
+            tmr:stop()
+            build_ms = build_ms + tmr:get_ms()
+            return drain
+        end,
+        on_done = function()
+            if debug_on then ap_core_debug.debug("[CORE.CACHE] stash bucket built: count=%d [%.2fms]", count, build_ms) end
+        end,
     })
 end
 
@@ -180,10 +194,6 @@ local function _bucket_one_squad(id)
     return true
 end
 
-local function _on_squad_build_done()
-    ap_core_debug.debug("[CORE.CACHE] squad bucket built")
-end
-
 -- Snapshot squad IDs into an array, start xslice. Per-tick: 50 squads x ~5us = ~0.25ms.
 -- ~700-800 squads -> ~14-16 ticks -> ~0.25-0.3s wall-clock at 60fps.
 -- @cost O(n) squads for snapshot | 1 luabind medium per squad (sim:object via xsquad.iter_squads
@@ -194,10 +204,21 @@ local function _build_squad_bucket()
     _squads_by_level = {}
     local queue = {}
     for squad in xsquad.iter_squads() do queue[#queue + 1] = squad.id end
+    local debug_on = ap_core_debug.enabled()
+    local count = #queue
+    local build_ms = 0
     xslice.start(SQUAD_BUILD_QUEUE, queue, {
         step = SQUAD_BUILD_STEP,
-        func = _bucket_one_squad,
-        on_done = _on_squad_build_done,
+        func = function(squad_id)
+            local tmr = xprofiler.new_if(debug_on):start()
+            local drain = _bucket_one_squad(squad_id)
+            tmr:stop()
+            build_ms = build_ms + tmr:get_ms()
+            return drain
+        end,
+        on_done = function()
+            if debug_on then ap_core_debug.debug("[CORE.CACHE] squad bucket built: count=%d [%.2fms]", count, build_ms) end
+        end,
     })
 end
 

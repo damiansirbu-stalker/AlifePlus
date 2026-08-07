@@ -48,8 +48,8 @@ local RegisterScriptCallback = RegisterScriptCallback
 local math_random, math_floor = math.random, math.floor
 local pairs, tonumber, type, tostring, next = pairs, tonumber, type, tostring, next
 local table_remove, table_concat, table_sort = table.remove, table.concat, table.sort
-local xinventory, xsquad, xtime, xevent, xttltable, xobject =
-    xinventory, xsquad, xtime, xevent, xttltable, xobject
+local xinventory, xsquad, xtime, xevent, xttltable, xobject, xprofiler =
+    xinventory, xsquad, xtime, xevent, xttltable, xobject, xprofiler
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 
@@ -581,11 +581,15 @@ end
 local function _restock_deferred(trader_id)
     local trader = xobject.go(trader_id)
     if trader then
+        local dbg = ap_core_debug.enabled()
         -- Market flow's per-trader dump: the raw restock stock, before this module's sellout/inject
-        -- reshape. The trade flow dumps the shelf on open; this captures the market's input.
-        if ap_core_debug.enabled() then xinventory.dump(trader, "market", ap_core_debug.debug) end
+        -- reshape. A world-state dump, so it goes to the world log, not the decision trace.
+        if ap_core_world_trace.enabled() then xinventory.dump(trader, "market", ap_core_world_trace.debug) end
+        local tmr = xprofiler.new_if(dbg):start()
         _sellout_at_trader(trader)
         _inject_at_trader(trader)
+        tmr:stop()
+        if dbg then ap_core_debug.debug("%s reshape trader=%d [%.2fms]", LOG, trader_id, tmr:get_ms()) end
     end
     return true
 end

@@ -130,12 +130,12 @@ end
 
 --- Evaluate all reactive cause handlers for a callback that passed all gates.
 --- Pre-checks per-handler category rate-limit before running predicate (skip wasted work on
---- rate-blocked categories). Predicates self-observe their post-decision payload-build under
---- the picked cause; producer calls handler directly.
+--- rate-blocked categories). Predicates build their post-decision payload under the picked
+--- cause; producer calls the handler directly and logs the outcome.
 --- @param handlers table Indexed array of registered handlers for this callback
 --- @param on_map boolean|nil On-map status for ratio logging
 -- Run one reactive handler; publish on cause, classify on non-publishing rejection.
--- observe() wraps the predicate so every call logs name, code, reason, timing when DEBUG on; passthrough otherwise.
+-- Times the predicate and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_reactive(on_map, entry, args, sc)
     local dbg = ap_core_debug.enabled()
@@ -185,7 +185,7 @@ end
 --- Per-cause check budget is reset here and consumed inside generators per cause attempt.
 --- Predicates self-gate against their per-category cause-rate budget; producer doesn't.
 -- Run one radiant cascade entry; publish on cause (caller breaks), classify on non-publishing.
--- observe() wraps the cascade entry so every call logs name, code, reason, timing when DEBUG on; passthrough otherwise.
+-- Times the cascade entry and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_radiant(on_map, squad, entry, sc)
     local dbg = ap_core_debug.enabled()
@@ -341,12 +341,12 @@ end
 --- Register a cause handler. Predicate publishes specific cause via result.cause; producer
 --- never knows the cause string at registration time. Dedup is by handler function ref.
 --- Category drives rate-limit grouping (decision 3+15): same-category handlers share one budget.
---- name is the observe() label: a CAUSE.X string for reactive (1:1 with the cause), or a
+--- name is the log label: a CAUSE.X string for reactive (1:1 with the cause), or a
 --- generator-family string for radiant cascades ("needs", "instincts", "area", "stash").
 --- Write-through: maintains _handlers, _radiant_callbacks, _cascade_buf synchronously. After
 --- actor_on_first_update, also subscribes the engine callback for new callbacks (late-bind).
 --- @param config table { callback, cause_type, category, name }
---- @param handler function(trace, ...) Handler function
+--- @param handler function(...) Handler function
 function register(config, handler)
     if not config or not handler then
         ap_core_debug.err("[PRODUCER] register: missing config or handler")
