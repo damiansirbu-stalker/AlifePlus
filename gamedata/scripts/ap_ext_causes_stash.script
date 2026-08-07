@@ -1,7 +1,7 @@
 --- ap_ext_causes_stash: State-classifier picker. Peeks one stash in EYE range,
 --- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
 
-local xsmart, xtime, xlevel, xstash, xtable, xprofiler = xsmart, xtime, xlevel, xstash, xtable, xprofiler
+local xsmart, xtime, xlevel, xstash, xtable = xsmart, xtime, xlevel, xstash, xtable
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
 
@@ -33,12 +33,15 @@ local _personality_ambush = { PERSONALITY.GREED, PERSONALITY.AGGRESSION }
 local KEYS_BY_CAUSE = {
     [CAUSE.STASH_LOOT] = {
         field = "last_stash_loot_at", threshold_key = "cause_stash_loot_threshold",
+        enabled_key = "cause_stash_loot_enabled", log_prefix = ap_core_debug.bracket(CAUSE.STASH_LOOT),
     },
     [CAUSE.STASH_AMBUSH] = {
         field = "last_stash_ambush_at", threshold_key = "cause_stash_ambush_threshold",
+        enabled_key = "cause_stash_ambush_enabled", log_prefix = ap_core_debug.bracket(CAUSE.STASH_AMBUSH),
     },
     [CAUSE.STASH_FILL] = {
         field = "last_stash_fill_at", threshold_key = "cause_stash_fill_threshold",
+        enabled_key = "cause_stash_fill_enabled", log_prefix = ap_core_debug.bracket(CAUSE.STASH_FILL),
     },
 }
 
@@ -57,16 +60,15 @@ local _personality_by_cause = {
 --- Non-empty + loot-eligible (non-outlaw) -> [STASH_LOOT].
 local function _pick_branches(community, is_empty, items_count, out)
     if is_empty then
-        if _alignment_fill[community] and cfg.cause_stash_fill_enabled then
+        if _alignment_fill[community] then
             out[#out + 1] = CAUSE.STASH_FILL
         end
         return out
     end
-    if _alignment_outlaw[community] and items_count >= cfg.cause_stash_ambush_min_items
-        and cfg.cause_stash_ambush_enabled then
+    if _alignment_outlaw[community] and items_count >= cfg.cause_stash_ambush_min_items then
         out[#out + 1] = CAUSE.STASH_AMBUSH
     end
-    if _alignment_loot[community] and cfg.cause_stash_loot_enabled then
+    if _alignment_loot[community] then
         out[#out + 1] = CAUSE.STASH_LOOT
     end
     return out
@@ -74,7 +76,7 @@ end
 
 -- Per-cause threshold + personality + SCAN for the cause picked by _pick_branch.
 -- Returns publish payload (with .cause) on SUCCESS, rejection result otherwise.
--- _try_branch times and logs each picked-cause attempt.
+-- The shared ap_ext_util.try_cause gates, times, and logs each picked-cause attempt.
 -- opts: { now, stash, items_count, cause_const }
 local function _try_picked_cause(squad, level_id, opts)
     local cause_const = opts.cause_const
@@ -120,18 +122,6 @@ local function _try_picked_cause(squad, level_id, opts)
     }
 end
 
--- Time one picked-cause attempt and log its outcome; returns the attempt result.
-local function _try_branch(squad, level_id, opts)
-    local dbg = ap_core_debug.enabled()
-    local tmr = xprofiler.new_if(dbg):start()
-    local result = _try_picked_cause(squad, level_id, opts)
-    tmr:stop()
-    if dbg then ap_core_debug.debug("%s %s%s [%.2fms]", ap_core_debug.bracket(opts.cause_const),
-        result.cause and "fired" or (result.code or "?"),
-        result.reason and ":" .. result.reason or "", tmr:get_ms()) end
-    return result
-end
-
 local function _on_smart(squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not _alignment_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
@@ -165,9 +155,9 @@ local function _on_smart(squad)
     local result
     for i = 1, #branches do
         if not result then
-            local branch_res = _try_branch(squad, level_id,
-                { now = now, stash = stash, items_count = items_count, cause_const = branches[i], budget = budget })
-            if branch_res.cause then result = branch_res end
+            local keys = KEYS_BY_CAUSE[branches[i]]
+            local opts = { now = now, stash = stash, items_count = items_count, cause_const = branches[i], budget = budget }
+            result = ap_ext_util.try_cause(keys.enabled_key, keys.log_prefix, _try_picked_cause, squad, level_id, opts)
         end
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end

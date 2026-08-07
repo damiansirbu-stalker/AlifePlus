@@ -228,7 +228,7 @@ Reactive causes skip the producer protection gate because the callback entity (e
 
 #### Cause generator contract
 
-Takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate via ap_core_limiter.check_cause_rate_limit and increment_cause_counter; the producer does not gate cause budgets. Producer wraps every generator call in observe(trace, entry.name, entry.handler, ...) so rejection branches (no result.cause) still log. Single-cause reactives register name = CAUSE.X; multi-cause radiants register name = family string (stash, area, needs, instincts) and additionally wrap each per-cause attempt in observe(trace, cause_const, ...) so picked causes nest under the family.
+Takes the callback args, returns either a payload tagged with the picked specific cause or nil. Generators self-gate the per-category rate via ap_core_limiter.check_cause_rate_limit and increment_cause_counter; the producer does not gate cause budgets. The producer times each generator call inline (xprofiler, DEBUG-gated) and logs its outcome. Single-cause reactives register name = CAUSE.X; multi-cause radiants register name = family string (stash, area, needs, instincts) and route each per-cause attempt through ap_ext_util.try_cause, the one shared seam every radiant generator uses: it skips a disabled cause before any timer (no line, no allocation), otherwise times the attempt and logs it under its own bracket.
 
 ```lua
 local CATEGORY = CAUSE_CATEGORY.OPPORTUNITIES
@@ -315,7 +315,7 @@ Each big flow times itself inline with `xprofiler.new_if(dbg)` and logs one line
 
 The line format is `[LABEL] [tid=N] <outcome> [X.XXms]`. A debug line that carries a `[tid=N]` also carries its `[X.XXms]` duration (validator rule `alifeplus-debug-log-duration`).
 
-Radiant families (needs, instincts, area, stash) run alignment / scan / pick before a specific cause is known. Each per-candidate attempt logs a tid-less line under its own bracket (`[CAUSE.X] code:reason [X.XXms]`, the first line above); the family outcome line the producer emits carries the tid (the second line). The tid is not threaded into generators. Deferred arrivals mint a FRESH `xtrace.new().id` and correlate to their dispatch by `dst=` / `sq=`, never by a stored tid: the counter resets on VM reinit, so a stored tid would collide after a save.
+Radiant families (needs, instincts, area, stash) run alignment / scan / pick before a specific cause is known. Each per-candidate attempt runs through ap_ext_util.try_cause: a disabled cause is skipped before any timer and emits no line, otherwise the attempt logs a tid-less line under its own bracket (`[CAUSE.X] fired [X.XXms]` on publish, else `[CAUSE.X] code:reason [X.XXms]`, the first line above); the family outcome line the producer emits carries the tid (the second line). The tid is not threaded into generators. Deferred arrivals mint a FRESH `xtrace.new().id` and correlate to their dispatch by `dst=` / `sq=`, never by a stored tid: the counter resets on VM reinit, so a stored tid would collide after a save.
 
 bracket(constant) in ap_core_debug composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger_campfire"` -> `"[CAUSE.HUNGER_CAMPFIRE]"`. Each cause / consequence file caches its bracket strings at module load (`entry.log_prefix`). No hardcoded `[CAUSE.X]` literals.
 

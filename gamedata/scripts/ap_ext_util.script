@@ -1,11 +1,38 @@
---- ap_ext_util: Ext-layer utilities (period gates, alignment gates, personality gates, tactics gate)
+--- ap_ext_util: Ext-layer utilities (period gates, alignment gates, personality gates, tactics gate,
+--- the shared radiant sub-cause attempt)
 local math_random, xcreature = math.random, xcreature
+local ap_core_debug, xprofiler = ap_core_debug, xprofiler
+local cfg = ap_core_mcm.cfg
 
 local PERSONALITY = ap_ext_const.PERSONALITY
 local _alignment_mutant_night = ap_ext_const.alignment_mutant_night
 
 local TACTICS_WEIGHT_LAST_OF_FACTION = 0.20
 local TACTICS_WEIGHT_SMART_TARGETED  = 0.20
+
+--- Attempt one radiant sub-cause with uniform gating and tracing. Returns the publish payload when
+--- the cause fires (result carries .cause), else nil. Skips silently before any timer when the
+--- cause's MCM toggle is off, so a disabled cause never allocates a timer or emits a line; every
+--- dynamic outcome (alignment, personality, threshold, scan, tactics) logs one line the same way.
+--- The single per-sub-cause seam shared by every radiant generator (needs, instincts, area, stash).
+--- @param enabled_key string cfg key of the cause toggle (e.g. "cause_hunger_campfire_enabled")
+--- @param log_prefix string cached bracket label
+--- @param fn function evaluator returning a publish payload (with .cause) or { code, reason }
+--- @return table|nil publish payload when the cause fired, else nil
+function try_cause(enabled_key, log_prefix, fn, ...)
+    if not cfg[enabled_key] then return nil end
+    local dbg = ap_core_debug.enabled()
+    local tmr = xprofiler.new_if(dbg):start()
+    local result = fn(...)
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s %s%s [%.2fms]", log_prefix,
+            result.cause and "fired" or (result.code or "?"),
+            result.reason and ":" .. result.reason or "", tmr:get_ms())
+    end
+    if result.cause then return result end
+    return nil
+end
 
 -- inv_<trait> -> <trait> lookup; resolves the INV_ prefix without a per-call string.match.
 local _INV_TO_BASE = {

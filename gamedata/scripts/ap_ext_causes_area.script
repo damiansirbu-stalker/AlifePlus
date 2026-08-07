@@ -5,7 +5,7 @@
 --- gate on ap_ext_smart_mutator.INFEST_SPECIES (bosses and trash mobs never take territory), and
 --- every target filter skips taken smarts via is_taken (takeovers end by decay, not by retake).
 
-local math_random, pairs, xprofiler = math.random, pairs, xprofiler
+local math_random, pairs = math.random, pairs
 local xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable = xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable
 local ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer = ap_core_debug, ap_core_limiter, ap_core_util, ap_core_producer
 local ap_core_cache, ap_ext_util, ap_ext_tracker = ap_core_cache, ap_ext_util, ap_ext_tracker
@@ -26,6 +26,10 @@ local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
 local LOG_CONQUER = ap_core_debug.bracket(CAUSE.AREA_CONQUER)
 local LOG_SWARM   = ap_core_debug.bracket(CAUSE.AREA_SWARM)
 local LOG_INFEST  = ap_core_debug.bracket(CAUSE.AREA_INFEST)
+
+local EN_CONQUER = "cause_area_conquer_enabled"
+local EN_SWARM   = "cause_area_swarm_enabled"
+local EN_INFEST  = "cause_area_infest_enabled"
 
 local CONQUER_FIELD = "last_area_conquer_at"
 local SWARM_FIELD   = "last_area_swarm_at"
@@ -166,9 +170,8 @@ local function _read_dto_field(squad_id, field, now)
 end
 
 -- Per-cause RULES + SCAN. Returns publish payload (with .cause) on SUCCESS,
--- or { code = FAILED_*, reason = REASON.* } on rejection. _try_eligible logs each call.
+-- or { code = FAILED_*, reason = REASON.* } on rejection. The shared ap_ext_util.try_cause gates and logs each call.
 local function _eligible_conquer(squad, now, level_id, budget)
-    if not cfg.cause_area_conquer_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_util.is_active_period(squad.player_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
@@ -208,7 +211,6 @@ local function _eligible_conquer(squad, now, level_id, budget)
 end
 
 local function _eligible_swarm(squad, species, now, level_id, budget)
-    if not cfg.cause_area_swarm_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
@@ -250,7 +252,6 @@ local function _eligible_swarm(squad, species, now, level_id, budget)
 end
 
 local function _eligible_infest(squad, species, now, level_id, budget)
-    if not cfg.cause_area_infest_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
@@ -298,19 +299,6 @@ local function _eligible_infest(squad, species, now, level_id, budget)
     }
 end
 
--- Time the cause attempt, log the outcome, return the publish payload if it has .cause.
-local function _try_eligible(log_prefix, fn, ...)
-    local dbg = ap_core_debug.enabled()
-    local tmr = xprofiler.new_if(dbg):start()
-    local result = fn(...)
-    tmr:stop()
-    if dbg then ap_core_debug.debug("%s %s%s [%.2fms]", log_prefix,
-        result.cause and "fired" or (result.code or "?"),
-        result.reason and ":" .. result.reason or "", tmr:get_ms()) end
-    if result.cause then return result end
-    return nil
-end
-
 local function _on_smart(squad)
     if not squad then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     local level_id = xlevel.get_level_id(squad)
@@ -326,14 +314,14 @@ local function _on_smart(squad)
         local species = xcreature.get_mutant_species(squad.id)
         if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
         if math_random(2) == 1 then
-            result = _try_eligible(LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget)
-            if not result then result = _try_eligible(LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget) end
+            result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget)
+            if not result then result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget) end
         else
-            result = _try_eligible(LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget)
-            if not result then result = _try_eligible(LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget) end
+            result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget)
+            if not result then result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget) end
         end
     elseif _alignment_conquer_human[squad.player_id] then
-        result = _try_eligible(LOG_CONQUER, _eligible_conquer, squad, now, level_id, budget)
+        result = ap_ext_util.try_cause(EN_CONQUER, LOG_CONQUER, _eligible_conquer, squad, now, level_id, budget)
     else
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
     end

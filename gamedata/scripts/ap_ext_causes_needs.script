@@ -1,7 +1,7 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator. NEEDS table holds 9 drives;
 --- CAUSES table holds 17 specific causes (answers). Picker emits one specific cause per call.
 
-local table_sort, next, math_random, xprofiler = table.sort, next, math.random, xprofiler
+local table_sort, next, math_random = table.sort, next, math.random
 local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker =
     ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
@@ -40,7 +40,7 @@ local _alignment_offmap = ap_ext_const.alignment_offmap
 local _alignment_ecolog = { ecolog = true }
 
 --- 9 drives. Per-need Hull weight, threshold cfg key, period gating.
---- Enable check is per-cause (cause_<cause_name>_enabled) inside _try_cause; no drive-level enable.
+--- Enable check is per-cause (cause_<cause_name>_enabled), gated by the shared ap_ext_util.try_cause; no drive-level enable.
 local NEEDS = {
     { need = "shelter", field = "last_shelter_at", weight = 5.0, dormant_period = true,
       threshold_key = "cause_shelter_threshold" },
@@ -137,12 +137,11 @@ local function _find_overdue_needs(dto, now, identity)
     return out
 end
 
--- Per-cause RULES + SCAN. Returns result table with code/reason; the caller logs each attempt.
--- budget: per-_on_smart table { remaining = N }. RULES rejections free; SCAN reaches consume one slot.
-local function _try_cause(squad, level_id, entry, budget)
-    if not cfg["cause_" .. entry.name .. "_enabled"] then
-        return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED }
-    end
+-- Per-cause RULES + SCAN evaluator. Returns the publish payload (with .cause) on SUCCESS, or
+-- { code, reason } on rejection. The enable gate and the timing/logging live in the shared
+-- ap_ext_util.try_cause seam. budget: per-_on_smart table { remaining = N }; RULES rejections free,
+-- a SCAN reach consumes one slot.
+local function _eval_cause(squad, level_id, overdue_entry, entry, budget)
     if not ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
     end
@@ -182,7 +181,16 @@ local function _try_cause(squad, level_id, entry, budget)
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
     if entry.offmap then ap_core_limiter.increment_offmap_counter(level_id) end
-    return { code = RESULT.SUCCESS, smart = smart }
+    return {
+        cause = entry.cause,
+        dto_field = overdue_entry.need.field,
+        drive = overdue_entry.drive,
+        squad_id = squad.id,
+        community = squad.player_id,
+        position = squad.position,
+        level_id = level_id,
+        dst_smart_id = smart.id,
+    }
 end
 
 local function _init_dto(dto, now, identity, squad_id)
@@ -197,38 +205,18 @@ local function _init_dto(dto, now, identity, squad_id)
     end
 end
 
---- Build the published payload from a winning cause+smart pair.
-local function _make_result(squad, level_id, overdue_entry, entry, smart)
-    return {
-        cause = entry.cause,
-        dto_field = overdue_entry.need.field,
-        drive = overdue_entry.drive,
-        squad_id = squad.id,
-        community = squad.player_id,
-        position = squad.position,
-        level_id = level_id,
-        dst_smart_id = smart.id,
-    }
-end
-
--- Per-cause attempt for one CAUSES entry under an overdue need. Returns a published-payload
--- result on SUCCESS, nil otherwise. Times _try_cause and logs the code:reason each attempt.
--- period_mismatch needs are walked only at DEBUG (see _find_overdue_needs); each cause emits
--- a failed_rules:wrong_period line so dormant/active drops are no longer silent.
+-- Per-cause attempt for one CAUSES entry under an overdue need. Filters to the entry's own drive and
+-- drops a period-mismatched drive, then hands the enable gate, timing, and outcome log to the shared
+-- ap_ext_util.try_cause seam. period_mismatch needs are walked only at DEBUG (see _find_overdue_needs);
+-- each emits a failed_rules:wrong_period line so dormant/active drops are not silent.
 local function _try_one_need_cause(squad, level_id, overdue_entry, entry, budget)
     if entry.need ~= overdue_entry.need.need then return nil end
-    local dbg = ap_core_debug.enabled()
     if overdue_entry.period_mismatch then
-        if dbg then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
+        if ap_core_debug.enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
         return nil
     end
-    local tmr = xprofiler.new_if(dbg):start()
-    local cause_result = _try_cause(squad, level_id, entry, budget)
-    tmr:stop()
-    if dbg then ap_core_debug.debug("%s %s%s [%.2fms]", entry.log_prefix,
-        cause_result.code or "?", cause_result.reason and ":" .. cause_result.reason or "", tmr:get_ms()) end
-    if cause_result.code ~= RESULT.SUCCESS then return nil end
-    return _make_result(squad, level_id, overdue_entry, entry, cause_result.smart)
+    return ap_ext_util.try_cause(entry.enabled_key, entry.log_prefix, _eval_cause,
+        squad, level_id, overdue_entry, entry, budget)
 end
 
 --- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
@@ -371,6 +359,7 @@ function on_game_start()
 
     for i = 1, #CAUSES do
         CAUSES[i].log_prefix = ap_core_debug.bracket(CAUSES[i].cause)
+        CAUSES[i].enabled_key = "cause_" .. CAUSES[i].name .. "_enabled"
     end
 
     local radiant = ap_core_const.RADIANT_CALLBACKS
