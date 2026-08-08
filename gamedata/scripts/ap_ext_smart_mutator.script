@@ -617,7 +617,8 @@ end
 local function _ensure_service_icon(go, member_id, role)
     local spot = SERVICE_ICON[role]
     if not spot or not db.actor then return end
-    local goodwill = go:general_goodwill(db.actor)
+    local goodwill = xcreature.goodwill_to_actor(go)
+    if not goodwill then return end
     if goodwill <= -1000 then
         ap_core_debug.debug("[MUTATOR.SMART] service_icon_skip: npc=%d role=%s goodwill=%d (hostile)", member_id, role, goodwill)
         return
