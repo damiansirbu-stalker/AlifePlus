@@ -24,8 +24,7 @@
 local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
 local math_floor, math_random, string_match, string_sub, string_format = math.floor, math.random, string.match, string.sub, string.format
 local xobject, xsmart, xsmart_spawn, xtime, xprofiler = xobject, xsmart, xsmart_spawn, xtime, xprofiler
-local xsquad, xcreature, xinventory, xevent, xpda = xsquad, xcreature, xinventory, xevent, xpda
-local get_object_squad, alife_release = get_object_squad, alife_release
+local xsquad, xcreature, xinventory, xevent, xpda, get_object_squad = xsquad, xcreature, xinventory, xevent, xpda, get_object_squad
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
@@ -744,7 +743,7 @@ local function _strip_stock(npc)
     end, npc)
     for i = 1, #drop do
         local se_item = xobject.se(drop[i]:id())
-        if se_item then alife_release(se_item) end
+        xobject.release(se_item)
     end
 end
 
@@ -1464,7 +1463,7 @@ end
 -- keep_item's release idiom (death_manager.script:403), reused per item on a nulled corpse.
 local function _release_item(_, item)
     local se_item = item and xobject.se(item:id())
-    if se_item then alife_release(se_item) end
+    xobject.release(se_item)
 end
 
 -- Null a dead service NPC's loot. The vanilla death pass (death_manager.decide_items_to_keep,
