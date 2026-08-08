@@ -15,7 +15,7 @@ local string_format, math_random = string.format, math.random
 local xevent, xttltable, xcreature, xsquad, xprofiler = xevent, xttltable, xcreature, xsquad, xprofiler
 local xtime, xobject, xpda, xinventory, xcombat = xtime, xobject, xpda, xinventory, xcombat
 local INVALID_BONE_ID = xconst.INVALID_BONE_ID
-local level, game, game_relations, game_object = level, game, game_relations, game_object
+local level, game, game_relations = level, game, game_relations
 local CALLBACK = ap_core_const.CALLBACK
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local cfg = ap_core_mcm.cfg
@@ -181,7 +181,7 @@ end
 local function _yield_tip(npc, prefix, pool_n, name, body, owner)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local actor = db.actor
-    if not actor or npc:relation(actor) >= game_object.enemy then return end
+    if not actor or xcreature.is_enemy_to_actor(npc) then return end
     local now = os.clock()
     if now < _yield_tip_next then return end
     if not _can_voice(npc, body, owner) then return end
