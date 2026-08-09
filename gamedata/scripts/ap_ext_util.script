@@ -25,6 +25,7 @@ function try_cause(enabled_key, log_prefix, fn, ...)
     local tmr = xprofiler.new_if(dbg):start()
     local result = fn(...)
     tmr:stop()
+    if not result then return nil end
     if dbg then
         ap_core_debug.debug("%s %s%s [%.2fms]", log_prefix,
             result.cause and "fired" or (result.code or "?"),
