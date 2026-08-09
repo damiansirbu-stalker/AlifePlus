@@ -12,23 +12,41 @@
 --- that already fixed it (e.g. GAMMA's overlay), the correction on a roster-blind base (vanilla).
 --- @override -- monkeypatch of sim_squad_scripted; document in readme "Disable before installing".
 --- @src anomaly/sim_squad_scripted.script(276-289 specific_update, 333-356 generic_update)
+--- @alibs: SIMBOARD roster desync on scripted squad re-home (src sim_squad_scripted.script:289,356) -- wrap
+---
+--- FIX 2 -- create_squad CTD on an unspawnable squad section.
+--- sim_board:create_squad (script:139) calls alife_create then :140 squad:create_npc without a nil
+--- check; alife_create returns nil for a missing section (_g.script:2115), invalid pos/lid/gid
+--- (:2119), or a C++ create refusal (:2138), and :140 then indexes nil -> CTD. The vanilla guard for
+--- this (ini_sys:section_exist early return) is commented out at sim_board.script:134-137. This
+--- pre-flight wraps create_squad: it rejects a missing section and an invalid spawn smart and returns
+--- nil (which try_respawn already handles at smart_terrain.script:1719), delegating to the original
+--- otherwise. Covers all callers (try_respawn, utils_obj/xr_effects/xsquad/tasks/warfare, the mutator
+--- respawn re-inject). Companion inject-side filter in xlibs/xsmart_spawn.script (_existing).
+--- @override -- monkeypatch of sim_board; document in readme "Disable before installing".
+--- @src anomaly/sim_board.script(131-140 create_squad, 134-137 commented guard), _g.script(2115,2119,2138)
+--- @alibs: create_squad CTD on unspawnable section (src sim_board.script:139-140) -- wrap
 
-local xsmart, ap_core_debug = xsmart, ap_core_debug
+local xsmart, ap_core_debug, tostring = xsmart, ap_core_debug, tostring
+
+-- Engine invalid-vertex sentinels: level vertex is u32 -1, game vertex is u16 -1. A smart carrying
+-- either fails alife_create's pos/lid/gid gate (_g.script:2119) -> nil -> the create_squad CTD.
+local INVALID_LVID = 4294967295
+local INVALID_GVID = 65535
 
 local _patched = false
 
-function on_game_start()
-    if _patched then return end
+-- FIX 1: sim_squad_scripted roster desync. Independent of FIX 2 -- a missing class skips this fix
+-- only, not the create_squad guard.
+local function _install_roster_sync()
     local squad_class = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
     if not squad_class then
         ap_core_debug.err("[CORE.ANOMALY] sim_squad_scripted class missing; roster sync not installed")
         return
     end
-
     local reconcile = xsmart.reconcile_squad_roster
     local orig_specific = squad_class.specific_update
     local orig_generic = squad_class.generic_update
-
     if orig_specific then
         squad_class.specific_update = function(self, script_target_id)
             local from_smart_id = self.smart_id
@@ -36,7 +54,6 @@ function on_game_start()
             reconcile(self, from_smart_id)
         end
     end
-
     if orig_generic then
         squad_class.generic_update = function(self)
             local from_smart_id = self.smart_id
@@ -44,7 +61,40 @@ function on_game_start()
             reconcile(self, from_smart_id)
         end
     end
-
-    _patched = true
     ap_core_debug.info("[CORE.ANOMALY] sim_squad_scripted roster sync installed")
+end
+
+-- FIX 2: create_squad CTD guard. Pre-flight wrap -- reject a missing section (section_exist, reason
+-- 1) or a spawn smart with an invalid position/vertex (reason 2) and return nil, which try_respawn
+-- handles at smart_terrain.script:1719; delegate to the original otherwise. Cannot call alife_create
+-- to test the result (would double-spawn), so it guards preconditions.
+local function _install_create_squad_guard()
+    local board_class = sim_board and sim_board.simulation_board
+    if not (board_class and board_class.create_squad) then
+        ap_core_debug.err("[CORE.ANOMALY] simulation_board.create_squad missing; create_squad guard not installed")
+        return
+    end
+    local orig_create_squad = board_class.create_squad
+    board_class.create_squad = function(self, spawn_smart, sq_id)
+        local sec = sq_id and tostring(sq_id)
+        if not (sec and ini_sys:section_exist(sec)) then
+            ap_core_debug.warn("[CORE.ANOMALY] create_squad declined: missing squad section [%s]", tostring(sec))
+            return nil
+        end
+        if not (spawn_smart and spawn_smart.position
+                and spawn_smart.m_level_vertex_id and spawn_smart.m_level_vertex_id < INVALID_LVID
+                and spawn_smart.m_game_vertex_id and spawn_smart.m_game_vertex_id < INVALID_GVID) then
+            ap_core_debug.warn("[CORE.ANOMALY] create_squad declined: invalid spawn smart for [%s]", sec)
+            return nil
+        end
+        return orig_create_squad(self, spawn_smart, sq_id)
+    end
+    ap_core_debug.info("[CORE.ANOMALY] create_squad section-guard installed")
+end
+
+function on_game_start()
+    if _patched then return end
+    _patched = true
+    _install_roster_sync()
+    _install_create_squad_guard()
 end

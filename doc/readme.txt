@@ -310,10 +310,11 @@ When picking a smart terrain on another map, AlifePlus relies only on what the e
 
 Vanilla fixes:
 
-AlifePlus corrects two long-standing vanilla Anomaly A-Life bugs. Both are wrapped rather than replaced, so they layer cleanly on any base game or modpack and go inert where a modpack already fixes the same thing.
+AlifePlus corrects three long-standing vanilla Anomaly A-Life bugs. All three are wrapped rather than replaced, so they layer cleanly on any base game or modpack and go inert where a modpack already fixes the same thing.
 
 - Squad chase. Vanilla cannot point one offline squad at another as a moving target. AlifePlus rebuilds the pursuit each tick, so NPC-versus-NPC and NPC-versus-player chases track the target's real position instead of a stale one.
 - Smart terrain squad count. When the engine moves a scripted squad between smart terrains, vanilla forgets to update that terrain's squad count. Capacity checks then drift, and a terrain can read as full when it is not. AlifePlus keeps the count correct for every squad move, its own and the engine's.
+- Squad spawn crash. Vanilla's create_squad has no guard for an unspawnable squad section, so a respawn that names a missing section crashes the game. AlifePlus rejects a missing section, or a smart with an invalid spawn position, and skips the spawn instead of crashing.
 
 These patches are global and affect every squad, not only AlifePlus's. If another mod already patches the same engine scripts, disable ap_core_chase.script and ap_core_anomaly_fixes.script before installing.
 
