@@ -73,26 +73,16 @@ local function _v185_to_v186_clear_outpost_services(m_data)
     if type(holds) == "table" then _clear_service_holds(holds) end
 end
 
---- v1.8.6 -> v1.8.7: purge every outpost-service NPC once, current or from any prior implementation,
---- and let growth reseat them. _v185_to_v186_clear_outpost_services reached only services still in the
---- saved ledger, so a service whose outpost decayed or that was displaced dropped out of the ledger
---- but stayed in the world, seated on a since-renamed job that no longer resolves and reverting to a
---- full vanilla trader that hands out tasks. Rather than sort good from bad, delete them all: an
---- ap_service_ squad exists only as an outpost service, and growth reseats a fresh one, same as the
---- _v185_to_v186 reset. Arms the flag; _drain_outpost_services does the delete at on_game_load, where
---- the live squads exist. No m_data read -- the xchange log alone gates it to one run per save.
-local function _v186_to_v187_purge_outpost_services()
-    _purge_services_pending = true
-end
-
 --- v1.8.6 -> v1.8.7: outpost mini-base redesign (plan rows + pin; no spot job, no visuals, no
---- respawn-pacing writes). Purge every outpost-service NPC in the world (any prior implementation,
---- the _v186_to_v187 sweep reused) and reset every conquest entry's outpost state: services
---- cleared and the plan marker (guards) dropped, so the mutator rolls a FRESH plan under the
---- current MCM sliders for each legacy held smart at restore. Service holds drop with their
---- squads. Old pinned-guard holds (the retired forced-stay garrison feature) drop too and their
---- squads are queued for RELEASE -- they were ordinary conquest spawns, so clearing the pin
---- returns them to the sim they came from.
+--- respawn-pacing writes). ONE migration from the last released version (1.8.6); the never-shipped
+--- intermediate dev stamps are folded in. Resets every conquest entry's outpost state -- services
+--- cleared and the plan marker (guards) dropped, so the mutator rolls a FRESH plan under the current
+--- MCM sliders for each legacy held smart at restore. Service holds drop with their squads. Old
+--- pinned-guard holds (the retired forced-stay garrison) drop too and their squads are queued for
+--- RELEASE (they were ordinary conquest spawns, so clearing the pin returns them to the sim). Then
+--- arms the world purge of every outpost-service NPC still standing -- an ap_service_ squad, or a
+--- squadless sim_default_<faction>_<role> orphan -- drained by _drain_outpost_services at
+--- on_game_load, where the live squads exist. Growth reseats a fresh one under the new rules.
 -- Reset one saved conquest entry's outpost state: services cleared, plan marker + dead field dropped.
 local function _reset_saved_plan(data)
     if type(data) ~= "table" then return end
@@ -113,7 +103,7 @@ local function _release_saved_guard_holds(holds)
     for i = 1, #_to_remove do holds[_to_remove[i]] = nil end
 end
 
-local function _v187_to_v188_reset_outpost_plans(m_data)
+local function _v186_to_v187_reset_outposts(m_data)
     local saved = m_data.ap_ext_smart_mutator
     local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
     if type(conquest) == "table" then
@@ -127,15 +117,8 @@ local function _v187_to_v188_reset_outpost_plans(m_data)
     _purge_services_pending = true
 end
 
-xchange.register("ap_v185_to_v186_clear_outpost_services",       _v185_to_v186_clear_outpost_services)
-xchange.register("ap_v186_to_v187_purge_outpost_services",       _v186_to_v187_purge_outpost_services)
-xchange.register("ap_v187_to_v188_reset_outpost_plans",          _v187_to_v188_reset_outpost_plans)
--- Second arming of the same purge: saves that already stamped v187_to_v188 through the earlier,
--- squad-only drain still carry orphaned service NPCs; this re-runs the (now NPC-aware) drain once.
-local function _v188_purge_orphan_service_npcs()
-    _purge_services_pending = true
-end
-xchange.register("ap_v188_purge_orphan_service_npcs",            _v188_purge_orphan_service_npcs)
+xchange.register("ap_v185_to_v186_clear_outpost_services", _v185_to_v186_clear_outpost_services)
+xchange.register("ap_v186_to_v187_reset_outposts",         _v186_to_v187_reset_outposts)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
