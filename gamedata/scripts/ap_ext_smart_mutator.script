@@ -737,10 +737,10 @@ end
 local function _strip_stock(npc)
     local opts = xinventory.get_category_opts(npc)
     local drop = {}
-    npc:iterate_inventory(function(_, item)
+    xinventory.iterate_inventory(npc:id(), function(_, item)
         local cat = xinventory.get_category(item, opts)
         if cat ~= "equipped" and cat ~= "untouchable" then drop[#drop + 1] = item end
-    end, npc)
+    end)
     for i = 1, #drop do
         local se_item = xobject.se(drop[i]:id())
         xobject.release(se_item)
@@ -1489,7 +1489,7 @@ local function _on_squad_npc_death(squad, se_npc, _)
         return
     end
     if ap_core_world_trace.enabled() then xinventory.dump(victim, "service", ap_core_world_trace.debug) end
-    victim:iterate_inventory(_release_item, victim)
+    xinventory.iterate_inventory(victim:id(), _release_item)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
         entry.smart_id, entry.role, se_npc.id)
 end
