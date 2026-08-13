@@ -351,6 +351,8 @@ Mod compatibility:
   - Squad-scripting "brains" that take squads without the ownership handshake: two systems fight for the same squads.
 
   Affects / coexists:
+  - G.A.M.M.A. Actor Damage Balancer: finalizes damage the player takes, reading the hit's power and then applying the damage itself. A modifier this mod makes to a hit against the player still reaches final damage, because the balancer reads that power before applying it and this mod's scripts (at_, ap_) load ahead of grok_ by name. That order is fixed by the file names, so it holds on any standard install; only a damage mod whose scripts sort ahead of both could take it over.
+  - G.A.M.M.A. Ballistics Overhaul and Close Quarter Combat (the grok_bo hit system): when you shoot an alpha, grok_bo's mutant handler scales the hit's power rather than replacing it, so the alpha's own damage reduction still applies on top. The two compose and no patch is needed.
   - Warfare A-Life Overhaul, Better A-Life Overhaul: own their squads; excluded via the ownership registry.
   - Faction-relation mods (Dynamic Faction Relations, zone-relation tweaks): change which causes can fire. Intended.
   - Spawn / population mods (Dynamic Mutants, ReSpawn Mutant Collection, Rebound Encounters): more entities to act on; pair with AlifeGuard.
