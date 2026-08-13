@@ -11,8 +11,11 @@
 ---   run_string ap_ext_test.time(h)    advance the game clock h hours (no arg = 24, forces trader restocks)
 ---
 --- The driver fires every action once on start, then keeps re-seeding on each action's
---- interval: NPC item kits and cash every 5 min, stash fills and a hostile-squad spawn
---- every 10, an artefact drop near the actor every 15. Nothing else to call.
+--- interval: a map-wide territory population and NPC item kits and cash every 5 min, stash fills
+--- and a hostile-squad spawn every 10, an artefact drop near the actor every 15. The territory
+--- population keeps squads alive at field smarts on OTHER levels so AP's conquest / swarm / infest
+--- and off-map routing play out away from the actor; run time() to mature their game-hour gates.
+--- Nothing else to call.
 ---
 --- The hostile spawn is what makes the reactive flows happen: a squad hostile to a random
 --- online stalker squad (enemy faction or aggressive mutants, alternating) is created at
@@ -25,6 +28,7 @@ local pairs, string_format, os_clock, table_concat = pairs, string.format, os.cl
 local xobject, xlevel, xslice, xdata, xmath = xobject, xlevel, xslice, xdata, xmath
 local xinventory, xstash, xcreature, ap_core_debug = xinventory, xstash, xcreature, ap_core_debug
 local xsquad, xsmart_spawn, game_relations, math_random = xsquad, xsmart_spawn, game_relations, math.random
+local xsmart, ap_ext_util = xsmart, ap_ext_util
 local ini_sys = ini_sys
 
 local MONEY_PER_NPC = 5000
@@ -68,6 +72,11 @@ local WEAPONS = {
     "wpn_mp5", "wpn_abakan", "wpn_svd", "wpn_toz34", "wpn_bm16",
 }
 local WEAPONS_PER_NPC = 2
+
+-- Armour plates resolve to an otherwise-sold category, so the plate-keep carve-outs (ap_trade /
+-- ap_barter / ap_stash / ap_loot, keep-1 each) are only exercised when NPCs actually carry plates.
+-- Seed the five vanilla plate sections so the trade / barter / stash / loot walks hit those rows.
+local PLATES = { "af_kevlar", "af_plates", "af_kevlar_up", "af_plates_up", "fieldcraft_plate_attch" }
 
 local ARTEFACTS = {
     "af_medusa", "af_cristall_flower", "af_fireball",
@@ -146,6 +155,10 @@ local function _kit_one_npc(npc_id)
     end
     for _ = 1, WEAPONS_PER_NPC do
         local sec = xmath.sample(WEAPONS)
+        if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
+    end
+    for i = 1, #PLATES do
+        local sec = PLATES[i]
         if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     return spawned
@@ -331,8 +344,120 @@ local function _spawn_hostiles()
         squad.id, section, target.id, target.player_id, smart_name)
 end
 
+-- =========================================================================
+-- Map-wide territory population
+-- =========================================================================
+-- Keep a spread of surviving squads alive at field smarts on levels OTHER than the actor's, so AP's
+-- radiant area causes play out in the world away from the actor: humans CONQUER empty field smarts,
+-- feral / predator / aberrant mutants SWARM and INFEST them, and the controlled squads route OFF-MAP,
+-- while the actor watches AlifeTactics combat locally at his own spot. Squads are created at smarts
+-- via the vanilla board path (xsquad.create_squad); nothing is forced -- the game runs them. Run
+-- ap_ext_test.time(24) a few times during the soak to mature the per-squad conquer / swarm / infest
+-- thresholds (game-hour gated). Trace: [MUTATOR.SMART], [SQUAD.OFFMAP], [CORE.RECORD].
+-- POP_TARGET squads kept alive map-wide; POP_MAX_PER_PASS new per top-up (spreads the spawn cost).
+local POP_TARGET       = 40
+local POP_MAX_PER_PASS = 8
+
+-- Conquer-capable mutant species (feral / predator / aberrant): the kinds that take territory. Alphas
+-- (infest's gate) are never forced; they emerge from kills over the soak and the alpha squads then
+-- infest on their own.
+local POP_MUTANT_SPECIES = { "dog", "pseudodog", "boar", "flesh", "snork" }
+
+-- _pop_squads: tracked spawned squad ids. _pop_fields: cached map-wide field-smart list, built once.
+local _pop_squads = {}
+local _pop_fields = nil
+
+-- Every smart that is not a base and hosts no hub trader (ap_ext_util.is_field_smart) -- the smarts
+-- AP's takeovers may claim. Built once from the map-wide SIMBOARD registry.
+local function _build_field_smarts()
+    local out = {}
+    local by_name = xsmart.smarts_by_names()
+    if not by_name then return out end
+    for _, smart in pairs(by_name) do
+        if ap_ext_util.is_field_smart(smart) then out[#out + 1] = smart end
+    end
+    return out
+end
+
+-- A random field smart on a level OTHER than the actor's, so the seeded population stays off the level
+-- where the actor watches AlifeTactics combat. nil if none found in a few tries.
+local function _pick_field_smart(actor_level)
+    local fields = _pop_fields
+    if #fields == 0 then return nil end
+    for _ = 1, 10 do
+        local smart = fields[math_random(1, #fields)]
+        if xlevel.get_level_id(smart) ~= actor_level then return smart end
+    end
+    return nil
+end
+
+-- A section to seed: a human faction squad (conquer) 70% of the time, else a mutant species squad
+-- (swarm / infest). AP's own personality + census-share gate decides who actually takes territory, so
+-- seeding a broad faction spread is correct. Guarded against a missing pool.
+local function _pop_section()
+    if math_random() < 0.7 then
+        local factions = xsmart_spawn.SQUADS_BY_FACTION
+        local keys = {}
+        for faction in pairs(factions) do keys[#keys + 1] = faction end
+        if #keys == 0 then return nil end
+        local sections = factions[keys[math_random(1, #keys)]]
+        return sections and xmath.sample(sections)
+    end
+    local sections = xsmart_spawn.SQUADS_BY_SPECIES[xmath.sample(POP_MUTANT_SPECIES)]
+    return sections and sections[1]
+end
+
+-- Drop tracked squads no longer in the sim; return the live count.
+local function _prune_pop()
+    local alive = {}
+    for i = 1, #_pop_squads do
+        if xobject.se(_pop_squads[i]) then alive[#alive + 1] = _pop_squads[i] end
+    end
+    _pop_squads = alive
+    return #alive
+end
+
+-- Spawn one seeded squad at an off-level field smart; track it and return true, or false if no smart /
+-- section / squad resolved. Flat guards keep the top-up loop shallow.
+local function _spawn_one_pop(actor_level)
+    local smart = _pick_field_smart(actor_level)
+    if not smart then return false end
+    local section = _pop_section()
+    if not section then return false end
+    local squad = xsquad.create_squad(smart, section)
+    if not squad then return false end
+    _pop_squads[#_pop_squads + 1] = squad.id
+    return true
+end
+
+-- One top-up pass: keep POP_TARGET squads alive across the map's off-level field smarts, POP_MAX_PER_PASS
+-- new per pass. The squads then live, move, fight, and trip AP's causes on their own.
+local function _seed_population()
+    local actor = db.actor
+    if not actor then return end
+    local actor_se = alife():actor()
+    if not actor_se then return end
+    if not _pop_fields then _pop_fields = _build_field_smarts() end
+    local alive = _prune_pop()
+    local actor_level = xlevel.get_level_id(actor_se)
+    local want = POP_TARGET - alive
+    local budget = POP_MAX_PER_PASS
+    local spawned = 0
+    while want > 0 and budget > 0 do
+        budget = budget - 1
+        if _spawn_one_pop(actor_level) then
+            spawned = spawned + 1
+            want = want - 1
+        end
+    end
+    _tip(string_format("seed_population: alive %d, +%d (target %d)", alive, spawned, POP_TARGET))
+    ap_core_debug.debug("[TEST] seed_population alive=%d spawned=%d target=%d fields=%d",
+        alive, spawned, POP_TARGET, #_pop_fields)
+end
+
 -- The drive plan: every action fires on start, then re-seeds on its interval.
 local ACTIONS = {
+    { name = "seed_population", every = 300, action = _seed_population },
     { name = "give_items",    every = 300, action = _give_items },
     { name = "give_money",    every = 300, action = _give_money },
     { name = "fill_stashes",   every = 600, action = _fill_stashes },
@@ -359,11 +484,14 @@ local function _runner_tick()
 end
 
 --- Start or stop the driver. While on it re-seeds live world state on a timer so the real AP pipeline
---- runs with no further input: every 5 min each online stalker on your level gets a surplus kit (items
---- above the trade/loot caps) plus cash; every 10 min nearby stashes are filled and one squad hostile
+--- runs with no further input: every 5 min a map-wide territory population is topped up (squads kept
+--- alive at field smarts on OTHER levels, driving conquest / swarm / infest and off-map routing away
+--- from you) and each online stalker on your level gets a surplus kit (items above the trade/loot
+--- caps, plus armour plates) and cash; every 10 min nearby stashes are filled and one squad hostile
 --- to a random stalker squad is spawned; every 15 min an artefact drops by you. The surplus and cash
 --- drive trade and the faction market at traders; the hostile squad drives combat, and the deaths that
---- follow drive the massacre / squadkill / loot / wounded reactions. Call again to stop.
+--- follow drive the massacre / squadkill / loot / wounded reactions. Run time() to mature the territory
+--- game-hour thresholds. Call again to stop.
 --- @export console
 function drive()
     if _runner then
