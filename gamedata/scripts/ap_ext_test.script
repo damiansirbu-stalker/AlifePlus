@@ -101,7 +101,7 @@ local function _stalkers_on_level()
     for npc_id in pairs(db.storage) do
         if npc_id == actor_id then goto skip end
         local obj = xobject.go(npc_id)
-        if not obj or not obj:alive() or not IsStalker(obj) then goto skip end
+        if not obj or not IsStalker(obj) or not obj:alive() then goto skip end
         local se = xobject.se(npc_id)
         if not se or xlevel.get_level_id(se) ~= actor_level then goto skip end
         if xdata.unscriptable_npcs[se:section_name()] then goto skip end
@@ -363,6 +363,10 @@ local POP_MAX_PER_PASS = 8
 -- infest on their own.
 local POP_MUTANT_SPECIES = { "dog", "pseudodog", "boar", "flesh", "snork" }
 
+-- Roaming human factions for the seeded population: loners, clear sky, bandits - peaceful-ish factions
+-- that ROUTE to traders (unlike arena combatants), so the supply-trader / barter flows get candidates.
+local POP_HUMAN_FACTIONS = { "stalker", "csky", "bandit" }
+
 -- _pop_squads: tracked spawned squad ids. _pop_fields: cached map-wide field-smart list, built once.
 local _pop_squads = {}
 local _pop_fields = nil
@@ -391,16 +395,13 @@ local function _pick_field_smart(actor_level)
     return nil
 end
 
--- A section to seed: a human faction squad (conquer) 70% of the time, else a mutant species squad
--- (swarm / infest). AP's own personality + census-share gate decides who actually takes territory, so
--- seeding a broad faction spread is correct. Guarded against a missing pool.
+-- A section to seed: a roaming human faction (loner / clear sky / bandit) 70% of the time, else a mutant
+-- species squad (swarm / infest). The human factions route to traders, so trade/barter get candidates;
+-- AP's own personality + census-share gate still decides who takes territory. Guarded against a missing pool.
 local function _pop_section()
     if math_random() < 0.7 then
-        local factions = xsmart_spawn.SQUADS_BY_FACTION
-        local keys = {}
-        for faction in pairs(factions) do keys[#keys + 1] = faction end
-        if #keys == 0 then return nil end
-        local sections = factions[keys[math_random(1, #keys)]]
+        local faction = POP_HUMAN_FACTIONS[math_random(1, #POP_HUMAN_FACTIONS)]
+        local sections = xsmart_spawn.SQUADS_BY_FACTION[faction]
         return sections and xmath.sample(sections)
     end
     local sections = xsmart_spawn.SQUADS_BY_SPECIES[xmath.sample(POP_MUTANT_SPECIES)]
@@ -417,6 +418,20 @@ local function _prune_pop()
     return #alive
 end
 
+-- Sellable surplus onto each member of a freshly spawned (offline) population squad, so a squad routing to
+-- a trader carries goods to sell. Weapons are sell-all (trade policy max 0) = guaranteed surplus; one ammo
+-- box tops it. xinventory.create_item is offline-safe (falls back to the member's smart position). Small on
+-- purpose - one pass covers up to POP_MAX_PER_PASS squads.
+local function _seed_pop_squad(squad)
+    if squad:npc_count() == 0 then return end
+    local ammo = xinventory.get_category_sections("ammo_not_equipped")
+    for member in squad:squad_members() do
+        local wpn = xmath.sample(WEAPONS)
+        if _spawnable(wpn) then xinventory.create_item(wpn, member.id) end
+        if #ammo > 0 then xinventory.create_item(xmath.sample(ammo), member.id, { ammo = 30 }) end
+    end
+end
+
 -- Spawn one seeded squad at an off-level field smart; track it and return true, or false if no smart /
 -- section / squad resolved. Flat guards keep the top-up loop shallow.
 local function _spawn_one_pop(actor_level)
@@ -426,6 +441,7 @@ local function _spawn_one_pop(actor_level)
     if not section then return false end
     local squad = xsquad.create_squad(smart, section)
     if not squad then return false end
+    _seed_pop_squad(squad)
     _pop_squads[#_pop_squads + 1] = squad.id
     return true
 end
