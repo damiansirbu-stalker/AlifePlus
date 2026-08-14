@@ -138,9 +138,11 @@ end
 local function _on_actor_before_hit(shit, _bone_id, _flags)
     if not cfg.mutator_alpha_vs_player then return end
     if next(_alpha_ids) == nil then return end
+    local base = shit.power
     local dealt = _scale_dealt(shit)
     if dealt and ap_core_debug.enabled() then
-        ap_core_debug.debug("%s actor_hit dealt=%.3f power=%.3f", LOG, dealt, shit.power)
+        ap_core_debug.debug("%s actor_hit dealt=%.3f base=%.3f -> power=%.3f (+%.1f%%)",
+            LOG, dealt, base, shit.power, (dealt - 1) * 100)
     end
 end
 
