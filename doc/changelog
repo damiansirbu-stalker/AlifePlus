@@ -1,18 +1,18 @@
 1.8.7
-  Summary: outpost mini bases, population-driven conquest, trader bankroll, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, alpha player-damage default off, level-transition performance, log flush toggle, world trace log, tracing performance, spawn crash fix
+  Summary: outpost mini bases, population-driven conquest, trader funds, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, level-transition performance, log flush toggle, world trace log, tracing performance, spawn crash fix
 
   Territory
-    - Conquered areas now grow into mini bases: a plan of service NPCs (varied roles, up to the MCM count) plus resident guard squads that defend it.
-      The engine's own respawn keeps the base manned while held, and it dissolves when the hold decays.
+    - Conquered areas now grow into mini bases: service NPCs (different roles, configurable count) plus guard squads, kept manned by the game's own respawn while the area is held, and removed when the claim decays.
+      The outpost is now built the vanilla way, from respawn rows and the job system, replacing the old version that scripted NPC behaviour and swapped models by hand. This runs faster and is more stable.
     - Conquest is now population-driven: weak factions on a level conquer more, dominant ones less, each capped at a bounded area count. Mutants swarm and nest by the same rule.
-    - Outpost services now hold a cash bankroll, reset each restock (money row in ap_outpost_stock_policy.ltx), so selling them loot dries up until they restock.
-    - Outpost services now live on the area's own jobs instead of a fixed post, each spawning with a sidearm, role shop, map icon, and rank-and-file rank. Trader stock addons recognize them on any job.
-    - On decay, resident guards stay as ordinary squads, a watched service is demoted to an ordinary stalker in place, and unseen services are removed.
-    - Changed the 3 Area respawn (minutes) sliders (conquest, swarm, infest) to a minimum pace: a held area below its squad count refills within the set interval when the world's own respawn stalls,
-      and the sliders now take effect under GAMMA as well as vanilla. They only speed a stalled area, never spawning in your view or faster than the world already would.
+    - Outpost services now hold a limited amount of money, reset at each restock (configurable). Selling them loot runs it out until the next restock.
+    - Outpost services now spawn as ordinary faction NPCs with a shop and a map icon, holding a job at the area. Trader stock mods recognize them.
+    - On decay, the outpost is undone: each service loses its role and becomes an ordinary stalker, its guards stay as ordinary squads, and the area returns to its normal spawns.
+    - Changed the 3 Area respawn (minutes) sliders (conquest, swarm, infest): a held area under its squad count now refills within the set minutes if the world respawn is slower.
+      Works under GAMMA and vanilla. It never spawns on screen, and never faster than the world would on its own.
     - Removed the outpost model dressing: a service wears his own profile's look.
-    - Outpost services from earlier versions are cleared on first load, including squadless NPCs old builds left behind, so no stray area trader lingers, wanders, or hands out missions.
-      Held areas roll a fresh base plan under the new rules.
+    - Outpost services from earlier versions are removed on first load, including NPCs with no squad that old builds left behind, so no stray area trader is left to wander or hand out missions.
+      Held areas build a fresh base under the new rules.
     - Fixed a crash when a held outpost respawned a service squad whose section was unavailable (a partial install, or a smart with an invalid spawn position). The spawn is now skipped instead of crashing. (reported by JossieDiaz)
 
   Economy
@@ -23,19 +23,14 @@
   Needs
     - Changed off-map travel so each drive heads to its own kind of place: a supply run to a faction base, a barter run to an occupied field camp, and a social visit to a campfire.
 
-  Creatures
-    - Changed the alpha "Damage bonus vs player" option to default off, so alpha mutants no longer deal extra damage to you unless you turn it on. NPCs and mutants still take the alpha bonus.
-
   Development
     - Added a Flush log every line option, which writes each log line to disk at once instead of buffering, so a crash keeps its final log lines for a bug report.
     - Added a World trace log option that writes periodic simulation state dumps (smarts, squads, the controlled-squad roster, trader inventories) to a separate alifeplus_world.log,
       so the main log stays a clean record of A-Life decisions.
 
   Performance
-    - Improved level-transition and save-load performance by simplification: a per-transition scan of the entire alife object pool, and the service-NPC cache it fed, are removed outright instead of optimized.
-      Off-map routing and campfire checks now read static map data, so the framework holds less state and does less work on every load and level change.
-    - Improved A-Life pipeline performance by simplification: the per-call trace wrapper that ran on every cause and consequence evaluation is removed, and each flow now times itself inline,
-      so the framework allocates nothing for tracing at the default log level.
+    - Improved level-transition and save-load performance: the framework now holds less state and does less work on every load and level change.
+    - Overhauled and simplified A-Life tracing. Nothing is allocated for it at the default log level, and with debug on the trace is faster and clearer to read.
 
 1.8.6
   Summary: lean outpost shelves, service posts, service looks, service placement, service sidearm, service rank, old service reset, trader addon support, service scope, reliable posting, kept artefacts and devices
@@ -107,7 +102,7 @@
   Summary: Trader sell-out, market chatter, ammo quality, trade variety, presence-capped conquest, off-map release fix
 
   Market
-    - The faction market now moves both directions. It already restocked a trader with a premium echo of what his faction's stalkers sold him, and now it also thins his stock of the staples they keep buying.
+    - The faction market now works both directions. It already restocked a trader with the items his faction's stalkers recently sold him, and now it also reduces his stock of the staples they keep buying.
       A share of each drained by ral stalkers buying items is applied at every restock, 30% by default and up to a full wipe at the maximum, so a faction that trades heavily leaves its own traders visibly short.
     - A nearby stalker now remarks on the PDA when a trader takes in something valuable or runs short of a staple.
 
