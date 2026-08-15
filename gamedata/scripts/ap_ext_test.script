@@ -345,18 +345,21 @@ local function _spawn_hostiles()
 end
 
 -- =========================================================================
--- Map-wide territory population
+-- Territory population (actor's level only)
 -- =========================================================================
--- Keep a spread of surviving squads alive at field smarts on levels OTHER than the actor's, so AP's
--- radiant area causes play out in the world away from the actor: humans CONQUER empty field smarts,
--- feral / predator / aberrant mutants SWARM and INFEST them, and the controlled squads route OFF-MAP,
--- while the actor watches AlifeTactics combat locally at his own spot. Squads are created at smarts
--- via the vanilla board path (xsquad.create_squad); nothing is forced -- the game runs them. Run
--- ap_ext_test.time(24) a few times during the soak to mature the per-squad conquer / swarm / infest
--- thresholds (game-hour gated). Trace: [MUTATOR.SMART], [SQUAD.OFFMAP], [CORE.RECORD].
--- POP_TARGET squads kept alive map-wide; POP_MAX_PER_PASS new per top-up (spreads the spawn cost).
-local POP_TARGET       = 40
-local POP_MAX_PER_PASS = 8
+-- Keep a small spread of surviving squads alive at field smarts ON THE ACTOR'S LEVEL, so AP's radiant
+-- area causes play out where the actor can walk up and watch: humans CONQUER empty field smarts, feral /
+-- predator / aberrant mutants SWARM and INFEST them, the human squads route to traders. Squads are
+-- created at smarts via the vanilla board path (xsquad.create_squad); nothing is forced -- the game runs
+-- them. Run ap_ext_test.time(24) a few times to mature the per-squad conquer / swarm / infest thresholds
+-- (game-hour gated). Trace: [MUTATOR.SMART], [SQUAD.OFFMAP], [CORE.RECORD].
+--
+-- LIMITS (2026-08-15): the old build seeded across EVERY level except the actor's, invisibly, with no
+-- ceiling, so a long-running drive() exhausted the 65534 alife id pool ("Not enough IDs" CTD). Now:
+-- current level only, small POP_TARGET, and _seed_population bails once alife hits POP_ALIFE_CEILING.
+local POP_TARGET        = 8
+local POP_MAX_PER_PASS  = 4
+local POP_ALIFE_CEILING = 50000
 
 -- Conquer-capable mutant species (feral / predator / aberrant): the kinds that take territory. Alphas
 -- (infest's gate) are never forced; they emerge from kills over the soak and the alpha squads then
@@ -383,14 +386,14 @@ local function _build_field_smarts()
     return out
 end
 
--- A random field smart on a level OTHER than the actor's, so the seeded population stays off the level
--- where the actor watches AlifeTactics combat. nil if none found in a few tries.
+-- A random field smart ON the actor's level, so the seeded population spawns where the actor can walk up
+-- and watch it (trade at a trader, alert / combat near a fight), never on maps he cannot see. nil if none.
 local function _pick_field_smart(actor_level)
     local fields = _pop_fields
     if #fields == 0 then return nil end
     for _ = 1, 10 do
         local smart = fields[math_random(1, #fields)]
-        if xlevel.get_level_id(smart) ~= actor_level then return smart end
+        if xlevel.get_level_id(smart) == actor_level then return smart end
     end
     return nil
 end
@@ -432,8 +435,8 @@ local function _seed_pop_squad(squad)
     end
 end
 
--- Spawn one seeded squad at an off-level field smart; track it and return true, or false if no smart /
--- section / squad resolved. Flat guards keep the top-up loop shallow.
+-- Spawn one seeded squad at a field smart on the actor's level; track it and return true, or false if no
+-- smart / section / squad resolved. Flat guards keep the top-up loop shallow.
 local function _spawn_one_pop(actor_level)
     local smart = _pick_field_smart(actor_level)
     if not smart then return false end
@@ -446,13 +449,19 @@ local function _spawn_one_pop(actor_level)
     return true
 end
 
--- One top-up pass: keep POP_TARGET squads alive across the map's off-level field smarts, POP_MAX_PER_PASS
--- new per pass. The squads then live, move, fight, and trip AP's causes on their own.
+-- One top-up pass: keep POP_TARGET squads alive at field smarts on the actor's level, POP_MAX_PER_PASS
+-- new per pass. The squads then live, move, fight, and trip AP's causes on their own. Bails when the
+-- alife object count reaches POP_ALIFE_CEILING, so the driver can never exhaust the id pool.
 local function _seed_population()
     local actor = db.actor
     if not actor then return end
     local actor_se = alife():actor()
     if not actor_se then return end
+    if alife():object_count() >= POP_ALIFE_CEILING then
+        ap_core_debug.debug("[TEST] seed_population skipped: alife at %d objects (ceiling %d)",
+            alife():object_count(), POP_ALIFE_CEILING)
+        return
+    end
     if not _pop_fields then _pop_fields = _build_field_smarts() end
     local alive = _prune_pop()
     local actor_level = xlevel.get_level_id(actor_se)
