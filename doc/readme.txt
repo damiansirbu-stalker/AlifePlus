@@ -1,5 +1,5 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
-- Version: next (xlibs 1.8.4, demonized 20250908)
+- Version: 1.8.7 (xlibs 1.8.5, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
@@ -384,7 +384,7 @@ Disable or remove in MO2.
 
 Configuration:
 
-Each cause and consequence is a module you can enable or disable through MCM.
+Each cause and consequence is a module you can turn on or off through MCM.
 Gameplay actions (trade, stash looting, supply trader visits) each have their own toggles and tunable values: chances, cooldowns, thresholds, quantities, rate limits, and budgets.
 Log level goes from silent to full tracing with pathing, performance timing, and PDA map markers.
 

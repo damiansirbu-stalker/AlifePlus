@@ -39,7 +39,7 @@ CONSEQUENCE = CAUSE + VERB
 |------|--------|----------|
 | Cause noun | Single noun describing the world event | MASSACRE, WOUNDED, HARVEST, ALPHA |
 | Compound noun (closed suffixes) | KILL and SPOT remain conventional compound suffixes for compound noun causes | BASEKILL, ALPHAKILL, SQUADKILL, ALPHASPOT |
-| Consequence pattern | Full cause name + action verb, single underscore separator | MASSACRE_INVESTIGATE, MASSACRE_SCAVENGE, BASEKILL_FLEE |
+| Consequence pattern | Full cause name + action verb, single `_` separator | MASSACRE_INVESTIGATE, MASSACRE_SCAVENGE, BASEKILL_FLEE |
 | Forks | Multiple consequences on the same reactive cause each carry a distinct verb | WOUNDED_HUNT, WOUNDED_HELP |
 
 ### All Naming Patterns
@@ -64,7 +64,7 @@ CONSEQUENCE = CAUSE + VERB
 | Log prefix (cause) | `CAUSE.{NAME}` | `CAUSE.MASSACRE` |
 | Log prefix (consequence) | `CONSEQUENCE.{NAME}` | `CONSEQUENCE.MASSACRE_SCAVENGE` |
 | MCM menu ID | `{name}` (lowercase) | `alpha_promote`, `massacre_scavenge` |
-| MCM sidebar | 1 word per line (underscore = newline) | `Alpha\nKill\nTargeted` |
+| MCM sidebar | 1 word per line (`_` = newline) | `Alpha\nKill\nTargeted` |
 | XML title (cause) | `ui_mcm_ap_causes_{name}_title` | `ui_mcm_ap_causes_massacre_title` |
 | XML title (consequence) | `ui_mcm_ap_consequences_{name}_title` | `ui_mcm_ap_consequences_massacre_scavenge_title` |
 | On-arrive handler key | consequence name | `stash_loot`, `squadkill_revenge` (radiant arrivals and chase recursion both use the consequence enum string) |
@@ -275,7 +275,7 @@ For radiant causes only, the display name carries the suffix ` Available` on the
 
 ### No identifiers in MCM
 
-Never put underscore-joined programmer identifiers (`area_conquer`, `stash_loot`, `cause_area_infest_threshold`) in user-facing MCM text; slider labels, descriptions, tag bodies. Use the display-name form (`Area Conquer`, `Stash Loot`) inside formal vocabulary, and plain English everywhere else. The cfg-key (`cause_area_conquer_threshold`) lives in code only; the user sees `MVT(Area Conquer)`.
+Never put `_`-joined programmer identifiers (`area_conquer`, `stash_loot`, `cause_area_infest_threshold`) in user-facing MCM text; slider labels, descriptions, tag bodies. Use the display-name form (`Area Conquer`, `Stash Loot`) inside formal vocabulary, and plain English everywhere else. The cfg-key (`cause_area_conquer_threshold`) lives in code only; the user sees `MVT(Area Conquer)`.
 
 `alignment_<set>` is internal vocabulary for technical docs (architecture.md, this file, integration.md) only. User-facing MCM text uses plain English instead:
 
@@ -299,9 +299,9 @@ Never put underscore-joined programmer identifiers (`area_conquer`, `stash_loot`
 
 ### Section layout
 
-Family with multiple specific causes (area, stash, needs, instincts): slide banner at the top (no umbrella tag), then for each specific cause: a self-contained sub-cause tag (`Cause:` line) and the cause's settings (enable toggle, any branch-only sliders), separated by line dividers.
+Family with multiple specific causes (area, stash, needs, instincts): slide banner at the top (no umbrella tag), then for each specific cause: a self-contained sub-cause tag (`Cause:` line) and the cause's settings (toggle, any branch-only sliders), separated by line dividers.
 
-Drive-grouped families (needs, instincts): threshold slider is per-drive, while enable toggles are per-answer (a drive may have multiple answers, e.g. slumber has slumber_field/slumber_lair/slumber_surge). Threshold sliders are rendered together at the end of the page after a `div_drives` divider, one per drive. Caller-facing label on each threshold tells the user which drive it affects.
+Drive-grouped families (needs, instincts): threshold slider is per-drive, while toggles are per-answer (a drive may have multiple answers, e.g. slumber has slumber_field/slumber_lair/slumber_surge). Threshold sliders are rendered together at the end of the page after a `div_drives` divider, one per drive. Caller-facing label on each threshold tells the user which drive it affects.
 
 Family with a single cause (alpha, alphakill, massacre, squadkill, basekill, wounded, harvest): just one tag, no sub-divisions.
 

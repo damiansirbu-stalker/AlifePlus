@@ -133,11 +133,11 @@ Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequence
 | ap_ext_object_mutator | Combat identity of the earned alpha status: level-scaled hit power dealt (vs anyone) and taken, panic immunity, trophy loot, visible particle mark. Before-hit seams + monster_on_loot_init + net spawn/death for the mark, nothing per frame. Canonical section: Object mutator |
 | ap_ext_trade | NPC supply-trader orchestration: sell surplus, buy up to per-rank policy bands, net-profit capped. Canonical row: Item flow -> Supply Trader |
 | ap_ext_barter | NPC-to-NPC barter orchestration: swap surplus for a peer's deficit and hand over a gear upgrade by cost with a same-faction stalker, no money. Canonical row: Item flow -> Barter |
-| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM enable / radius / TTL. Canonical section: Corpse loot ownership |
+| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM toggle / radius / TTL. Canonical section: Corpse loot ownership |
 | ap_ext_market | Faction market: the player-facing echo of NPC trading at a faction's hub traders, injection and sell-out in trader perspective. Canonical section: Item flow -> Faction market |
 | ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept): a looter keeps a policy-bounded, value-ranked share of what it just took from a body. Canonical row: Item flow -> Corpse Loot Trim |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
-| ap_ext_test | Console test harness: world-state seeders (per-category NPC item kits, NPC cash, stash fills, artefact drop) plus a periodic runner (run()) that re-seeds on intervals for soak sessions; seeds only real world state, never AP internals |
+| ap_ext_test | Console test driver: world-state seeders (per-category NPC item kits, NPC cash, stash fills, artefact drop) plus a periodic runner (run()) that re-seeds on intervals for soak sessions; seeds only real world state, never AP internals |
 
 ---
 
@@ -464,7 +464,7 @@ The seam. Two hook points, no base-script edits:
 - `xr_corpse_detection.near_actor` (xevent hook), the per-corpse gate the engine calls inside every NPC's loot scan (`find_valid_target`). Half A and Flow C run here as one exclusion arbiter; when neither claims the corpse the wrapper falls through to the vanilla `npc_loot_distance` radius.
 - The actor's own input. Half B vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
 
-The three flows, each with its own MCM enable, radius, and TTL, no master switch (recording gates on any flow being enabled):
+The three flows, each with its own MCM toggle, radius, and TTL, no master switch (recording gates on any flow being enabled):
 - Half A (loot_reserve_own): NPC looters skip a body the actor killed while the actor is near it. Companions obey the reservation by default (loot_include_companions on); turning it off exempts them so a companion may loot the actor's kills.
 - Half B (loot_block_npc): the actor cannot open a living NPC squad's kill; a PDA tip names the owner instead.
 - Flow C (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is near.
@@ -520,7 +520,7 @@ Principles:
 - Player-facing scarcity. One section, one trader, one short window, gated by the player's rank, at a premium. The gate evaluates the player, never the NPC.
 - No money path. The market adds stock and overrides the engine's displayed price for tagged goods; the player pays through the normal engine buy.
 
-FIFOs. Per faction, a bounded dedup FIFO of section names. A recurring section moves to the newest end; the oldest is evicted past the cap (`fifo_max`). The section is the only thing kept, since the restock pass re-derives cost, category, and rank from it. Both are plain tables saved and loaded verbatim, so they carry no clock and are safe at `load_state`, where `game_sec` would AV. `_trader_bought` feeds injection; `_trader_sold` is the identical shape feeding the sell-out, its entries persisting until FIFO-evicted by newer buys, and a sold-out section is claimed for the goods window exactly like an injected one.
+FIFOs. Per faction, a bounded dedup FIFO of section names. A recurring section moves to the newest end; the oldest is evicted past the cap (`fifo_max`). The section is the only thing kept, since the restock pass re-derives cost, category, and rank from it. Both are plain tables saved and loaded unchanged, so they carry no clock and are safe at `load_state`, where `game_sec` would AV. `_trader_bought` feeds injection; `_trader_sold` is the identical shape feeding the sell-out, its entries persisting until FIFO-evicted by newer buys, and a sold-out section is claimed for the goods window exactly like an injected one.
 
 Persistence. The market state survives save/load: both FIFOs and the tagged-goods table (`item_id -> { trader_id, inject_time }`). The injected items are real server entities that the save already preserves; persisting the tag table alongside the FIFOs keeps their premium price and timed release across a reload, since a player reloads inside the goods window as a matter of course. At `load_state` only the tables are restored (no alife queries, which AV before entities exist); 1.8.0 saves stored the bought FIFO under the old `ledger` key, read as a fallback. At first update a validation pass drops any tag whose item the engine purged on an offline restock between save and load. A recycled id that survives validation is rejected at pricing time by the `parent == trader_id` guard in the cost hook, so premium never mis-applies.
 
@@ -693,7 +693,7 @@ ap_ext_news transforms AP event telemetry into stalker radio chatter via per-con
 
 ### Write path (ap_core_record.add_record)
 
-Consequence SUCCESS calls ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts). _capture_side(subject) and _capture_side(other) read engine fields and produce three display keys per side: faction_key (community string for stalker / zombified-stalker, nil for mutant), species_key ("st_ap_macros_species_" + xcreature.get_mutant_species, nil for stalker), name (xsquad.get_commander_name, nil for mutant). Squad-derived keys are eager. Smart, level, and event-time game hour are stored verbatim from opts (smart resolved lazily at compose time via xobject.se + xlibs resolvers).
+Consequence SUCCESS calls ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts). _capture_side(subject) and _capture_side(other) read engine fields and produce three display keys per side: faction_key (community string for stalker / zombified-stalker, nil for mutant), species_key ("st_ap_macros_species_" + xcreature.get_mutant_species, nil for stalker), name (xsquad.get_commander_name, nil for mutant). Squad-derived keys are eager. Smart, level, and event-time game hour are stored unchanged from opts (smart resolved lazily at compose time via xobject.se + xlibs resolvers).
 
 Every consequence dispatch produces one record. Pacing is the compose interval + dedup ring; news reads from the broker activity record.
 
@@ -817,7 +817,7 @@ Takeover exclusion. A taken smart is never retaken: every area cause filter skip
 
 #### Outpost mini base (conquest only)
 
-A held conquer smart grows into a mini base: service NPCs (trader / barman / mechanic / medic, distinct roles) plus a resident guard detail. Gated by cfg.mutator_area_conquest_grow_services on top of the conquest enable; swarm and infest do not grow services (mutants do not build). Everything an outpost is reduces to respawn rows + a pin + a trade registration -- there is no runtime job, no generated logic, and no model dressing in it. The only respawn-timing write is the accelerate-only floor (see Rows).
+A held conquer smart grows into a mini base: service NPCs (trader / barman / mechanic / medic, distinct roles) plus a resident guard detail. Gated by cfg.mutator_area_conquest_grow_services on top of the conquest toggle; swarm and infest do not grow services (mutants do not build). Everything an outpost is reduces to respawn rows + a pin + a trade registration -- there is no runtime job, no generated logic, and no model dressing in it. The only respawn-timing write is the accelerate-only floor (see Rows).
 
 File or runtime. Files name KINDS, the runtime names the PLACE:
 
@@ -937,7 +937,7 @@ DTO + timestamp + arrival-reset is the architectural shape both theories share. 
 
 ### Multi-answer drive (radiant generator pattern)
 
-Each answer is a separate first-class cause paired 1:1 with its own consequence (sharing the noun per the radiant naming rule). "Multi-answer drive" is a code-structure quirk: a Hull-scored drive can be satisfied by any of several answers depending on squad identity (faction, species). The drive itself owns only the Hull threshold and the DTO timestamp field; everything else (enable, alignment, personality traits, filter) belongs to the individual answers.
+Each answer is a separate first-class cause paired 1:1 with its own consequence (sharing the noun per the radiant naming rule). "Multi-answer drive" is a code-structure quirk: a Hull-scored drive can be satisfied by any of several answers depending on squad identity (faction, species). The drive itself owns only the Hull threshold and the DTO timestamp field; everything else (toggle, alignment, personality traits, filter) belongs to the individual answers.
 
 The needs and instincts generators encode this as two tables:
 
@@ -950,7 +950,7 @@ Picker flow inside _on_smart:
 
 1. Score every drive via Hull (_find_overdue_drives for instincts, _find_overdue_needs for needs).
 2. Sort overdue drives descending by drive score.
-3. Walk overdue drives top-down. For each drive, walk CAUSES entries with matching parent drive. Per cause: RULES (per-cause enable, alignment subset, personality roll), then SCAN (filter + find_smart). First cause that publishes wins. Stop.
+3. Walk overdue drives top-down. For each drive, walk CAUSES entries with matching parent drive. Per cause: RULES (per-cause toggle, alignment subset, personality roll), then SCAN (filter + find_smart). First cause that publishes wins. Stop.
 4. Each generator's `_on_smart` caps its own internal cascade at RADIANT_MAX_SCANS_PER_GENERATOR SCAN reaches; RULES rejections are free.
 
 The DTO field is per-drive. When any of a drive's answers fires, the drive's timestamp resets (Hull drive reduction). Multiple answers compete to satisfy one drive.
@@ -958,7 +958,7 @@ The DTO field is per-drive. When any of a drive's answers fires, the drive's tim
 cfg key layout:
 
 - cause_<drive>_threshold: Hull threshold, one cfg key per drive (shared by every answer under that drive).
-- cause_<answer>_enabled: per-cause enable, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
+- cause_<answer>_enabled: per-cause toggle, one cfg key per answer. For single-answer drives the answer name equals the drive name (feed, roam, pack, scatter), so the cfg key reads as cause_<drive>_enabled but is conceptually per-answer.
 - Personality clamp is global, not per-cause. PERSONALITY_FLOOR (0.10) and PERSONALITY_CEILING (0.70) constants in ap_ext_const. Applies uniformly to every personality roll.
 
 Used by ap_ext_causes_needs.script and ap_ext_causes_instincts.script (multi-answer slumber). State-classifier generators (stash, area) use a different selection mechanism: the world peek (find_stashes / find_smart) classifies which sibling causes are eligible by world state (empty/non-empty, items_count, alignment) and emits an ordered list. The cascade walks the list and tests each sibling's RULES (MVT threshold + personality); first sibling to pass RULES reaches the 1 SCAN slot and publishes. No Hull scoring - eligibility comes from world state, not drive deprivation.
@@ -1013,7 +1013,7 @@ Three gates filter who participates: alignment (hard, deterministic), species (h
 - Species: filters mutant kinds (cowardly, feral, predator, aberrant). Stalkers have no species and pass automatically. Resolved once per squad, cached.
 - Personality: rolls the probability of acting given relevant trait scores. avg(traits), clamped to [PERSONALITY_FLOOR, PERSONALITY_CEILING]. Inverted traits (only INV_AGGRESSION, INV_DISCIPLINE, INV_TERRITORY are defined) resolve as 1 - base before averaging.
 
-Not every consequence uses all three. Human-only consequences skip species. Some have no gates beyond the enable toggle. When gates are present, order is alignment -> species -> personality.
+Not every consequence uses all three. Human-only consequences skip species. Some have no gates beyond the toggle. When gates are present, order is alignment -> species -> personality.
 
 Where they apply by cause type:
 
@@ -1150,7 +1150,7 @@ The rule set split into universal, radiant, and reactive. Terms (cause types, fi
 4. Published causes are always specific names (cause:hunger_campfire, cause:massacre). Umbrella names (NEEDS, REACTIONS) are categories, never published.
 5. Every cause has its own MCM toggle. No file-level master toggle.
 6. Every consequence has its own MCM toggle.
-7. News entries carry the published cause and consequence verbatim. Never an umbrella constant.
+7. News entries carry the published cause and consequence unchanged. Never an umbrella constant.
 8. Every cause registration declares a CAUSE_CATEGORY (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Category drives rate-limit grouping; it is never published.
 9. Domain gates (alignment, species, personality) live in ext, never in core. Location depends on cause type - see radiant and reactive rules.
 10. Runtime smart terrain mutations are rebuilt from LTX on load. Two-phase restore re-applies them after entities exist.

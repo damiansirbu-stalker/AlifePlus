@@ -425,7 +425,7 @@ Monster rank in X-Ray is fixed at spawn from the `clsid` multiplier (`sim_offlin
 A dog that kills fifty stalkers has the same combat power as one that never fought.
 The engine's creature effectiveness tables prove GSC intended a hierarchy: their `creature_courage.txt` assigns per-species Attack scores (rats 60, bloodsucker 40, chimera 20) and Defend scores, feeding a 21x21 `CreatureEffectiveness` matrix that models outcomes across all creature type pairs [8].
 Their `Monster_expedience.txt` models predation as a function of starvation and prey edibility: a starving predator encountering edible prey hunts with 100% probability [8].
-GSC designed creatures as active predators with individual combat ratings and hunger-driven motivation, but the combat hierarchy was static by species, never by individual experience.
+GSC designed creatures as active predators with individual combat ratings and hunger-driven motivation, but the combat hierarchy was static by species, never by the individual.
 AlifePlus adds the individual axis: a mutant that survives and kills becomes an alpha, the dominant individual of its species.
 
 > "GSC's `creature_courage.txt` assigns per-species Attack and Defend ratings across 21 creature types. The 21x21 `CreatureEffectiveness` matrix models combat outcomes for every creature pair. `Monster_expedience.txt` maps Starvation x Edibility to hunt probability (3x3 = 100% for hungry predator + edible prey). The hierarchy was designed but static by species."
