@@ -1,4 +1,4 @@
-# AlifePlus: emergent A-Life for STALKER Anomaly
+# AlifePlus: Emergent A-Life for STALKER Anomaly
 
 You are not special.
 
