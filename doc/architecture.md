@@ -691,6 +691,8 @@ Pipeline counters per pipeline (radiant, reactive). Track events, gate denials, 
 
 ap_ext_news transforms AP event telemetry into stalker radio chatter via per-consequence templates in ui_st_ap_news.xml. There is no grammar engine. Presentation layer with one-way dataflow: pipeline emits, news consumes, news never writes back to pipeline state.
 
+The speaker is a stalker on the radio, past tense, and every variant must carry the consequence tell so the gameplay fact is derivable from the line alone. A pool rotates five speaker positions (hearsay, witness, survivor, tracker, named report) at spread lengths so the feed does not read uniform. The full voice and slot-grammar rules live in the ui_st_ap_news.xml header, next to the lines they govern.
+
 ### Write path (ap_core_record.add_record)
 
 Consequence SUCCESS calls ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts). _capture_side(subject) and _capture_side(other) read engine fields and produce three display keys per side: faction_key (community string for stalker / zombified-stalker, nil for mutant), species_key ("st_ap_macros_species_" + xcreature.get_mutant_species, nil for stalker), name (xsquad.get_commander_name, nil for mutant). Squad-derived keys are eager. Smart, level, and event-time game hour are stored unchanged from opts (smart resolved lazily at compose time via xobject.se + xlibs resolvers).
