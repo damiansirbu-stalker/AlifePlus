@@ -43,7 +43,6 @@ local CLSID_SQUAD = clsid.online_offline_group_s
 AddScriptCallback(CALLBACK.AP_SQUAD_ON_CHANGE)
 AddScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE)
 
---------------------------------------------------------------------------------
 --- ap_squad_on_change: detection walk + credit-driven fire engine.
 --- The walk (SWEEP_BATCH squads per SWEEP_TICK_SEC tick, circular cursor over an id
 --- snapshot from xsquad.collect_squad_ids) only detects and sorts: diff the 4 tracked
@@ -54,7 +53,6 @@ AddScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE)
 --- round-robin -- total rate, lane mix, and full coverage are each enforced by counting,
 --- not by timers. The per-squad refractory (os.clock) is the one clamp, protecting small
 --- lanes from rapid re-fires of the same squad.
---------------------------------------------------------------------------------
 
 local SWEEP_TICK_SEC = 1
 local SWEEP_BATCH = 20
@@ -409,12 +407,10 @@ local function _squad_reset()
     _squad_pass_started = 0
 end
 
---------------------------------------------------------------------------------
 --- ap_npc_medkit_use: heal-consumption hook.
 --- xr_eat_medkit.consume_medkit exposes no callback; the hook fires ours before the
 --- original runs, so the medkit still exists for the subscriber (consume_medkit releases
 --- it via alife_release_id).
---------------------------------------------------------------------------------
 
 -- @cost O(1) install | per heal: 1 SendScriptCallback + original consume_medkit
 local function _medkit_install()
@@ -424,9 +420,7 @@ local function _medkit_install()
     end)
 end
 
---------------------------------------------------------------------------------
 --- Lifecycle.
---------------------------------------------------------------------------------
 
 --- Install both events: the squad sweep (despawn eviction + 1s tick) and the medkit hook.
 function on_game_start()

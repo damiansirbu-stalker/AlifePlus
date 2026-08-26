@@ -271,14 +271,12 @@ local function _do_engine_dispatch(picked, msg)
         use_queued and "queued" or "fallback", picked.name, tostring(picked.channel), engine_timer:get_ms()) end
 end
 
--- ============================================================================
 -- CHATTER: immediate, localized one-off lines pushed by a producer the instant something happens,
 -- instead of drained from the record queue. Reuses the news machinery: a producer hands a template
 -- pool prefix, a slots table, and selection context (level, faction); send_chatter gates it (local,
 -- non-hostile, throttled), fills a variant, picks an online stalker as the voice (the same
 -- _pick_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
 -- ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate from news.
--- ============================================================================
 
 local _chatter_pools = {}
 local _chatter_locale = nil

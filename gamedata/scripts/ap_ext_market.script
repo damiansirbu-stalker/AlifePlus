@@ -114,9 +114,7 @@ local _view_log_next = {}
 
 local _subscribed = false
 
--- ============================================================================
 -- POLICY LOADING
--- ============================================================================
 
 --- Load the trader-buy whitelist (+ specials) and the trader-sell whitelist via the shared
 --- xinventory kernel. Same row shape; injection reads .trader_buy, the sell-out reads .trader_sell.
@@ -171,9 +169,7 @@ local function _load_rank_ruleset()
     RANK_RULESET = { floor = floor, bands = bands }
 end
 
--- ============================================================================
 -- CONFIG ACCESSORS
--- ============================================================================
 
 local function _premium()        return cfg.market_premium end
 local function _item_condition()  return cfg.market_item_condition end
@@ -184,9 +180,7 @@ local function _per_trader_cap()
     return cfg.market_items_per_trader
 end
 
--- ============================================================================
 -- FIFOS (observe ap_ext_trade output)
--- ============================================================================
 
 local function _is_market_faction(faction)
     return faction ~= nil and not _SKIP_FACTION[faction]
@@ -241,9 +235,7 @@ local function _observe_trade(orig, npc, seller)
     return result
 end
 
--- ============================================================================
 -- INJECTION
--- ============================================================================
 
 --- True if a trader serving role_info may stock items of this category.
 local function _accepts_category(role_info, category)
@@ -350,9 +342,7 @@ local function _resolve_trader_role(trader)
     return nil
 end
 
--- ============================================================================
 -- TRADER SELL-OUT (removal at restock)
--- ============================================================================
 
 --- Strip an ammo section's condition suffix so every degraded variant of the same round collapses
 --- to one bullet type: ammo_9x18_fmj_verybad -> ammo_9x18_fmj. NPCs buy the cheapest (degraded)
@@ -594,9 +584,7 @@ local function _restock_deferred(trader_id)
     return true
 end
 
--- ============================================================================
 -- RESTOCK DETECTION (exactly one path)
--- ============================================================================
 
 --- Detect a real restock by trade_manager.update advancing resupply_time (it replaces the table only
 --- when the restock gate passes; an unchanged reference means no restock). Defer the inject 0.1s so
@@ -627,9 +615,7 @@ local function _setup_restock()
     ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
 end
 
--- ============================================================================
 -- PREMIUM PRICING
--- ============================================================================
 
 --- on_get_item_cost handler: for a tagged market good still sitting in its injecting trader, override
 --- the price to full base cost x premium (relation/eco discount kept, condition discount dropped) by
@@ -692,9 +678,7 @@ local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     end
 end
 
--- ============================================================================
 -- WINDOW RELEASE
--- ============================================================================
 
 --- Release one market good, but only if it is still the injected item sitting in its injecting
 --- trader: online, parent == trader_id, and section matching the tag. A good the player bought (or
@@ -756,9 +740,7 @@ local function _release_expired()
     return false
 end
 
--- ============================================================================
 -- SAVE / LOAD
--- ============================================================================
 
 local function _on_save(m_data)
     m_data[SAVE_KEY] = { trader_bought = _trader_bought, trader_sold = _trader_sold, market_goods = _market_goods }
@@ -794,9 +776,7 @@ local function _validate_market_goods()
     end
 end
 
--- ============================================================================
 -- LIFECYCLE
--- ============================================================================
 
 local function _on_first_update()
     if _subscribed then return end

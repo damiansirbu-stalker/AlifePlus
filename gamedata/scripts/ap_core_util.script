@@ -269,14 +269,12 @@ function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
     return nil
 end
 
--- ============================================================================
 -- CHASE LEASH: evaluate_chase decides KEEP / PAUSE / RELEASE for a chase entry
 -- (actor- or squad-target), composed of small (bool) predicates -- the same shape
 -- as the broker offmap despawn chain. Pure: reads xlibs atoms + the entry, no side
 -- effects, so the broker scan (acts on the verdict) and dispatch (refuses a non-KEEP
 -- start) both call it. Every predicate here is offline-safe; online-only conditions
 -- (outmatched, lost-contact) are deferred.
--- ============================================================================
 
 local function _is_actor_chase(entry)
     -- Among chase entries (the only ones evaluate_chase runs on), the actor chase is the one
