@@ -1,5 +1,6 @@
 --- ap_core_util: Event pub/sub, squad/smart finders
 local pairs, type, next, tostring, table_concat = pairs, type, next, tostring, table.concat
+local string_format = string.format
 local game_relations, get_actor_true_community = game_relations, get_actor_true_community
 local xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature = xbus, xsquad, xsmart, xconst, xlevel, xobject, xcreature
 local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_broker, ap_core_cache
@@ -78,7 +79,7 @@ function find_squads(pos, opts)
     if ap_core_debug.enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)
             .. " lv=" .. tostring(opts.level_id or "any")
-            .. " dist=" .. tostring(opts.min_distance or 0) .. "-" .. tostring(opts.max_distance)
+            .. string_format(" dist=%s-%s", tostring(opts.min_distance or 0), tostring(opts.max_distance))
             .. " excl_smart=" .. tostring(opts.exclude_at_smart_id or "none")
             .. " excl_ids=" .. (opts.exclude_ids and tostring(next(opts.exclude_ids) and "yes" or "none") or "none")
             .. (skipped_protected > 0 and " skipped_protected=" .. skipped_protected or "")
@@ -132,8 +133,7 @@ function find_smart(pos, opts)
     if not ap_core_debug.enabled() and not source then
         return xsmart.find_smart(pos, opts)
     end
-    local local_opts = {}
-    if opts then for k, v in pairs(opts) do local_opts[k] = v end end
+    local local_opts = opts and xtable.clone(opts) or {}
     if source then local_opts.source = source end
     if not ap_core_debug.enabled() then
         return xsmart.find_smart(pos, local_opts)
@@ -163,8 +163,7 @@ end
 function find_first_smart(opts)
     local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
     if not source then return xsmart.find_first_smart(opts) end
-    local local_opts = {}
-    for k, v in pairs(opts) do local_opts[k] = v end
+    local local_opts = xtable.clone(opts)
     local_opts.source = source
     return xsmart.find_first_smart(local_opts)
 end

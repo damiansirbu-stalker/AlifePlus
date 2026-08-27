@@ -31,6 +31,9 @@ local xsquad, xsmart_spawn, game_relations, math_random = xsquad, xsmart_spawn, 
 local xsmart, ap_ext_util = xsmart, ap_ext_util
 local ini_sys = ini_sys
 
+-- One box of rounds, enough for a spawned member to actually fire in a test.
+local TEST_AMMO_ROUNDS = 30
+
 local MONEY_PER_NPC = 5000
 local STASH_MAX_DISTANCE = 600
 local STASH_MAX_COUNT = 4
@@ -429,7 +432,7 @@ local function _seed_pop_squad(squad)
     for member in squad:squad_members() do
         local wpn = xmath.sample(WEAPONS)
         if _spawnable(wpn) then xinventory.create_item(wpn, member.id) end
-        if #ammo > 0 then xinventory.create_item(xmath.sample(ammo), member.id, { ammo = 30 }) end
+        if #ammo > 0 then xinventory.create_item(xmath.sample(ammo), member.id, { ammo = TEST_AMMO_ROUNDS }) end
     end
 end
 

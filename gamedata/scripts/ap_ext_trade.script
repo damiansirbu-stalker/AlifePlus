@@ -163,19 +163,20 @@ end
 -- (get_category_sections empty -> buy that exact section via _buy_one_section).
 -- Updates ctx.counts[key] in place (counts are keyed the same way by xinventory.classify).
 local function _run_buy_entry(entry, ctx)
-    if not (entry.rule.min and entry.rule.min > 0) then return end
+    local rule_min = entry.rule.min
+    if not (rule_min and rule_min > 0) then return end
     local key = entry.category
     local counts = ctx.counts
     local current = counts[key] or 0
-    if current >= entry.rule.min then return end
+    if current >= rule_min then return end
     if _is_ammo_slot_category(key) then
         local weapon_sec, tier_num = _resolve_ammo_buy_context(key, ctx.cat_opts)
         if not (weapon_sec and tier_num) then return end
-        counts[key] = current + _buy_ammo_tier(ctx.npc, ctx.seller, weapon_sec, tier_num, entry.rule.min - current, ctx.bought)
+        counts[key] = current + _buy_ammo_tier(ctx.npc, ctx.seller, weapon_sec, tier_num, rule_min - current, ctx.bought)
     elseif #xinventory.get_category_sections(key) > 0 then
-        counts[key] = _buy_consumable_category(ctx, key, current, entry.rule.min)
+        counts[key] = _buy_consumable_category(ctx, key, current, rule_min)
     else
-        counts[key] = _buy_one_section(ctx.npc, ctx.seller, key, current, entry.rule.min, ctx.bought)
+        counts[key] = _buy_one_section(ctx.npc, ctx.seller, key, current, rule_min, ctx.bought)
     end
 end
 

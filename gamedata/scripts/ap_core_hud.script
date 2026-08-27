@@ -199,9 +199,7 @@ end
 
 -- Copy both counter tables (plus the derived handlers total) into the ring.
 local function _push_snapshot()
-    local snap_r, snap_x = {}, {}
-    for key, value in pairs(r) do snap_r[key] = value end
-    for key, value in pairs(x) do snap_x[key] = value end
+    local snap_r, snap_x = xtable.clone(r), xtable.clone(x)
     snap_r._csq_tried = _csq_tried(r)
     snap_x._csq_tried = _csq_tried(x)
     _hist_pos = _hist_pos % HIST_SLOTS + 1

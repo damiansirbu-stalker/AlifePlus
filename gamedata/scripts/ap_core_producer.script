@@ -14,6 +14,10 @@ local cfg = ap_core_mcm.cfg
 local hud = ap_core_hud
 local hud_collecting = ap_core_hud.collecting
 local sr, sx = hud.r, hud.x
+-- 2^15: the point where the on/off counters are folded back, so a long session
+-- cannot grow them without bound.
+local COUNTER_FOLD_AT = 32768
+
 local _handlers = {}
 local _subscribed = {}
 local _reactive_event_limiter = nil
@@ -43,7 +47,7 @@ local _reactive_ct = { on = 0, off = 0 }
 --- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
 --- @return boolean true = allowed, false = blocked
 local function _alife_ratio_gate(on_map, ct)
-    if ct.on + ct.off >= 32768 then
+    if ct.on + ct.off >= COUNTER_FOLD_AT then
         ct.on = 0
         ct.off = 0
     end

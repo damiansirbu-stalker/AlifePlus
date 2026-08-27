@@ -1,5 +1,5 @@
 --- ap_api: Public AlifePlus API surface for external integrators.
-local pairs, type, tostring = pairs, type, tostring
+local pairs, type, tostring, string_format = pairs, type, tostring, string.format
 local ap_core_const, ap_core_debug = ap_core_const, ap_core_debug
 local ap_core_broker, ap_core_record = ap_core_broker, ap_core_record
 local ap_core_consumer, ap_core_producer = ap_core_consumer, ap_core_producer
@@ -38,9 +38,7 @@ function get_owner(squad) return ap_core_broker.get_owner(squad) end
 
 local function _copy_entry(entry)
     if not entry then return nil end
-    local out = {}
-    for k, v in pairs(entry) do out[k] = v end
-    return out
+    return xtable.clone(entry)
 end
 
 --- Returns a shallow-copied snapshot of the AP-scripted squads table (keyed by squad id).
@@ -165,7 +163,7 @@ function register_radiant_cause(category, predicate)
             callback = cb,
             cause_type = ap_core_const.CAUSE_TYPE.RADIANT,
             category = category,
-            name = "ext_radiant_" .. tostring(category) .. "_" .. tostring(cb) .. "_" .. tostring(predicate),
+            name = string_format("ext_radiant_%s_%s_%s", tostring(category), tostring(cb), tostring(predicate)),
         }, predicate)
         ok = ok and (registered == true)
     end
@@ -190,7 +188,7 @@ function register_reactive_cause(callback, category, predicate)
         callback = callback,
         cause_type = ap_core_const.CAUSE_TYPE.REACTIVE,
         category = category,
-        name = "ext_reactive_" .. tostring(category) .. "_" .. tostring(callback) .. "_" .. tostring(predicate),
+        name = string_format("ext_reactive_%s_%s_%s", tostring(category), tostring(callback), tostring(predicate)),
     }, predicate) == true
 end
 

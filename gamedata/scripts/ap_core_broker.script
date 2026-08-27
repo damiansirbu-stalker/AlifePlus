@@ -109,10 +109,7 @@ local _protection_opts = nil
 --- @param caller_opts table|nil
 --- @return table merged opts (fresh table)
 function build_protection_opts(caller_opts)
-    local out = {}
-    if caller_opts then
-        for k, v in pairs(caller_opts) do out[k] = v end
-    end
+    local out = caller_opts and xtable.clone(caller_opts) or {}
     for k, v in pairs(_PROTECTION_FIELDS) do out[k] = v end
     out.exclude_filter = get_owner
     return out
@@ -167,8 +164,7 @@ function is_protected(squad)
     if not squad then return false, nil, nil, nil end
     if not xsquad.is_squad(squad) then return true, REASON.NOT_A_SQUAD, nil, nil end
     if not _protection_opts then
-        _protection_opts = {}
-        for k, v in pairs(_PROTECTION_FIELDS) do _protection_opts[k] = v end
+        _protection_opts = xtable.clone(_PROTECTION_FIELDS)
         _protection_opts.exclude_filter = get_owner
     end
     return xsquad.is_protected(squad, _protection_opts)
