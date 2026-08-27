@@ -497,6 +497,7 @@ end
 --- Get AP scripted squad table (read-only reference, do not modify).
 --- Returned entries may carry off-map session fields (offmap, dispatched_at) alongside the
 --- standard scripted-dispatch fields.
+--- @cost O(1) | 0 luabind
 function get_scripted_squads()
     return _ap_scripted_squads
 end
@@ -530,12 +531,14 @@ end
 
 
 --- Register an arrival handler by key (called from consumer on_game_start)
+--- @cost O(1) | 0 luabind
 function register_arrival_handler(key, fn)
     _arrival_handlers[key] = fn
     ap_core_debug.debug("[SQUAD] register_arrival_handler: key=%s", key)
 end
 
 --- Unregister an arrival handler by key. No-op if not registered.
+--- @cost O(1) | 0 luabind
 function unregister_arrival_handler(key)
     if _arrival_handlers[key] == nil then return end
     _arrival_handlers[key] = nil

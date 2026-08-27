@@ -135,6 +135,7 @@ end
 
 --- Get all records matching opts (AND logic on field equality).
 --- assigned=true reads the live index (O(active squads)); else full FIFO scan (O(capacity)).
+--- @cost O(n) records | 0 luabind (FIFO scan, pure Lua)
 --- @param opts table|nil Filter fields. { assigned = true } reads live entries only.
 --- @return table Array of matching entries
 function get_records(opts)
@@ -153,6 +154,7 @@ end
 
 --- Get the most-recent record matching opts (highest cons_id).
 --- O(1) fast path: { squad_id = X, assigned = true } hits the live index directly.
+--- @cost O(n) records | 0 luabind (FIFO scan to the matching id, pure Lua)
 --- @param opts table Filter fields (AND logic). Required.
 --- @return table|nil Most-recent matching entry or nil
 function get_record(opts)

@@ -349,6 +349,7 @@ end
 --- generator-family string for radiant cascades ("needs", "instincts", "area", "stash").
 --- Write-through: maintains _handlers, _radiant_callbacks, _cascade_buf synchronously. After
 --- actor_on_first_update, also subscribes the engine callback for new callbacks (late-bind).
+--- @cost O(1) amortized | 0 luabind (one table insert per registration)
 --- @param config table { callback, cause_type, category, name }
 --- @param handler function(...) Handler function
 function register(config, handler)

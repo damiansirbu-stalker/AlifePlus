@@ -16,6 +16,7 @@ local hud_collecting = ap_core_hud.collecting
 
 --- Register a consequence handler for an event. Strict: refuses duplicate names.
 --- Caller must call unregister(name) first if replacing.
+--- @cost O(1) amortized | 0 luabind (one table insert per registration)
 --- @param name string Consequence name (used as trace key, rate limit key, arrival key)
 --- @param config table { event, condition, on_arrive } condition: returns false to skip
 --- @param handler function(event_data) -> { code = RESULT.X, reason = "..." }
@@ -62,6 +63,7 @@ end
 
 --- Unregister a consequence handler by name. Removes from event registry, clears
 --- cause-of mapping, and unhooks any arrival handler registered under the same name.
+--- @cost O(1) | 0 luabind
 --- @param name string Consequence name
 --- @return boolean true if removed, false if not registered
 function unregister(name)
@@ -76,6 +78,7 @@ end
 
 --- Get the cause event a consequence subscribes to.
 --- 1:1 mapping built at register time. Returns nil if consequence not registered.
+--- @cost O(1) | 0 luabind
 --- @param consequence string Consequence registration name
 --- @return string|nil Cause string (e.g. "cause:massacre"), or nil
 function cause_of(consequence)

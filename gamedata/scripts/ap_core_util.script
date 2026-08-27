@@ -9,6 +9,7 @@ local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
 
 --- Subscribe to an event with logging
+--- @cost O(1) | 0 luabind
 function event_subscribe(event_name, callback, subscriber_name)
     local ok = xbus.subscribe(event_name, callback, subscriber_name)
     if ok then
@@ -20,6 +21,7 @@ function event_subscribe(event_name, callback, subscriber_name)
 end
 
 --- Publish an event to xbus subscribers
+--- @cost O(1) | 0 luabind
 --- @param event_name string Event name
 --- @param event_data table Event payload (carries the cause tid for log correlation)
 function event_publish(event_name, event_data)
@@ -31,6 +33,7 @@ end
 --- Increment a TTL counter by key and return the new running count. Non-destructive:
 --- the caller clears the key itself (counter:remove(key)) once it acts on the count, so a
 --- blocked action leaves the accumulated cluster intact for the next call instead of dropping it.
+--- @cost O(1) | 0 luabind
 --- @param counter table TTL table instance (xttltable.create_ttl_table)
 --- @param key any Counter key
 --- @return number New running count (>= 1)
@@ -41,6 +44,7 @@ function accumulate_count(counter, key)
 end
 
 --- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)
+--- @cost O(1) | 1 luabind trivial (id: field read)
 --- @param obj userdata|nil Game object or server entity
 --- @return number|nil Valid ID or nil
 function get_entity_id(obj)
@@ -65,6 +69,7 @@ end
 --- bucket instead of the global SIMBOARD.squads walk. Cache returns nil before
 --- actor_on_first_update has run; in that window the call falls through to the
 --- un-bucketed walk over ~700-800 squads.
+--- @cost O(n) squads | delegates to xsquad.find_squads, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, etc.)
 --- @return table Array of squad server objects
@@ -108,6 +113,7 @@ end
 --- Same protection + level-scope source layering as find_squads. No preempt — boolean answer
 --- is final. Use when the consumer is yes/no (does any X exist nearby?) and find_squads'
 --- collect-all-then-sample pattern wastes the walk.
+--- @cost O(1) | 0 luabind
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, exclude_*, match)
 --- @return boolean True if any matching squad in radius
@@ -125,6 +131,7 @@ end
 --- the per-level bucket instead of the global SIMBOARD.smarts_by_names walk. Cache returns nil before
 --- actor_on_first_update has run; in that window the call falls through to the un-bucketed walk over
 --- ~300-500 smarts (~1-2ms), which fits the 2ms ceiling.
+--- @cost O(n) squads | delegates to xsmart.find_first_smart, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table Options (forwarded to xsmart.find_smart)
 --- @return table|nil Smart server object or nil
@@ -158,6 +165,7 @@ end
 
 --- Find first matching smart (distance-free). Use when the caller has no comparable position
 --- frame (cross-level dispatch). Injects ap_core_cache.smarts_on_level when opts.level_id is set.
+--- @cost O(1) | 0 luabind
 --- @param opts table Options (forwarded to xsmart.find_first_smart)
 --- @return table|nil Smart server object or nil
 function find_first_smart(opts)
@@ -208,6 +216,7 @@ local SERVICE_ROLES = { "trader", "medic", "mechanic" }
 
 --- Any service NPC (trader / medic / mechanic) at smart. Tries roles in priority order
 --- so trader wins when multiple are present.
+--- @cost O(n) entries | 0 luabind (pure Lua table walk)
 --- @param smart smart_terrain
 --- @return game_object|nil
 function get_service_npc_at_smart(smart)
@@ -220,6 +229,7 @@ function get_service_npc_at_smart(smart)
 end
 
 --- True if any service NPC (trader / medic / mechanic) is present at smart.
+--- @cost O(n) entries | 0 luabind (pure Lua table walk)
 --- @param smart smart_terrain
 --- @return boolean
 function has_service_npc_at_smart(smart)
@@ -235,6 +245,7 @@ end
 --- cross-level and offline safe, unlike the npc_info role walk. Combined with the cause's
 --- exclude_enemy gate it means "a non-hostile squad is stationed here to barter with"; the precise
 --- stalker-peer check runs at arrival in get_peer_stalker_at_smart (mirrors trader NO_TRADER skip).
+--- @cost O(1) | 0 luabind
 --- @param smart smart_terrain
 --- @return boolean
 function has_peer_squad_at_smart(smart)
@@ -251,6 +262,7 @@ end
 --- churn between routing and arrival, so the precise same-faction check lives here. is_factions_friends
 --- would miss same-faction (the community_relation diagonal is neutral, not >= FRIENDS), so this is a
 --- direct community-string equality, not a relation call.
+--- @cost O(n) members | 1 luabind trivial per member (alive: field read)
 --- @param smart smart_terrain
 --- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
 --- @param community string|nil Arriving squad community; nil skips the faction gate (any non-enemy peer)
@@ -346,6 +358,7 @@ end
 --- Decide whether to keep a chase scripted. RELEASE checks first (cheap before expensive),
 --- then soft PAUSE checks. Pure; safe to call from the scan
 --- and from dispatch (on a proposed entry stub).
+--- @cost O(1) | 0 luabind
 --- @param squad se_squad The chaser
 --- @param entry table The _ap_scripted_squads entry (actor- or squad-target chase)
 --- @return string verdict VERDICT.KEEP|PAUSE|RELEASE

@@ -38,6 +38,7 @@ end
 --- Check a per-key cause rate limit (true = allowed, false = blocked).
 --- Generic primitive: caller supplies both the counter key (e.g. CAUSE_CATEGORY.REACTIONS)
 --- and the cap (read from caller's own cfg). Limiter knows nothing about category names or MCM keys.
+--- @cost O(1) | 0 luabind
 --- @param key string Counter key (caller-defined; namespaced into "lock:<key>" internally)
 --- @param max number Cap for this counter; counter < max = allowed
 --- @return boolean allowed, number count, number max
@@ -51,6 +52,7 @@ function check_cause_rate_limit(key, max)
 end
 
 --- Increment per-key cause counter after publish.
+--- @cost O(1) | 0 luabind
 --- @param key string Counter key (same key passed to check_cause_rate_limit)
 function increment_cause_counter(key)
     local counter = _ensure_cause_counter()
@@ -58,12 +60,14 @@ function increment_cause_counter(key)
 end
 
 --- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
+--- @cost O(1) | 0 luabind
 function check_consequence_rate_limit(name)
     local limiter = _ensure_consequence_limiter()
     return limiter:peek(_get_consequence_rate_key(name))
 end
 
 --- Acquire consequence token after success
+--- @cost O(1) | 0 luabind
 function increment_consequence_counter(name)
     local limiter = _ensure_consequence_limiter()
     limiter:acquire(_get_consequence_rate_key(name))
@@ -80,18 +84,21 @@ local function _ensure_global_consequence_counter()
 end
 
 --- Check global consequence rate limit (true = allowed, false = max events reached in window)
+--- @cost O(1) | 0 luabind
 function check_global_consequence_rate_limit()
     local counter = _ensure_global_consequence_counter()
     return counter:count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
 end
 
 --- Increment global consequence counter after a consequence fires
+--- @cost O(1) | 0 luabind
 function increment_global_consequence_counter()
     local counter = _ensure_global_consequence_counter()
     counter:add(_GLOBAL_CONSEQUENCE_RATE_KEY)
 end
 
 --- Create an isolated cooldown checker (each caller gets its own cache)
+--- @cost O(1) | 0 luabind
 --- @param expire_ms number Cooldown duration in milliseconds
 --- @return table { check = function(key, now), mark = function(key, now) }
 function create_cooldown(expire_ms)
@@ -117,6 +124,7 @@ local function _get_offmap_rate_key(level_id)
 end
 
 --- Check offmap balance limit for a source level (true = allowed, false = blocked).
+--- @cost O(1) | 0 luabind
 --- @param level_id number Source map id
 --- @param max number Cap (cfg.cause_max_offmap)
 --- @return boolean allowed, number count, number max
@@ -129,6 +137,7 @@ function check_offmap_rate_limit(level_id, max)
 end
 
 --- Increment offmap counter after a successful offmap dispatch.
+--- @cost O(1) | 0 luabind
 --- @param level_id number Source map id
 function increment_offmap_counter(level_id)
     _offmap_counter:add(_get_offmap_rate_key(level_id))
@@ -147,6 +156,7 @@ end
 
 --- Check the per-causer reaction limit (true = allowed, false = blocked).
 --- Nil causer (unidentified killer) is always allowed: cannot key a cooldown on it.
+--- @cost O(1) | 0 luabind
 --- @param causer_id number|nil Source entity id (actor id or NPC id)
 --- @return boolean allowed, number count, number max
 function check_causer_rate_limit(causer_id)
@@ -160,6 +170,7 @@ function check_causer_rate_limit(causer_id)
 end
 
 --- Increment the per-causer counter after a reactive cause publishes.
+--- @cost O(1) | 0 luabind
 --- @param causer_id number|nil Source entity id
 function increment_causer_counter(causer_id)
     if not causer_id then return end

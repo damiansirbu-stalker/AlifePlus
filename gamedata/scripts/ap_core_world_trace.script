@@ -17,11 +17,13 @@ local log = xlog.get_logger("AP.WORLD", { outfile = "alifeplus_world.log", level
 local _enabled = false
 
 --- True when the Development world-trace toggle is on. Dump sites gate on this.
+--- @cost O(1) | 0 luabind
 function enabled()
     return _enabled
 end
 
 --- Write one world-log line, no-op when the toggle is off. Also the sink passed to xinventory.dump.
+--- @cost O(1) | 0 luabind
 function debug(fmt, ...)
     if not _enabled then return end
     log.debug(fmt, ...)

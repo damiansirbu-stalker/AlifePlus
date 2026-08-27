@@ -37,11 +37,13 @@ local _was_counters = false
 local _hud = nil
 
 --- Check if statistics overlay is active
+--- @cost O(1) | 0 luabind
 function enabled()
     return cfg.statistics_position ~= "off"
 end
 
 --- Check if counter collection is active (overlay on OR debug on)
+--- @cost O(1) | 0 luabind
 function collecting()
     return cfg.statistics_position ~= "off" or _debug_enabled()
 end
