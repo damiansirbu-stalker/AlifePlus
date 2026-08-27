@@ -133,7 +133,7 @@ Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequence
 | ap_ext_object_mutator | Combat identity of the earned alpha status: level-scaled hit power dealt (vs anyone) and taken, panic immunity, trophy loot, visible particle mark. Before-hit seams + monster_on_loot_init + net spawn/death for the mark, nothing per frame. Canonical section: Object mutator |
 | ap_ext_trade | NPC supply-trader orchestration: sell surplus, buy up to per-rank policy bands, net-profit capped. Canonical row: Item flow -> Supply Trader |
 | ap_ext_barter | NPC-to-NPC barter orchestration: swap surplus for a peer's deficit and hand over a gear upgrade by cost with a same-faction stalker, no money. Canonical row: Item flow -> Barter |
-| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), reserved symmetrically in all three directions (actor kills vs NPC looters, NPC kills vs the actor, NPC vs NPC), each flow with its own MCM toggle / radius / TTL. Canonical section: Corpse loot ownership |
+| ap_ext_loot_claim | Corpse loot ownership: a kill belongs to the killer (squad-held for NPC kills), held by distance plus a clear line to the body where the player is involved (actor kills vs NPC looters, NPC kills vs the actor) and by distance alone for NPC vs NPC; each flow with its own MCM toggle / radius / TTL. Canonical section: Corpse loot ownership |
 | ap_ext_market | Faction market: the player-facing echo of NPC trading at a faction's hub traders, injection and sell-out in trader perspective. Canonical section: Item flow -> Faction market |
 | ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept): a looter keeps a policy-bounded, value-ranked share of what it just took from a body. Canonical row: Item flow -> Corpse Loot Trim |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
@@ -458,28 +458,31 @@ Money moves only inside `ap_ext_trade.trade` (via `xcreature.transfer_money` and
 
 ### Corpse loot ownership (ap_ext_loot_claim)
 
-A protection layer over vanilla corpse looting: a kill is reserved for its owner, enforced symmetrically in three directions. Distinct from loot_select; claim decides WHO may loot, select decides WHAT is kept. It moves no items and touches no money, only vetoing the vanilla loot path.
+A protection layer over vanilla corpse looting: a fresh kill is reserved for its owner. Distinct from loot_select; claim decides WHO may loot, select decides WHAT is kept. It moves no items and touches no money, only vetoing the vanilla loot path.
+
+The rule. Distance, plus a line-of-sight check wherever the player is involved. A body is reserved while the owning side is within the flow's radius of it AND has a clear line to it - a static-geometry ray (`xcombat.has_wall_between`, walls and floors only, so a corpse pile in the way never false-blocks and facing is irrelevant). NPC-vs-NPC skips the ray and uses distance alone: it is silent and invisible to the player, so a wall check there would only cost rays on the AI seam for nothing anyone sees.
 
 The seam. Two hook points, no base-script edits:
-- `xr_corpse_detection.near_actor` (xevent hook), the per-corpse gate the engine calls inside every NPC's loot scan (`find_valid_target`). Half A and Flow C run here as one exclusion arbiter; when neither claims the corpse the wrapper falls through to the vanilla `npc_loot_distance` radius.
-- The actor's own input. Half B vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
+- `xr_corpse_detection.near_actor` (xevent hook), the per-corpse gate the engine calls inside every NPC's loot scan (`find_valid_target`). reserve-own and npc-vs-npc run here as one exclusion arbiter; when neither claims the corpse the wrapper falls through to the vanilla `npc_loot_distance` radius.
+- The actor's own input. block-npc vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
 
-The three flows, each with its own MCM toggle, radius, and TTL, no master switch (recording gates on any flow being enabled):
-- Half A (loot_reserve_own): NPC looters skip a body the actor killed while the actor is near it. Companions obey the reservation by default (loot_include_companions on); turning it off exempts them so a companion may loot the actor's kills.
-- Half B (loot_block_npc): the actor cannot open a living NPC squad's kill; a PDA tip names the owner instead.
-- Flow C (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is near.
+The three flows, each with its own MCM toggle, radius (default 75m), and TTL, no master switch (recording gates on any flow being enabled):
+- reserve-own (loot_reserve_own): an NPC leaves a body the actor killed while the actor is within range with a clear line to it. Companions obey by default (loot_include_companions on); turning it off exempts them so a companion may loot the actor's kills.
+- block-npc (loot_block_npc): the actor cannot open a living NPC squad's kill while the killer or a squadmate is within range with a clear line to the body; that clear-line member sends the PDA tip, so a block always carries a message and vice versa. Behind a wall, or out of range, the actor loots it.
+- npc-vs-npc (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is within range. Distance only, silent.
 
-The ledger. `_owner` maps victim id to { killer, squad, death game_sec }. An NPC kill is owned by the killer's SQUAD (any living member within radius holds the claim); a lone killer or the actor falls back to individual ownership. A ttl_table swept at 6 game hours, each flow honouring it only within its own freshness window (1 game hour default). Saved and loaded, with the game-clock import deferred to first update since `game_sec` AVs during load_state.
+The ledger. `_owner` maps victim id to { killer, squad, death game_sec }. An NPC kill is owned by the killer's SQUAD (any living member with a clear line holds the claim); a lone killer or the actor falls back to individual ownership. A ttl_table swept at 6 game hours, each flow honouring it only within its own freshness window (1 game hour default). Saved and loaded, with the game-clock import deferred to first update since `game_sec` AVs during load_state.
 
 Invariants:
-- One rule, three directions, identical logic per side.
-- Ownership is the killer's squad, not the individual; dropping one member never frees the body.
+- One concept - distance plus a clear line where the player is involved - applied the same to the actor's kills and to the actor looting; npc-vs-npc drops the ray as an AI-only, invisible case, not a second rule.
+- Ownership is the killer's squad, not the individual; losing one member never frees the body while another holds range and line.
 - Companions, zombified killers, and story corpses never hold a claim against the actor.
 - Relation is read at block time, so a faction turning hostile lapses its claim live.
-- Every spoken line (the two yield tips, the claim warn) requires the voicing NPC within 30m of the body and the party it addresses, with line of sight to each (xcombat.sees_within, CHATTER_RANGE), so an NPC never comments on a kill it cannot see or one across the level. The veto still blocks, only the message is gated. The pass-up, which the player only overhears, additionally requires the actor within CHATTER_RANGE of the body.
+- Block and warn share one test: the squadmate with the clear line is the warn speaker, so the player-facing block is never silent and the warn never fires without a block (bar a 5s per-corpse anti-spam throttle). The NPC-yields cases (reserve-own, npc-vs-npc) are silent by default and only rarely voice an overheard line - a low roll, a shared cooldown, and the actor within earshot of the yielding NPC.
 - Pure veto: no item transfer, no money, no save-side effect beyond the ledger.
+- No frame or timer hook: recording is death/hit-driven, the block fires on the player's input or the engine's throttled corpse scan (once per 250ms per NPC), and the ray runs only for a claimed, in-range corpse.
 
-Release (current). A claim ends by time (per-flow freshness, then the 6h sweep) or by proximity (the owner squad or the actor leaving the radius). It does not end when the body is looted, so an emptied corpse stays claimed for the freshness window. The fair-release rework (todo-alifeplus-next.md) changes this to clear-on-loot and makes the near_actor wrapper authoritative over the vanilla radius; not yet implemented.
+Release (current). A claim ends by time (per-flow freshness, then the 6h sweep) or by the owner squad or the actor leaving the radius or losing the line. It does not end when the body is looted, so an emptied corpse stays claimed for the freshness window. The fair-release rework (todo-alifeplus-next.md) changes this to clear-on-loot and makes the near_actor wrapper authoritative over the vanilla radius; not yet implemented.
 
 ### Faction market (ap_ext_market)
 

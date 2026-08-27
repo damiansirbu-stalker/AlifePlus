@@ -75,7 +75,7 @@ Trade and needs:
 - Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
 Loot claim (protection):
-- Every kill belongs to whoever made it. NPCs leave your fresh kills alone while you are near, and their own kills stay closed to you while the squad lives.
+- A kill belongs to whoever made it. NPCs leave your kills, and a squad's kill stays closed to you, while an owner is in range with a clear line to the body. A wall or distance between them lifts it. Reach for a claimed kill and they warn you off; now and then you overhear one leave a kill to its owner. Ranges per case in MCM.
 
 Loot policy (what a looter keeps):
 - A looting NPC keeps only what fits its gear and a fair share of supplies, so the bodies you reach later are not stripped bare. The toggles sit under the Economy menu.
