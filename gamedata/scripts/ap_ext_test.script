@@ -88,6 +88,9 @@ local ARTEFACTS = {
 }
 
 local function _tip(msg)
+
+-- A full day, the span a skip test needs to cross every time band.
+local DEFAULT_SKIP_HOURS = 24
     local actor = db.actor
     if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
 end
@@ -227,7 +230,7 @@ end
 --- the radiant Hull/MVT windows during a soak.
 --- @export console
 function time(hours)
-    local delta_hours = hours or 24
+    local delta_hours = hours or DEFAULT_SKIP_HOURS
     level.change_game_time(0, delta_hours, 0)
     _tip(string_format("Advanced %d h", delta_hours))
     ap_core_debug.debug("[TEST] time advanced hours=%d", delta_hours)
