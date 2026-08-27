@@ -1,6 +1,6 @@
 # AlifePlus Conventions
 
-Rules for writing AlifePlus code. Sits between `doc/standards/code-standards.md` (language-level) and `architecture.md` (system design).
+Rules for writing AlifePlus code. Sits between `doc/standards/stalker-code.md` (language-level) and `architecture.md` (system design).
 
 **Structural rules live in `architecture.md`.** The Rules section there governs umbrella files, generator pattern, specific-causes-only, cause-consequence mapping, `_set` naming, CONFIGS factory scope, and toggle requirements. This document covers naming details, signatures, log format, and similar micro-conventions only. If a rule appears in both, architecture.md wins.
 
