@@ -61,7 +61,7 @@ end
 
 --- Classify a predicate (cause-side) non-publishing result into the appropriate counter
 --- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED reason -> cause_budget, else -> cause_rules
---- @safety SAFE
+--- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
 --- @param is_radiant boolean
@@ -78,7 +78,7 @@ end
 
 --- Classify a consequence handler result into the appropriate counter
 --- Routes by code: SUCCESS -> consequences, FAILED_SCAN -> csq_scan, FAILED_ACTION -> csq_action, else -> csq_rules
---- @safety SAFE
+--- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
 --- @param is_radiant boolean
@@ -98,7 +98,7 @@ end
 
 --- Increment per-consequence token-bucket block counter
 --- Called when consumer's per-consequence token bucket exhausts; the handler never ran
---- @safety SAFE
+--- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param is_radiant boolean
 function inc_bucket(is_radiant)
@@ -108,7 +108,7 @@ end
 
 --- Increment global radiant cap block counter
 --- Called when consumer's global radiant cap exhausts; radiant-only by construction
---- @safety SAFE
+--- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 function inc_cap()
     r.csq_cap = r.csq_cap + 1
@@ -116,7 +116,7 @@ end
 
 --- Increment publish counter (called from producer on cause publish)
 --- Counts predicate-side successes (the cause emitted), as opposed to causes which counts every predicate run
---- @safety SAFE
+--- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param cause_type string CAUSE_TYPE.RADIANT or CAUSE_TYPE.REACTIVE
 function inc_pub(cause_type)
