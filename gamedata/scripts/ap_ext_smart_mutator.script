@@ -1020,6 +1020,10 @@ local function _restore_entry(mut, data, now, smart_id)
         else
             _roll_plan(entry, smart_id)
         end
+        -- Trader feature turned off (main-menu toggle, takes effect on load): drop the service plan so
+        -- _reapply_service_entries injects no ap_service_<role> rows and no service respawns. The already
+        -- spawned service bodies are removed in _restore_holds. Guards and conquest ownership are kept.
+        if not cfg.mutator_area_conquest_grow_services then entry.services = {} end
     end
     return entry
 end
@@ -1060,19 +1064,29 @@ end
 -- squads are still held; the scan reasserts and prunes any whose smart did not restore. stocked is
 -- cleared so services re-stock on the next scan (make_trader is idempotent, so it is a no-op if the
 -- trade state also persisted). Runs after _restore so the conquest smarts exist for the prune check.
+-- Trader feature off (grow_services): the ledger IS the list of spawned service bodies, so each
+-- non-guard entry is despawned here (offline-safe at load, no open trade dialog to break) and not
+-- restored; guards stay. This is the clean teardown for untoggling outpost traders / removing the mod.
 local function _restore_holds()
     _held_squads = {}
     if type(_held_pending) ~= "table" then _held_pending = nil; return end
-    local restored = 0
+    local purge_services = not cfg.mutator_area_conquest_grow_services
+    local restored, purged = 0, 0
     for squad_id, entry in pairs(_held_pending) do
         if type(entry) == "table" and entry.smart_id and entry.role then
-            entry.stocked = nil
-            _held_squads[squad_id] = entry
-            restored = restored + 1
+            if purge_services and entry.role ~= "guard" then
+                local squad = _resolve_held(squad_id, entry)
+                if squad then _remove_service_squad(squad) end
+                purged = purged + 1
+            else
+                entry.stocked = nil
+                _held_squads[squad_id] = entry
+                restored = restored + 1
+            end
         end
     end
     _held_pending = nil
-    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: holds restored=%d", restored)
+    ap_core_debug.debug("[MUTATOR.SMART] on_game_load: holds restored=%d purged=%d", restored, purged)
 end
 
 local function _on_game_load()

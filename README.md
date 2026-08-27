@@ -40,6 +40,10 @@ AlifePlus rides vanilla NPC behavior, meaning looting corpses, gathering items, 
 Mods that disable those behaviors leave AlifePlus with less to react to.
 Look for overlays of `gamedata/scripts/xr_*.script` or `gamedata/configs/ai_tweaks/*.ltx` that turn schemes off.
 
+## Removing AlifePlus
+
+Outpost traders either decay and disappear on their own, or, for instant removal, turn off outpost services (MCM: Area conquest, grow services) and load once.
+
 ## License
 
 PolyForm Perimeter License. Other mods can depend on, call, and ship with AlifePlus in modpacks, with visible credit.
