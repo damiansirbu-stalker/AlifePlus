@@ -182,15 +182,23 @@ end
 --- false-block, and facing is irrelevant), or nil. Distance is tested first (cheap); the ray runs only
 --- for an in-range member. The member returned is both the block authority and the warn speaker.
 --- @cost O(m) members | 1 distance each, 1 static ray only for an in-range member, short-circuits on the first clear one
+--- One member if it is alive, in range and has a clear line to the body, else nil
+--- @safety SAFE - nil-guarded on the lookup and on alive() before any position read
+--- @cost O(1) | 1 distance, 1 static ray only when in range
+local function _member_clear(member_id, corpse_pos, radius)
+    local member = xobject.go(member_id)
+    if not member then return nil end
+    if not member:alive() then return nil end
+    local mpos = member:position()
+    if not _within(mpos, corpse_pos, radius) then return nil end
+    if xcombat.has_wall_between(mpos, corpse_pos) then return nil end
+    return member
+end
+
 local function _first_member_clear(squad, corpse_pos, radius)
     for member_id in xsquad.iter_member_ids(squad) do
-        local member = xobject.go(member_id)
-        if member and member:alive() then
-            local mpos = member:position()
-            if _within(mpos, corpse_pos, radius) and not xcombat.has_wall_between(mpos, corpse_pos) then
-                return member
-            end
-        end
+        local member = _member_clear(member_id, corpse_pos, radius)
+        if member then return member end
     end
     return nil
 end
