@@ -1,0 +1,58 @@
+name: validate
+
+# Runs the private stalker-manager pipeline against this public mod.
+# The pipeline code lives in the private stalker-dev repo, checked out here with a
+# read-only deploy key (secret PIPELINE_SSH_KEY) onto an ephemeral runner. Nothing
+# about the pipeline's internals is stored in or printed from this repo beyond the
+# validator's own findings about this mod's code.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout mod
+        uses: actions/checkout@v4
+        with:
+          path: AlifePlus
+
+      - name: Checkout pipeline (private stalker-dev)
+        uses: actions/checkout@v4
+        with:
+          repository: damiansirbu-stalker/stalker-dev
+          ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
+          path: pipeline
+          lfs: true
+
+      - name: Cache pipeline env
+        uses: actions/cache@v4
+        with:
+          path: pipeline/stalker-manager/env
+          key: mm-env-${{ hashFiles('pipeline/stalker-manager/requirements.txt') }}
+
+      - name: Setup pipeline env
+        shell: bash
+        run: |
+          if [ ! -d pipeline/stalker-manager/env/stalker-manager ]; then
+            bash pipeline/stalker-manager/stalker-manager.sh setup
+          fi
+
+      - name: Point pipeline at this checkout
+        shell: bash
+        run: |
+          ws="${GITHUB_WORKSPACE//\\//}"
+          {
+            echo "repo_path: \"$ws\""
+            echo "mods_path: \"$ws\""
+            echo "dev_mods:"
+            echo "  - name: \"AlifePlus\""
+            echo "    repo: \"$ws/AlifePlus\""
+          } > pipeline/stalker-manager/dev.yaml
+          cat pipeline/stalker-manager/dev.yaml
+
+      - name: Validate
+        shell: bash
+        run: bash pipeline/stalker-manager/stalker-manager.sh validate-dev-mods AlifePlus
