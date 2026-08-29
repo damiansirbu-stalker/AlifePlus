@@ -1,20 +1,34 @@
---- ap_core_world_trace: the world log. Periodic and per-scan STATE dumps (smarts, squads, the
---- controlled-squad roster, member jobs, killer registry, trader inventories, MCM settings) write
---- to alifeplus_world.log, kept apart from the decision trace in alifeplus.log. One Development MCM
---- toggle (world_trace_enabled); nothing runs while off, so it is zero cost by default. Mirrors
---- AlifeTactics at_world_trace: the decision trace answers "what did AP decide and do", the world
---- log answers "what state is the simulation in".
+--- ap_core_world_trace: the world log. Periodic STATE dumps (smarts, the controlled-squad roster
+--- and its dispatch records, all squads and online NPCs/mutants on the actor level, and a smart
+--- occupancy histogram) write to alifeplus_world.log, kept apart from the decision trace in
+--- alifeplus.log. One Development MCM toggle (world_trace_enabled); nothing runs while off, so it is
+--- zero cost by default. Mirrors AlifeTactics at_world_trace: the decision trace answers "what did AP
+--- decide and do", the world log answers "what state is the A-Life simulation in".
+---
+--- Cadence follows ap_core_broker: a 60s timer KICKS one dump; the heavy per-entity resolution runs
+--- frame-spread through xslice (snapshot ids in the kick at 0 luabind, resolve+format one small step
+--- per frame), so no single tick breaches the 2ms budget under chaos-soak object counts.
 local pairs, tostring, table_sort, table_concat = pairs, tostring, table.sort, table.concat
-local RegisterScriptCallback = RegisterScriptCallback
+local string_format, RegisterScriptCallback = string.format, RegisterScriptCallback
 local xlog, xlevel, xsmart, xsquad = xlog, xlevel, xsmart, xsquad
+local xcreature, xobject, xslice, xprofiler = xcreature, xobject, xslice, xprofiler
 local CALLBACK = ap_core_const.CALLBACK
 
 local DIAG_INTERVAL_SEC = 60
 local DIAG_TIMER_EV = "ap_world_diag"
 local DIAG_TIMER_ID = "dump"
+-- Drain: one xslice pass per dump. step sized for the heaviest item (a controlled squad resolves
+-- commander name + community + level + record); measured via the [CORE.DIAG] summary ms, tune here.
+local DRAIN_QUEUE = "ap_world_diag_drain"
+local DRAIN_STEP = 10
 
 local log = xlog.get_logger("AP.WORLD", { outfile = "alifeplus_world.log", level = "DEBUG" })
 local _enabled = false
+
+-- Cross-frame drain state, rebuilt each kick: actor level filter, the broker roster snapshot, the
+-- smart occupancy tally, per-category counts and the accumulated resolve time.
+local _acc = nil
+local _scripted = nil
 
 --- True when the Development world-trace toggle is on. Dump sites gate on this.
 --- @cost O(1) | 0 luabind
@@ -39,24 +53,153 @@ local function _log_mcm_settings()
     log.debug("[MCM] %s", table_concat(parts, " "))
 end
 
--- Periodic [CORE.DIAG] dump of smarts (filtered to actor level) and squads. Registered only while
--- the toggle is on. xsmart.dump_smarts and xsquad.dump_squads use cached role lookups.
-local function _diag_dump()
-    local sim = alife()
-    local actor_se = sim and sim:actor()
-    local level_id = actor_se and xlevel.get_level_id(actor_se) or nil
-    log.debug("[CORE.DIAG] %s", xsmart.dump_smarts(level_id))
-    log.debug("[CORE.DIAG] %s", xsquad.dump_squads(level_id))
+-- Format a vector as short integer coordinates, or "-" when absent.
+local function _pos(v)
+    if not v then return "-" end
+    return string_format("%.0f,%.0f,%.0f", v.x, v.y, v.z)
 end
 
-local function _on_diag_timer()
-    _diag_dump()
+-- The full activity record, one line, reusing add_record's field layout (ap_core_record.script:98).
+local function _format_record(r)
+    return string_format(
+        "[CORE.REC] sq=%d cons=%s cause=%s conseq=%s act=%s other=%s smart=%s lvl=%s gh=%s s_fac=%s s_name=%q s_spec=%s o_fac=%s o_name=%q o_spec=%s",
+        r.squad_id, tostring(r.cons_id), tostring(r.cause_key), tostring(r.consequence_key), tostring(r.action_key),
+        tostring(r.other_squad_id or "-"), tostring(r.smart_id or "-"), tostring(r.level_id or "-"),
+        tostring(r.game_hours or "-"), tostring(r.subject_faction_key or "-"), tostring(r.subject_name or "-"),
+        tostring(r.subject_species_key or "-"), tostring(r.other_faction_key or "-"), tostring(r.other_name or "-"),
+        tostring(r.other_species_key or "-"))
+end
+
+-- AP's routed destination for a squad: the broker entry's target smart (scripted_target fallback).
+local function _entry_tgt(entry)
+    if not entry then return "?" end
+    return tostring(entry.target_smart_id or entry.scripted_target or "?")
+end
+
+-- Compose the CSQ line from a resolved squad server object and its (optional) broker entry.
+local function _csq_line(id, se, entry)
+    return string_format("[CORE.CSQ] id=%d name=%q comm=%s lvl=%s npc=%d at=%s tgt=%s offmap=%s arrived=%s pos=%s",
+        id, xsquad.get_commander_name(se) or "?",
+        se.get_squad_community and se:get_squad_community() or "?",
+        tostring(xlevel.get_level_name(xlevel.get_level_id(se)) or "?"),
+        se:npc_count(),
+        tostring(se.smart_id or "?"),
+        _entry_tgt(entry),
+        tostring(entry and entry.offmap or false),
+        tostring(entry and entry.arrived or false),
+        _pos(se.position))
+end
+
+-- Emit an AP-controlled squad (all levels) plus its dispatch record if one is still live. Guards
+-- is_squad because the engine recycles freed ids (ap_core_broker._sweep_recycled_ids documents this).
+local function _emit_csq(id)
+    local se = xobject.se(id)
+    if not se then return end
+    if not xsquad.is_squad(se) then return end
+    log.debug("%s", _csq_line(id, se, _scripted and _scripted[id]))
+    local rec = ap_core_record.get_record({ squad_id = id, assigned = true })
+    if rec then log.debug("%s", _format_record(rec)) end
+    _acc.csq = _acc.csq + 1
+end
+
+-- Emit one actor-level squad and tally its smart occupancy for the SMARTPOP histogram. The id comes
+-- from the per-level cache bucket, so it is already on _acc.level; is_squad guards id recycling.
+local function _emit_sq(id)
+    local se = xobject.se(id)
+    if not se then return end
+    if not xsquad.is_squad(se) then return end
+    log.debug("[CORE.SQ] %s", xsquad.squad_record(se))
+    local smart = se.smart_id
+    if smart then _acc.smartpop[smart] = (_acc.smartpop[smart] or 0) + 1 end
+    _acc.sq = _acc.sq + 1
+end
+
+-- Classify one online object and emit it as A-Life presence: a stalker (name for clip tracing) or
+-- a mutant (species). Neither reads relation/scheme/threat -- that is the perception domain, not A-Life.
+local function _emit_obj(id)
+    local st = db.storage[id]
+    local obj = st and st.object
+    if not obj then return end
+    if xcreature.is_stalker(obj) then
+        local sq = get_object_squad(obj)
+        log.debug("[CORE.NPC] id=%d name=%q comm=%s sq=%s",
+            id, obj:character_name() or "?", tostring(xcreature.community(obj) or "?"),
+            tostring(sq and sq.id or "-"))
+        _acc.npc = _acc.npc + 1
+    elseif xcreature.is_mutant(obj) then
+        local sq = get_object_squad(obj)
+        log.debug("[CORE.MUT] id=%d species=%s sq=%s",
+            id, tostring(xcreature.get_mutant_species(obj) or "?"), tostring(sq and sq.id or "-"))
+        _acc.mut = _acc.mut + 1
+    end
+end
+
+-- xslice per-item: dispatch on kind, timed into the drain total.
+local function _drain_one(item)
+    local tmr = xprofiler.new_if(true):start()
+    local k = item.k
+    if k == "csq" then
+        _emit_csq(item.id)
+    elseif k == "sq" then
+        _emit_sq(item.id)
+    else
+        _emit_obj(item.id)
+    end
+    tmr:stop()
+    _acc.ms = _acc.ms + tmr:get_ms()
+    return true
+end
+
+-- xslice on_done: emit the occupancy histogram (the "gathered in one spot" signal) and the summary,
+-- then flush the buffered lines.
+local function _drain_done()
+    local pop = {}
+    for smart, count in pairs(_acc.smartpop) do pop[#pop + 1] = { smart = smart, count = count } end
+    table_sort(pop, function(a, b) return a.count > b.count end)
+    for i = 1, #pop do log.debug("[CORE.SMARTPOP] smart=%s squads=%d", tostring(pop[i].smart), pop[i].count) end
+    log.debug("[CORE.DIAG] dump lvl=%s csq=%d sq=%d npc=%d mut=%d smarts=%d [%.2fms]",
+        tostring(xlevel.get_level_name(_acc.level) or _acc.level),
+        _acc.csq, _acc.sq, _acc.npc, _acc.mut, #pop, _acc.ms)
     log.flush()
+    _acc = nil
+    _scripted = nil
+end
+
+-- Snapshot ids only (pure Lua table-key walks, 0 luabind): AP-controlled squads (all levels), the
+-- actor-level squad bucket from ap_core_cache, and every online object (classified inside the drain).
+local function _snapshot()
+    local items = {}
+    if _scripted then
+        for id in pairs(_scripted) do items[#items + 1] = { k = "csq", id = id } end
+    end
+    local squads = ap_core_cache.squads_on_level(_acc.level)
+    if squads then
+        for id in pairs(squads) do items[#items + 1] = { k = "sq", id = id } end
+    end
+    if db and db.storage then
+        for id in pairs(db.storage) do items[#items + 1] = { k = "obj", id = id } end
+    end
+    return items
+end
+
+-- Kick one dump: smarts synchronously (bounded, tens per level), then a frame-spread drain of the
+-- rest. Skips its own cycle while a prior drain is still running so the two never overlap.
+local function _diag_kick()
     ResetTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC)
+    if xslice.is_active(DRAIN_QUEUE) then return end
+    local sim = alife()
+    local actor_se = sim and sim:actor()
+    if not actor_se then return end
+    local level_id = xlevel.get_level_id(actor_se)
+    log.debug("[CORE.DIAG] %s", xsmart.dump_smarts(level_id))
+    _scripted = ap_core_broker.get_scripted_squads()
+    _acc = { level = level_id, smartpop = {}, csq = 0, sq = 0, npc = 0, mut = 0, ms = 0 }
+    local items = _snapshot()
+    xslice.start(DRAIN_QUEUE, items, { step = DRAIN_STEP, func = _drain_one, on_done = _drain_done })
 end
 
 -- Apply the world_trace_enabled toggle: dump the settings snapshot and register the diag timer when
--- turning on, remove the timer and flush when turning off. Nothing runs while off.
+-- turning on, cancel any running drain, remove the timer and flush when turning off. Nothing runs while off.
 local function _apply_enabled()
     local want = ap_core_mcm.get_config("world_trace_enabled") and true or false
     if want == _enabled then return end
@@ -64,10 +207,13 @@ local function _apply_enabled()
     if _enabled then
         _log_mcm_settings()
         RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
-        CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _on_diag_timer)
+        CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _diag_kick)
         log.info("World trace enabled")
     else
+        xslice.cancel(DRAIN_QUEUE, true)
         RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
+        _acc = nil
+        _scripted = nil
         log.info("World trace disabled")
         log.flush()
     end

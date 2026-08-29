@@ -98,7 +98,8 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_api | Public integration facade over broker / record / consumer / producer: owner registry, script_squad / script_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
-| ap_core_debug | Logger, bracket helper, MCM log-level, periodic [CORE.DIAG] dump. Zero overhead below DEBUG |
+| ap_core_debug | Logger, bracket helper, MCM log-level. Zero overhead below DEBUG |
+| ap_core_world_trace | The world log (alifeplus_world.log, MCM Development toggle, zero cost off). Periodic 60s dump, snapshot-then-xslice drain: [CORE.CSQ] AP-controlled squads (all levels) + [CORE.REC] their dispatch record, [CORE.SQ] actor-level squads, [CORE.NPC]/[CORE.MUT] online presence, [CORE.SMARTPOP] smart-occupancy histogram, [CORE.DIAG] smarts + summary |
 | ap_core_cache | Per-level smart / stash / squad indexes, built frame-spread (xslice) at actor_on_first_update. Finders take them as opts.source. Mechanism in the module header |
 | ap_core_util | xbus pub/sub wrappers, find_smart / find_squads with protection filters |
 | ap_core_limiter | Rate-limit primitives. Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter. Balance family (game-sec, persisted): offmap dispatch counter |
