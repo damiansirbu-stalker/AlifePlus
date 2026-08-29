@@ -10,6 +10,16 @@ on:
   push:
   workflow_dispatch:
 
+# Least privilege: the job only reads this repo. The private pipeline arrives via the deploy key,
+# and the check is the run's own status -- no GITHUB_TOKEN writes are needed.
+permissions:
+  contents: read
+
+# One validation per branch: a newer push cancels an in-flight run of the same ref.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: windows-latest
@@ -31,6 +41,11 @@ jobs:
           repository: damiansirbu-stalker/stalker-dev
           ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
           path: pipeline
+          # Only the validator tree -- keeps the rest of the private repo (other mods' tooling,
+          # docs, the engine store) off the runner. With sparse-checkout set, checkout@v4 skips its
+          # upfront `git lfs fetch` (which would pull EVERY LFS object on the ref, incl. the ~40
+          # engine-variant binaries) and lazily smudges only in-cone LFS -- i.e. stalker-manager/bin/*.exe.
+          sparse-checkout: stalker-manager
           lfs: true
 
       - name: Cache pipeline env
