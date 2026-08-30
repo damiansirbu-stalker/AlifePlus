@@ -48,6 +48,16 @@ jobs:
           sparse-checkout: stalker-manager
           lfs: true
 
+      - name: Checkout redlint (prose lane; private)
+        uses: actions/checkout@v4
+        with:
+          # The prose reviewer. redlint_docs.py resolves it as a sibling of the pipeline checkout
+          # ($GITHUB_WORKSPACE/redlint), so the load layout matches local; without it the redlint
+          # lane degrades to "skipped".
+          repository: damiansirbu-org/redlint
+          ssh-key: ${{ secrets.REDLINT_SSH_KEY }}
+          path: redlint
+
       - name: Cache pipeline env
         uses: actions/cache@v4
         with:
@@ -60,6 +70,17 @@ jobs:
           if [ ! -d pipeline/stalker-manager/env/stalker-manager ]; then
             bash pipeline/stalker-manager/stalker-manager.sh setup
           fi
+
+      - name: Install uv (redlint venv builder)
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Build redlint venv
+        shell: bash
+        # uv sync + the spaCy model wheel -> redlint/.venv/Scripts/redlint.exe, which
+        # redlint_docs.py:_redlint_exe() looks for. Cached uv downloads keep reruns fast.
+        run: bash redlint/redlint.sh setup
 
       - name: Point pipeline at this checkout
         shell: bash
