@@ -25,18 +25,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout mod
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: AlifePlus
 
       - name: Checkout xlibs dependency (sibling; public)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: damiansirbu-stalker/xlibs
           path: xlibs
 
       - name: Checkout pipeline (private stalker-dev)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: damiansirbu-stalker/stalker-dev
           ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
@@ -49,7 +49,7 @@ jobs:
           lfs: true
 
       - name: Checkout redlint (prose lane; private)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The prose reviewer. redlint_docs.py resolves it as a sibling of the pipeline checkout
           # ($GITHUB_WORKSPACE/redlint), so the load layout matches local; without it the redlint
@@ -59,7 +59,7 @@ jobs:
           path: redlint
 
       - name: Cache pipeline env
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: pipeline/stalker-manager/env
           key: mm-env-${{ hashFiles('pipeline/stalker-manager/requirements.txt') }}
