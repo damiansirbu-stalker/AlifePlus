@@ -8,6 +8,8 @@ Squads are tracked off-map, marked on the PDA and reported as news. Any "when X 
 
 [ModDB](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01) | [Nexus](https://www.nexusmods.com/stalkeranomaly/mods/105) | [Releases](https://github.com/damiansirbu-stalker/AlifePlus/releases) | [Bugs, suggestions](https://github.com/damiansirbu-stalker/AlifePlus/issues)
 
+[![Grade](https://img.shields.io/endpoint?url=https%3A%2F%2Fdamiansirbu-stalker.github.io%2FAlifePlus%2Fbadge.json)](https://damiansirbu-stalker.github.io/AlifePlus/) [![validate](https://github.com/damiansirbu-stalker/AlifePlus/actions/workflows/validate.yml/badge.svg)](https://github.com/damiansirbu-stalker/AlifePlus/actions/workflows/validate.yml) [![Project Health](https://img.shields.io/badge/project_health-dashboard-00ced1)](https://damiansirbu-stalker.github.io/AlifePlus/)
+
 Requires: Anomaly 1.5.3, modded exes (themrdemonized or AOEngine), [xlibs](https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001), MCM. Exact versions in [readme.txt](doc/readme.txt).
 
 ## Alife Collection

@@ -100,3 +100,23 @@ jobs:
         run: |
           bash pipeline/stalker-manager/stalker-manager.sh validate-dev-mods AlifePlus --emit out
           cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: out
+
+  # Publish the Project Health page (out/index.html + badge.json) to GitHub Pages.
+  deploy-pages:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
