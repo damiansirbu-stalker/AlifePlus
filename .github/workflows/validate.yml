@@ -76,4 +76,6 @@ jobs:
 
       - name: Validate
         shell: bash
-        run: bash pipeline/stalker-manager/stalker-manager.sh validate-dev-mods AlifePlus
+        run: |
+          bash pipeline/stalker-manager/stalker-manager.sh validate-dev-mods AlifePlus --emit out
+          cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
