@@ -12,14 +12,11 @@
 ---                        -vanilla obj:clsid() crash) never runs for chasers.
 --- Both delegate to the captured original for any squad without a squad-target chase entry, so
 --- they chain safely with warfare identical get_current_task hook regardless of load order.
---- @override -- monkeypatch of sim_squad_scripted; document in readme "Disable before installing".
---- @src anomaly/sim_squad_scripted.script(102-142 get_script_target, 1349-1359 get_current_task),
----      anomaly/xr_reach_task.script(251-254), warfare_monkeypatches_sim_squad.script(8-36)
+--- @src anomaly/sim_squad_scripted.script(102-142, 1349-1359), anomaly/xr_reach_task.script(251-254)
 
 local ap_core_broker, ap_core_debug = ap_core_broker, ap_core_debug
 
--- Live registry lookup each call (the broker reassigns _ap_scripted_squads on load, so a
--- cached table ref would go stale; get_scripted_squads returns the current table).
+-- Live registry lookup each call; the broker reassigns _ap_scripted_squads on load.
 local function _get_chase_target_id(squad)
     local entry = ap_core_broker.get_scripted_squads()[squad.id]
     if not entry or entry.paused then return nil end
@@ -33,8 +30,6 @@ function on_game_start()
         return
     end
 
-    -- Alias xlibs/engine refs here (post-load, non-nil) so the hot-path closures capture
-    -- upvalues instead of doing module-level aliasing that may capture nil at load order.
     local xobject = xobject
     local CALifeSmartTerrainTask = CALifeSmartTerrainTask
 

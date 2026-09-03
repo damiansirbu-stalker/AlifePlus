@@ -10,9 +10,7 @@
 --- is_smart_empty) then drift. Each wrapper captures smart_id before the original runs and calls
 --- xsmart.reconcile_squad_roster after, which syncs the roster idempotently -- a no-op on a base
 --- that already fixed it (e.g. GAMMA's overlay), the correction on a roster-blind base (vanilla).
---- @override -- monkeypatch of sim_squad_scripted; document in readme "Disable before installing".
 --- @src anomaly/sim_squad_scripted.script(276-289 specific_update, 333-356 generic_update)
---- @alibs: SIMBOARD roster desync on scripted squad re-home (src sim_squad_scripted.script:289,356) -- wrap
 ---
 --- FIX 2 -- create_squad CTD on an unspawnable squad section.
 --- sim_board:create_squad (script:139) calls alife_create then :140 squad:create_npc without a nil
@@ -23,9 +21,7 @@
 --- nil (which try_respawn already handles at smart_terrain.script:1719), delegating to the original
 --- otherwise. Covers all callers (try_respawn, utils_obj/xr_effects/xsquad/tasks/warfare, the mutator
 --- respawn re-inject). Companion inject-side filter in xlibs/xsmart_spawn.script (_existing).
---- @override -- monkeypatch of sim_board; document in readme "Disable before installing".
 --- @src anomaly/sim_board.script(131-140 create_squad, 134-137 commented guard), _g.script(2115,2119,2138)
---- @alibs: create_squad CTD on unspawnable section (src sim_board.script:139-140) -- wrap
 
 local xsmart, ap_core_debug, tostring = xsmart, ap_core_debug, tostring
 
@@ -64,10 +60,7 @@ local function _install_roster_sync()
     ap_core_debug.info("[CORE.ANOMALY] sim_squad_scripted roster sync installed")
 end
 
--- FIX 2: create_squad CTD guard. Pre-flight wrap -- reject a missing section (section_exist, reason
--- 1) or a spawn smart with an invalid position/vertex (reason 2) and return nil, which try_respawn
--- handles at smart_terrain.script:1719; delegate to the original otherwise. Cannot call alife_create
--- to test the result (would double-spawn), so it guards preconditions.
+-- FIX 2: create_squad CTD guard. Pre-flight wrap rejects a missing section or invalid spawn smart, returns nil.
 local function _install_create_squad_guard()
     local board_class = sim_board and sim_board.simulation_board
     if not (board_class and board_class.create_squad) then
