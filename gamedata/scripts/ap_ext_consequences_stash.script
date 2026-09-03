@@ -82,7 +82,7 @@ end
 local function _scan_member(member_se, member_ids, _opts_out, counts)
     local member_id = member_se.id
     member_ids[#member_ids + 1] = member_id
-    local npc_go = xobject.go(member_id)
+    local npc_go = xobject.get_go(member_id)
     if not npc_go then return end
     local opts = xinventory.get_category_opts(npc_go)
     _opts_out[member_id] = opts
@@ -95,7 +95,7 @@ end
 
 -- Walk squad members. Returns (member_ids, member_opts, counts) where counts is {[category]=n}.
 -- member_ids covers online + offline via squad_members iterator (preserves round-robin shape).
--- member_opts is populated for ONLINE members only (xobject.go is nil for offline).
+-- member_opts is populated for ONLINE members only (xobject.get_go is nil for offline).
 local function _scan_squad(squad)
     local member_ids, member_opts, counts = {}, {}, {}
     if not squad or not squad.squad_members then return member_ids, member_opts, counts end
@@ -223,7 +223,7 @@ end
 ---   3. Otherwise: per-category loot pass + extras pass + clear stash.
 local function _arrive_loot(squad, args)
     if not args then return end
-    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
     local stash_id = args.stash_id
     if xstash.is_stash_looted(stash_id) then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d already looted", stash_id)
@@ -284,7 +284,7 @@ end
 local function _arrive_ambush(squad, args)
     if not args then return end
     ap_core_debug.debug(LOG_AMBUSH .. " arrive: stash=%d squad=%d", args.stash_id, squad.id)
-    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
 end
 
 -- Per-member pick handler for fill pass. Mutates picks + surplus. Each item resolves to its
@@ -323,7 +323,7 @@ end
 --- capped by STASH_POLICY.fill_max.
 local function _arrive_fill(squad, args)
     if not args then return end
-    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.game_sec())
+    ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
     local stash_id = args.stash_id
 
     local cmd_id = squad:commander_id()
@@ -387,9 +387,9 @@ end
 
 local function _make_handler(entry)
     return function(event_data)
-        local squad = xobject.se(event_data.squad_id)
+        local squad = xobject.get_se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
-        local smart = xobject.se(event_data.dst_smart_id)
+        local smart = xobject.get_se(event_data.dst_smart_id)
         if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
 
         local res = ap_core_broker.script_squad(squad, smart, {

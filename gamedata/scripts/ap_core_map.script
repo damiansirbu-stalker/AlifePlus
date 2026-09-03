@@ -67,7 +67,7 @@ end
 -- Smart display name with sentence-flow normalization ("Great Swamp. Northern Village" -> "Great Swamp, Northern Village").
 local function _smart_display(smart_id)
     if not smart_id then return nil end
-    local smart = xobject.se(smart_id)
+    local smart = xobject.get_se(smart_id)
     if not smart then return nil end
     local name = xlevel.get_smart_display_name(smart)
     if not name or name == "" then return nil end
@@ -107,7 +107,7 @@ local function _mark_squad(entry)
     -- where the squad is going.
     local level_id_for_display
     if entry.smart_id then
-        local smart_se = xobject.se(entry.smart_id)
+        local smart_se = xobject.get_se(entry.smart_id)
         if smart_se then level_id_for_display = xlevel.get_level_id(smart_se) end
     end
     level_id_for_display = level_id_for_display or entry.level_id
@@ -141,7 +141,7 @@ local function _validate_markers()
     local now = clock()
     for squad_id, state in pairs(_marker_state) do
         local entry = ap_core_record.get_record({ squad_id = squad_id, assigned = true })
-        local se = entry and xobject.se(squad_id)
+        local se = entry and xobject.get_se(squad_id)
         local routing = entry and se and ap_core_broker.is_routing(squad_id)
         if not routing and not state.remove_at then
             state.remove_at = now + ap_core_const.MARKER_LINGER_SEC
@@ -197,7 +197,7 @@ local function _on_map_spot_menu_property_clicked(ui, id, level_name, prop)
     if not _marker_state[id] then return end
     if not _teleport_label then _refresh_labels() end
     if prop ~= _teleport_label then return end
-    local se = xobject.se(id)
+    local se = xobject.get_se(id)
     if not se then return end
     if level_name == level.name() then
         db.actor:set_actor_position(se.position)

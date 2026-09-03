@@ -200,11 +200,11 @@ function on_game_start()
     _global_consequence_counter = nil
     _offmap_counter = xttltable.create_ttl_counter({
         ttl = ap_core_const.OFFMAP_WINDOW_SEC,
-        clock = xtime.game_sec,
+        clock = xtime.get_game_sec,
     })
     _causer_counter = xttltable.create_ttl_counter({
         ttl = ap_core_const.CAUSER_WINDOW_SEC,
-        clock = xtime.game_sec,
+        clock = xtime.get_game_sec,
     })
     RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _on_option_change)
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save_state)

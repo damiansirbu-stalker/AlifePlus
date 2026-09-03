@@ -9,7 +9,7 @@ local math_random, math_floor = math.random, math.floor
 local string_format, string_gsub, string_find = string.format, string.gsub, string.find
 local table_concat = table.concat
 local game_translate_string = game.translate_string
-local xobject_se = xobject.se
+local xobject_se = xobject.get_se
 local xtime, xlevel, xpda, xprofiler = xtime, xlevel, xpda, xprofiler
 local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
 
@@ -72,7 +72,7 @@ end
 -- never lose staleness info or collapse "since/from #ago#" to bare prepositions.
 local function _ago_text(game_hours_then)
     if not game_hours_then then return "" end
-    local delta = math_floor(xtime.game_sec() / 3600) - game_hours_then
+    local delta = math_floor(xtime.get_game_sec() / 3600) - game_hours_then
     if delta < 0 then return "" end
     return _xml(delta < 2 and "st_ap_macros_ago_recent" or "st_ap_macros_ago_hours")
 end
@@ -158,7 +158,7 @@ end
 local function _collect_eligible()
     local entries = {}
     local recs = ap_core_record.get_records()
-    local now_gh = math_floor(xtime.game_sec() / 3600)
+    local now_gh = math_floor(xtime.get_game_sec() / 3600)
     local max_age = cfg.news_max_age_game_hours
     local cur_level = xlevel.get_actor_level_id()
     for i = 1, #recs do

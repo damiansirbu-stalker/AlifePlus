@@ -126,7 +126,7 @@ local function _build_census(level_id)
     if not pool then return nil end
     local by_comm, total, mutant = {}, 0, 0
     for squad_id in pairs(pool) do
-        local squad = xobject.se(squad_id)
+        local squad = xobject.get_se(squad_id)
         local comm = squad and squad.player_id
         if comm then
             total = total + 1
@@ -304,7 +304,7 @@ local function _on_smart(squad)
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
-    local now = xtime.game_sec()
+    local now = xtime.get_game_sec()
     local budget = { remaining = MAX_SCANS_PER_GENERATOR }
 
     local result

@@ -255,7 +255,7 @@ end
 
 --- Resolve a stalker peer to barter with at a smart: first alive, scriptable, same-faction stalker in
 --- the smart's npc_info roster whose squad is not the arriving squad. Mirrors get_service_npc_at_smart's
---- roster walk (smart.npc_info -> xobject.go), swapping the role test for stalker + scriptable and adding
+--- roster walk (smart.npc_info -> xobject.get_go), swapping the role test for stalker + scriptable and adding
 --- the own-squad exclusion so a squad never barters with itself. is_unscriptable drops companions,
 --- story, traders, and named NPCs (same gate ap_ext_loot_select uses). The community gate enforces the
 --- own-faction rule at arrival: routing's exclude_enemy only rejects hostile smarts and the roster can
@@ -271,9 +271,9 @@ function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
     if not smart or not smart.npc_info then return nil end
     for npc_id in pairs(smart.npc_info) do
         local squad = xsquad.get_squad_by_member(npc_id)
-        local npc = not (squad and squad.id == exclude_squad_id) and xobject.go(npc_id)
+        local npc = not (squad and squad.id == exclude_squad_id) and xobject.get_go(npc_id)
         if npc and npc:alive() and xcreature.is_stalker(npc) and not xcreature.is_unscriptable(npc)
-            and (not community or xcreature.community(npc) == community) then
+            and (not community or xcreature.get_community(npc) == community) then
             return npc
         end
     end
@@ -294,7 +294,7 @@ local function _is_actor_chase(entry)
 end
 
 local function _get_chase_target_se(entry)
-    return entry.target_squad_id and xobject.se(entry.target_squad_id)
+    return entry.target_squad_id and xobject.get_se(entry.target_squad_id)
 end
 
 -- RELEASE: target squad gone or wiped (N/A for the actor -- always present).
@@ -350,7 +350,7 @@ local function _is_target_in_base(entry)
         smart = xsmart.get_actor_smart()
     else
         local target = _get_chase_target_se(entry)
-        smart = target and target.smart_id and xobject.se(target.smart_id)
+        smart = target and target.smart_id and xobject.get_se(target.smart_id)
     end
     return smart ~= nil and xsmart.is_base(smart)
 end

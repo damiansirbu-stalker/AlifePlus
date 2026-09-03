@@ -93,7 +93,7 @@ end
 -- Emit an AP-controlled squad (all levels) plus its dispatch record if one is still live. Guards
 -- is_squad because the engine recycles freed ids (ap_core_broker._sweep_recycled_ids documents this).
 local function _emit_csq(id)
-    local se = xobject.se(id)
+    local se = xobject.get_se(id)
     if not se then return end
     if not xsquad.is_squad(se) then return end
     log.debug("%s", _csq_line(id, se, _scripted and _scripted[id]))
@@ -105,7 +105,7 @@ end
 -- Emit one actor-level squad and tally its smart occupancy for the SMARTPOP histogram. The id comes
 -- from the per-level cache bucket, so it is already on _acc.level; is_squad guards id recycling.
 local function _emit_sq(id)
-    local se = xobject.se(id)
+    local se = xobject.get_se(id)
     if not se then return end
     if not xsquad.is_squad(se) then return end
     log.debug("[CORE.SQ] %s", xsquad.squad_record(se))
@@ -123,7 +123,7 @@ local function _emit_obj(id)
     if xcreature.is_stalker(obj) then
         local sq = get_object_squad(obj)
         log.debug("[CORE.NPC] id=%d name=%q comm=%s sq=%s",
-            id, obj:character_name() or "?", tostring(xcreature.community(obj) or "?"),
+            id, obj:character_name() or "?", tostring(xcreature.get_community(obj) or "?"),
             tostring(sq and sq.id or "-"))
         _acc.npc = _acc.npc + 1
     elseif xcreature.is_mutant(obj) then

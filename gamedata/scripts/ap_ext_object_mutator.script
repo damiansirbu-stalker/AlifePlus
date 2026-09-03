@@ -44,7 +44,7 @@ local _marks = {}
 -- @cost O(1) | up to 6 luabind on attach (object_by_id, alive, <=4 get_bone_id, start_particles); promote/net-spawn-time only
 local function _try_apply_mark(npc_id)
     if not cfg.mutator_alpha_mark_enabled or _marks[npc_id] then return end
-    local obj = xobject.go(npc_id)
+    local obj = xobject.get_go(npc_id)
     if not obj or not obj:alive() then return end
     local bone
     for i = 1, #MARK_BONES do
@@ -65,7 +65,7 @@ end
 local function _stop_mark(npc_id)
     local mark = _marks[npc_id]
     if not mark then return end
-    local obj = xobject.go(npc_id)
+    local obj = xobject.get_go(npc_id)
     if obj then obj:stop_particles(mark.name, mark.bone) end
     _marks[npc_id] = nil
     if ap_core_debug.enabled() then
@@ -228,7 +228,7 @@ local function _rebuild()
     -- object is gone and the next spawn re-reads the LTX default anyway.
     for id in pairs(was_panic) do
         if not (cfg.mutator_alpha_panic_immunity_enabled and _alpha_ids[id]) then
-            local obj = xobject.go(id)
+            local obj = xobject.get_go(id)
             if obj then obj:set_default_panic_threshold() end
         end
     end

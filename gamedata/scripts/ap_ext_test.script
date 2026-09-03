@@ -106,9 +106,9 @@ local function _stalkers_on_level()
     local ids = {}
     for npc_id in pairs(db.storage) do
         if npc_id == actor_id then goto skip end
-        local obj = xobject.go(npc_id)
+        local obj = xobject.get_go(npc_id)
         if not obj or not IsStalker(obj) or not obj:alive() then goto skip end
-        local se = xobject.se(npc_id)
+        local se = xobject.get_se(npc_id)
         if not se or xlevel.get_level_id(se) ~= actor_level then goto skip end
         if xdata.unscriptable_npcs[se:section_name()] then goto skip end
         ids[#ids + 1] = npc_id
@@ -197,7 +197,7 @@ local function _give_money()
     if not ids then return _tip(err) end
     local given = 0
     for i = 1, #ids do
-        local obj = xobject.go(ids[i])
+        local obj = xobject.get_go(ids[i])
         if obj then
             xcreature.give_money(obj, MONEY_PER_NPC)
             given = given + 1
@@ -284,7 +284,7 @@ local function _prune_spawned()
     local alive = {}
     for i = 1, #_spawned_hostiles do
         local id = _spawned_hostiles[i]
-        if xobject.se(id) then alive[#alive + 1] = id end
+        if xobject.get_se(id) then alive[#alive + 1] = id end
     end
     _spawned_hostiles = alive
     return #alive
@@ -419,7 +419,7 @@ end
 local function _prune_pop()
     local alive = {}
     for i = 1, #_pop_squads do
-        if xobject.se(_pop_squads[i]) then alive[#alive + 1] = _pop_squads[i] end
+        if xobject.get_se(_pop_squads[i]) then alive[#alive + 1] = _pop_squads[i] end
     end
     _pop_squads = alive
     return #alive

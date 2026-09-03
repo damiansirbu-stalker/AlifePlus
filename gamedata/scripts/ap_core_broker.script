@@ -208,7 +208,7 @@ local function _unscript_squad(squad_or_id)
     local squad_id = is_id and squad_or_id or squad_or_id.id
     if not _ap_scripted_squads[squad_id] then return false end
     local squad
-    if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
+    if is_id then squad = xobject.get_se(squad_id) else squad = squad_or_id end
     if squad then
         ap_core_debug.debug("[SQUAD] _unscript_squad: squad=%d scripted_target=%s",
             squad_id, tostring(_ap_scripted_squads[squad_id].scripted_target))
@@ -231,7 +231,7 @@ local function _release_to_dwell(squad_or_id)
     if not data then return false end
     if not data.offmap then return _unscript_squad(squad_or_id) end
     local squad
-    if is_id then squad = xobject.se(squad_id) else squad = squad_or_id end
+    if is_id then squad = xobject.get_se(squad_id) else squad = squad_or_id end
     if squad then
         ap_core_debug.debug("[SQUAD] release_to_dwell: squad=%d target=%s",
             squad_id, tostring(data.target_smart_id))
@@ -387,7 +387,7 @@ function script_squad(squad, smart, opts)
     -- to the new target on next tick (sim_squad_scripted.script:288-290). Reading smart_id
     -- after that bump would lose the true source. The nil-target form fires squad_on_leave_smart.
     xsmart.assign_squad_to_smart(squad, nil)
-    local now = xtime.game_sec()
+    local now = xtime.get_game_sec()
     local data = {
         scripted_target   = name,
         target_smart_id   = smart.id,
@@ -425,7 +425,7 @@ function script_actor_target(squad, opts)
     local entry = {
         is_chase = true,
         scripted_target = "actor",
-        tracked_at = xtime.game_sec(),
+        tracked_at = xtime.get_game_sec(),
         check_relation = opts and opts.check_relation or nil,
         interruptable = not (opts and opts.interruptable == false),
     }
@@ -473,7 +473,7 @@ function script_squad_target(squad, target_id, opts)
     local entry = {
         is_chase = true,
         target_squad_id = target_id,
-        tracked_at = xtime.game_sec(),
+        tracked_at = xtime.get_game_sec(),
         check_relation = opts and opts.check_relation or nil,
         interruptable = not (opts and opts.interruptable == false),
     }
@@ -522,7 +522,7 @@ end
 
 --- Release a squad from AP scripted control by id. Public wrapper around _unscript_squad.
 --- @safety SAFE - nil-guarded, releases engine target if entity is live
---- @cost O(1) | 1 luabind (xobject.se) + 1 luabind (xsquad.release_squad), 0 if entity gone
+--- @cost O(1) | 1 luabind (xobject.get_se) + 1 luabind (xsquad.release_squad), 0 if entity gone
 --- @param squad_id number Squad id
 --- @return boolean true if released, false if not currently scripted
 function release_squad(squad_id)
@@ -568,7 +568,7 @@ local CAMPFIRE_SEAT_RADIUS = 8
 
 -- True when a member's server position is beyond the seat radius from every bound fire.
 local function _member_off_campfire(smart, member_id)
-    local se = xobject.se(member_id)
+    local se = xobject.get_se(member_id)
     return se ~= nil and not xsmart.is_near_campfire(smart, se.position, CAMPFIRE_SEAT_RADIUS)
 end
 
@@ -673,7 +673,7 @@ local function _run_arrival(squad_id, squad, data, now)
         _unscript_squad(squad_id)
         return
     end
-    local smart = xobject.se(data.target_smart_id)
+    local smart = xobject.get_se(data.target_smart_id)
     if not smart then
         ap_core_debug.debug("[SQUAD] smart_lost: squad=%d smart=%d target=%s", squad_id, data.target_smart_id, data.scripted_target)
         _unscript_squad(squad)
@@ -701,7 +701,7 @@ local function _update_gulag(squad_id, squad, data, now)
         return
     end
     if not data.target_smart_id then return end
-    local smart = xobject.se(data.target_smart_id)
+    local smart = xobject.get_se(data.target_smart_id)
     if not smart then return end
     if not has_anchored_jobs(smart, squad) or _campfire_stray(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_unplaced_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
@@ -782,7 +782,7 @@ end
 local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
-    local squad = xobject.se(squad_id)
+    local squad = xobject.get_se(squad_id)
     if not xsquad.is_squad(squad) then
         ap_core_debug.debug("[SQUAD] scan_drop: squad=%d target=%s reason=%s",
             squad_id, tostring(data.scripted_target),
@@ -790,7 +790,7 @@ local function _update_scripted_squad(squad_id)
         _ap_scripted_squads[squad_id] = nil
         return
     end
-    local now = xtime.game_sec()
+    local now = xtime.get_game_sec()
     if data.offmap and _scan_offmap_entry(squad_id, squad, data, now) then
         _ap_scripted_squads[squad_id] = nil
         return
@@ -824,8 +824,8 @@ end
 -- stays under the complexity cap.
 local function _log_squad_jobs(squad_id, data)
     if not (data.arrived and data.target_smart_id) then return end
-    local squad = xobject.se(squad_id)
-    local smart = xobject.se(data.target_smart_id)
+    local squad = xobject.get_se(squad_id)
+    local smart = xobject.get_se(data.target_smart_id)
     if squad and smart then _log_member_jobs(squad, smart) end
 end
 
@@ -853,7 +853,7 @@ local function _update_scripted_squads()
     if not next(_ap_scripted_squads) then return end
     local debug_on = ap_core_debug.enabled()
     local world_on = ap_core_world_trace.enabled()
-    local now = world_on and xtime.game_sec()
+    local now = world_on and xtime.get_game_sec()
     local queue = {}
     for squad_id, data in pairs(_ap_scripted_squads) do
         queue[#queue + 1] = squad_id
@@ -896,7 +896,7 @@ local function _sweep_recycled_ids(dict)
     local count = 0
     for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
     for id in pairs(dict) do
-        local se = xobject.se(id)
+        local se = xobject.get_se(id)
         if not se or not xsquad.is_squad(se) then
             count = count + 1
             _to_drop[count] = id

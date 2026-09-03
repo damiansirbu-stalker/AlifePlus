@@ -53,7 +53,7 @@ local function _on_squad_npc_death(squad, se_victim, se_killer)
         smart = smart,
         position = smart.position,
         level_id = xlevel.get_level_id(smart),
-        faction = xcreature.community(se_victim),
+        faction = xcreature.get_community(se_victim),
         victim_squad = squad,
         killer_squad = killer_squad,
         kill_count = count,
@@ -64,7 +64,7 @@ function on_game_start()
     -- get_config, not cfg: cfg is repopulated by ap_core_mcm's own on_game_start, so reading it
     -- here is order-dependent (code-standards "on_game_start = declare"); the getter reads through
     -- to MCM storage in any phase.
-    _deaths = xttltable.create_ttl_table({ default_ttl = get_config("cause_massacre_decay_time"), clock = xtime.game_sec })
+    _deaths = xttltable.create_ttl_table({ default_ttl = get_config("cause_massacre_decay_time"), clock = xtime.get_game_sec })
 
     ap_core_producer.register({
         callback = CALLBACK.SQUAD_ON_NPC_DEATH, cause_type = CAUSE_TYPE.REACTIVE,

@@ -164,9 +164,9 @@ end
 -- change. Never fires and never advances the snapshot; the fire engine does both, so a
 -- queued change re-verifies against live fields at fire time. A squad is fireable from
 -- the moment it is first seen - game start and mid-session spawn behave identically.
--- @cost O(1) | 1 medium (alife_object via xobject.se) + 0-2 cached-graph lookups + diff
+-- @cost O(1) | 1 medium (alife_object via xobject.get_se) + 0-2 cached-graph lookups + diff
 local function _squad_visit(id, actor_level, stat_on)
-    local squad = xobject.se(id)
+    local squad = xobject.get_se(id)
     if not squad then
         _evict(id)
         return
@@ -242,7 +242,7 @@ end
 -- Returns true when the callback was sent (the credit is spent).
 -- @cost O(1) | 1 medium resolve + diff + SendScriptCallback fan-out
 local function _squad_fire(id, lane_key, now, stat_on)
-    local squad = xobject.se(id)
+    local squad = xobject.get_se(id)
     if not squad then
         _evict(id)
         return false

@@ -137,7 +137,7 @@ local function _trim_npc_deferred(npc_id)
     _looted[npc_id] = nil
     if not ids or not cfg.loot_select_enabled or not LOOT_POLICY then return true end
 
-    local npc = xobject.go(npc_id)
+    local npc = xobject.get_go(npc_id)
     if not npc or not npc:alive() or xcreature.is_unscriptable(npc) then return true end
 
     local dbg = ap_core_debug.enabled()

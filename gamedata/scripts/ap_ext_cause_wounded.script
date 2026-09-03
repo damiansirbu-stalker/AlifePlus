@@ -55,7 +55,7 @@ local function _on_npc_medkit_use(npc, _medkit, kind)
         return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
     end
 
-    local se_npc = xobject.se(npc:id())
+    local se_npc = xobject.get_se(npc:id())
     if not se_npc then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 

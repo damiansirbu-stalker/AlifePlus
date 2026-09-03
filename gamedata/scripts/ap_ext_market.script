@@ -331,7 +331,7 @@ end
 --- Resolve a trader's curated role + faction from xdata.npc_roles; nil (with a debug note) for an
 --- uncurated trader. Split out to keep _inject_at_trader under the complexity ceiling.
 local function _resolve_trader_role(trader)
-    local se = xobject.se(trader:id())
+    local se = xobject.get_se(trader:id())
     if not se then return nil end
     local section = se:section_name()
     local role_info = section and xdata.npc_roles[section]
@@ -422,7 +422,7 @@ end
 --- @param section string Representative section of the most-depleted class
 --- @param faction string The trader's faction
 local function _try_sellout_chatter(trader, section, faction)
-    local se = xobject.se(trader:id())
+    local se = xobject.get_se(trader:id())
     local level_id = se and xlevel.get_level_id(se)
     if not level_id then return end
     ap_ext_news.send_chatter("st_ap_chatter_market_short", {
@@ -503,7 +503,7 @@ end
 --- @param section string The most valuable section injected this restock
 --- @param faction string The trader's faction (role_info.faction)
 local function _try_chatter(trader, section, faction)
-    local se = xobject.se(trader:id())
+    local se = xobject.get_se(trader:id())
     local level_id = se and xlevel.get_level_id(se)
     if not level_id then return end
     ap_ext_news.send_chatter("st_ap_chatter_market", {
@@ -542,7 +542,7 @@ local function _inject_at_trader(trader)
     local ctx = {
         trader_id = trader:id(), faction = faction, rules = rules,
         cat_count = {}, cond = _item_condition(),
-        window = _goods_window_sec(), now = xtime.game_sec(),
+        window = _goods_window_sec(), now = xtime.get_game_sec(),
     }
     local injected = 0
     local best_sec, best_cost = nil, 0
@@ -569,7 +569,7 @@ end
 --- the engine restock) the freshly spawned config stock is registered. The sell-out runs first; its
 --- claims keep injection off the sold-out sections. Returns true (one-shot).
 local function _restock_deferred(trader_id)
-    local trader = xobject.go(trader_id)
+    local trader = xobject.get_go(trader_id)
     if trader then
         local dbg = ap_core_debug.enabled()
         -- Market flow's per-trader dump: the raw restock stock, before this module's sellout/inject
@@ -630,7 +630,7 @@ end
 -- online, who owns it now, and its condition. Names why a good the player expected can be missing
 -- (offline, released, or owned by someone else). Split out so _log_trade_view stays a flat walk.
 local function _log_trade_good(trader_id, id)
-    local go = xobject.go(id)
+    local go = xobject.get_go(id)
     if not go then
         ap_core_debug.debug("%s view-good trader=%d id=%d offline (no game object)", LOG, trader_id, id)
         return
@@ -686,7 +686,7 @@ end
 --- the tag is dropped by the caller either way. Offline goods resolve to no game object and are left
 --- to the engine restock purge. This is the release-time backstop the tag-drop comment defers to.
 local function _release_one(id, tag)
-    local obj = xobject.go(id)
+    local obj = xobject.get_go(id)
     if not obj then return end
     local parent = obj:parent()
     if not (parent and parent:id() == tag.trader_id) then return end
@@ -698,10 +698,10 @@ end
 -- released outright (engine restock wipe, a destockifier's removal) or moved to another owner
 -- (sold, looted). Observation only, once per good (tag.gone_logged), never untags; the normal
 -- expiry path still owns the tag lifecycle. Skipped entirely when debug is off.
--- @cost O(1) | 1 luabind (xobject.se) per live tag per period, debug on only
+-- @cost O(1) | 1 luabind (xobject.get_se) per live tag per period, debug on only
 local function _log_vanished(id, tag)
     if tag.gone_logged then return end
-    local se_item = xobject.se(id)
+    local se_item = xobject.get_se(id)
     if se_item and se_item.parent_id == tag.trader_id then return end
     tag.gone_logged = true
     ap_core_debug.debug("%s good_gone: trader=%d id=%d sec=%s %s", LOG, tag.trader_id, id,
@@ -713,7 +713,7 @@ end
 --- interval. Expired ids are collected first (module-level buffer), then released + untagged after
 --- the walk, so _market_goods is never mutated mid-iteration.
 local function _release_expired()
-    local now = xtime.game_sec()
+    local now = xtime.get_game_sec()
     local window = _goods_window_sec()
     local debug_on = ap_core_debug.enabled()
     local count = 0
@@ -766,7 +766,7 @@ end
 local function _validate_market_goods()
     local dropped = 0
     for id in pairs(_market_goods) do
-        if not xobject.se(id) then
+        if not xobject.get_se(id) then
             _market_goods[id] = nil
             dropped = dropped + 1
         end
@@ -797,7 +797,7 @@ function on_game_start()
     _trader_sold = {}
     _load_policy()
     _load_rank_ruleset()
-    _claimed = xttltable.create_ttl_table({ clock = xtime.game_sec })
+    _claimed = xttltable.create_ttl_table({ clock = xtime.get_game_sec })
     RegisterScriptCallback(CALLBACK.SAVE_STATE, _on_save)
     RegisterScriptCallback(CALLBACK.LOAD_STATE, _on_load)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)

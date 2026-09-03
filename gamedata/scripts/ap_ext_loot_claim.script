@@ -38,7 +38,7 @@ local OWNER_TTL_MAX_SEC = 6 * HOURS_TO_SECONDS
 
 -- Tip re-warn throttle (WALL seconds, os.clock). The keypress veto (block-npc) stops the loot menu from
 -- opening, so GUI_ON_HIDE no longer fires to reset a warned-set on menu close. A short per-corpse TTL
--- gives once-per-approach warning while swallowing USE-key mashing. Wall clock, NOT xtime.game_sec
+-- gives once-per-approach warning while swallowing USE-key mashing. Wall clock, NOT xtime.get_game_sec
 -- (unlike _owner): this throttles a real-time keypress burst, and game time is compressed (several
 -- game-sec per real-sec), so a game-sec window would collapse to a fraction of a real second. The
 -- table is ephemeral (never exported in _on_save_state), so os.clock's VM-restart reset is harmless.
@@ -69,8 +69,8 @@ local _tip_ttl = nil
 -- actor id, captured at first update (avoids depending on AC_ID load-time global)
 local _ac_id = nil
 -- owner map stashed at load_state, imported at first_update. _owner:import calls the game clock
--- (xtime.game_sec -> level.get_start_time), which AVs in the load_state phase (Level() not loaded
--- yet); the first update tick is the earliest point Level() is guaranteed live. See xtime.game_sec.
+-- (xtime.get_game_sec -> level.get_start_time), which AVs in the load_state phase (Level() not loaded
+-- yet); the first update tick is the earliest point Level() is guaranteed live. See xtime.get_game_sec.
 local _saved_owner = nil
 -- number of st_ap_loot_claim_warn_NNN variants present, counted at on_game_start
 local _warn_n = 0
@@ -88,7 +88,7 @@ local _yield_tip_next = 0
 --- kill (block-npc reads any living member); squad nil with a non-actor killer is a lone-NPC kill.
 --- @cost O(1) | 1 game_sec (2 luabind) + 1 ttl set
 local function _record(victim_id, killer_id, squad_id)
-    _owner:set(victim_id, { killer = killer_id, squad = squad_id, t = xtime.game_sec() })
+    _owner:set(victim_id, { killer = killer_id, squad = squad_id, t = xtime.get_game_sec() })
 end
 
 --- Any flow that reads the owner ledger enabled? Gates recording: with all three off there is nothing
@@ -116,7 +116,7 @@ end
 --- timestamp, so each half ages the same row independently.
 --- @cost O(1) | 1 game_sec (2 luabind) + arithmetic
 local function _fresh(v, ttl_hours)
-    return (xtime.game_sec() - v.t) < ttl_hours * HOURS_TO_SECONDS
+    return (xtime.get_game_sec() - v.t) < ttl_hours * HOURS_TO_SECONDS
 end
 
 --- True when target is within radius of pos (squared compare; avoids the distance_to sqrt).
@@ -169,7 +169,7 @@ end
 --- @cost O(m) members, short-circuits on the first member within radius
 local function _first_member_within(squad, corpse_pos, radius)
     for member_id in xsquad.iter_member_ids(squad) do
-        local member = xobject.go(member_id)
+        local member = xobject.get_go(member_id)
         if member and member:alive() and _within(member:position(), corpse_pos, radius) then
             return member
         end
@@ -186,7 +186,7 @@ end
 --- @safety SAFE - nil-guarded on the lookup and on alive() before any position read
 --- @cost O(1) | 1 distance, 1 static ray only when in range
 local function _member_clear(member_id, corpse_pos, radius)
-    local member = xobject.go(member_id)
+    local member = xobject.get_go(member_id)
     if not member then return nil end
     if not member:alive() then return nil end
     local mpos = member:position()
@@ -209,7 +209,7 @@ end
 --- (_first_member_clear).
 --- @cost O(m) members | se + is_squad + companion + relation, then _first_member_clear
 local function _squad_claimer(squad_id, corpse_pos, radius)
-    local squad = xobject.se(squad_id)
+    local squad = xobject.get_se(squad_id)
     if not xsquad.is_squad(squad) then return nil end
     if axr_companions.companion_squads[squad_id] then return nil end
     if game_relations.get_squad_relation_to_actor_by_id(squad_id) == "enemy" then return nil end
@@ -223,9 +223,9 @@ end
 --- block authority and the warn speaker.
 --- @cost O(1) | go + alive + community + relation + 1 distance + 1 static ray (only when in range)
 local function _lone_claimer(killer_id, corpse_pos, radius)
-    local owner = xobject.go(killer_id)
+    local owner = xobject.get_go(killer_id)
     if not owner or not owner:alive() then return nil end
-    local comm = xcreature.community(owner)
+    local comm = xcreature.get_community(owner)
     if comm == "zombied" then return nil end
     if comm and game_relations.is_factions_enemies(get_actor_true_community(), comm) then return nil end
     local opos = owner:position()
@@ -303,11 +303,11 @@ local function _excluded_squad_claim(v, obj, looker)
     if v.squad then
         local looker_squad = get_object_squad(looker)
         if looker_squad and looker_squad.id == v.squad then return false end
-        local squad = xobject.se(v.squad)
+        local squad = xobject.get_se(v.squad)
         blocked = xsquad.is_squad(squad) and _first_member_within(squad, corpse_pos, radius) ~= nil
     else
         if v.killer == looker:id() then return false end
-        local owner = xobject.go(v.killer)
+        local owner = xobject.get_go(v.killer)
         if not owner or not owner:alive() then return false end
         blocked = _within(owner:position(), corpse_pos, radius)
     end
@@ -363,7 +363,7 @@ local function _on_death(victim, killer)
     end
     if not xcreature.is_stalker(killer) then return end
     if killer:has_info("npcx_is_companion") then return end
-    if xcreature.community(killer) == "zombied" then return end
+    if xcreature.get_community(killer) == "zombied" then return end
     local squad = get_object_squad(killer)
     local squad_id = squad and squad.id or nil
     if squad_id and axr_companions.companion_squads[squad_id] then return end
@@ -474,7 +474,7 @@ end
 local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     if not cfg.loot_block_npc_enabled then return end
     if not xinventory.is_corpse_take(mode, bag) then return end
-    local corpse = xobject.go(npc_id)
+    local corpse = xobject.get_go(npc_id)
     local owner = _claim_owner(corpse)
     if not owner then return end
     xinventory.deny_move(flags)
@@ -490,7 +490,7 @@ end
 --- @cost O(1) | master/half compare first; claim lookup only on a Dot Marks corpse interact
 local function _veto_dotmarks(id, flags)
     if not cfg.loot_block_npc_enabled or not flags or not id then return end
-    local corpse = xobject.go(id)
+    local corpse = xobject.get_go(id)
     local owner = _claim_owner(corpse)
     if not owner then return end
     flags.ret_value = false
@@ -534,7 +534,7 @@ local function _on_load_state(m_data)
 end
 
 function on_game_start()
-    _owner = xttltable.create_ttl_table({ default_ttl = OWNER_TTL_MAX_SEC, clock = xtime.game_sec })
+    _owner = xttltable.create_ttl_table({ default_ttl = OWNER_TTL_MAX_SEC, clock = xtime.get_game_sec })
     _tip_ttl = xttltable.create_ttl_table({ default_ttl = TIP_TTL_SEC })
     _warn_n = _count_pool(WARN_PREFIX, MAX_WARN_VARIANTS)
     _reserve_yield_n = _count_pool(RESERVE_YIELD_PREFIX, MAX_YIELD_VARIANTS)

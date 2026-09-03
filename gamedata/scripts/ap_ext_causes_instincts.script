@@ -95,7 +95,7 @@ local function _pack_smart_has_kin(smart_id, community)
     local squads = xsmart.get_smart_squads(smart_id)
     if not squads then return false end
     for squad_id in pairs(squads) do
-        local sq = xobject.se(squad_id)
+        local sq = xobject.get_se(squad_id)
         if sq and sq.player_id == community then return true end
     end
     return false
@@ -277,7 +277,7 @@ local function _on_smart(squad)
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
     end
 
-    local now = xtime.game_sec()
+    local now = xtime.get_game_sec()
     local dto = ap_ext_tracker.get_mutant_instincts(squad.id)
     if not dto then
         dto = ap_ext_tracker.init_mutant_instincts(squad.id, now)
