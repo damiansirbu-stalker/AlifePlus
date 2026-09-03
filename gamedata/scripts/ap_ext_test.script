@@ -122,7 +122,7 @@ local function _sample_sections(out, category, picks)
     local pool = xinventory.get_category_sections(category)
     if #pool == 0 then return end
     for _ = 1, picks do
-        out[#out + 1] = xmath.sample(pool)
+        out[#out + 1] = xmath.select(pool)
     end
 end
 
@@ -160,7 +160,7 @@ local function _kit_one_npc(npc_id)
         if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     for _ = 1, WEAPONS_PER_NPC do
-        local sec = xmath.sample(WEAPONS)
+        local sec = xmath.select(WEAPONS)
         if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     for i = 1, #PLATES do
@@ -270,7 +270,7 @@ local function _drop_artefact()
     if not actor then return _tip("Not in game") end
     local pos = actor:position()
     local spawn_pos = vector():set(pos.x + 2, pos.y + 0.3, pos.z + 2)
-    local sec = xmath.sample(ARTEFACTS)
+    local sec = xmath.select(ARTEFACTS)
     local se = alife():create(sec, spawn_pos, actor:level_vertex_id(), actor:game_vertex_id())
     if not se then return _tip("Failed to spawn " .. sec) end
     _tip("Dropped " .. sec .. " nearby")
@@ -309,7 +309,7 @@ end
 -- stalker), else a random enemy faction's generic sim squad.
 local function _pick_hostile_section(target_faction)
     if math_random() < 0.5 then
-        local species = xmath.sample(HOSTILE_SPECIES)
+        local species = xmath.select(HOSTILE_SPECIES)
         return xsmart_spawn.SQUADS_BY_SPECIES[species][1]
     end
     local enemies = {}
@@ -319,7 +319,7 @@ local function _pick_hostile_section(target_faction)
         end
     end
     if #enemies == 0 then return nil end
-    return xmath.sample(xmath.sample(enemies))
+    return xmath.select(xmath.select(enemies))
 end
 
 -- Spawn one squad hostile to a random online stalker squad, at that squad's smart, so real
@@ -333,7 +333,7 @@ local function _spawn_hostiles()
     local squads, err = _online_stalker_squads()
     if not squads then return _tip(err) end
     if #squads == 0 then return end
-    local target = xmath.sample(squads)
+    local target = xmath.select(squads)
     local smart = xsquad.get_squad_smart(target)
     if not smart then
         ap_core_debug.debug("[TEST] spawn_hostiles skip: target squad %d has no smart", target.id)
@@ -409,9 +409,9 @@ local function _pop_section()
     if math_random() < 0.7 then
         local faction = POP_HUMAN_FACTIONS[math_random(1, #POP_HUMAN_FACTIONS)]
         local sections = xsmart_spawn.SQUADS_BY_FACTION[faction]
-        return sections and xmath.sample(sections)
+        return sections and xmath.select(sections)
     end
-    local sections = xsmart_spawn.SQUADS_BY_SPECIES[xmath.sample(POP_MUTANT_SPECIES)]
+    local sections = xsmart_spawn.SQUADS_BY_SPECIES[xmath.select(POP_MUTANT_SPECIES)]
     return sections and sections[1]
 end
 
@@ -433,9 +433,9 @@ local function _seed_pop_squad(squad)
     if squad:npc_count() == 0 then return end
     local ammo = xinventory.get_category_sections("ammo_not_equipped")
     for member in squad:squad_members() do
-        local wpn = xmath.sample(WEAPONS)
+        local wpn = xmath.select(WEAPONS)
         if _spawnable(wpn) then xinventory.create_item(wpn, member.id) end
-        if #ammo > 0 then xinventory.create_item(xmath.sample(ammo), member.id, { ammo = TEST_AMMO_ROUNDS }) end
+        if #ammo > 0 then xinventory.create_item(xmath.select(ammo), member.id, { ammo = TEST_AMMO_ROUNDS }) end
     end
 end
 

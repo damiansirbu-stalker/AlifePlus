@@ -161,7 +161,7 @@ local function _yield_tip(npc, prefix, pool_n, name)
     if now < _yield_tip_next then return end
     if not _within(npc:position(), actor:position(), YIELD_EARSHOT) then return end
     _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
-    xpda.npc_tip(npc, _resolve_pooled(prefix, pool_n, name), { sound = "news" })
+    xpda.show_npc_tip(npc, _resolve_pooled(prefix, pool_n, name), { sound = "news" })
 end
 
 
@@ -442,7 +442,7 @@ local function _warn_once(corpse, owner)
     if _tip_ttl:get(corpse_id) then return end
     if not db.actor then return end
     _tip_ttl:set(corpse_id, true)
-    xpda.npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _actor_name()), { sound = "beep_1" })
+    xpda.show_npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _actor_name()), { sound = "beep_1" })
 end
 
 --- block-npc primary: veto opening a living NPC's claimed kill. on_before_key_press fires before the

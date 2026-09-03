@@ -79,10 +79,10 @@ local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and 
 
 -- SIMBOARD-based: smart is unclaimed when no squad of any kind is currently stationed there.
 -- Drops the old smart.faction / LTX-declared-factions / warfare-owning-faction reads in favour
--- of physical-presence truth via xsmart.iter_stationed_squads (cross-level safe, offline safe).
+-- of physical-presence truth via xsmart.iterate_stationed_squads (cross-level safe, offline safe).
 local function _is_unclaimed(smart)
     if not smart then return false end
-    for _ in xsmart.iter_stationed_squads(smart.id) do return false end
+    for _ in xsmart.iterate_stationed_squads(smart.id) do return false end
     return true
 end
 

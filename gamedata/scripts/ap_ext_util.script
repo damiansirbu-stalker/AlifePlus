@@ -173,7 +173,7 @@ function is_last_faction_smart(smart)
     if not smart then return false end
     local level_id = xlevel.get_level_id(smart)
     if not level_id then return false end
-    for se in xsmart.iter_stationed_squads(smart.id) do
+    for se in xsmart.iterate_stationed_squads(smart.id) do
         if xsmart.get_faction_smart_count(se.player_id, level_id) <= 1 then return true end
     end
     return false

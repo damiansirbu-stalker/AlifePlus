@@ -18,7 +18,7 @@ local _record_assigned = {}
 -- Capture in-game clock at write so the HUD marker can show when the dispatch started.
 -- Returns "HH:MM" string or nil if game time is unavailable (early init / between levels).
 local function _capture_clock()
-    local h, m = xtime.hms()
+    local h, m = xtime.get_time_hm()
     if not h then return nil end
     return string_format("%02d:%02d", h, m)
 end

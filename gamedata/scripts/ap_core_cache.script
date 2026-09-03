@@ -83,7 +83,7 @@ local function _build_smart_bucket()
     if xslice.is_active(SMART_BUILD_QUEUE) then return end
     _smarts_by_level = {}
     local queue = {}
-    for smart in xsmart.smart_iter() do queue[#queue + 1] = smart end
+    for smart in xsmart.iterate_smarts() do queue[#queue + 1] = smart end
     local debug_on = ap_core_debug.enabled()
     local count = #queue
     local build_ms = 0

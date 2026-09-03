@@ -544,9 +544,9 @@ local function _adopt_stationed_squad(squad, smart_id, now)
 end
 
 -- Walk one conquest smart's stationed squads, adopting untracked services.
--- @cost O(min(stationed, 5)) | one iter_stationed_squads walk
+-- @cost O(min(stationed, 5)) | one iterate_stationed_squads walk
 local function _pin_stationed_services_at(smart_id, now)
-    for squad in xsmart.iter_stationed_squads(smart_id) do
+    for squad in xsmart.iterate_stationed_squads(smart_id) do
         _adopt_stationed_squad(squad, smart_id, now)
     end
 end
@@ -556,7 +556,7 @@ end
 -- set, so a ledger desync cannot leave a service unpinned. An unpinned-and-untracked service is a
 -- load-time miss (a mid-session respawn finds its conquest entry present and is pinned at spawn), so
 -- this rides the 60s pass and the load reconcile, NOT the 10s invariant pass. `now` is the caller's.
--- @cost O(conquest smarts) | one iter_stationed_squads walk per smart
+-- @cost O(conquest smarts) | one iterate_stationed_squads walk per smart
 local function _pin_stationed_services(now)
     for smart_id in pairs(_state.conquest) do
         _pin_stationed_services_at(smart_id, now)
