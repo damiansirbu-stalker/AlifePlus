@@ -554,7 +554,7 @@ end
 -- @src anomaly/smart_terrain.script(771) the bound .job; gulag_general.script(282) generic_point
 local function has_anchored_jobs(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return true end
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local job = xsmart.get_job_for_npc(smart, member_id)
         if not job or job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return false end
     end
@@ -577,7 +577,7 @@ end
 -- on the _update_gulag re-check, not at arrival (members are still in transit at arrival).
 local function _campfire_stray(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return false end
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local job = xsmart.get_job_for_npc(smart, member_id)
         if job and job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT and _member_off_campfire(smart, member_id) then
             return true
@@ -652,7 +652,7 @@ local function _log_member_jobs(squad, smart)
     local plen = #prefix
     local parts = {}
     local counts = { generic = 0, campfire = 0, other = 0, none = 0 }
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local label, kind = _job_label_and_kind(xsmart.get_job_for_npc(smart, member_id), prefix, plen)
         counts[kind] = counts[kind] + 1
         parts[#parts + 1] = member_id .. "=" .. label

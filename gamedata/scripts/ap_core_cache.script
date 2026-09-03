@@ -196,14 +196,14 @@ end
 
 -- Snapshot squad IDs into an array, start xslice. Per-tick: 50 squads x ~5us = ~0.25ms.
 -- ~700-800 squads -> ~14-16 ticks -> ~0.25-0.3s wall-clock at 60fps.
--- @cost O(n) squads for snapshot | 1 luabind medium per squad (sim:object via xsquad.iter_squads
+-- @cost O(n) squads for snapshot | 1 luabind medium per squad (sim:object via xsquad.iterate_squads
 -- + .id read); xslice ticks pay 1 alife_object + per-squad bucketing.
 local function _build_squad_bucket()
     if _squads_by_level then return end
     if xslice.is_active(SQUAD_BUILD_QUEUE) then return end
     _squads_by_level = {}
     local queue = {}
-    for squad in xsquad.iter_squads() do queue[#queue + 1] = squad.id end
+    for squad in xsquad.iterate_squads() do queue[#queue + 1] = squad.id end
     local debug_on = ap_core_debug.enabled()
     local count = #queue
     local build_ms = 0

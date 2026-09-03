@@ -163,7 +163,7 @@ local function _drain_removals()
         local queued = _pending_remove[i]
         local squad = xobject.get_se(queued.id)
         if squad and xsquad.is_squad(squad) and _same_section(squad, queued.section) then
-            for member_id in xsquad.iter_member_ids(squad) do
+            for member_id in xsquad.iterate_member_ids(squad) do
                 stalker_generic.remove_level_spot(member_id)
             end
             xsquad.remove_squad(squad)
@@ -231,7 +231,7 @@ end
 local function _drain_outpost_services()
     local sim = alife()
     if not sim then return end
-    for squad in xsquad.iter_squads() do
+    for squad in xsquad.iterate_squads() do
         local sec = squad.section_name and squad:section_name()
         if sec and sec:sub(1, 11) == "ap_service_" then _queue_remove(squad.id) end
     end

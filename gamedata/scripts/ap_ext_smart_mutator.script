@@ -459,7 +459,7 @@ end
 -- spawn -- first resident or engine replacement -- passes here, so no service is ever seen unarmed.
 -- @cost O(members) | 2 xinventory.create_item per member, spawn-time only
 local function _arm_service(squad)
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         xinventory.create_item(SERVICE_WEAPON, member_id, { cond = 1 })
         xinventory.create_item(SERVICE_AMMO, member_id, { ammo = SERVICE_AMMO_ROUNDS })
         ap_core_debug.debug("[MUTATOR.SMART] service_armed: npc=%d weapon=%s", member_id, SERVICE_WEAPON)
@@ -514,7 +514,7 @@ end
 -- otherwise linger at the dissolved outpost. remove_level_spot is vanilla's own remover.
 -- @cost O(members) | remove_level_spot per member + remove_squad
 local function _remove_service_squad(squad)
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         stalker_generic.remove_level_spot(member_id)
     end
     xsquad.remove_squad(squad)
@@ -665,7 +665,7 @@ local function _try_stock(squad_id, entry)
     if not data then return end
     local cfg_path = _role_cfg_path(data.faction, entry.role)
     if not cfg_path then return end
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local go = xobject.get_go(member_id)
         if go then
             _ensure_trade_config(go, member_id, cfg_path, entry)
@@ -698,7 +698,7 @@ local function _log_service_entry(squad_id, entry)
     local member_id
     local squad = _resolve_held(squad_id, entry)
     if squad then
-        for id in xsquad.iter_member_ids(squad) do member_id = id break end
+        for id in xsquad.iterate_member_ids(squad) do member_id = id break end
     end
     local cur = squad and xobject.get_se(squad.smart_id)
     ap_core_world_trace.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s pin=%s cur_smart=%s base=%s %s",
@@ -754,7 +754,7 @@ end
 -- section-keyed task/hub-dialog gates cover him for life.
 -- @cost O(members) | make_trader + _strip_stock + remove_level_spot per member
 local function _unmake_service(squad, entry)
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local go = xobject.get_go(member_id)
         if go then
             xcreature.make_trader(go, GENERIC_TRADE)

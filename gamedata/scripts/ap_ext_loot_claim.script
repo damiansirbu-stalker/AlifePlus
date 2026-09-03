@@ -168,7 +168,7 @@ end
 --- First living, online squad member within radius of the corpse, or nil.
 --- @cost O(m) members, short-circuits on the first member within radius
 local function _first_member_within(squad, corpse_pos, radius)
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local member = xobject.get_go(member_id)
         if member and member:alive() and _within(member:position(), corpse_pos, radius) then
             return member
@@ -196,7 +196,7 @@ local function _member_clear(member_id, corpse_pos, radius)
 end
 
 local function _first_member_clear(squad, corpse_pos, radius)
-    for member_id in xsquad.iter_member_ids(squad) do
+    for member_id in xsquad.iterate_member_ids(squad) do
         local member = _member_clear(member_id, corpse_pos, radius)
         if member then return member end
     end
