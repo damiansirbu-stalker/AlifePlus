@@ -516,13 +516,13 @@ local function _on_first_update()
     _ac_id = db.actor and db.actor:id()
     -- PHASE B: Level() is live at the first update tick, so the game-clock import is safe here.
     if _saved_owner then
-        _owner:import(_saved_owner)
+        _owner:load(_saved_owner)
         _saved_owner = nil
     end
 end
 
 local function _on_save_state(m_data)
-    m_data.ap_ext_loot_claim = { owner = _owner:export() }
+    m_data.ap_ext_loot_claim = { owner = _owner:get_snapshot() }
 end
 
 local function _on_load_state(m_data)

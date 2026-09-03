@@ -1,6 +1,6 @@
 --- ap_core_limiter: Rate limiting for causes and consequences.
 --- Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter.
---- Balance family (game-sec, persisted): offmap dispatch counter; save/load via :export() / :import().
+--- Balance family (game-sec, persisted): offmap dispatch counter; save/load via :get_snapshot() / :load().
 
 local tostring, type, RegisterScriptCallback = tostring, type, RegisterScriptCallback
 local xtime, xttltable = xtime, xttltable
@@ -44,7 +44,7 @@ end
 --- @return boolean allowed, number count, number max
 function check_cause_rate_limit(key, max)
     local counter = _ensure_cause_counter()
-    local count = counter:count(_get_cause_rate_key(key))
+    local count = counter:get_count(_get_cause_rate_key(key))
     if count >= max then
         return false, count, max
     end
@@ -63,7 +63,7 @@ end
 --- @cost O(1) | 0 luabind
 function check_consequence_rate_limit(name)
     local limiter = _ensure_consequence_limiter()
-    return limiter:peek(_get_consequence_rate_key(name))
+    return limiter:check(_get_consequence_rate_key(name))
 end
 
 --- Acquire consequence token after success
@@ -87,7 +87,7 @@ end
 --- @cost O(1) | 0 luabind
 function check_global_consequence_rate_limit()
     local counter = _ensure_global_consequence_counter()
-    return counter:count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
+    return counter:get_count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
 end
 
 --- Increment global consequence counter after a consequence fires
@@ -129,7 +129,7 @@ end
 --- @param max number Cap (cfg.cause_max_offmap)
 --- @return boolean allowed, number count, number max
 function check_offmap_rate_limit(level_id, max)
-    local count = _offmap_counter:count(_get_offmap_rate_key(level_id))
+    local count = _offmap_counter:get_count(_get_offmap_rate_key(level_id))
     if count >= max then
         return false, count, max
     end
@@ -162,7 +162,7 @@ end
 function check_causer_rate_limit(causer_id)
     if not causer_id then return true end
     local max = cfg.cause_max_per_causer
-    local count = _causer_counter:count(_get_causer_rate_key(causer_id))
+    local count = _causer_counter:get_count(_get_causer_rate_key(causer_id))
     if count >= max then
         return false, count, max
     end
@@ -178,14 +178,14 @@ function increment_causer_counter(causer_id)
 end
 
 local function _on_save_state(m_data)
-    m_data.ap_core_limiter = { offmap_counter = _offmap_counter:export() }
+    m_data.ap_core_limiter = { offmap_counter = _offmap_counter:get_snapshot() }
 end
 
 local function _on_load_state(m_data)
     local saved = m_data.ap_core_limiter
     if type(saved) ~= "table" then return end
     if type(saved.offmap_counter) == "table" then
-        _offmap_counter:import(saved.offmap_counter)
+        _offmap_counter:load(saved.offmap_counter)
     end
 end
 

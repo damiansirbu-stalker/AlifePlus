@@ -145,7 +145,7 @@ function get_records(opts)
             if entry.assigned and _match(entry, opts) then list[#list + 1] = entry end
         end
     else
-        _ap_record:each(function(entry)
+        _ap_record:iterate(function(entry)
             if not opts or _match(entry, opts) then list[#list + 1] = entry end
         end)
     end
@@ -173,7 +173,7 @@ function get_record(opts)
             if entry.assigned and _match(entry, opts) then _consider(entry) end
         end
     else
-        _ap_record:each(function(entry)
+        _ap_record:iterate(function(entry)
             if _match(entry, opts) then _consider(entry) end
         end)
     end
@@ -193,7 +193,7 @@ end
 -- Walk fifo into a plain array preserving insertion order. xttltable has no to_table primitive.
 local function _records_export()
     local arr = {}
-    _ap_record:each(function(entry) arr[#arr + 1] = entry end)
+    _ap_record:iterate(function(entry) arr[#arr + 1] = entry end)
     return arr
 end
 
@@ -217,7 +217,7 @@ local function _on_save_state(m_data)
         seq     = _record_seq,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:size())
+        ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:get_size())
     end
 end
 
@@ -227,7 +227,7 @@ local function _on_load_state(m_data)
     _record_seq = saved.seq or 0
     _records_import(saved.entries)
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:size())
+        ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:get_size())
     end
 end
 

@@ -17,7 +17,7 @@ local function _handler(event_data)
     local killer_id = event_data.killer_id
     if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
     local is_new = not ap_ext_tracker.is_alpha(killer_id)
-    if is_new and xtable.count(ap_ext_tracker.get_alphas()) >= cfg.consequence_alpha_promote_max_alphas then
+    if is_new and xtable.get_count(ap_ext_tracker.get_alphas()) >= cfg.consequence_alpha_promote_max_alphas then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_ALPHAS }
     end
 

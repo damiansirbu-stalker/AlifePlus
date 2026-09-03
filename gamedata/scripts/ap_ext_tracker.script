@@ -31,7 +31,7 @@ local function _on_save_state(m_data)
     }
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d instincts=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas), _ap_stalker_needs:size(), _ap_mutant_instincts:size())
+            xtable.get_count(_ap_killers), xtable.get_count(_ap_alphas), _ap_stalker_needs:get_size(), _ap_mutant_instincts:get_size())
     end
 end
 
@@ -55,7 +55,7 @@ local function _on_load_state(m_data)
     if type(saved.alphas) ~= "table" then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
     if ap_core_debug.enabled() then
         ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d",
-            xtable.count(_ap_killers), xtable.count(_ap_alphas))
+            xtable.get_count(_ap_killers), xtable.get_count(_ap_alphas))
     end
 end
 

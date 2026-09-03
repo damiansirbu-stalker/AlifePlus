@@ -883,7 +883,7 @@ local function _on_save_state(m_data)
         ap_scripted_squads = _ap_scripted_squads,
     }
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.count(_ap_scripted_squads))
+        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.get_count(_ap_scripted_squads))
     end
 end
 
@@ -921,7 +921,7 @@ local function _on_load_state(m_data)
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.count(_ap_scripted_squads))
+        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.get_count(_ap_scripted_squads))
     end
 end
 
