@@ -248,14 +248,14 @@ local function _arrive_loot(squad, args)
     local st = cmd_id and db.storage[cmd_id]
     if not st or st.object == nil then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d commander_offline, clearing stash", stash_id, squad.id)
-        xstash.loot_stash(stash_id)
+        xstash.collect_stash_items(stash_id)
         return
     end
 
     local member_ids, member_opts, counts = _scan_squad(squad)
     if #member_ids == 0 then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d no_members, clearing stash", stash_id, squad.id)
-        xstash.loot_stash(stash_id)
+        xstash.collect_stash_items(stash_id)
         return
     end
 
@@ -273,7 +273,7 @@ local function _arrive_loot(squad, args)
         rules       = STASH_POLICY.rules,
     })
     _loot_extras(index, member_ids, taken_secs)
-    xstash.loot_stash(stash_id)
+    xstash.collect_stash_items(stash_id)
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s [tid=%d] complete stash=%d squad=%d taken=%d items=%d looted=%s [%.2fms]", LOG_LOOT, tid,
@@ -348,7 +348,7 @@ local function _arrive_fill(squad, args)
         secs[i] = xinventory.get_section(itm)
         xinventory.release_item(itm)
     end
-    local ok = xstash.fill_stash(stash_id, secs, false)
+    local ok = xstash.add_stash_items(stash_id, secs, false)
     tmr:stop()
     if not ok then
         ap_core_debug.warn(LOG_FILL .. " arrive: stash=%d squad=%d fill_failed", stash_id, squad.id)

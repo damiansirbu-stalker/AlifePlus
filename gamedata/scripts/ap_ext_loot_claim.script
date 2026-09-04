@@ -477,7 +477,7 @@ local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     local corpse = xobject.get_go(npc_id)
     local owner = _claim_owner(corpse)
     if not owner then return end
-    xinventory.deny_move(flags)
+    xinventory.disable_move(flags)
     _warn_once(corpse, owner)
     if ap_core_debug.enabled() then
         ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner:id())

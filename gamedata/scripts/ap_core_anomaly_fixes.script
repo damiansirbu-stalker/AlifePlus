@@ -8,7 +8,7 @@
 --- through the roster-blind self:assign_smart, which sets squad.smart_id and re-registers NPC jobs
 --- but never updates SIMBOARD.smarts[id].squads / population. Capacity reads (xsmart.has_capacity,
 --- is_smart_empty) then drift. Each wrapper captures smart_id before the original runs and calls
---- xsmart.reconcile_squad_roster after, which syncs the roster idempotently -- a no-op on a base
+--- xsmart.update_squad_roster after, which syncs the roster idempotently -- a no-op on a base
 --- that already fixed it (e.g. GAMMA's overlay), the correction on a roster-blind base (vanilla).
 --- @src anomaly/sim_squad_scripted.script(276-289 specific_update, 333-356 generic_update)
 ---
@@ -40,7 +40,7 @@ local function _install_roster_sync()
         ap_core_debug.err("[CORE.ANOMALY] sim_squad_scripted class missing; roster sync not installed")
         return
     end
-    local reconcile = xsmart.reconcile_squad_roster
+    local reconcile = xsmart.update_squad_roster
     local orig_specific = squad_class.specific_update
     local orig_generic = squad_class.generic_update
     if orig_specific then
