@@ -5,17 +5,17 @@ local ipairs = ipairs
 local RESULT = ap_core_const.RESULT
 
 --- Move each squad to a smart terrain; returns the moved squads and the last failure reason.
---- The move-to-smart sibling of the chase dispatchers: same loop over ap_core_broker.script_squad,
+--- The move-to-smart sibling of the chase dispatchers: same loop over ap_core_broker.register_squad,
 --- collecting the squads that took the assignment.
 --- @param squads table Candidate squads
 --- @param smart table Destination smart terrain server object
---- @param opts table Forwarded to ap_core_broker.script_squad (rush, pre_release_gulag, interruptable)
+--- @param opts table Forwarded to ap_core_broker.register_squad (rush, pre_release_gulag, interruptable)
 --- @return table moved, string|nil last_reason
-function move_squads(squads, smart, opts)
+function register_squads(squads, smart, opts)
     local moved = {}
     local last_reason
     for _, squad in ipairs(squads) do
-        local res = ap_core_broker.script_squad(squad, smart, opts)
+        local res = ap_core_broker.register_squad(squad, smart, opts)
         if res.code == RESULT.SUCCESS then moved[#moved + 1] = squad else last_reason = res.reason end
     end
     return moved, last_reason
@@ -25,28 +25,28 @@ end
 --- player). Used when the chase target is the player.
 --- @param squads table chasers
 --- @param moved table accumulator of successfully-dispatched chasers
---- @param opts table|nil Forwarded to script_actor_target (e.g. { check_relation = true })
-function move_actor_chasers(squads, moved, opts)
+--- @param opts table|nil Forwarded to register_actor_target (e.g. { check_relation = true })
+function register_actor_chasers(squads, moved, opts)
     local chase_opts = opts and xtable.clone(opts) or {}
     chase_opts.interruptable = false
     for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_actor_target(chaser, chase_opts)
+        local res = ap_core_broker.register_actor_target(chaser, chase_opts)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end
 
 --- Dispatch chasers to pursue a target squad directly via continuous coordinate homing
---- (script_squad_target + the ap_core_chase hooks). Replaces the smart-hop relay for non-player
+--- (register_squad_target + the ap_core_chase hooks). Replaces the smart-hop relay for non-player
 --- chase targets. Committed pursuit (interruptable = false). opts.check_relation = true marks a
 --- faction chase that disengages when relation flips friendly (mutant chases leave it unset).
 --- @param squads table chasers
 --- @param target_squad_id number
 --- @param moved table accumulator of successfully-dispatched chasers
 --- @param opts table|nil { check_relation }
-function move_squad_chasers(squads, target_squad_id, moved, opts)
+function register_squad_chasers(squads, target_squad_id, moved, opts)
     local chase_opts = { interruptable = false, check_relation = opts and opts.check_relation }
     for _, chaser in ipairs(squads) do
-        local res = ap_core_broker.script_squad_target(chaser, target_squad_id, chase_opts)
+        local res = ap_core_broker.register_squad_target(chaser, target_squad_id, chase_opts)
         if res and res.code == RESULT.SUCCESS then moved[#moved + 1] = chaser end
     end
 end

@@ -56,7 +56,7 @@ local function _handler_help(event_data)
             exclude_squad_id = event_data.squad_id,
             allow_preempt = true,
         })
-        moved, last_reason = ap_ext_common.move_squads(squads, target_smart, {
+        moved, last_reason = ap_ext_common.register_squads(squads, target_smart, {
             rush = cfg.consequence_wounded_help_rush,
             pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HELP,
             interruptable = false,
@@ -93,7 +93,7 @@ local function _handler_hunt(event_data)
             allow_preempt = true,
         })
         local squads = ap_ext_util.filter_mutant_squads(candidates, _species_hunt, _personality_hunt)
-        moved, last_reason = ap_ext_common.move_squads(squads, target_smart, {
+        moved, last_reason = ap_ext_common.register_squads(squads, target_smart, {
             rush = cfg.consequence_wounded_hunt_rush,
             pre_release_gulag = PRE_RELEASE_GULAG.WOUNDED_HUNT,
             interruptable = false,

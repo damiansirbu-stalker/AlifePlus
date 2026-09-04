@@ -3,7 +3,7 @@
 AlifePlus is a reactive framework for STALKER Anomaly. It hooks X-Ray engine callbacks, classifies them through cause generators, and dispatches consequences. Two pipelines:
 
 - Event Pipeline (ap_core_producer): gate chain -> cause generator -> xbus publish.
-- Dispatch Pipeline (ap_core_consumer): xbus subscribe -> consequence handler -> script_squad.
+- Dispatch Pipeline (ap_core_consumer): xbus subscribe -> consequence handler -> register_squad.
 
 The framework produces its own radiant heartbeat (ap_core_callbacks.script declares and fires ap_squad_on_change at the MCM-configured rate and map mix) and owns protection (ap_core_broker), rate limiting (ap_core_limiter), squad lifecycle (ap_core_broker), tracing (ap_core_debug), PDA map markers (ap_core_map), and statistics overlay (ap_core_hud). Domain logic registers a cause generator with the producer and a consequence handler with the consumer.
 
@@ -31,7 +31,7 @@ if (script_target_id) then self:specific_update(script_target_id)
 else self:generic_update() end
 ```
 
-`get_script_target()` returns `self.scripted_target` first when it is set (`sim_squad_scripted.script:104-106`). That single field is AlifePlus's entire write surface into targeting. AP's radiant input is not the engine heartbeat: the `ap_core_callbacks` sweep (installed at on_game_start) visits every squad on a staggered timer, diffs a 4-field snapshot, and produces `ap_squad_on_change` fires at the configured rate and map mix, real transitions first, round-robin turns for quiet squads (see Event Pipeline). The pipeline runs synchronously inside that timer tick: sweep fires `ap_squad_on_change` -> gates -> cause generator -> `ap_core_broker.script_squad` -> `xsquad.acquire_squad` sets `scripted_target`. The squad consumes the write at its NEXT `sim_squad_scripted:update`: the fork at `:233` reads `scripted_target` first, one frame later for online squads, up to one scheduler visit (~30s) later for offline squads. This is the same timing contract every reactive dispatch has always had (death and item callbacks also run outside the target squad's update), so radiant and reactive now share one synchrony model. AP authors only the write-back; the engine's own update loop acts on it.
+`get_script_target()` returns `self.scripted_target` first when it is set (`sim_squad_scripted.script:104-106`). That single field is AlifePlus's entire write surface into targeting. AP's radiant input is not the engine heartbeat: the `ap_core_callbacks` sweep (installed at on_game_start) visits every squad on a staggered timer, diffs a 4-field snapshot, and produces `ap_squad_on_change` fires at the configured rate and map mix, real transitions first, round-robin turns for quiet squads (see Event Pipeline). The pipeline runs synchronously inside that timer tick: sweep fires `ap_squad_on_change` -> gates -> cause generator -> `ap_core_broker.register_squad` -> `xsquad.acquire_squad` sets `scripted_target`. The squad consumes the write at its NEXT `sim_squad_scripted:update`: the fork at `:233` reads `scripted_target` first, one frame later for online squads, up to one scheduler visit (~30s) later for offline squads. This is the same timing contract every reactive dispatch has always had (death and item callbacks also run outside the target squad's update), so radiant and reactive now share one synchrony model. AP authors only the write-back; the engine's own update loop acts on it.
 
 ### Vanilla: a stateless weighted lottery
 
@@ -58,7 +58,7 @@ Both systems decide at the squad level. AlifePlus adds no per-NPC targeting; the
 - Cause category: REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES. Behavioral axis parallel to cause type. Drives per-category rate-limit grouping and MCM organization. Defined in ap_core_const.CAUSE_CATEGORY.
 - RULES: business checks that need no world scan. Toggle, alignment, species, personality, payload field, threshold, tactics. Cheap. Always cheapest-first.
 - SCAN: world lookup. find_smart, find_squads, find_stashes. Two flavors: destination SCAN (locates a target smart) and responder SCAN (locates responder squads).
-- ACTION: the consequence's effect. script_squad / script_actor_target, state mutation, news add, on_arrive callback.
+- ACTION: the consequence's effect. register_squad / register_actor_target, state mutation, news add, on_arrive callback.
 - Hull(<drive>): Hull's drive reduction theory (1943). Score = weight * (elapsed / threshold)^2 (`_find_overdue_needs` in ap_ext_causes_needs.script). Squared exponent makes overdue drives compete strongly. Used by NEEDS (stalker drives) and INSTINCTS (mutant drives).
 - MVT(<cause>): Charnov's marginal value theorem (1976). Binary patch-recovery gate: elapsed > threshold. Used by stash and area causes (6 OPPORTUNITY fields).
 - personality(<TRAITS>): probability check on a faction or species. avg(traits) clamped to [PERSONALITY_FLOOR, PERSONALITY_CEILING], rolled per dispatch. Inverted traits resolve as 1 - base before averaging.
@@ -95,7 +95,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | File | Role |
 |------|------|
 | _ap_deps | Dependency gate: assert xlibs installed and version-compatible |
-| ap_api | Public integration facade over broker / record / consumer / producer: owner registry, script_squad / script_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
+| ap_api | Public integration facade over broker / record / consumer / producer: owner registry, register_squad / register_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
 | ap_core_debug | Logger, bracket helper, MCM log-level. Zero overhead below DEBUG |
@@ -128,7 +128,7 @@ Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequence
 |------|------|
 | ap_ext_const | Domain const tables: CAUSE_CATEGORY, alignment_*, PERSONALITY traits, mutant species displays, range tiers |
 | ap_ext_util | Domain gates: alignment / species / personality / tactics checks, FIFO-cached species resolution |
-| ap_ext_common | Shared chase dispatch: move_actor_chasers (player target) / move_squad_chasers (squad target) |
+| ap_ext_common | Shared chase dispatch: register_actor_chasers (player target) / register_squad_chasers (squad target) |
 | ap_ext_tracker | Domain state: kill counts, alphas, alpha-dead grace, stalker NEEDS DTO, mutant INSTINCTS DTO, squad OPPORTUNITY DTO |
 | ap_ext_smart_mutator | Runtime smart terrain mutations, all exclusive spawn: territory conquest (grows a mini base: service NPCs + resident guards via plan respawn rows, engine-paced), mutant swarm, mutant infestation. Taken smarts are never retaken (is_taken); swarm/infest share the INFEST_SPECIES allowlist |
 | ap_ext_object_mutator | Combat identity of the earned alpha status: level-scaled hit power dealt (vs anyone) and taken, panic immunity, trophy loot, visible particle mark. Before-hit seams + monster_on_loot_init + net spawn/death for the mark, nothing per frame. Canonical section: Object mutator |
@@ -158,7 +158,7 @@ sweep tick (1s timer, 20 squads, cursor)
           -> xbus.publish (synchronous, inline)
             -> consumer._process (shuffle consequences, iterate)
               -> consequence handler returns { code = RESULT.X }
-                -> script_squad sets scripted_target, registers arrival
+                -> register_squad sets scripted_target, registers arrival
             <- returns to producer
           <- cascade breaks on first publish
 ```
@@ -223,7 +223,7 @@ Protection is applied at four layers, same guard set against different entities 
 | Producer | radiant gate 2 (is_protected) | triggering squad |
 | Cause | reactive cause generators | the entity AP would act on (killer, patient, taker) |
 | Consequence | ap_core_util.find_squads | every candidate responder squad |
-| Squad | ap_core_broker.script_squad | no inline check; protection is upstream |
+| Squad | ap_core_broker.register_squad | no inline check; protection is upstream |
 
 Reactive causes skip the producer protection gate because the callback entity (e.g. dead victim in squad_on_npc_death) is not the entity AP would script. They check protection on the relevant entity inside the generator: alpha and alphakill guard the killer, wounded guards the patient, harvest guards the taker. Causes whose trigger is a dead victim (massacre, squadkill, basekill) need no in-cause guard - consequences find responders through find_squads which applies all exclusions.
 
@@ -261,7 +261,7 @@ Per consequence:
 1. condition pre-gate. Function registered at consumer.register, typically the MCM enabled flag. False -> SKIP this consequence.
 2. Per-consequence rate limit (ap_core_limiter.check_consequence_rate_limit). Exhausted -> SKIP.
 3. Global radiant rate limit (radiant only, ap_core_limiter.check_global_consequence_rate_limit). Exhausted -> STOP the entire loop.
-4. Handler runs. Returns { code = RESULT.X, reason = "..." }. FAILED_RULES (business rules rejected: alignment, personality, species, validation), FAILED_SCAN (rules passed but world query empty), FAILED_ACTION (rules and scan passed but the action failed: script_squad could not route, registration call returned false), SUCCESS.
+4. Handler runs. Returns { code = RESULT.X, reason = "..." }. FAILED_RULES (business rules rejected: alignment, personality, species, validation), FAILED_SCAN (rules passed but world query empty), FAILED_ACTION (rules and scan passed but the action failed: register_squad could not route, registration call returned false), SUCCESS.
 5. On SUCCESS: increment per-consequence counter; for radiant only, increment global radiant counter; set event_data._fired = true. For radiant, also stop the loop (rule 5 below).
 
 A consequence whose MCM toggle is off is skipped by the consumer condition pre-gate before any timer or handler call, so it produces no outcome line (the same disabled-skip-before-timer contract ap_ext_util.try_cause applies on the cause side). The four phase codes are what the handler returns when it does run.
@@ -419,7 +419,7 @@ AP detects both via `xsmart.has_jobs_for` and releases the squad cleanly. Mechan
 
 ### SIMBOARD bookkeeping
 
-AP-routed transitions update `SIMBOARD:assign_squad_to_smart` at two hooks: dispatch (`script_squad`, clearing the source roster with `nil` target before engine `sim_squad_scripted:specific_update` bumps `squad.smart_id` to the new target) and commit (`_commit_arrival`, adding the destination roster entry after `xsmart.has_jobs_for` accepts). `SIMBOARD.smarts[id].squads` therefore reflects actual squad placement for AP-routed squads. `has_squad_of_faction`, garrison floor, and faction-quota predicates all read truth. On despawn the engine's own `sim_squad_scripted:remove_squad` clears the roster (`SIMBOARD:assign_squad_to_smart(self, nil)`). Vanilla's own scripted re-homes (via the roster-blind `assign_smart`) are corrected globally by `ap_core_anomaly_fixes` (see Vanilla fixes).
+AP-routed transitions update `SIMBOARD:assign_squad_to_smart` at two hooks: dispatch (`register_squad`, clearing the source roster with `nil` target before engine `sim_squad_scripted:specific_update` bumps `squad.smart_id` to the new target) and commit (`_commit_arrival`, adding the destination roster entry after `xsmart.has_jobs_for` accepts). `SIMBOARD.smarts[id].squads` therefore reflects actual squad placement for AP-routed squads. `has_squad_of_faction`, garrison floor, and faction-quota predicates all read truth. On despawn the engine's own `sim_squad_scripted:remove_squad` clears the roster (`SIMBOARD:assign_squad_to_smart(self, nil)`). Vanilla's own scripted re-homes (via the roster-blind `assign_smart`) are corrected globally by `ap_core_anomaly_fixes` (see Vanilla fixes).
 
 ### Vanilla fixes
 
@@ -542,11 +542,11 @@ ap_core_broker manages the full lifecycle: scripting, arrival detection, post-ar
 
 ### Scripting
 
-script_squad(squad, smart, opts) sets scripted_target via xsquad.acquire_squad. scripted_target routes the squad to specific_update (direct A->B movement). AP clears __lock on acquisition; scripted_target alone is sufficient for routing. If another mod clears scripted_target between ticks, generic_update runs and the squad may be reassigned by SIMBOARD; reassert_target restores scripted_target within 20s. The squad is registered in _ap_scripted_squads with TTL, optional arrival handler, and wait duration.
+register_squad(squad, smart, opts) sets scripted_target via xsquad.acquire_squad. scripted_target routes the squad to specific_update (direct A->B movement). AP clears __lock on acquisition; scripted_target alone is sufficient for routing. If another mod clears scripted_target between ticks, generic_update runs and the squad may be reassigned by SIMBOARD; reassert_target restores scripted_target within 20s. The squad is registered in _ap_scripted_squads with TTL, optional arrival handler, and wait duration.
 
-script_actor_target(squad) scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
+register_actor_target(squad) scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
-script_squad_target(squad, target_id, opts) scripts a squad to pursue another squad by id via continuous coordinate homing (the ap_core_chase hooks; see Chase pattern). No arrival detection - the chase ends when the target dies or the leash releases. Both chase forms set entry.is_chase and run the evaluate_chase leash on the periodic scan instead of the arrival/gulag flow.
+register_squad_target(squad, target_id, opts) scripts a squad to pursue another squad by id via continuous coordinate homing (the ap_core_chase hooks; see Chase pattern). No arrival detection - the chase ends when the target dies or the leash releases. Both chase forms set entry.is_chase and run the evaluate_chase leash on the periodic scan instead of the arrival/gulag flow.
 
 ### Scripted-squad scan
 
@@ -563,7 +563,7 @@ _update_scripted_squads runs every 20s via CreateTimeEvent. For each tracked squ
 
 ap_core_record owns a 256-slot FIFO of dispatched consequences. Each record entry is one consequence dispatch on one squad. The substrate is shared by HUD markers, ap_ext_news compose, and external integrators (warfare).
 
-Write. ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts) is the single entry point; consequence handlers call it after script_squad / script_actor_target SUCCESS. add_record captures display keys via _capture_side for subject + optional other (engine community string for stalker / zombified-stalker squads → faction_key; "st_ap_macros_species_" + xcreature.get_mutant_species(squad) for mutant squads → species_key; xsquad.get_commander_name → name) and writes the entry. Squad-derived keys are eager so dead/unregistered squads remain renderable. Smart, level, and game-hour-at-write stay lazy ids resolved at render.
+Write. ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts) is the single entry point; consequence handlers call it after register_squad / register_actor_target SUCCESS. add_record captures display keys via _capture_side for subject + optional other (engine community string for stalker / zombified-stalker squads → faction_key; "st_ap_macros_species_" + xcreature.get_mutant_species(squad) for mutant squads → species_key; xsquad.get_commander_name → name) and writes the entry. Squad-derived keys are eager so dead/unregistered squads remain renderable. Smart, level, and game-hour-at-write stay lazy ids resolved at render.
 
 Substrate. _ap_record (xttltable.fifo, capacity 256, on_evict callback) holds entries keyed by monotonic cons_id. _record_assigned[squad_id] indexes the live entry per squad. _record_seq is the cons_id counter. Writing a new entry for a squad flips the previous entry's assigned flag to false before assigning the new one. _on_record_evict nulls _record_assigned only if the evicted entry was the live one (a flipped predecessor leaves no index entry to clean).
 
@@ -594,7 +594,7 @@ _ap_scripted_squads persists to m_data.ap_core_broker; the activity record (FIFO
 
 A cause can flag a destination as off-map; the flag changes selection rules and rate-limiting while the lifecycle machinery stays shared with on-map dispatch. The engine itself handles the cross-level move through its own per-squad routing, including the offline/online transition for the level swap; at the destination the gulag binds jobs identically to on-map arrivals. The off-map hold uses the shortened `PRE_RELEASE_GULAG` value (600 game-sec).
 
-Off-map sessions live on the same `_ap_scripted_squads` entries as regular scripted dispatches; the broker has one collection, one scan, one source of truth. An off-map dispatch is a regular `script_squad(squad, smart, { offmap = true })` call that additionally initialises the session fields `{ offmap = true, dispatched_at }` via `_init_offmap_session`. There is no return leg: the squad travels out, holds the gulag briefly, and settles at the destination. The 20s scripted-squad scan calls `_scan_offmap_entry` for any entry with `data.offmap`, which runs only the despawn safety-net check.
+Off-map sessions live on the same `_ap_scripted_squads` entries as regular scripted dispatches; the broker has one collection, one scan, one source of truth. An off-map dispatch is a regular `register_squad(squad, smart, { offmap = true })` call that additionally initialises the session fields `{ offmap = true, dispatched_at }` via `_init_offmap_session`. There is no return leg: the squad travels out, holds the gulag briefly, and settles at the destination. The 20s scripted-squad scan calls `_scan_offmap_entry` for any entry with `data.offmap`, which runs only the despawn safety-net check.
 
 AlifePlus stacks safety layers on top of the engine capability:
 
@@ -604,20 +604,20 @@ AlifePlus stacks safety layers on top of the engine capability:
 | Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
 | Cross-level filter | prop-only / SIMBOARD / static-set predicates (`xsmart.is_base`, `xsmart.has_campfire`, `_is_unclaimed`, occupied-non-base); `has_animated_stalker_jobs` / dynamic `npc_info` omitted because `stalker_jobs` / `npc_info` are empty for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
 | Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart` |
-| SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `script_squad` + `_commit_arrival` |
-| Settle terminal | after the gulag hold, `_unscript_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
+| SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `register_squad` + `_commit_arrival` |
+| Settle terminal | after the gulag hold, `_unregister_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
 | Despawn safety net | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` reclaims a squad that never settled at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker` `_check_offmap_despawn` |
 | Arrival check | shared `_commit_arrival` (`has_anchored_jobs` wrapping `xsmart.has_jobs_for`); short-circuits for off-actor-level smarts so the gulag hold runs to expiry | `ap_core_broker` `_commit_arrival` |
 
-Registration. `_init_offmap_session(data, squad_id, now)` sets `offmap = true` and `dispatched_at = now` on a fresh `script_squad` entry. No home level is captured -- the squad's origin is not tracked because it never returns to it.
+Registration. `_init_offmap_session(data, squad_id, now)` sets `offmap = true` and `dispatched_at = now` on a fresh `register_squad` entry. No home level is captured -- the squad's origin is not tracked because it never returns to it.
 
 TTL. Off-map sessions have no scripted-squad TTL. The generic TTL exists to release scripts that don't reach their target on a reasonable schedule; an off-map trip can span multiple maps (an online stalker walking through level changers takes many game-hours), so the session lifetime is bounded by `cfg.offmap_despawn_hours` instead, owned by `_check_offmap_despawn`. `_update_scripted_squad` gates the TTL check on `not data.offmap`.
 
 Arrival. Off-map arrival is an ordinary arrival: `_run_arrival` runs the on_arrive handler (the trade / explore / social action) then `_commit_arrival`, which starts the gulag hold (`release_at = now + pre_release_gulag`, the shortened off-map value) and adds the destination roster entry. There is no off-map-specific arrival handling.
 
-Settle. `_update_gulag` releases at `release_at` via `_unscript_squad` for every entry (off-map and on-map alike): the AP entry is dropped and the squad becomes an ordinary vanilla resident of the destination smart. An off-map squad that cannot bind a job at commit, or loses one mid-hold, is released via `_release_to_dwell` instead, which clears the scripted fields but keeps `offmap` + `dispatched_at` so the despawn safety net can reclaim it.
+Settle. `_update_gulag` releases at `release_at` via `_unregister_squad` for every entry (off-map and on-map alike): the AP entry is dropped and the squad becomes an ordinary vanilla resident of the destination smart. An off-map squad that cannot bind a job at commit, or loses one mid-hold, is released via `_release_to_dwell` instead, which clears the scripted fields but keeps `offmap` + `dispatched_at` so the despawn safety net can reclaim it.
 
-Re-dispatch preservation. `script_squad` preserves the off-map session across a non-offmap re-dispatch: if the existing entry has `offmap = true` and the new dispatch is non-offmap, `_preserve_offmap_session` carries `offmap` + `dispatched_at` into the new entry, so the despawn budget keeps counting from the original dispatch.
+Re-dispatch preservation. `register_squad` preserves the off-map session across a non-offmap re-dispatch: if the existing entry has `offmap = true` and the new dispatch is non-offmap, `_preserve_offmap_session` carries `offmap` + `dispatched_at` into the new entry, so the despawn budget keeps counting from the original dispatch.
 
 Despawn safety net. `_check_offmap_despawn` reclaims a squad that never settled: it fires when `(now - data.dispatched_at) > cfg.offmap_despawn_hours * 3600` (default 168 game-hours = 7 days, MCM-tunable) and `not squad.online`. Online squads may be in transit or under player observation; they don't despawn. `is_protected` runs first so story / task / companion / warfare-owned squads are spared. Release goes through the engine's `sim_squad_scripted:remove_squad`, which clears the SIMBOARD roster on the way out.
 
@@ -637,16 +637,16 @@ Delegates to xsquad.is_protected with five guard categories (`ap_core_broker._pr
 | Active role | task giver; companion |
 | Task target | assault, bounty, hostage, delivery, dominance, rescue |
 
-script_squad does not check protection. It assumes upstream layers verified the squad. Direct callers outside the pipeline must check is_protected themselves.
+register_squad does not check protection. It assumes upstream layers verified the squad. Direct callers outside the pipeline must check is_protected themselves.
 
 ### Reactive preemption (interruptable flag)
 
 Radiant cadence accumulates AP-scripted squads. Reactive events (massacre, wounded, basekill, harvest, squadkill, alphakill) need an unscripted squad to dispatch their consequence; if the pool is exhausted by radiant scripts, reactive starves. Preemption: reactive consequences opt in to a fallback pass over AP's tracked pool, accepting squads marked interruptable.
 
-Interruptable flag. script_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
+Interruptable flag. register_squad stores `opts.interruptable` on `_ap_scripted_squads[id].interruptable`. Every consequence dispatch sets the flag explicitly at the call site - there is no pipeline-level default contract:
 
 - `interruptable = true`: on-map needs, all instincts, and stash_ambush. Routine maintenance trips, deferrable.
-- `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase dispatch in ap_ext_common (move_actor_chasers, move_squad_chasers), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches are committed cross-map trips that lose their destination if preempted outbound.
+- `interruptable = false`: all reactions (massacre, wounded, basekill, squadkill, harvest, alphakill), the chase dispatch in ap_ext_common (register_actor_chasers, register_squad_chasers), area causes (conquer, swarm, infest), stash_loot, stash_fill, and the 3 off-map needs (supply_trader_offmap, social_offmap, job_explore_offmap). Reactions are in-flight responses; area mutations and stash item-actions have persistent on-arrival side effects worth preserving; off-map dispatches are committed cross-map trips that lose their destination if preempted outbound.
 
 The broker default is `true` only as a safety net; no caller relies on it.
 
@@ -659,7 +659,7 @@ Two-pass find. ap_core_util.find_squads runs the standard protection-opts pass f
 
 Interruptable AP-scripted squads pass all gates and become candidates. xsquad.find_squads still applies permanent / active_role / task_target via the boolean opts, plus distance / faction / level / exclude_at_smart_id checks. Single pass, no recursive find.
 
-Release-and-rescript. script_squad already handles "already scripted" by calling xsquad.release_squad on the existing target before acquiring the new one (`broker.script_squad:446-452`). The preempt flow piggybacks: when the reactive picker selects an interruptable scripted squad and calls script_squad, the old radiant trip is dropped and the new reactive script replaces it.
+Release-and-rescript. register_squad already handles "already scripted" by calling xsquad.release_squad on the existing target before acquiring the new one (`broker.register_squad:446-452`). The preempt flow piggybacks: when the reactive picker selects an interruptable scripted squad and calls register_squad, the old radiant trip is dropped and the new reactive script replaces it.
 
 Bounded by negation. Reactive does not preempt reactive (reactive scripts carry `interruptable = false`). External scripts (warfare, story, task) are not touched (rejected at gate 1 by exclude_filter). Radiant pipeline is unchanged - it still scripts squads at the same cadence; reactive gets guaranteed access via fallback rather than via radiant throttling.
 
@@ -681,7 +681,7 @@ Validate pass. Iterates _marker_state itself. Three-stage chain per squad: get_r
 
 Subject resolution. The record entry carries translation keys for both subject and other (`subject_faction_key`, `subject_species_key`, `subject_name`, plus the `other_*` mirror). ap_core_map calls game.translate_string on each `_key` at render time and runs an inline `_format_party` helper to compose `<name | translated species> (translated faction)`. No ext import.
 
-ALPHA_PROMOTE flow. Alpha squads write a record via ap_ext_consequences_alpha (calls add_record with CAUSE.ALPHA / CONSEQUENCE.ALPHA_PROMOTE) but never call script_squad. Their record is `assigned=true` so apply renders the marker. validate sees `not ap_core_broker.is_routing` (an alpha writes no broker entry) and starts linger after the next 20s pass; the marker fades MARKER_LINGER_SEC after promotion. Re-promotion (new alpha record) resets the cycle.
+ALPHA_PROMOTE flow. Alpha squads write a record via ap_ext_consequences_alpha (calls add_record with CAUSE.ALPHA / CONSEQUENCE.ALPHA_PROMOTE) but never call register_squad. Their record is `assigned=true` so apply renders the marker. validate sees `not ap_core_broker.is_routing` (an alpha writes no broker entry) and starts linger after the next 20s pass; the marker fades MARKER_LINGER_SEC after promotion. Re-promotion (new alpha record) resets the cycle.
 
 Right-click teleport. ap_core_map registers `map_spot_menu_add_property` and `map_spot_menu_property_clicked`. Gate: `_marker_state[id] ~= nil` and `cfg.map_markers`; the menu item appears only on AP-rendered spots and only while markers are enabled. On click, `xobject.se(id).position` (the squad server-object's `o_Position`, synced from commander per `cse_alife_online_offline_group`) is the destination. Same level uses `db.actor:set_actor_position(pos)`; cross-level uses `ChangeLevel(pos, m_level_vertex_id, m_game_vertex_id, VEC_ZERO, true)` after a `m_level_vertex_id < INVALID_LEVEL_VERTEX_ID` guard. No combat / weight / bleed / surge gates; the feature is gated by the `map_markers` MCM toggle (development tab) which is itself dev-tier.
 
@@ -993,8 +993,8 @@ Gate order within the RULES phase (where present): alignment -> species -> perso
 
 Three reactive consequences (squadkill_revenge, harvest_rob, alphakill_targeted) pursue a non-stationary target. Two target kinds share one lifecycle:
 
-- Player target: `move_actor_chasers` -> `script_actor_target` sets `scripted_target = "actor"`, which the engine re-resolves to id 0 every update, so pursuit is continuous and the actor never "arrives".
-- Squad target: `move_squad_chasers` -> `script_squad_target` drives continuous coordinate homing. A squad id is not a natively-resolvable scripted target (vanilla `get_script_target` / `get_current_task` resolve only `"actor"` and smart names), so `ap_core_chase` installs two guarded `sim_squad_scripted` monkeypatches at on_game_start, both keyed on the broker `_ap_scripted_squads` registry (`entry.target_squad_id`):
+- Player target: `register_actor_chasers` -> `register_actor_target` sets `scripted_target = "actor"`, which the engine re-resolves to id 0 every update, so pursuit is continuous and the actor never "arrives".
+- Squad target: `register_squad_chasers` -> `register_squad_target` drives continuous coordinate homing. A squad id is not a natively-resolvable scripted target (vanilla `get_script_target` / `get_current_task` resolve only `"actor"` and smart names), so `ap_core_chase` installs two guarded `sim_squad_scripted` monkeypatches at on_game_start, both keyed on the broker `_ap_scripted_squads` registry (`entry.target_squad_id`):
   - `get_current_task` builds a `CALifeSmartTerrainTask` from the target's live vertices each call. This is the only movement input the offline group brain consumes (`alife_online_offline_group_brain.cpp:80-84`), and it THROW2s on a nil task - the hook never returns nil (it returns a constructed task, or the captured original, which itself falls back to `get_alife_task`).
   - `get_script_target` returns the target id so the online reach-task squad fallback fires (`xr_reach_task.script:251-254`) and `specific_update` keeps re-pinning `assigned_target_id`. Replacing the whole method also sidesteps the clean-vanilla numeric-id `obj:clsid()` crash (`sim_squad_scripted.script:139`).
 
@@ -1007,7 +1007,7 @@ Both hooks delegate to the captured original for any squad without a chase entry
 - RELEASE: `_is_target_lost` (squad target gone or wiped; N/A for the actor), `_is_no_longer_enemy` (opt-in via `entry.check_relation` - faction chases set it, mutant species chases omit it because `is_factions_enemies` is false for undefined mutant pairs), `_is_target_story_protected` (target carries a story id), `_is_target_off_map` (chaser and target on different maps - stateless, so a chase never follows across a level change or leaks into the off-map session system).
 - PAUSE (resume when the condition clears): `_is_target_in_base` (target sheltered in a base smart), `xlevel.is_surge`. Every chaser pauses uniformly; no faction exemption.
 
-The scan (`ap_core_broker._update_chase`) acts on the verdict. RELEASE unscripts. PAUSE stops driving the engine target - the squad-target hook returns nil while paused, and the actor target is released and re-set on resume - with a min-hold (`CHASE_MIN_PAUSE_SEC`, hysteresis against base flicker) and a max-pause cap (`CHASE_MAX_PAUSE_SEC` -> release). KEEP resumes a paused chase and reasserts the actor target. The dispatch (`script_squad_target`) runs the same `evaluate_chase` on the proposed entry stub and refuses any start that is not KEEP. Both chase kinds also share the one ledger TTL (`SCRIPTED_SQUAD_TTL`), checked above the chase/smart split in the scan.
+The scan (`ap_core_broker._update_chase`) acts on the verdict. RELEASE unscripts. PAUSE stops driving the engine target - the squad-target hook returns nil while paused, and the actor target is released and re-set on resume - with a min-hold (`CHASE_MIN_PAUSE_SEC`, hysteresis against base flicker) and a max-pause cap (`CHASE_MAX_PAUSE_SEC` -> release). KEEP resumes a paused chase and reasserts the actor target. The dispatch (`register_squad_target`) runs the same `evaluate_chase` on the proposed entry stub and refuses any start that is not KEEP. Both chase kinds also share the one ledger TTL (`SCRIPTED_SQUAD_TTL`), checked above the chase/smart split in the scan.
 
 Persistence is the seed only: `_ap_scripted_squads` stores `target_squad_id`; the hooks regenerate the task each tick, so the engine saves neither the task nor `assigned_target_id`. A chase survives save/load and resumes within one scan.
 

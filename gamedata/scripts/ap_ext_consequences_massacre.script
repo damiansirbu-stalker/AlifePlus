@@ -45,7 +45,7 @@ local function _handler_investigate(event_data)
         level_id = level_id, max_count = cfg.consequence_massacre_investigate_max_squads,
         exclude_at_smart_id = smart.id, allow_preempt = true,
     })
-    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+    local moved, last_reason = ap_ext_common.register_squads(squads, smart, {
         rush = cfg.consequence_massacre_investigate_rush,
         pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_INVESTIGATE,
         interruptable = false,
@@ -74,7 +74,7 @@ local function _handler_scavenge(event_data)
         exclude_at_smart_id = smart.id, allow_preempt = true,
     })
     local squads = ap_ext_util.filter_mutant_squads(candidates, _species_scavenge, _personality_scavenge)
-    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+    local moved, last_reason = ap_ext_common.register_squads(squads, smart, {
         rush = cfg.consequence_massacre_scavenge_rush,
         pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_SCAVENGE,
         interruptable = false,
@@ -109,7 +109,7 @@ local function _handler_loot(event_data)
             squads[#squads + 1] = squad
         end
     end
-    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+    local moved, last_reason = ap_ext_common.register_squads(squads, smart, {
         rush = cfg.consequence_massacre_loot_rush,
         pre_release_gulag = PRE_RELEASE_GULAG.MASSACRE_LOOT,
         interruptable = false,

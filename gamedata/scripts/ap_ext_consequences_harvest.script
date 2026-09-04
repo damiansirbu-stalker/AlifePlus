@@ -26,9 +26,9 @@ local _personality_haunt = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY }
 
 --- harvest_rob: outlaws chase artefact taker
 
-local _move_actor_chasers = ap_ext_common.move_actor_chasers
+local _move_actor_chasers = ap_ext_common.register_actor_chasers
 
-local _move_squad_chasers = ap_ext_common.move_squad_chasers
+local _move_squad_chasers = ap_ext_common.register_squad_chasers
 
 -- Keep chasers hostile to the taker's community that pass the rob personality roll.
 local function _eligible_robbers(chasers, target_community)
@@ -110,7 +110,7 @@ local function _handler_haunt(event_data)
             allow_preempt = true,
         })
         local squads = ap_ext_util.filter_mutant_squads(candidates, _species_haunt, _personality_haunt)
-        moved, last_reason = ap_ext_common.move_squads(squads, target_smart, { rush = cfg.consequence_harvest_haunt_rush, interruptable = false })
+        moved, last_reason = ap_ext_common.register_squads(squads, target_smart, { rush = cfg.consequence_harvest_haunt_rush, interruptable = false })
         if #candidates == 0 then code, reason = RESULT.FAILED_SCAN, REASON.NO_SQUAD
         elseif #squads == 0 then code, reason = RESULT.FAILED_RULES, REASON.NO_ELIGIBLE_SQUAD
         elseif #moved == 0 then code, reason = RESULT.FAILED_ACTION, (last_reason or REASON.MOVE_FAILED) end

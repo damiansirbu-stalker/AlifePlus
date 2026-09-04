@@ -36,7 +36,7 @@ function unregister_owner(name) return ap_core_broker.unregister_owner(name) end
 --- @return string|nil Owner name, or nil if unowned
 function get_owner(squad) return ap_core_broker.get_owner(squad) end
 
-local function _copy_entry(entry)
+local function _clone_entry(entry)
     if not entry then return nil end
     return xtable.clone(entry)
 end
@@ -54,7 +54,7 @@ end
 --- Prefer get_scripted_squad(id) for single-entry lookups (one entry copy, not the whole map).
 function get_scripted_squads()
     local out = {}
-    for k, entry in pairs(ap_core_broker.get_scripted_squads()) do out[k] = _copy_entry(entry) end
+    for k, entry in pairs(ap_core_broker.get_scripted_squads()) do out[k] = _clone_entry(entry) end
     return out
 end
 
@@ -63,7 +63,7 @@ end
 --- @param squad_id number
 --- @return table|nil
 function get_scripted_squad(squad_id)
-    return _copy_entry(ap_core_broker.get_scripted_squads()[squad_id])
+    return _clone_entry(ap_core_broker.get_scripted_squads()[squad_id])
 end
 
 --- Most-recent activity record matching opts (AND logic on field equality).
@@ -79,7 +79,7 @@ function get_record(opts) return ap_core_record.get_record(opts) end
 --- @return table Array of matching entries
 function get_records(opts) return ap_core_record.get_records(opts) end
 
---- Append an activity record after a successful script_squad / script_actor_target.
+--- Append an activity record after a successful register_squad / register_actor_target.
 --- Broker captures display keys from the squad userdata so reads stay valid after the squad
 --- despawns. Drives HUD markers, news compose, and external tooltip queries; foreign
 --- integrators must call this for their consequences to render.
@@ -105,20 +105,20 @@ function release_squad(squad_id) return ap_core_broker.release_squad(squad_id) e
 --- Script a squad to a smart terrain with full AP lifecycle (PDA marker, TTL,
 --- release-hold, target reassertion). Marker rendering and player-facing labelling come
 --- from the activity record; integrators should call ap_api.add_record after
---- script_squad success to populate it.
+--- register_squad success to populate it.
 --- @param squad userdata Squad server object
 --- @param smart userdata Smart terrain server object
 --- @param opts table|nil { rush, on_arrive, on_arrive_args, pre_release_gulag }
 ---   on_arrive: optional; same value as consequence when registering an arrival handler
 ---              with register_consequence.
 --- @return table { code = RESULT.X, id, dst, dst_id }
-function script_squad(squad, smart, opts) return ap_core_broker.script_squad(squad, smart, opts) end
+function register_squad(squad, smart, opts) return ap_core_broker.register_squad(squad, smart, opts) end
 
 --- Script a squad to pursue the player directly (no arrival detection).
 --- @param squad userdata Squad server object
 --- @param opts table|nil { check_relation = true } to release chaser if faction relation no longer enemy
 --- @return table { code = RESULT.X, id, dst, dst_id }
-function script_actor_target(squad, opts) return ap_core_broker.script_actor_target(squad, opts) end
+function register_actor_target(squad, opts) return ap_core_broker.register_actor_target(squad, opts) end
 
 --- Resolve an action enum value to its localized phrase.
 --- e.g. ACTION.MASSACRE_INVESTIGATE ("action:massacre_investigate") -> "Investigating a Massacre Site".

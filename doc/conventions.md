@@ -125,7 +125,7 @@ Consequence handlers receive trace from consumer. Rate limiting handled by consu
 | Enabled gate | Consumer | MCM condition function, checked before handler |
 | Rules phase | Handler | Alignment, species, personality, validation |
 | Scan phase | Handler | find_squads, find_smart, entity lookups |
-| Action phase | Handler | script_squad, record, PDA message |
+| Action phase | Handler | register_squad, record, PDA message |
 | Result code | Handler | Template phase outcome |
 
 ### Handler Template (rules -> scan -> action)
@@ -134,7 +134,7 @@ Every consequence follows a three-phase structure. Each phase returns immediatel
 
 1. **Rules** - alignment check, species check (direct hash), personality roll, match validation, at_base guard -> `FAILED_RULES`
 2. **Scan** - find_squads, find_smart, xobject.se lookups -> `FAILED_SCAN`
-3. **Action** - script_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
+3. **Action** - register_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
 
 Gate order within rules: alignment -> species -> personality -> match -> validation.
 

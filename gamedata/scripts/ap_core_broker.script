@@ -201,7 +201,7 @@ end
 --- Release squad from AP scripted control. Accepts squad_id (number) for "entity already gone"
 --- cleanup path, or squad userdata for "entity still live" release path. Number skips the
 --- xsquad.release_squad call since there's nothing to release against.
-local function _unscript_squad(squad_or_id)
+local function _unregister_squad(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
     local is_id = tp == "number"
@@ -210,7 +210,7 @@ local function _unscript_squad(squad_or_id)
     local squad
     if is_id then squad = xobject.get_se(squad_id) else squad = squad_or_id end
     if squad then
-        ap_core_debug.debug("[SQUAD] _unscript_squad: squad=%d scripted_target=%s",
+        ap_core_debug.debug("[SQUAD] _unregister_squad: squad=%d scripted_target=%s",
             squad_id, tostring(_ap_scripted_squads[squad_id].scripted_target))
         xsquad.release_squad(squad)
     end
@@ -221,7 +221,7 @@ end
 -- Release an off-map squad that could not settle (no job at the destination, or lost one
 -- mid-hold), keeping only the offmap session so the despawn safety net reclaims it once it
 -- goes offline. Clears the AP script; the squad reverts to vanilla AI in the meantime.
--- Non-offmap entries fall through to _unscript_squad.
+-- Non-offmap entries fall through to _unregister_squad.
 local function _release_to_dwell(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
@@ -229,7 +229,7 @@ local function _release_to_dwell(squad_or_id)
     local squad_id = is_id and squad_or_id or squad_or_id.id
     local data = _ap_scripted_squads[squad_id]
     if not data then return false end
-    if not data.offmap then return _unscript_squad(squad_or_id) end
+    if not data.offmap then return _unregister_squad(squad_or_id) end
     local squad
     if is_id then squad = xobject.get_se(squad_id) else squad = squad_or_id end
     if squad then
@@ -260,13 +260,13 @@ end
 
 -- Off-map lifecycle
 -- An off-map session has no return leg: the squad travels to its target smart, holds the
--- gulag for pre_release_gulag, then _unscript_squad settles it there as a vanilla resident.
+-- gulag for pre_release_gulag, then _unregister_squad settles it there as a vanilla resident.
 -- A squad that cannot get a job (or loses one mid-hold) is released via _release_to_dwell,
 -- keeping only offmap + dispatched_at so the despawn safety net reclaims it once offline.
 -- The entry carries offmap + dispatched_at; sessions survive non-offmap re-dispatches during
--- the hold (script_squad preserves those two fields when an existing entry has offmap=true).
+-- the hold (register_squad preserves those two fields when an existing entry has offmap=true).
 
--- Populate off-map session fields on a fresh scripted entry. Called from script_squad
+-- Populate off-map session fields on a fresh scripted entry. Called from register_squad
 -- when opts.offmap is true.
 local function _init_offmap_session(data, squad_id, now)
     data.offmap        = true
@@ -360,23 +360,23 @@ end
 --- @param smart se_smart Smart terrain target
 --- @param opts table|nil { rush, on_arrive, on_arrive_args, pre_release_gulag, offmap, ttl }
 --- @return table { code = RESULT.X, id, dst, dst_id }
-function script_squad(squad, smart, opts)
+function register_squad(squad, smart, opts)
     if not squad or not smart then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     if not xsquad.is_squad(squad) then
-        ap_core_debug.warn("[SQUAD] script_squad: refused, not a sim_squad_scripted instance id=%s",
+        ap_core_debug.warn("[SQUAD] register_squad: refused, not a sim_squad_scripted instance id=%s",
             tostring(squad.id))
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
     opts = opts or {}
     local name = smart:name()
     if not name or name == "" then
-        ap_core_debug.warn("[SQUAD] script_squad: squad=%d invalid smart name", squad.id)
+        ap_core_debug.warn("[SQUAD] register_squad: squad=%d invalid smart name", squad.id)
         return { code = RESULT.FAILED_ACTION, reason = REASON.INVALID_SMART, id = squad.id }
     end
     local existing = _ap_scripted_squads[squad.id]
     local preserved = _preserve_offmap_session(existing, opts)
     if existing then
-        ap_core_debug.debug("[SQUAD] script_squad: squad=%d already scripted (target=%s), releasing first",
+        ap_core_debug.debug("[SQUAD] register_squad: squad=%d already scripted (target=%s), releasing first",
             squad.id, tostring(existing.scripted_target))
         xsquad.release_squad(squad)
     end
@@ -401,7 +401,7 @@ function script_squad(squad, smart, opts)
     _finalize_data(data, squad.id, opts, preserved, now)
     _ap_scripted_squads[squad.id] = data
     if ap_core_debug.enabled() then
-        ap_core_debug.debug("[SQUAD] script_squad: squad=%d section=%s -> %s offmap=%s",
+        ap_core_debug.debug("[SQUAD] register_squad: squad=%d section=%s -> %s offmap=%s",
             squad.id, squad:section_name(), name, tostring(opts.offmap or false))
     end
     _log_proximity("script_time", squad, smart, data)
@@ -410,14 +410,14 @@ end
 
 --- Script squad to pursue player directly (no arrival detection)
 --- Runs the evaluate_chase leash gate first and refuses a start the leash would immediately
---- pause/release (surge, actor-in-base, relation already friendly), matching script_squad_target;
+--- pause/release (surge, actor-in-base, relation already friendly), matching register_squad_target;
 --- otherwise sets scripted_target="actor" via xsquad.set_target_actor (player movement prevents arrival checks)
 --- @safety SAFE - nil-guarded; gates before releasing, so a refused start leaves any existing chase intact
 --- @cost O(1) | ~3 luabind medium on dispatch (evaluate_chase: actor smart, surge, optional relation)
 --- @param squad se_squad Squad server object
 --- @param opts table|nil { check_relation, interruptable }
 --- @return table { code = RESULT.X, id, dst, dst_id }
-function script_actor_target(squad, opts)
+function register_actor_target(squad, opts)
     if not squad then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     if not xsquad.is_squad(squad) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
@@ -429,15 +429,15 @@ function script_actor_target(squad, opts)
         check_relation = opts and opts.check_relation or nil,
         interruptable = not (opts and opts.interruptable == false),
     }
-    -- Dispatch gate: refuse a chase the leash would immediately pause or release (matches script_squad_target).
+    -- Dispatch gate: refuse a chase the leash would immediately pause or release (matches register_squad_target).
     local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
-        ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d refused verdict=%s reason=%s",
+        ap_core_debug.debug("[SQUAD] register_actor_target: squad=%d refused verdict=%s reason=%s",
             squad.id, verdict, tostring(reason))
         return { code = RESULT.FAILED_RULES, reason = reason, id = squad.id }
     end
     if _ap_scripted_squads[squad.id] then
-        ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d already scripted (target=%s), releasing first",
+        ap_core_debug.debug("[SQUAD] register_actor_target: squad=%d already scripted (target=%s), releasing first",
             squad.id, tostring(_ap_scripted_squads[squad.id].scripted_target))
         xsquad.release_squad(squad)
     end
@@ -445,7 +445,7 @@ function script_actor_target(squad, opts)
         return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id }
     end
     _ap_scripted_squads[squad.id] = entry
-    ap_core_debug.debug("[SQUAD] script_actor_target: squad=%d -> actor", squad.id)
+    ap_core_debug.debug("[SQUAD] register_actor_target: squad=%d -> actor", squad.id)
     return { code = RESULT.SUCCESS, id = squad.id, dst = "actor", dst_id = 0 }
 end
 
@@ -465,7 +465,7 @@ end
 --- @param target_id number Target squad id
 --- @param opts table|nil { interruptable }
 --- @return table { code = RESULT.X, id, dst_id }
-function script_squad_target(squad, target_id, opts)
+function register_squad_target(squad, target_id, opts)
     if not squad or not target_id then return { code = RESULT.FAILED_ACTION, reason = REASON.NIL_ARGS } end
     if not xsquad.is_squad(squad) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
@@ -480,7 +480,7 @@ function script_squad_target(squad, target_id, opts)
     -- Dispatch gate: refuse a chase the leash would immediately pause or release.
     local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
-        ap_core_debug.debug("[SQUAD] script_squad_target: squad=%d refused verdict=%s reason=%s",
+        ap_core_debug.debug("[SQUAD] register_squad_target: squad=%d refused verdict=%s reason=%s",
             squad.id, verdict, tostring(reason))
         return { code = RESULT.FAILED_RULES, reason = reason, id = squad.id }
     end
@@ -490,7 +490,7 @@ function script_squad_target(squad, target_id, opts)
     squad.__lock = nil
     squad.current_action = 0
     _ap_scripted_squads[squad.id] = entry
-    ap_core_debug.debug("[SQUAD] script_squad_target: squad=%d -> target=%d", squad.id, target_id)
+    ap_core_debug.debug("[SQUAD] register_squad_target: squad=%d -> target=%d", squad.id, target_id)
     return { code = RESULT.SUCCESS, id = squad.id, dst_id = target_id }
 end
 
@@ -520,13 +520,13 @@ function is_smart_targeted(smart_id, exclude_squad_id)
     return false
 end
 
---- Release a squad from AP scripted control by id. Public wrapper around _unscript_squad.
+--- Release a squad from AP scripted control by id. Public wrapper around _unregister_squad.
 --- @safety SAFE - nil-guarded, releases engine target if entity is live
 --- @cost O(1) | 1 luabind (xobject.get_se) + 1 luabind (xsquad.release_squad), 0 if entity gone
 --- @param squad_id number Squad id
 --- @return boolean true if released, false if not currently scripted
 function release_squad(squad_id)
-    return _unscript_squad(squad_id)
+    return _unregister_squad(squad_id)
 end
 
 
@@ -587,14 +587,14 @@ local function _campfire_stray(smart, squad)
 end
 
 -- Validate arrival and commit the gulag entry. Pair with the dispatch-side clear in
--- script_squad: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
+-- register_squad: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
 -- to remove the source roster entry (before engine specific_update bumps squad.smart_id);
 -- commit fires SIMBOARD:assign_squad_to_smart(squad, smart.id) to add the destination entry.
 -- Together they keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
 local function _commit_arrival(squad_id, squad, smart, data, now)
     if not has_anchored_jobs(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_unplaced: squad=%d target=%s", squad_id, data.scripted_target)
-        if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
+        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
         return false
     end
     data.arrived = true
@@ -670,13 +670,13 @@ local function _run_arrival(squad_id, squad, data, now)
     if data.arrived then return end
     if not squad or not squad.commander_id then
         ap_core_debug.debug("[SQUAD] entity_lost: squad=%d target=%s", squad_id, data.scripted_target)
-        _unscript_squad(squad_id)
+        _unregister_squad(squad_id)
         return
     end
     local smart = xobject.get_se(data.target_smart_id)
     if not smart then
         ap_core_debug.debug("[SQUAD] smart_lost: squad=%d smart=%d target=%s", squad_id, data.target_smart_id, data.scripted_target)
-        _unscript_squad(squad)
+        _unregister_squad(squad)
         return
     end
     if not xsmart.is_arrived(squad, smart) then return end
@@ -689,7 +689,7 @@ local function _run_arrival(squad_id, squad, data, now)
 end
 
 -- Update the gulag state for one scan. Two paths: (1) release_at reached -> settle the squad
--- as a resident via _unscript_squad (off-map squads settle at the destination, no return);
+-- as a resident via _unregister_squad (off-map squads settle at the destination, no return);
 -- (2) mid-hold re-check -> release if a member lost its job, sits on the generic_point stub
 -- (has_anchored_jobs), or strayed from the fire (_campfire_stray).
 local function _update_gulag(squad_id, squad, data, now)
@@ -697,7 +697,7 @@ local function _update_gulag(squad_id, squad, data, now)
     if now >= data.release_at then
         ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
             squad_id, tostring(data.scripted_target))
-        _unscript_squad(squad)
+        _unregister_squad(squad)
         return
     end
     if not data.target_smart_id then return end
@@ -705,7 +705,7 @@ local function _update_gulag(squad_id, squad, data, now)
     if not smart then return end
     if not has_anchored_jobs(smart, squad) or _campfire_stray(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_unplaced_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
-        if data.offmap then _release_to_dwell(squad) else _unscript_squad(squad) end
+        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
     end
 end
 
@@ -756,13 +756,13 @@ local function _update_chase(squad_id, squad, data, now)
     local verdict, reason = ap_core_util.evaluate_chase(squad, data)
     if verdict == VERDICT.RELEASE then
         ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=%s", squad_id, tostring(reason))
-        _unscript_squad(squad)
+        _unregister_squad(squad)
         return
     end
     if verdict == VERDICT.PAUSE then
         if data.paused and (now - (data.paused_at or now)) > CHASE_MAX_PAUSE_SEC then
             ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=pause_cap", squad_id)
-            _unscript_squad(squad)
+            _unregister_squad(squad)
             return
         end
         _enter_pause(squad, data, reason, now)
@@ -802,7 +802,7 @@ local function _update_scripted_squad(squad_id)
         if (now - (data.tracked_at or 0)) > ttl then
             ap_core_debug.debug("[SQUAD] ttl_expired: squad=%d target=%s age=%ds ttl=%ds",
                 squad_id, tostring(data.scripted_target), now - (data.tracked_at or 0), ttl)
-            _unscript_squad(squad)
+            _unregister_squad(squad)
             return
         end
     end

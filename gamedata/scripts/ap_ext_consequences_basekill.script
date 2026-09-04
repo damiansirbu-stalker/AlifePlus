@@ -40,7 +40,7 @@ local function _handler_support(event_data)
         exclude_at_smart_id = smart.id,
         allow_preempt = true,
     })
-    local moved, last_reason = ap_ext_common.move_squads(squads, smart, {
+    local moved, last_reason = ap_ext_common.register_squads(squads, smart, {
         rush = cfg.consequence_basekill_support_rush,
         pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_SUPPORT,
         interruptable = false,
@@ -81,7 +81,7 @@ local function _handler_flee(event_data)
             exclude_at_smart_id = destination.id,
             allow_preempt = true,
         })
-        moved, last_reason = ap_ext_common.move_squads(fleeing, destination, {
+        moved, last_reason = ap_ext_common.register_squads(fleeing, destination, {
             rush = cfg.consequence_basekill_flee_rush,
             pre_release_gulag = PRE_RELEASE_GULAG.BASEKILL_FLEE,
             interruptable = false,
