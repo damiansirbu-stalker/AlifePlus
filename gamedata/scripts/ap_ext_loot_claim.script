@@ -546,7 +546,7 @@ function on_game_start()
     -- installs cleanly every load. is_hooked only separates an already-installed hook (a repeat call
     -- within one VM) from a real hook failure; it is not a cross-load persistence check.
     if xevent.is_hooked("xr_corpse_detection", "near_actor")
-        or xevent.hook("xr_corpse_detection", "near_actor", _npc_loot_excluded) then
+        or xevent.register_hook("xr_corpse_detection", "near_actor", _npc_loot_excluded) then
         ap_core_debug.info("%s hooked xr_corpse_detection.near_actor", LOG)
     else
         ap_core_debug.warn("%s FAILED to hook xr_corpse_detection.near_actor", LOG)

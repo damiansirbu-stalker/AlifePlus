@@ -19,7 +19,7 @@
 ---     vanilla squad_on_update firehose (~6600/min, no meaning per fire).
 ---   ap_npc_medkit_use (npc, medkit, kind)
 ---     Completes a vanilla seam: xr_eat_medkit.consume_medkit fires no callback, so a
----     function hook (xevent.hook) emits one before the original runs. kind is "health" or
+---     function hook (xevent.register_hook) emits one before the original runs. kind is "health" or
 ---     "bleed" (xr_eat_medkit.script). No options.
 ---
 --- Instrumentation is complete but costs one boolean when DEBUG is off: every stat
@@ -414,7 +414,7 @@ end
 
 -- @cost O(1) install | per heal: 1 SendScriptCallback + original consume_medkit
 local function _medkit_install()
-    return xevent.hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
+    return xevent.register_hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
         SendScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE, npc, medkit, kind)
         return orig(npc, medkit, kind)
     end)

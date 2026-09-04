@@ -607,11 +607,11 @@ end
 --- change is visible through the wrapper chain either way. No capability probe: there is no public
 --- query for a declared callback name, and RegisterScriptCallback on an undeclared name (e.g.
 --- trader_on_restock when the winning trader_autoinject variant does not declare it) silently drops the
---- registration, which would be a silent feature kill. Touch trade_manager first so xevent.hook can
+--- registration, which would be a silent feature kill. Touch trade_manager first so xevent.register_hook can
 --- rawget it.
 local function _setup_restock()
     local _ = trade_manager
-    xevent.hook("trade_manager", "update", _update_wrapper)
+    xevent.register_hook("trade_manager", "update", _update_wrapper)
     ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
 end
 
@@ -783,7 +783,7 @@ local function _on_first_update()
     _subscribed = true
     _validate_market_goods()
     local _ = ap_ext_trade
-    xevent.hook("ap_ext_trade", "trade", _observe_trade)
+    xevent.register_hook("ap_ext_trade", "trade", _observe_trade)
     RegisterScriptCallback(CALLBACK.ON_GET_ITEM_COST, _on_get_item_cost)
     _setup_restock()
     CreateTimeEvent(RELEASE_EV, RELEASE_EV, RELEASE_PERIOD_MS / 1000, _release_expired)

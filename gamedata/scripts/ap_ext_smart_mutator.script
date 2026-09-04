@@ -1524,7 +1524,7 @@ local function _guard_generated_ini(original, npc, filename)
 end
 
 function on_game_start()
-    xevent.hook("xr_logic", "get_customdata_or_ini_file", _guard_generated_ini)
+    xevent.register_hook("xr_logic", "get_customdata_or_ini_file", _guard_generated_ini)
     for _, mut in pairs(MUTATIONS) do
         _state[mut.name] = {}
         _pending[mut.name] = nil
@@ -1540,7 +1540,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.ON_TRY_RESPAWN, _on_try_respawn)
     -- Function-level patch (no callback fires inside trade_manager.update; pattern per
     -- doc/library/modding/script-loading.md monkey-patch section). Raw assignment, not
-    -- xevent.hook: the hook registry is single-slot per function key and ap_ext_market already
+    -- xevent.register_hook: the hook registry is single-slot per function key and ap_ext_market already
     -- holds trade_manager.update; both wrap orders with that hook are correct (its restock
     -- inject is deferred 0.1s; the below-hub preempt and stamp are synchronous inside this
     -- wrapper, so either nesting sees a completed restock). The type probe both guards

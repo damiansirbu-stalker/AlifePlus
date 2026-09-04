@@ -70,7 +70,7 @@ end
 --- @cost O(1) | 0 luabind
 function increment_consequence_counter(name)
     local limiter = _ensure_consequence_limiter()
-    limiter:acquire(_get_consequence_rate_key(name))
+    limiter:get_token(_get_consequence_rate_key(name))
 end
 
 local _GLOBAL_CONSEQUENCE_RATE_KEY = "global_consequence"
