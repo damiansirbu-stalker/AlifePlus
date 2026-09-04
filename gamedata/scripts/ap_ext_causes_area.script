@@ -53,7 +53,7 @@ local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
 local _is_field_smart = ap_ext_util.is_field_smart
 local _is_last_faction_smart = ap_ext_util.is_last_faction_smart
 
--- Human-only. No accepts_faction; engine's has_jobs_for self-rejects mismatched stalker
+-- Human-only. No can_accept_faction; engine's has_jobs_for self-rejects mismatched stalker
 -- communities on arrival (release_no_jobs). xsmart.has_jobs_for cite: stalker job assignment
 -- requires smart.props[community] to be set; mismatch yields nil job, has_jobs_for false.
 -- is_taken skips smarts under a live mutation (other than this faction's own conquest, which
@@ -68,7 +68,7 @@ local function _build_conquer_filter(player_id)
     end
 end
 
--- Mutant variant of conquer. Needs upfront accepts_faction because mob_home stubs are
+-- Mutant variant of conquer. Needs upfront can_accept_faction because mob_home stubs are
 -- oversupplied for mutants (gulag_general.script:1018-1022) so has_jobs_for rarely rejects.
 -- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
 -- is_taken keys on the SPECIES (swarm identity), so a same-species re-swarm refreshes while any
@@ -79,27 +79,27 @@ local function _make_swarm_filter(player_id, species)
         if not xsmart.is_smart_empty(smart.id) then return false end
         if not _is_field_smart(smart) then return false end
         if mutator.is_taken(smart.id, mutator.MUT_SWARM, species) then return false end
-        return xsmart.accepts_faction(smart, player_id) and not _is_last_faction_smart(smart)
+        return xsmart.can_accept_faction(smart, player_id) and not _is_last_faction_smart(smart)
     end
 end
 
 local function _make_lair_filter(player_id)
     return function(smart)
-        return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
 local function _make_surge_filter(player_id)
     return function(smart)
-        return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
 local function _make_lair_or_surge_filter(player_id)
     return function(smart)
-        return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end

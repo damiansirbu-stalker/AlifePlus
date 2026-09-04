@@ -614,7 +614,7 @@ end
 local function _ensure_service_icon(go, member_id, role)
     local spot = SERVICE_ICON[role]
     if not spot or not db.actor then return end
-    local goodwill = xcreature.goodwill_to_actor(go)
+    local goodwill = xcreature.get_actor_goodwill(go)
     if not goodwill then return end
     if goodwill <= -1000 then
         ap_core_debug.debug("[MUTATOR.SMART] service_icon_skip: npc=%d role=%s goodwill=%d (hostile)", member_id, role, goodwill)
@@ -691,7 +691,7 @@ local function _service_diag(member_id)
     return string_format("online=true name=%s job=%s talk=%s use=%s trade_en=%s director=%s rel=%s",
         tostring(go:name()), tostring(st and st.active_section),
         tostring(go:is_talk_enabled()), tostring(mm and mm.use), tostring(mm and mm.trade_enable),
-        tostring(mm and mm.npc_is_camp_director), tostring(xcreature.relation_to_actor(go)))
+        tostring(mm and mm.npc_is_camp_director), tostring(xcreature.get_actor_relation(go)))
 end
 
 local function _log_service_entry(squad_id, entry)

@@ -69,25 +69,25 @@ local _is_field_smart = ap_ext_util.is_field_smart
 
 local function _make_territory_filter(player_id)
     return function(smart)
-        return xsmart.is_territory(smart) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return xsmart.is_territory(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
 local function _make_lair_filter(player_id)
     return function(smart)
-        return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
 local function _make_surge_filter(player_id)
     return function(smart)
-        return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
 local function _make_territory_or_lair_filter(player_id)
     return function(smart)
-        return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _is_field_smart(smart) and xsmart.accepts_faction(smart, player_id)
+        return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
@@ -104,7 +104,7 @@ end
 local function _build_pack_filter(community, exclude_smart_id)
     return function(smart)
         if not _is_field_smart(smart) then return false end
-        if not xsmart.accepts_faction(smart, community) then return false end
+        if not xsmart.can_accept_faction(smart, community) then return false end
         if smart.id == exclude_smart_id then return false end
         return _pack_smart_has_kin(smart.id, community)
     end
@@ -126,7 +126,7 @@ end
 local function _build_scatter_filter(threats, player_id)
     return function(smart)
         if not _is_field_smart(smart) then return false end
-        if not xsmart.accepts_faction(smart, player_id) then return false end
+        if not xsmart.can_accept_faction(smart, player_id) then return false end
         local squads = xsmart.get_smart_squads(smart.id)
         if not squads then return true end
         for sq_id in pairs(squads) do
