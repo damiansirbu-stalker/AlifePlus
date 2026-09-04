@@ -446,7 +446,7 @@ end
 local function _hold_squad(squad, smart_id, role, now)
     local smart = xobject.get_se(smart_id)
     if not smart then return end
-    xsquad.acquire_squad(squad, smart)
+    xsquad.set_target_smart(squad, smart)
     _held_squads[squad.id] = { smart_id = smart_id, smart_name = smart:name(),
         section = squad:section_name(), role = role, held_at = now }
     ap_core_debug.debug("[MUTATOR.SMART] hold: smart=%d role=%s squad=%d", smart_id, role, squad.id)
@@ -568,7 +568,7 @@ end
 -- when already pinned. Returns false when the caller drops the entry. Pruning drops the LEDGER ROW
 -- ONLY: squads are never touched here (the decay contract owns removals), and the plan row's
 -- engine counter already reflects a death and refills on the world's pacing.
--- @cost O(1) | _resolve_held + reassert_target
+-- @cost O(1) | _resolve_held + set_target
 local function _update_service(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
     if not squad or not _state.conquest[entry.smart_id] then
@@ -578,7 +578,7 @@ local function _update_service(squad_id, entry)
     end
     local dbg = ap_core_debug.enabled()
     local prev_target = dbg and squad.scripted_target
-    if xsquad.reassert_target(squad, entry.smart_name) and dbg then
+    if xsquad.set_target(squad, entry.smart_name) and dbg then
         local cur = xobject.get_se(squad.smart_id)
         ap_core_debug.debug("[MUTATOR.SMART] pin_lost: smart=%d(%s) role=%s squad=%d prev_target=%s cur_smart=%s base=%s",
             entry.smart_id, entry.smart_name, entry.role, squad_id,
