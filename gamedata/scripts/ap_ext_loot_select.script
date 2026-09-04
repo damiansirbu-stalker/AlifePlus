@@ -36,10 +36,10 @@ local LOOT_POLICY = nil
 -- (reset on game start / load); the trim always fires next frame and clears its entry, so no leak.
 local _looted = {}
 
---- Per-item count unit, matching xinventory.classify's _unit (ammo counts in ROUNDS, everything
+--- Per-item count unit, matching xinventory.collect_policy_counts's _unit (ammo counts in ROUNDS, everything
 --- else in ITEMS). Kept local so n483 stays within the AlifePlus charter; mirrors xinventory.script:766.
 --- @cost O(1) | 1 string_sub + (ammo only) 1 ammo_get_count luabind
---- @param category string Item category from xinventory.policy_key
+--- @param category string Item category from xinventory.get_policy_key
 --- @param item game_object Inventory item
 --- @return number Count this item contributes to its policy key
 local function _looted_unit(category, item)
@@ -65,7 +65,7 @@ local function _load_policy()
 end
 
 --- Bucket the just-looted items still in the NPC's inventory under their capped policy key.
---- Untouchable / equipped items are dropped by xinventory.policy_key (story / companion / quest /
+--- Untouchable / equipped items are dropped by xinventory.get_policy_key (story / companion / quest /
 --- strapped / equipped, all inherited from xinventory.get_category); unlisted / uncapped keys are
 --- skipped (kept in full).
 --- @cost O(items) | 1 iterate; per item: policy_key + (capped only) get_cost
@@ -80,7 +80,7 @@ local function _bucket_looted(npc_id, ids, cat_opts, rules)
     local buckets = {}
     xinventory.iterate_inventory(npc_id, function(_, item)
         if not item or not want[item:id()] then return end
-        local key, cat, sec = xinventory.policy_key(item, cat_opts, rules)
+        local key, cat, sec = xinventory.get_policy_key(item, cat_opts, rules)
         if not key then return end
         local rule = rules[key]
         if not (rule and rule.max) then return end
@@ -146,7 +146,7 @@ local function _trim_npc_deferred(npc_id)
     local cat_opts = xinventory.get_category_opts(npc)
     -- Whole-inventory counts per policy key (ammo in rounds); the cap is measured against the full
     -- inventory, release acts only on the looted set (n483 decision 2).
-    local counts = xinventory.classify(npc, cat_opts, rules)
+    local counts = xinventory.collect_policy_counts(npc, cat_opts, rules)
     local buckets = _bucket_looted(npc_id, ids, cat_opts, rules)
 
     local released = 0

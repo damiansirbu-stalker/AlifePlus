@@ -54,8 +54,8 @@ end
 local function _transfer_surplus(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
     local rules = BARTER_POLICY.rules
-    local giver_counts = xinventory.classify(giver, giver_opts, rules)
-    local receiver_counts = xinventory.classify(receiver, receiver_opts, rules)
+    local giver_counts = xinventory.collect_policy_counts(giver, giver_opts, rules)
+    local receiver_counts = xinventory.collect_policy_counts(receiver, receiver_opts, rules)
 
     xinventory.iterate_surplus(giver, giver_opts, {
         rules = rules,

@@ -247,7 +247,7 @@ local function _pick_speaker(actor_comm, scope, channel_status)
 end
 
 -- Engine dispatch. Routes through dynamic_news_manager.PushToChannel when initialized;
--- falls back to xpda.send during the ~27s cold-start window. Engine-side drops (enable_news,
+-- falls back to xpda.publish_newsduring the ~27s cold-start window. Engine-side drops (enable_news,
 -- NewsToggle, is_pda_charged, counter cap) are not duplicated here.
 -- Called from compose_tick AFTER the compose timer stops, so vanilla engine cost (PushToChannel:
 -- UI texture lookup, sound init, shared_str ops) is timed and logged on its own dispatch line,
@@ -264,7 +264,7 @@ local function _do_engine_dispatch(picked, msg)
             Snd = "news", It = "npc",
         })
     else
-        xpda.send(picked.name, msg, picked.icon)
+        xpda.publish_news(picked.name, msg, picked.icon)
     end
     engine_timer:stop()
     if dbg then ap_core_debug.debug("%s dispatch %s sender=%s channel=%s [%.2fms]", NEWS_LOG,
@@ -351,7 +351,7 @@ function send_chatter(pool_prefix, slots, opts)
         if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
         return false
     end
-    -- nil channel_status: xpda.send is direct to the actor, not channel-routed, so the speaker only
+    -- nil channel_status: xpda.publish_newsis direct to the actor, not channel-routed, so the speaker only
     -- needs to pass the scope filter; the news radio channel does not have to be receivable.
     local picked = _pick_speaker(get_actor_true_community(), cfg.news_scope, nil)
     if not picked then
@@ -360,7 +360,7 @@ function send_chatter(pool_prefix, slots, opts)
     end
     -- Direct give_game_news (immediate), NOT dnm:PushToChannel which queues onto the radio's delayed
     -- schedule. Chatter is instant and does not ride the news pipeline.
-    xpda.send(picked.name, msg, picked.icon)
+    xpda.publish_news(picked.name, msg, picked.icon)
     _chatter_next = now + cfg.chatter_interval_sec
     if dbg then ap_core_debug.debug("%s sent %s by %s: %s", CHATTER_LOG, pool_prefix, picked.name, msg) end
     return true
@@ -413,7 +413,7 @@ local function _compose_tick_impl()
 end
 
 --- compose_tick: news pipeline tick. AP-side compose is timed as one span; engine dispatch
---- (vanilla dnm:PushToChannel / xpda.send) runs AFTER the timer stops so vanilla cost is not
+--- (vanilla dnm:PushToChannel / xpda.publish_news) runs AFTER the timer stops so vanilla cost is not
 --- attributed to the AP compose measurement, and is logged on its own dispatch line.
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end

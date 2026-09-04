@@ -105,7 +105,7 @@ end
 -- fails. Breaks (not errors) on any of those so the caller can try the next-cheapest section.
 -- Ammo sections (box_size present) buy whole boxes and count in rounds (target is rounds);
 -- everything else buys one item at a time and counts in items. This keeps the unit aligned
--- with xinventory.classify (_unit), so a per-section ammo rule like ammo_5.45x39_ap = 60, 60
+-- with xinventory.collect_policy_counts (_unit), so a per-section ammo rule like ammo_5.45x39_ap = 60, 60
 -- fills to 60 rounds, not 60 boxes.
 local function _buy_one_section(npc, seller, sec, current, target, bought)
     local box = xinventory.get_box_size(sec)
@@ -125,7 +125,7 @@ end
 -- section remains. Falls through to the next-cheapest section on per-section unaffordable
 -- or create_item failure, so an expensive section never blocks NPCs that can still afford
 -- a cheaper one. A section that has its own policy row (e.g. grenade_f1) is skipped here: it is
--- bought by its own entry, matching how xinventory.classify keys it under the section name.
+-- bought by its own entry, matching how xinventory.collect_policy_counts keys it under the section name.
 local function _buy_consumable_category(ctx, category, current, target)
     local sections = xinventory.get_category_sections(category)
     if #sections == 0 then return current end
@@ -161,7 +161,7 @@ end
 -- ammo-slot category (per-slot tier map via _buy_ammo_tier); a category with members
 -- (cheapest-first over the category set via _buy_consumable_category); or an item section
 -- (get_category_sections empty -> buy that exact section via _buy_one_section).
--- Updates ctx.counts[key] in place (counts are keyed the same way by xinventory.classify).
+-- Updates ctx.counts[key] in place (counts are keyed the same way by xinventory.collect_policy_counts).
 local function _run_buy_entry(entry, ctx)
     local rule_min = entry.rule.min
     if not (rule_min and rule_min > 0) then return end
@@ -205,9 +205,9 @@ function trade(npc, seller)
     local cat_opts = xinventory.get_category_opts(npc)
     local cash_before = xcreature.get_money(npc)
 
-    -- Phase 1: count per policy key via xinventory.classify (ammo in rounds, others in items).
+    -- Phase 1: count per policy key via xinventory.collect_policy_counts (ammo in rounds, others in items).
     -- An item keys under its section if the policy names that section, else its category.
-    local counts = xinventory.classify(npc, cat_opts, policy.rules)
+    local counts = xinventory.collect_policy_counts(npc, cat_opts, policy.rules)
 
     -- Phase 2: SELL pass via xinventory.iterate_surplus (anything above its max).
     -- Runs before BUY so the cash gained from sales is available to fund the BUY pass,
@@ -261,7 +261,7 @@ local function _on_trade_started()
     -- The partner is the actor's talk target. xactor.get_talking_npc wraps the engine primitive
     -- db.actor:get_talking_npc() (the authoritative GetTalkPartner); no raw engine call here.
     local npc = xactor.get_talking_npc()
-    if npc then xinventory.dump(npc, "trade", ap_core_world_trace.debug) end
+    if npc then xinventory.log_inventory(npc, "trade", ap_core_world_trace.debug) end
 end
 
 function on_game_start()

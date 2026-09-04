@@ -574,7 +574,7 @@ local function _restock_deferred(trader_id)
         local dbg = ap_core_debug.enabled()
         -- Market flow's per-trader dump: the raw restock stock, before this module's sellout/inject
         -- reshape. A world-state dump, so it goes to the world log, not the decision trace.
-        if ap_core_world_trace.enabled() then xinventory.dump(trader, "market", ap_core_world_trace.debug) end
+        if ap_core_world_trace.enabled() then xinventory.log_inventory(trader, "market", ap_core_world_trace.debug) end
         local tmr = xprofiler.new_if(dbg):start()
         _sellout_at_trader(trader)
         _inject_at_trader(trader)

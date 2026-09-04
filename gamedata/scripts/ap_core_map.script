@@ -126,7 +126,7 @@ local function _mark_squad(entry)
 
     local label = table_concat(lines, "\\n")
 
-    xpda.mark_squad(entry.squad_id, { label = label, marker_type = ap_core_const.MARKER_ACTIVE })
+    xpda.add_squad_marker(entry.squad_id, { label = label, marker_type = ap_core_const.MARKER_ACTIVE })
     _marker_state[entry.squad_id] = { cons_id = entry.cons_id }
     ap_core_debug.debug("[CORE.MAP] mark: squad=%d cons=%d label=%s", entry.squad_id, entry.cons_id, label)
 end
@@ -149,7 +149,7 @@ local function _validate_markers()
             ap_core_debug.debug("[CORE.MAP] mark_linger: squad=%d reason=%s", squad_id, reason)
         end
         if state.remove_at and now >= state.remove_at then
-            xpda.unmark_squad(squad_id)
+            xpda.remove_squad_marker(squad_id)
             _marker_state[squad_id] = nil
             ap_core_debug.debug("[CORE.MAP] unmark: squad=%d", squad_id)
         end
@@ -179,7 +179,7 @@ local function _on_server_entity_on_unregister(se_obj)
     local id = se_obj.id
     if not id then return end
     if _marker_state[id] then
-        xpda.unmark_squad(id)
+        xpda.remove_squad_marker(id)
         _marker_state[id] = nil
         ap_core_debug.debug("[CORE.MAP] unmark_on_unregister: squad=%d", id)
     end
@@ -216,7 +216,7 @@ local function _on_option_change()
     else
         RemoveTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS)
         for squad_id in pairs(_marker_state) do
-            xpda.unmark_squad(squad_id)
+            xpda.remove_squad_marker(squad_id)
         end
         _marker_state = {}
         ap_core_debug.debug("[CORE.MAP] marker timer cleared (map_markers=false)")

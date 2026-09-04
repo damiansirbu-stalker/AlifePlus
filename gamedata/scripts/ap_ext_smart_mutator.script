@@ -67,7 +67,7 @@ MUT_INFEST = "infest"
 -- Outpost services (conquest only). A held conquer smart grows ONE service NPC (trader / barman /
 -- mechanic / medic) that trades, repairs, or heals -- spawned by the smart through a faction-tagged
 -- respawn entry (rides the exclusive gate as a passenger to the conquest entry), then stocked via
--- xcreature.make_trader on the scan once online. The NPC keeps its FACTION community, so vanilla and
+-- xcreature.create_trader on the scan once online. The NPC keeps its FACTION community, so vanilla and
 -- every AP-family system treat it as an ordinary faction trader. Trader config is per-faction (the
 -- irregular vanilla map, verified on disk); barman/medic/mechanic share the generic configs.
 local TRADE_PATH = "items\\trade\\"
@@ -607,7 +607,7 @@ end
 -- Ensure the engine PDA role icon on one ONLINE service. Direct map spot (no job carries
 -- level_spot anymore): the vanilla per-role icons + legend hints (stalker_generic.script:98-126),
 -- gated like vanilla on goodwill > -1000 (hidden while his faction is hostile). Re-asserted every
--- scan through xpda.mark_entity (remove + add, pcall-safe in xlibs against the level-transition
+-- scan through xpda.add_entity_marker (remove + add, pcall-safe in xlibs against the level-transition
 -- CTD), because every scheme reset removes the spot (reset_show_spot, stalker_generic.script:70)
 -- and nothing else re-adds it.
 -- @cost O(1) | 1 luabind (general_goodwill) + 2 heavy (map spot remove + add) per service per scan
@@ -620,7 +620,7 @@ local function _ensure_service_icon(go, member_id, role)
         ap_core_debug.debug("[MUTATOR.SMART] service_icon_skip: npc=%d role=%s goodwill=%d (hostile)", member_id, role, goodwill)
         return
     end
-    local add_ok = xpda.mark_entity(member_id, { marker_type = spot.icon, label = spot.hint })
+    local add_ok = xpda.add_entity_marker(member_id, { marker_type = spot.icon, label = spot.hint })
     ap_core_debug.debug("[MUTATOR.SMART] service_icon: npc=%d role=%s goodwill=%d marker=%s add_ok=%s",
         member_id, role, goodwill, spot.icon, tostring(add_ok))
 end
@@ -633,7 +633,7 @@ end
 -- cfg). entry.stocked marks the profile initialised this session (cleared on load so it re-inits).
 -- @cost O(1) | make_trader (trade_init)
 local function _stock_member(go, member_id, cfg_path, entry)
-    if not xcreature.make_trader(go, cfg_path) then return end
+    if not xcreature.create_trader(go, cfg_path) then return end
     entry.stocked = true
     local st = db.storage[member_id]
     ap_core_debug.debug("[MUTATOR.SMART] service_init: smart=%d role=%s npc=%d job=%s",
@@ -757,7 +757,7 @@ local function _unmake_service(squad, entry)
     for member_id in xsquad.iterate_member_ids(squad) do
         local go = xobject.get_go(member_id)
         if go then
-            xcreature.make_trader(go, GENERIC_TRADE)
+            xcreature.create_trader(go, GENERIC_TRADE)
             _strip_stock(go)
         end
         stalker_generic.remove_level_spot(member_id)
@@ -1313,7 +1313,7 @@ end
 -- ammo type), because a shelf should carry several calibers and ammo is meant to dominate an outpost.
 -- Totals are what keeps it lean: vanilla lists many sections per category (77 separate meats and foods
 -- in a barman's supply list), so a per-type cap there multiplies into a warehouse. A row naming a
--- single item section caps that section alone (the shared policy contract, xinventory.policy_key).
+-- single item section caps that section alone (the shared policy contract, xinventory.get_policy_key).
 -- Equipped weapon/armor and quest items are skipped by the categorizer; an unlisted category is left
 -- alone. Collect-then-release so the walk is not mutated mid-iteration.
 -- @cost O(stock) | get_category + section per item, release per over-cap item
@@ -1500,7 +1500,7 @@ local function _on_squad_npc_death(squad, se_npc, _)
             entry.smart_id, entry.role, se_npc.id)
         return
     end
-    if ap_core_world_trace.enabled() then xinventory.dump(victim, "service", ap_core_world_trace.debug) end
+    if ap_core_world_trace.enabled() then xinventory.log_inventory(victim, "service", ap_core_world_trace.debug) end
     xinventory.iterate_inventory(victim:id(), _release_item)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
         entry.smart_id, entry.role, se_npc.id)

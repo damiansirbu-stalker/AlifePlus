@@ -36,7 +36,7 @@ function enabled()
     return _enabled
 end
 
---- Write one world-log line, no-op when the toggle is off. Also the sink passed to xinventory.dump.
+--- Write one world-log line, no-op when the toggle is off. Also the sink passed to xinventory.log_inventory.
 --- @cost O(1) | 0 luabind
 function debug(fmt, ...)
     if not _enabled then return end
@@ -210,7 +210,7 @@ local function _apply_enabled()
         CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _diag_kick)
         log.info("World trace enabled")
     else
-        xslice.cancel(DRAIN_QUEUE, true)
+        xslice.stop_queue(DRAIN_QUEUE, true)
         RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
         _acc = nil
         _scripted = nil

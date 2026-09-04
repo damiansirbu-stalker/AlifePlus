@@ -88,7 +88,7 @@ local function _scan_member(member_se, member_ids, _opts_out, counts)
     _opts_out[member_id] = opts
     local rules = STASH_POLICY.rules
     xinventory.iterate_inventory(member_id, function(_, item)
-        local key = xinventory.policy_key(item, opts, rules)
+        local key = xinventory.get_policy_key(item, opts, rules)
         if key then counts[key] = (counts[key] or 0) + 1 end
     end)
 end
@@ -294,7 +294,7 @@ local function _pick_for_member(member_id, opts, surplus, picks, fill_max)
     local rules = STASH_POLICY.rules
     xinventory.iterate_inventory(member_id, function(_, item)
         if #picks >= fill_max then return end
-        local key = xinventory.policy_key(item, opts, rules)
+        local key = xinventory.get_policy_key(item, opts, rules)
         if key and surplus[key] and surplus[key] > 0 then
             picks[#picks + 1] = item
             surplus[key] = surplus[key] - 1
