@@ -18,6 +18,8 @@ local get_config = ap_core_mcm.get_config
 local _deaths = nil
 local _alignment_human = ap_ext_const.alignment_human
 
+-- Accumulate every eligible stalker death into the smart's cluster; publish cause:massacre at the threshold.
+-- The cluster clears only on a real publish, so a budget/causer-cap block holds the deaths rather than dropping them.
 local function _on_squad_npc_death(squad, se_victim, se_killer)
     if not cfg.cause_massacre_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not se_victim then return { code = RESULT.FAILED_RULES, reason = REASON.NO_VICTIM } end
@@ -32,10 +34,6 @@ local function _on_squad_npc_death(squad, se_victim, se_killer)
         return { code = RESULT.FAILED_RULES, reason = REASON.AT_BASE }
     end
 
-    -- Accumulate every eligible death into the smart's cluster, then gate publication. The
-    -- cluster clears only when a massacre actually publishes, so an exhausted (shared) REACTIONS
-    -- budget or per-causer cap holds the deaths instead of dropping them uncounted, so the
-    -- cluster grows through the sustained combat that produces it.
     local count = ap_core_util.add_count(_deaths, smart.id)
     if count < cfg.cause_massacre_threshold then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
@@ -60,10 +58,8 @@ local function _on_squad_npc_death(squad, se_victim, se_killer)
     }
 end
 
+-- on_game_start: read via get_config, not cfg (cfg is repopulated by ap_core_mcm's own on_game_start, so cfg here is order-dependent).
 function on_game_start()
-    -- get_config, not cfg: cfg is repopulated by ap_core_mcm's own on_game_start, so reading it
-    -- here is order-dependent (code-standards "on_game_start = declare"); the getter reads through
-    -- to MCM storage in any phase.
     _deaths = xttltable.create_ttl_table({ default_ttl = get_config("cause_massacre_decay_time"), clock = xtime.get_game_sec })
 
     ap_core_producer.register({
