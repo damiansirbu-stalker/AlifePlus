@@ -1,6 +1,4 @@
---- ap_core_record: Activity record (FIFO of dispatched consequences with denormalized display facts)
---- Substrate for HUD markers, ap_ext_news compose, and external integrators via ap_api.
---- 256-slot FIFO keyed by monotonic cons_id; _record_assigned indexes the live entry per squad.
+--- ap_core_record: Activity record - a 256-slot FIFO of dispatched consequences (denormalized display facts) for HUD, news, and ap_api.
 local pairs, type = pairs, type
 local tostring, math_floor, string_format = tostring, math.floor, string.format
 local RegisterScriptCallback = RegisterScriptCallback
@@ -23,9 +21,8 @@ local function _get_clock()
     return string_format("%02d:%02d", h, m)
 end
 
--- Capture one side's display keys from the live squad. Mutant squads carry a species key,
--- stalker (and zombified-stalker) squads carry a community-string faction key. Either or
--- both nil for a nil squad. Engine reads only; no domain tables.
+-- Capture one side's display keys: a species key for mutants, a faction key for stalkers.
+-- Both keys are nil for a nil squad; engine reads only.
 local function _get_side_keys(squad)
     if not squad then return nil, nil, nil end
     local species = xcreature.get_mutant_species(squad)
@@ -35,20 +32,14 @@ local function _get_side_keys(squad)
     return squad.player_id, xsquad.get_commander_name(squad), nil
 end
 
---- Append one activity record for a squad dispatch. Captures display keys from the squad
---- userdata so consumers can render even after the squad despawns. Marks the previous
---- assigned entry for the same squad as unassigned and indexes this one.
+--- Append one activity record for a squad dispatch, capturing display keys so consumers render after despawn.
+--- Marks the previous assigned entry for the squad unassigned and indexes this one.
 --- @safety SAFE - nil-guarded; engine reads only on live squads
 --- @cost O(1) | ~3 luabind per side (player_id, mutant_species, commander_name)
 --- @param subject_squad userdata Subject squad server object
 --- @param cause_key string CAUSE.X enum value (also a localization id)
 --- @param consequence_key string CONSEQUENCE.X enum value (also a localization id)
---- @param opts table|nil { action_key, cause_id, other_squad, smart, level_id }
----   action_key  - ACTION.X enum value (player-facing label, localization id)
----   other_squad - optional second-party squad userdata
----   smart       - destination smart server object (id stored)
----   level_id    - level the event happened on
----   cause_id    - optional correlator for sibling consequences
+--- @param opts table|nil { action_key (ACTION.X label), cause_id (sibling correlator), other_squad, smart (id stored), level_id }
 --- @return number|nil cons_id Monotonic id, or nil if args invalid
 function add_record(subject_squad, cause_key, consequence_key, opts)
     if not subject_squad or not subject_squad.id then
@@ -115,9 +106,8 @@ function clear_record(squad_id)
     _record_assigned[squad_id] = nil
 end
 
---- Mark an entry as reported (gossiped by ap_ext_news). The flag lives on the entry, so it
---- persists with the record across save/load and dies with the entry on FIFO eviction --
---- a reload can no longer re-gossip an already-broadcast event.
+--- Mark an entry as reported (gossiped by ap_ext_news); the flag lives on the entry.
+--- It persists across save/load and dies on FIFO eviction, so a reload cannot re-gossip a broadcast event.
 --- @safety SAFE - pure Lua table write
 --- @cost O(1) | 0 luabind
 --- @param cons_id number

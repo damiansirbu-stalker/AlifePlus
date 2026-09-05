@@ -1,6 +1,4 @@
---- ap_core_limiter: Rate limiting for causes and consequences.
---- Pipeline family (real-sec, ephemeral): per-key cause counter, per-consequence token bucket, global radiant TTL counter.
---- Balance family (game-sec, persisted): offmap dispatch counter; save/load via :get_snapshot() / :load().
+--- ap_core_limiter: Rate limiting for causes and consequences (ephemeral pipeline counters + persisted game-sec balance counters).
 
 local tostring, type, RegisterScriptCallback = tostring, type, RegisterScriptCallback
 local xtime, xttltable = xtime, xttltable
@@ -36,8 +34,7 @@ local function _get_consequence_limiter()
 end
 
 --- Check a per-key cause rate limit (true = allowed, false = blocked).
---- Generic primitive: caller supplies both the counter key (e.g. CAUSE_CATEGORY.REACTIONS)
---- and the cap (read from caller's own cfg). Limiter knows nothing about category names or MCM keys.
+--- Generic primitive: the caller supplies the counter key and cap; the limiter knows no category or MCM names.
 --- @cost O(1) | 0 luabind
 --- @param key string Counter key (caller-defined; namespaced into "lock:<key>" internally)
 --- @param max number Cap for this counter; counter < max = allowed
@@ -59,14 +56,14 @@ function update_cause_counter(key)
     counter:add(_get_cause_rate_key(key))
 end
 
---- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
+--- Check consequence rate limit via token bucket peek (true = allowed, false = blocked).
 --- @cost O(1) | 0 luabind
 function check_consequence_rate_limit(name)
     local limiter = _get_consequence_limiter()
     return limiter:check(_get_consequence_rate_key(name))
 end
 
---- Acquire consequence token after success
+--- Acquire consequence token after success.
 --- @cost O(1) | 0 luabind
 function update_consequence_counter(name)
     local limiter = _get_consequence_limiter()
@@ -83,21 +80,21 @@ local function _get_global_consequence_counter()
     return _global_consequence_counter
 end
 
---- Check global consequence rate limit (true = allowed, false = max events reached in window)
+--- Check global consequence rate limit (true = allowed, false = max events reached in window).
 --- @cost O(1) | 0 luabind
 function check_global_consequence_rate_limit()
     local counter = _get_global_consequence_counter()
     return counter:get_count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
 end
 
---- Increment global consequence counter after a consequence fires
+--- Increment global consequence counter after a consequence fires.
 --- @cost O(1) | 0 luabind
 function update_global_consequence_counter()
     local counter = _get_global_consequence_counter()
     counter:add(_GLOBAL_CONSEQUENCE_RATE_KEY)
 end
 
---- Create an isolated cooldown checker (each caller gets its own cache)
+--- Create an isolated cooldown checker (each caller gets its own cache).
 --- @cost O(1) | 0 luabind
 --- @param expire_ms number Cooldown duration in milliseconds
 --- @return table { check = function(key, now), mark = function(key, now) }
@@ -114,9 +111,7 @@ function create_cooldown(expire_ms)
     }
 end
 
---- Offmap balance counter (game-sec, persisted). Caps cumulative offmap dispatches per source
---- level within OFFMAP_WINDOW_SEC. Single counter shared across all offmap causes:
---- faction-agnostic, destination-agnostic. Key is source level_id only.
+--- Offmap balance counter (game-sec, persisted): caps offmap dispatches per source level, keyed by level_id only.
 local _offmap_counter = nil
 
 local function _get_offmap_rate_key(level_id)
@@ -143,11 +138,7 @@ function update_offmap_counter(level_id)
     _offmap_counter:add(_get_offmap_rate_key(level_id))
 end
 
---- Per-causer reaction counter (game-sec clock, ephemeral - NOT persisted; resets on save load /
---- level transition via VM reinit). Caps how many reactive causes a single source entity
---- (killer / patient / taker) may trigger within CAUSER_WINDOW_SEC. Shared across all reactive
---- causes: the counter is keyed by causer id only, so massacre, squadkill, alpha, ... attributed
---- to the same id all draw from one budget. Faction- and cause-agnostic.
+--- Per-causer reaction counter (game-sec, ephemeral): caps reactive causes per source entity, keyed by causer id only.
 local _causer_counter = nil
 
 local function _get_causer_rate_key(causer_id)

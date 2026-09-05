@@ -1,13 +1,9 @@
---- ap_core_debug: Logger, bracket helper, MCM log-level. The world-state dumps (diagnostics, MCM
---- settings) live in ap_core_world_trace; this module owns only the decision-trace logger.
---- Loads before ap_core_mcm so the mcm namespace is read lazily inside on_game_start
---- (module-top alias would capture nil at load time).
+--- ap_core_debug: Decision-trace logger, bracket helper, MCM log-level (world-state dumps live in ap_core_world_trace).
 local RegisterScriptCallback, xlog = RegisterScriptCallback, xlog
 local CALLBACK = ap_core_const.CALLBACK
 
 local log = xlog.get_logger("AP", { outfile = "alifeplus.log", level = "WARN" })
--- Level constants for the flush-on-emit flag (init_log_level). TRACE = flush every line, ERROR =
--- the logger's own default flush threshold (xlog buffers below it).
+-- Level constants for the flush-on-emit flag: TRACE = flush every line, ERROR = default (xlog buffers below it).
 local _log_levels = xlog.get_levels()
 
 function is_enabled()
@@ -27,7 +23,7 @@ function warn(fmt, ...)
     log.warn(fmt, ...)
 end
 
--- named err to avoid shadowing Lua built-in error()
+-- named err to avoid shadowing Lua built-in error().
 --- @cost O(1) | 0 luabind
 function err(fmt, ...)
     log.error(fmt, ...)
@@ -38,9 +34,8 @@ function debug(fmt, ...)
     log.debug(fmt, ...)
 end
 
---- Read MCM log_level and apply to the xlog logger. Idempotent; safe to call any
---- number of times. Exposed so modules whose actor_on_first_update handler runs
---- before this module's can ensure the level is set before they emit DEBUG/INFO.
+--- Read MCM log_level and apply it to the xlog logger; idempotent.
+--- Exposed so a module whose first_update runs before this one's can set the level before emitting.
 --- @safety SAFE - nil-guarded; falls back to "WARN" if MCM not loaded yet
 --- @cost O(1) | 0 luabind (set_level + flush_on_level are pure Lua field sets)
 function init_log_level()

@@ -68,7 +68,7 @@ local function _log_killers()
     ap_core_world_trace.debug("[TRACKER] killers: {%s}", table_concat(parts, ", "))
 end
 
---- Register a kill for entity
+--- Register a kill for entity.
 --- @param killer_id number Killer entity ID
 --- @param victim_id number|nil Victim entity ID (logging only)
 --- @return number Current kill count for killer
@@ -84,7 +84,7 @@ local function _register_kill(killer_id, victim_id)
     return new
 end
 
---- Projected kill count inclusive of a pending death (order-independent of _register_kill)
+--- Projected kill count inclusive of a pending death (order-independent of _register_kill).
 function get_projected_kill_count(killer_id, victim_id)
     if not killer_id or killer_id == xconst.ACTOR_ENTITY_ID then return 0 end
     local count = _ap_killers[killer_id] or 0
@@ -95,25 +95,25 @@ function get_projected_kill_count(killer_id, victim_id)
     return count
 end
 
---- Compute alpha level from kill count (0 if below threshold)
+--- Compute alpha level from kill count (0 if below threshold).
 function compute_level(kills)
     local kpl = cfg.cause_alpha_kills_per_level
     if not kills or kills < kpl then return 0 end
     return math_min(ALPHA_MAX_LEVEL, math_floor(kills / kpl))
 end
 
---- Check if entity is an alpha (returns true even if dead, for cause queries)
+--- Check if entity is an alpha (returns true even if dead, for cause queries).
 function is_alpha(id)
     return id and (_ap_alphas[id] ~= nil or _ap_alpha_dead:has(id))
 end
 
---- Get alpha data (returns data even if dead, for cause queries)
+--- Get alpha data (returns data even if dead, for cause queries).
 function get_alpha(id)
     if not id then return nil end
     return _ap_alphas[id] or _ap_alpha_dead:get(id)
 end
 
---- Get alpha level for entity (0 if not alpha)
+--- Get alpha level for entity (0 if not alpha).
 function get_alpha_level(id)
     if not id then return 0 end
     local data = _ap_alphas[id]
@@ -123,7 +123,7 @@ function get_alpha_level(id)
     return 0
 end
 
---- Update alpha status (computes level from kills, upserts entry)
+--- Update alpha status (computes level from kills, upserts entry).
 function update_alpha(id, data)
     if not id or not data or not data.kills then return nil end
     local level = compute_level(data.kills)
@@ -133,7 +133,7 @@ function update_alpha(id, data)
     return _ap_alphas[id]
 end
 
---- Move alpha to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC)
+--- Move alpha to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC).
 local function _unregister_alpha(id)
     if not id then return false end
     local data = _ap_alphas[id]
@@ -144,12 +144,12 @@ local function _unregister_alpha(id)
     return true
 end
 
---- Get all alive alphas as {id = data}
+--- Get all alive alphas as {id = data}.
 function get_alphas()
     return xtable.clone(_ap_alphas)
 end
 
---- Unregister entity from all tracking (on death or unregister)
+--- Unregister entity from all tracking (on death or unregister).
 local function _unregister_entity(id)
     if not id then return end
     local had_kills = _ap_killers[id] ~= nil
@@ -215,9 +215,7 @@ function get_squad_opportunities(squad_id)
     return _ap_squad_opportunities:get(squad_id)
 end
 
---- Initialize squad opportunities DTO so the squad starts overdue with per-squad jitter.
---- Uses ap_ext_util.init_overdue_timestamp; opportunities have no period gate, treated as in_period.
---- Hard-fails on missing OPPORTUNITY_THRESHOLD_KEY entry or unloaded cfg key (logs error, leaves field nil).
+--- Initialize the squad opportunities DTO so the squad starts overdue with per-squad jitter.
 function init_squad_opportunities(squad_id, now)
     if not squad_id or not now then return nil end
     local dto = {}
@@ -261,10 +259,8 @@ local function _on_squad_npc_death(squad, npc, killer)
         tostring(killer_id), tostring(victim_id), tmr:get_ms()) end
 end
 
--- Clear kill/alpha state when an entity despawns without a death event (AlifeGuard release,
--- GAMMA despawners, engine cull). Server ids recycle with no grace (id_generator.h), so a leaked
--- entry hands its kill count to a fresh entity via _register_kill's old + 1. Death itself already
--- routes through _unregister_entity, so this is usually a no-op pair of hash deletes.
+-- Clear kill/alpha state when an entity despawns without a death event.
+-- Server ids recycle with no grace (id_generator.h), so a leaked entry would hand its count to a new entity.
 local function _on_entity_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
@@ -272,9 +268,8 @@ local function _on_entity_unregister(se_obj)
     _ap_alphas[id] = nil
 end
 
--- Drop saved ids that no longer resolve to a stalker or mutant. Catches entries that leaked
--- through a save via paths that bypass server_entity_on_unregister (callbacks.md); the class
--- check also drops ids recycled onto a different entity kind. Broker load-sweep pattern.
+-- Drop saved ids that no longer resolve to a stalker or mutant.
+-- Catches leaks past server_entity_on_unregister and ids recycled onto a different entity kind.
 local function _iterate_recycled_ids(map)
     local dropped = 0
     for id in pairs(map) do

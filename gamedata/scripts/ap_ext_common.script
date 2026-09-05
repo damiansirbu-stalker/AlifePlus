@@ -5,8 +5,7 @@ local ipairs = ipairs
 local RESULT = ap_core_const.RESULT
 
 --- Move each squad to a smart terrain; returns the moved squads and the last failure reason.
---- The move-to-smart sibling of the chase dispatchers: same loop over ap_core_broker.register_squad,
---- collecting the squads that took the assignment.
+--- The move-to-smart sibling of the chase dispatchers (a loop over ap_core_broker.register_squad).
 --- @param squads table Candidate squads
 --- @param smart table Destination smart terrain server object
 --- @param opts table Forwarded to ap_core_broker.register_squad (rush, pre_release_gulag, interruptable)
@@ -21,8 +20,7 @@ function register_squads(squads, smart, opts)
     return moved, last_reason
 end
 
---- Dispatch chasers via engine actor targeting (no arrival detection; the engine homes on the
---- player). Used when the chase target is the player.
+--- Dispatch chasers via engine actor targeting (no arrival detection); used when the target is the player.
 --- @param squads table chasers
 --- @param moved table accumulator of successfully-dispatched chasers
 --- @param opts table|nil Forwarded to register_actor_target (e.g. { check_relation = true })
@@ -35,10 +33,8 @@ function register_actor_chasers(squads, moved, opts)
     end
 end
 
---- Dispatch chasers to pursue a target squad directly via continuous coordinate homing
---- (register_squad_target + the ap_core_chase hooks). Replaces the smart-hop relay for non-player
---- chase targets. Committed pursuit (interruptable = false). opts.check_relation = true marks a
---- faction chase that disengages when relation flips friendly (mutant chases leave it unset).
+--- Dispatch chasers to pursue a target squad via continuous homing (register_squad_target), committed.
+--- opts.check_relation = true disengages when relation flips friendly.
 --- @param squads table chasers
 --- @param target_squad_id number
 --- @param moved table accumulator of successfully-dispatched chasers

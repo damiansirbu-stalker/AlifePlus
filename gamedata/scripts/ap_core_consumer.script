@@ -61,8 +61,8 @@ local function _remove_named_entry(entries, name)
     end
 end
 
---- Unregister a consequence handler by name. Removes from event registry, clears
---- cause-of mapping, and unhooks any arrival handler registered under the same name.
+--- Unregister a consequence handler by name.
+--- Removes it from the event registry, clears the cause-of mapping, and unhooks any arrival handler.
 --- @cost O(1) | 0 luabind
 --- @param name string Consequence name
 --- @return boolean true if removed, false if not registered
@@ -132,8 +132,6 @@ local function _run_consequences(event_type, event_data)
 
     local is_radiant = event_data.cause_type == ap_core_const.CAUSE_TYPE.RADIANT
     local sc = hud_collecting()
-    -- In-place Fisher-Yates on _registry[event_type]. Order between events is permuted; every
-    -- entry still gets considered. Avoids per-event allocation. Mirrors ap_core_producer's _cascade_buf shuffle.
     local count = #consequences
     for i = count, 2, -1 do
         local j = math_random(i)
