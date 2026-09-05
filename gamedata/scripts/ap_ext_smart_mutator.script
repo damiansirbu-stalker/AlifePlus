@@ -88,15 +88,15 @@ local _hold_drop_collector = {}
 -- Per-smart ephemeral game-sec clock for the mutator's own respawn cadence (never saved).
 local _respawn_stamp = {}
 
---- Check if a smart terrain is infested
+--- True when the smart terrain holds a live infest entry.
 --- @param smart_id number
 --- @return boolean
 function is_infested(smart_id)
     return smart_id and _state.infest[smart_id] ~= nil
 end
 
---- True if a smart holds a live mutation entry other than (mut_name, identity): another type or a
---- different identity. The takeover exclusion gate; nil mut_name treats every live entry as other.
+--- True if a smart holds a live mutation entry other than (mut_name, identity): another type or identity.
+--- The takeover exclusion gate; nil mut_name treats every live entry as other.
 --- @param smart_id number
 --- @param mut_name string|nil MUT_CONQUEST / MUT_SWARM / MUT_INFEST
 --- @param identity string|nil Faction or species holding the claim
@@ -123,8 +123,8 @@ function get_conquest_count(faction, level_id)
     return count
 end
 
---- Count live swarm entries on a level, all species: mutants hold territory as a class, so the
---- swarm cause's hold ceiling meters the class, not one species.
+--- Count live swarm entries on a level, all species.
+--- Mutants hold territory as a class, so the hold ceiling meters the class, not one species.
 --- @param level_id number
 --- @return number
 function get_swarm_count(level_id)
@@ -136,7 +136,7 @@ function get_swarm_count(level_id)
     return count
 end
 
---- Check if the per-level infest cap allows another infestation on this level
+--- True when the per-level infest cap allows another infestation.
 --- @param level_id number
 --- @return boolean
 function can_infest_on_level(level_id)
@@ -186,8 +186,8 @@ local MUTATIONS = {
 local _mut_by_key = {}
 for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
 
--- Settle a hit against existing state: refresh a same-identity re-hit, reject a non-refresh re-hit
--- or a taken smart. Returns "refreshed"/"rejected", or nil when _apply_mutation does a fresh apply.
+-- Settle a hit against existing state: refresh a same-identity re-hit; reject a non-refresh re-hit or taken smart.
+-- Returns "refreshed"/"rejected", or nil when _apply_mutation does a fresh apply.
 local function _resolve_entry(mut, existing, smart_id, identity, now)
     if mut.refresh and existing and existing.faction == identity then
         existing[mut.ts_field] = now
@@ -208,8 +208,8 @@ end
 -- Forward declaration: _build_plan is defined with the outpost section below (needs the cap meters).
 local _build_plan
 
--- Inject or refresh one mutation on a smart; true on apply/refresh, false on a gate reject. A
--- conquest also rolls its outpost plan once here (_build_plan); the scan re-writes the rows.
+-- Inject or refresh one mutation on a smart; true on apply/refresh, false on a gate reject.
+-- A conquest also rolls its outpost plan once here (_build_plan); the scan re-writes the rows.
 -- @cost O(1) | 1 luabind (xobject.get_se) on a real inject
 local function _apply_mutation(mut, smart_id, identity, level_id)
     if not smart_id or not identity or not level_id then return false end
@@ -241,8 +241,8 @@ local function _apply_mutation(mut, smart_id, identity, level_id)
     return true
 end
 
---- Conquer a smart: exclusive faction spawn injection (sole ownership). Refreshes if already
---- conquered by the same faction; re-conquers (overwrites) if a different faction.
+--- Conquer a smart with an exclusive faction spawn injection (sole ownership).
+--- Refreshes a same-faction re-hit; re-conquers (overwrites) a different faction.
 --- @param smart_id number
 --- @param faction string Stalker community
 --- @param level_id number
@@ -251,8 +251,8 @@ function apply_conquest(smart_id, faction, level_id)
     return _apply_mutation(MUTATIONS.conquest, smart_id, faction, level_id)
 end
 
---- Swarm a smart: exclusive mutant-species spawn injection (sole ownership). Refreshes if already
---- swarmed by the same species; re-swarms (overwrites) if a different species.
+--- Swarm a smart with an exclusive mutant-species spawn injection (sole ownership).
+--- Refreshes a same-species re-hit; re-swarms (overwrites) a different species.
 --- @param smart_id number
 --- @param species string Mutant species
 --- @param level_id number
@@ -261,8 +261,8 @@ function apply_swarm(smart_id, species, level_id)
     return _apply_mutation(MUTATIONS.swarm, smart_id, species, level_id)
 end
 
---- Infest a smart: exclusive spawn injection. Rejects a second infest on the same smart and obeys
---- the per-level cap.
+--- Infest a smart with an exclusive spawn injection.
+--- Rejects a second infest on the same smart and obeys the per-level cap.
 --- @param smart_id number
 --- @param faction string Mutant species / faction
 --- @param level_id number
@@ -283,8 +283,8 @@ end
 
 -- Outpost mini base: plan + rows + pins (conquest only)
 
--- Total PLANNED services across conquered smarts on a level (the per-map budget meter; a planned
--- role counts whether its NPC is currently alive or between respawns).
+-- Total PLANNED services across conquered smarts on a level (the per-map budget meter).
+-- A planned role counts whether its NPC is currently alive or between respawns.
 -- @cost O(n) conquered smarts * O(roles)
 local function _get_service_count(level_id)
     local count = 0
@@ -308,8 +308,8 @@ local function _get_faction_role_count(level_id, faction, role)
     return count
 end
 
--- Live count of one (faction, role) on the level when still eligible (has a trade config, not in
--- taken), else nil; feeds the least-represented pick in _select_service_role.
+-- Live count of a (faction, role) on the level when eligible: has a trade config and is not taken.
+-- Nil when ineligible; feeds the least-represented pick in _select_service_role.
 -- @cost O(roles) * O(conquered) meter
 local function _get_eligible_role_count(data, role, taken)
     if taken[role] or not _get_role_cfg_path(data.faction, role) then return nil end
@@ -361,8 +361,8 @@ _build_plan = function(entry, smart_id)
     end
 end
 
--- Pin one outpost squad at its smart via scripted_target and ledger it; the pin persists in the squad
--- packet (sim_squad_scripted.script:105-106,940-943), ending only on decay or death.
+-- Pin one outpost squad at its smart via scripted_target and ledger it.
+-- The pin persists in the squad packet (sim_squad_scripted.script:105-106,940-943), ending only on decay or death.
 -- @cost O(1) | 2 luabind heavy (smart:name + squad:section_name string allocs) on pin
 local function _register_hold(squad, smart_id, role, now)
     local smart = xobject.get_se(smart_id)
@@ -373,8 +373,8 @@ local function _register_hold(squad, smart_id, role, now)
     ap_core_debug.debug("[MUTATOR.SMART] hold: smart=%d role=%s squad=%d", smart_id, role, squad.id)
 end
 
--- Give a newborn service its sidearm; offline-capable (xinventory.create_item takes its server-entity
--- branch beyond respawn_radius). Every fresh spawn passes here, so no service is seen unarmed.
+-- Give a newborn service its sidearm, offline-capable (xinventory.create_item takes its server-entity branch beyond respawn_radius).
+-- Every fresh spawn passes here, so no service is seen unarmed.
 -- @cost O(members) | 2 xinventory.create_item per member, spawn-time only
 local function _create_service_sidearm(squad)
     for member_id in xsquad.iterate_member_ids(squad) do
@@ -384,8 +384,8 @@ local function _create_service_sidearm(squad)
     end
 end
 
--- Classify a fresh spawn and pin it if it belongs to an outpost plan: guard-row spawns become pinned
--- guards, service-key spawns become that role and are armed; conquest-row spawns roam free.
+-- Classify a fresh spawn and pin it when it belongs to an outpost plan.
+-- Guard-row spawns become pinned guards, service-key spawns become that armed role; conquest-row spawns roam free.
 -- @cost O(1) | +_create_service_sidearm on a service spawn
 local function _try_pin_spawn(squad, smart_id, prop, now)
     if not _state.conquest[smart_id] then return end
@@ -399,8 +399,8 @@ local function _try_pin_spawn(squad, smart_id, prop, now)
     _create_service_sidearm(squad)
 end
 
--- Re-write the outpost plan's respawn rows on a held conquer smart (one per service role + a guard
--- row); the load path, idempotent between loads. Called after mut.apply has set smart.faction.
+-- Re-write the outpost plan's respawn rows on a held conquer smart, one per service role plus a guard row.
+-- The load path, idempotent between loads; called after mut.apply has set smart.faction.
 -- @cost O(services) | 0 luabind (pure Lua table writes)
 local function _apply_service_entries(smart, data)
     if not data.services then return end
@@ -415,8 +415,8 @@ local function _apply_service_entries(smart, data)
     end
 end
 
--- Remove a service squad from the world, clearing each member's PDA spot first (remove_level_spot):
--- a decay removal skips the death path vanilla clears the spot on, else the icon lingers.
+-- Remove a service squad from the world, clearing each member's PDA spot first (remove_level_spot).
+-- A decay removal skips the death path vanilla clears the spot on, else the icon lingers.
 -- @cost O(members) | remove_level_spot per member + remove_squad
 local function _remove_service_squad(squad)
     for member_id in xsquad.iterate_member_ids(squad) do
@@ -425,8 +425,8 @@ local function _remove_service_squad(squad)
     xsquad.remove_squad(squad)
 end
 
--- Resolve a held entry's squad with identity intact: the id must resolve to a squad carrying the
--- pinned section (freed server ids are recycled, xrServer.cpp:873), else it is stale, prune it.
+-- Resolve a held entry's squad with identity intact: the id must carry the pinned section.
+-- Freed server ids are recycled (xrServer.cpp:873), so a mismatch is stale, prune it.
 -- @cost O(1) | 1 luabind (xobject.get_se) + clsid + 1 heavy (section_name) on a live squad
 local function _resolve_held(squad_id, entry)
     local squad = xobject.get_se(squad_id)
@@ -435,8 +435,8 @@ local function _resolve_held(squad_id, entry)
     return squad
 end
 
--- Register one stationed squad when it is an untracked outpost service (role = the trailing word of
--- its ap_service_<faction>_<role> section); adopts a service that missed its spawn pin.
+-- Register one stationed squad when it is an untracked outpost service (role = trailing word of ap_service_<faction>_<role>).
+-- Adopts a service that missed its spawn pin.
 -- @cost O(1) | section_name (heavy) only on an untracked stationed squad
 local function _register_stationed_squad(squad, smart_id, now)
     if _held_squads[squad.id] then return end
@@ -454,8 +454,8 @@ local function _register_smart_stationed_services(smart_id, now)
     end
 end
 
--- Discovery sweep: adopt any untracked service squad stationed at a conquest smart (covers a spawn
--- pin missed at load); rides the 60s pass and the load reconcile, not the invariant pass.
+-- Discovery sweep: adopt any untracked service squad stationed at a conquest smart (covers a spawn pin missed at load).
+-- Rides the 60s pass and the load reconcile, not the invariant pass.
 -- @cost O(conquest smarts) | one iterate_stationed_squads walk per smart
 local function _register_stationed_services(now)
     for smart_id in pairs(_state.conquest) do
@@ -463,8 +463,8 @@ local function _register_stationed_services(now)
     end
 end
 
--- One held outpost squad per scan pass: resolve identity (a dead or recycled id prunes the ledger row
--- only, never the squad), then reassert the pin. Returns false when the caller drops the entry.
+-- One held outpost squad per scan pass: resolve identity, then reassert the pin.
+-- A dead or recycled id prunes the ledger row only, never the squad; returns false when the caller drops the entry.
 -- @cost O(1) | _resolve_held + set_target
 local function _update_service(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
@@ -484,8 +484,8 @@ local function _update_service(squad_id, entry)
     return true
 end
 
--- Scan step: keep each held squad pinned, prune stale ledger entries. Drops are collected then
--- nil'd after the walk (pairs-safe).
+-- Scan step: keep each held squad pinned, prune stale ledger entries.
+-- Drops are collected then nil'd after the walk (pairs-safe).
 -- @cost O(n) held squads | 1-2 luabind each
 local function _update_holds()
     local drop = 0
@@ -501,8 +501,8 @@ local function _update_holds()
     end
 end
 
--- Show the engine PDA role icon on one online service (stalker_generic.script:98-126), gated like
--- vanilla on goodwill > -1000; re-asserted every scan since a scheme reset removes the spot.
+-- Show the engine PDA role icon on one online service (stalker_generic.script:98-126), gated like vanilla on goodwill > -1000.
+-- Re-asserted every scan since a scheme reset removes the spot.
 -- @cost O(1) | 1 luabind (general_goodwill) + 2 heavy (map spot remove + add) per service per scan
 local function _show_service_icon(go, member_id, role)
     local spot = SERVICE_ICON[role]
@@ -529,8 +529,8 @@ local function _init_member_trade(go, member_id, cfg_path, entry)
         entry.smart_id, entry.role, member_id, tostring(st and st.active_section))
 end
 
--- Initialise the trade config on an uninitialised online member, or re-init it when the config drifted
--- off the role (cfg_ltx compare); the shelf restocks lazily on-use. Split from _try_stock for the nesting cap.
+-- Initialise the trade config on an uninitialised online member, or re-init it when the config drifted off the role (cfg_ltx compare).
+-- The shelf restocks lazily on-use; split from _try_stock for the nesting cap.
 local function _apply_trade_config(go, member_id, cfg_path, entry)
     if entry.stocked then
         if trade_manager.get_trade_profile(member_id, "cfg_ltx") == cfg_path then return end
@@ -540,8 +540,8 @@ local function _apply_trade_config(go, member_id, cfg_path, entry)
     _init_member_trade(go, member_id, cfg_path, entry)
 end
 
--- Stock one held service once its member is online and keep it stocked: a job reassignment reverts
--- the trade config to generic (xr_logic.script:113), so the cfg_ltx compare re-inits it each scan.
+-- Stock one held service once its member is online and keep it stocked.
+-- A job reassignment reverts the trade config to generic (xr_logic.script:113), so the cfg_ltx compare re-inits it each scan.
 -- @cost O(members) | 1 luabind (xobject.get_go) per member until the online one + 1 profile read
 local function _try_stock(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
@@ -594,8 +594,8 @@ local function _log_services()
     end
 end
 
--- Scan step: initialise the trade config on any held service that is online and not yet initialised,
--- and re-init one whose config drifted off its role; the shelf stocks lazily on-use, not here (guards skipped).
+-- Scan step: initialise the trade config on any held online service not yet initialised, and re-init one whose config drifted.
+-- The shelf stocks lazily on-use, not here (guards skipped).
 -- @cost O(n) held squads | _resolve_held + member resolve + 1 profile read per service
 local function _init_service_trades()
     for squad_id, entry in pairs(_held_squads) do
@@ -605,8 +605,8 @@ local function _init_service_trades()
     end
 end
 
--- Release an unmade service's shop stock, keeping equipped and untouchable items (the sidearm stays);
--- collect-then-release, each guarded on a live server object (the straggler idiom).
+-- Release an unmade service's shop stock, keeping equipped and untouchable items (the sidearm stays).
+-- Collect-then-release, each guarded on a live server object (the straggler idiom).
 -- @cost O(inventory) | get_category per item + alife_release per shop item
 local function _release_stock(npc)
     local opts = xinventory.get_category_opts(npc)
@@ -621,8 +621,8 @@ local function _release_stock(npc)
     end
 end
 
--- Demote one online service in place (decay reached it in view): re-init trade to generic, release
--- the stock, remove the PDA icon; the pin is left alone so he stays an ordinary armed resident.
+-- Demote one online service in place when decay reaches it in view: re-init trade to generic, release stock, remove the PDA icon.
+-- The pin is left alone so he stays an ordinary armed resident.
 -- @cost O(members) | create_trader + _release_stock + remove_level_spot per member
 local function _reset_service(squad, entry)
     for member_id in xsquad.iterate_member_ids(squad) do
@@ -637,8 +637,8 @@ local function _reset_service(squad, entry)
         entry.smart_id, entry.role, squad.id)
 end
 
--- Clear the plan's respawn rows on a decayed smart (service keys + the guard row); the per-row
--- engine counters are never zeroed, so a leftover keeps its count until it dies.
+-- Clear the plan's respawn rows on a decayed smart (service keys plus the guard row).
+-- The per-row engine counters are never zeroed, so a leftover keeps its count until it dies.
 local function _clear_plan_rows(smart, data)
     if not smart then return end
     for role in pairs(data.services or {}) do
@@ -647,8 +647,8 @@ local function _clear_plan_rows(smart, data)
     xsmart_spawn.clear_shared_spawn(smart, GUARD_KEY)
 end
 
--- Dissolve one held service at decay: online -> _reset_service demotes in place, offline ->
--- _remove_service_squad deletes it unseen. The online read is the decision, not a filter.
+-- Dissolve one held service at decay: online -> _reset_service demotes in place, offline -> _remove_service_squad deletes it unseen.
+-- The online read is the decision, not a filter.
 local function _destroy_service(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
     if not squad then return end
@@ -656,8 +656,8 @@ local function _destroy_service(squad_id, entry)
     else _remove_service_squad(squad) end
 end
 
--- Debug-only: log a held squad's last-known pin state at the instant decay drops its ledger entry
--- and reassert stops for good -- the handoff point past which a cleared pin is never restored.
+-- Debug-only: log a held squad's last-known pin state at the instant decay drops its ledger entry.
+-- The handoff point past which a cleared pin is never restored.
 -- @cost noop when debug off (single enabled() gate); on decay only
 local function _log_hold_release(smart_id, entry, squad_id)
     if not ap_core_debug.is_enabled() then return end
@@ -669,8 +669,8 @@ local function _log_hold_release(smart_id, entry, squad_id)
         tostring(cur and xsmart.is_base(cur)))
 end
 
--- Decay teardown: clear our rows, dissolve services (_destroy_service); guards stay as ordinary
--- residents, only their ledger entries drop.
+-- Decay teardown: clear our rows, dissolve services (_destroy_service).
+-- Guards stay as ordinary residents, only their ledger entries drop.
 -- @cost O(n) held squads | unmake or remove per service at this smart
 local function _release_smart_holds(smart_id, smart, data)
     _clear_plan_rows(smart, data)
@@ -689,8 +689,8 @@ local function _release_smart_holds(smart_id, smart, data)
     end
 end
 
--- Clear the respawn entry for one decayed record and log it. Conquest also tears down its outpost:
--- release the held guards / services and clear their respawn entries.
+-- Clear the respawn entry for one decayed record and log it.
+-- Conquest also tears down its outpost: release the held guards / services and clear their respawn entries.
 local function _clear_entry(mut, smart_id, data, ts, now)
     local smart = xobject.get_se(smart_id)
     if smart then
@@ -701,8 +701,8 @@ local function _clear_entry(mut, smart_id, data, ts, now)
         mut.name, smart_id, mut.id_word, data.faction, math_floor((now - ts) / 3600))
 end
 
--- Re-apply one live entry (mut.apply + the plan rows): the load path, since on_register rebuilds
--- respawn_params from LTX each load. Respawn timing is never touched.
+-- Re-apply one live entry (mut.apply plus the plan rows): the load path, since on_register rebuilds respawn_params from LTX each load.
+-- Respawn timing is never touched.
 local function _apply_entry(mut, smart_id, data)
     local smart = xobject.get_se(smart_id)
     if not smart then return end
@@ -737,8 +737,8 @@ local function _update_entries(mut, now)
     end
 end
 
--- True when any exclusive respawn row has fewer live spawns than its quota; row.num is a parsed
--- condlist, resolved the way the engine's gate does (smart_terrain.script:1669), not a bare number.
+-- True when any exclusive respawn row has fewer live spawns than its quota.
+-- row.num is a parsed condlist, resolved the way the engine's gate does (smart_terrain.script:1669), not a bare number.
 -- @cost O(rows) | pure Lua (condlist eval, no bridge)
 local function _is_below_quota(smart)
     local rp, spawned = smart.respawn_params, smart.already_spawned
@@ -751,8 +751,8 @@ local function _is_below_quota(smart)
     return false
 end
 
--- Pace one held smart's refill, accelerate-only: below quota and our interval elapsed -> nil
--- last_respawn_update so the next try_respawn fires (still radius-gated). Never throttles a fast world.
+-- Pace one held smart's refill, accelerate-only: below quota and our interval elapsed nils last_respawn_update so the next try_respawn fires.
+-- Still radius-gated; never throttles a fast world.
 -- @cost O(rows) pure Lua | 0 luabind (last_respawn_update is a Lua field)
 local function _update_smart_pacing(mut, smart_id, interval_sec, now)
     local smart = xobject.get_se(smart_id)
@@ -772,8 +772,8 @@ local function _update_smart_pacing(mut, smart_id, interval_sec, now)
     end
 end
 
--- Pace one mutation type's held smarts on cfg[mut.respawn_idle_cfg] game-minutes. A zero/absent
--- interval opts the mutation out (its smarts keep the world's own pacing).
+-- Pace one mutation type's held smarts on cfg[mut.respawn_idle_cfg] game-minutes.
+-- A zero/absent interval opts the mutation out (its smarts keep the world's own pacing).
 -- @cost O(held smarts of this type) | _update_smart_pacing each
 local function _update_mutation_pacing(mut, now)
     local minutes = mut.respawn_idle_cfg and cfg[mut.respawn_idle_cfg]
@@ -791,8 +791,8 @@ local function _update_pacing(now)
     end
 end
 
--- 60s re-apply + decay pass over every mutation type; timed when debug is on. ResetTimeEvent first,
--- so an error mid-body cannot leave the event refiring every frame.
+-- 60s re-apply + decay pass over every mutation type; timed when debug is on.
+-- ResetTimeEvent first, so an error mid-body cannot leave the event refiring every frame.
 local function _update_mutations()
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
     local now = xtime.get_game_sec()
@@ -819,8 +819,8 @@ local function _update_mutations()
     end
 end
 
--- Re-assert a mutated smart's owner faction the instant before the engine's respawn gate reads it
--- (on_try_respawn -> smart_terrain.script:1667). Fixes the online-empty revert; timing untouched.
+-- Re-assert a mutated smart's owner faction the instant before the engine's respawn gate reads it (on_try_respawn -> smart_terrain.script:1667).
+-- Fixes the online-empty revert; timing untouched.
 -- @cost O(1) | up to 3 hash reads per smart update, pure Lua, 0 luabind
 local function _on_try_respawn(smart)
     if not smart then return end
@@ -850,8 +850,8 @@ local function _on_load_state(m_data)
     _held_pending = (type(holds) == "table") and holds or {}
 end
 
--- Rebuild one live entry from its saved form: timestamp fallback, plan fields for growers. A saved
--- numeric guards field marks a plan-era entry; its absence rolls a fresh plan under current sliders.
+-- Rebuild one live entry from its saved form: timestamp fallback, plan fields for growers.
+-- A saved numeric guards field marks a plan-era entry; its absence rolls a fresh plan under current sliders.
 local function _load_entry(mut, data, now, smart_id)
     local entry = { faction = data.faction, level_id = data.level_id, [mut.ts_field] = data[mut.ts_field] or now }
     if mut.grows_services then
@@ -866,8 +866,8 @@ local function _load_entry(mut, data, now, smart_id)
     return entry
 end
 
--- Restore saved entries into live state on load; drop malformed ones. Infest re-checks its per-level
--- cap (may be lowered between sessions); conquest/swarm gate only new takes, so an over-cap save decays.
+-- Restore saved entries into live state on load, dropping malformed ones.
+-- Infest re-checks its per-level cap; conquest/swarm gate only new takes, so an over-cap save decays.
 local function _load_pending(mut, now)
     local pending = _pending[mut.name]
     if not pending then return end
@@ -927,8 +927,8 @@ local function _on_game_load()
     _update_mutations()
 end
 
--- Deferred spawn handler: respawn_point_prop_section is set after SIMBOARD:create_squad returns
--- (smart_terrain.script:1720-1721), so reading it needs one tick. Pins outpost squads by their key.
+-- Deferred spawn handler: respawn_point_prop_section is set after create_squad returns (smart_terrain.script:1720-1721), so reading it needs a tick.
+-- Pins outpost squads by their key.
 -- @cost 1-2 luabind (xobject.get_se + section_name) per deferred spawn
 local function _on_spawn_deferred(squad_id, smart_id)
     local squad = xobject.get_se(squad_id)
@@ -946,8 +946,8 @@ local function _on_spawn_deferred(squad_id, smart_id)
     return true
 end
 
--- Correct one outpost service to a rank-and-file rank on its server object; the online character
--- inherits it and it never re-rolls (the engine rolls only on NO_RANK, xrServer_..._Monsters.cpp:472).
+-- Correct one outpost service to a rank-and-file rank on its server object.
+-- The online character inherits it and it never re-rolls (the engine rolls only on NO_RANK, xrServer_..._Monsters.cpp:472).
 -- @cost O(1) | 1 luabind (set_rank)
 local function _set_service_rank(se_obj)
     if not (se_obj and se_obj.set_rank) then return end
@@ -960,8 +960,8 @@ local function _set_service_rank(se_obj)
     end
 end
 
--- squad_on_npc_creation (sim_board.script:149), before try_respawn writes respawn_point_*. Corrects a
--- service member's rank synchronously; defers the spawn pin only for a conquered smart or debug trace.
+-- squad_on_npc_creation (sim_board.script:149), before try_respawn writes respawn_point_*.
+-- Corrects a service member's rank synchronously; defers the spawn pin only for a conquered smart or debug trace.
 -- @cost O(1) | 1 conquest hash read; 1 CreateTimeEvent only on an outpost/traced spawn
 local function _on_npc_creation(squad, se_obj, spawn_smart)
     if not spawn_smart then return end
@@ -1016,8 +1016,8 @@ local function _load_stock_policy()
     end
 end
 
--- npc -> its _held_squads entry when it is an outpost service (not guard), else nil; an empty ledger
--- returns before the get_object_squad lookup, so with no outposts the wrapper costs one hash probe.
+-- npc -> its _held_squads entry when it is an outpost service (not guard), else nil.
+-- An empty ledger returns before the get_object_squad lookup, so with no outposts the wrapper costs one hash probe.
 local function _get_service_entry(npc)
     if not next(_held_squads) then return nil end
     local squad = get_object_squad(npc)
@@ -1025,8 +1025,8 @@ local function _get_service_entry(npc)
     return (entry and entry.role ~= "guard") and entry or nil
 end
 
--- npc -> true when it is an outpost service by section identity (ledgered or not): the permanent key
--- for the task/hub-dialog gates, so an unmade leftover stays gated for life. Guards never match.
+-- npc -> true when it is an outpost service by section identity, ledgered or not: the permanent key for the task/hub-dialog gates.
+-- An unmade leftover stays gated for life; guards never match.
 -- @cost O(1) | get_object_squad + 1 heavy (section_name), dialog/task open only
 local function _is_service_npc(npc)
     if not npc then return false end
@@ -1035,8 +1035,8 @@ local function _is_service_npc(npc)
     return sec ~= nil and sec:sub(1, #SERVICE_KEY_PREFIX) == SERVICE_KEY_PREFIX
 end
 
--- trade_manager keeps its CTime<->table converters file-local (trade_manager.script:9-23); the
--- stamp written here must be that exact saved shape, so both are mirrored verbatim.
+-- trade_manager keeps its CTime<->table converters file-local (trade_manager.script:9-23).
+-- The stamp written here must be that exact saved shape, so both are mirrored verbatim.
 local function _build_ctime_table(ct)
     local Y, M, D, h, m, s, ms = ct:get(0, 0, 0, 0, 0, 0, 0)
     return { Y = Y, M = M, D = D, h = h, m = m, s = s, ms = ms }
@@ -1048,8 +1048,8 @@ local function _parse_ctime(t)
     return ct
 end
 
--- Trader-only: when a restock is due and the below-hub clamp bites, stamp + stock the effective tier
--- before the original update. Returns true when it did, so the caller drops force_refresh.
+-- Trader-only: when a restock is due and the below-hub clamp bites, stamp + stock the effective tier before the original update.
+-- Returns true when it did, so the caller drops force_refresh.
 local function _try_preempt_below_hub(npc, id, force_refresh)
     local tm = trade_manager.get_trade_profile(id)
     if not tm or not tm.cfg_ltx then return false end
@@ -1080,15 +1080,15 @@ local function _try_preempt_below_hub(npc, id, force_refresh)
     return true
 end
 
--- Map an engine item category to its outpost-stock policy key: ammo_* folds to ammo_rounds_per_type,
--- every other category already matches the policy vocabulary.
+-- Map an engine item category to its outpost-stock policy key: ammo_* folds to ammo_rounds_per_type.
+-- Every other category already matches the policy vocabulary.
 local function _get_shelf_key(category)
     if string_sub(category, 1, 5) == "ammo_" then return "ammo_rounds_per_type" end
     return category
 end
 
--- Category filter over a service's restocked shelf: release items past their rule's cap. A category
--- row is a shelf total; ammo is per-type; a section row caps that section (xinventory.get_policy_key).
+-- Category filter over a service's restocked shelf: release items past their rule's cap.
+-- A category row is a shelf total, ammo is per-type, a section row caps that section (xinventory.get_policy_key).
 -- @cost O(stock) | get_category + section per item, release per over-cap item
 local function _filter_stock(npc, npc_id, role)
     local rules = _stock_policy and _stock_policy[role]
@@ -1122,16 +1122,16 @@ local function _filter_stock(npc, npc_id, role)
     ap_core_debug.debug("[MUTATOR.SMART] stock_filter: npc=%d role=%s seen=%d removed=%d", npc_id, role, seen, removed)
 end
 
--- Deferred ~1s after restock: buy_supplies respawns the shelf and its items register over the next
--- ticks, not the next frame; a shorter defer walks a half-spawned inventory and removes nothing.
+-- Deferred ~1s after restock: buy_supplies respawns the shelf and its items register over the next ticks, not the next frame.
+-- A shorter defer walks a half-spawned inventory and removes nothing.
 local function _filter_stock_deferred(npc_id, role)
     local npc = xobject.get_go(npc_id)
     if npc then _filter_stock(npc, npc_id, role) end
     return true
 end
 
--- Reset the service's money to his role's policy bankroll on a detected restock, capping the cash a
--- player can extract by selling per cycle (give_money delta, GiveMoney; absent row leaves it alone).
+-- Reset the service's money to his role's policy bankroll on a detected restock, capping the cash a player can extract per cycle.
+-- The delta rides give_money (GiveMoney); an absent row leaves it alone.
 -- @cost O(1) | 2 luabind (money read + give_money on a delta)
 local function _reset_bankroll(npc, id, role)
     local bankroll = _stock_money and _stock_money[role]
@@ -1173,8 +1173,8 @@ end
 local _org_build_available_tasks
 local _hub_gated = {}
 
--- Pool side: the one seam the dialog and every PDA taskboard share. Keyed on section identity, so an
--- unmade leftover stays gated; runs the original then empties its result, keeping vanilla bookkeeping.
+-- Pool side: the one seam the dialog and every PDA taskboard share, keyed on section identity.
+-- An unmade leftover stays gated; runs the original then empties its result, keeping vanilla bookkeeping.
 -- @cost O(1) + 1 heavy (squad section_name) on task-list generation only
 local function _build_available_tasks(npc, is_sim)
     if not _is_service_npc(npc) then return _org_build_available_tasks(npc, is_sim) end
@@ -1185,8 +1185,8 @@ local function _build_available_tasks(npc, is_sim)
     ap_core_debug.debug("[MUTATOR.SMART] task_gate: npc=%d", npc_id)
 end
 
--- Dialog side: wrap a hub-dialog <precondition> to return false for a service, closing task/broker/
--- documents/route/pda topics (preconditions resolve by name, PhraseScript.cpp:185-218).
+-- Dialog side: wrap a hub-dialog <precondition> to return false for a service, closing task/broker/documents/route/pda topics.
+-- Preconditions resolve by name (PhraseScript.cpp:185-218).
 -- @cost O(1) | 1 luabind (who_is_npc) + the _get_service_entry probe, on dialog open only
 local function _create_hub_gate(org)
     return function(first_speaker, second_speaker)
@@ -1197,8 +1197,8 @@ local function _create_hub_gate(org)
     end
 end
 
--- Wrap one hub predicate in place, once. Same probe as the trade_manager patch: the type check both
--- guards a harness without vanilla scripts and triggers the in-game auto-load of the module.
+-- Wrap one hub predicate in place, once, with the same probe as the trade_manager patch.
+-- The type check guards a harness without vanilla scripts and triggers the in-game auto-load of the module.
 local function _register_hub_gate(module, fn_name)
     if _hub_gated[fn_name] then return end
     if type(module) ~= "table" or type(module[fn_name]) ~= "function" then return end
@@ -1212,8 +1212,8 @@ local function _release_item(_, item)
     xobject.release(se_item)
 end
 
--- Null a dead service NPC's loot (vanilla has no concept of trade stock). Seam: squad_on_npc_death
--- (sim_squad_scripted.script:493), which hands the squad before remove_npc strips its group_id.
+-- Null a dead service NPC's loot; vanilla has no concept of trade stock.
+-- Seam squad_on_npc_death (sim_squad_scripted.script:493) hands the squad before remove_npc strips its group_id.
 -- @cost O(inventory) on a held service NPC's death only | xobject.get_go + alife_release per item
 local function _on_squad_npc_death(squad, se_npc, _)
     if not squad or not se_npc then return end
@@ -1231,8 +1231,8 @@ local function _on_squad_npc_death(squad, se_npc, _)
         entry.smart_id, entry.role, se_npc.id)
 end
 
--- Restore the missing fallback in xr_logic.get_customdata_or_ini_file: a saved "*" generated-ini name
--- (db.dynamic_ltx, xr_logic.script:1234-1236) has no fallback and would be an engine fatal; warn + default.
+-- Restore the missing fallback in xr_logic.get_customdata_or_ini_file for a saved "*" generated-ini name.
+-- db.dynamic_ltx (xr_logic.script:1234-1236) has no fallback and would be an engine fatal; warn + default.
 local function _resolve_logic_ini(original, npc, filename)
     local ini, name = original(npc, filename)
     if ini then return ini, name end
