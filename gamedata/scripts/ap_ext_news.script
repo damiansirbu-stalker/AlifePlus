@@ -1,7 +1,4 @@
---- ap_ext_news: news composer + per-consequence templates in ui_st_ap_news.xml.
---- Reads ap_core_record.get_records, picks an unreported entry on the actor's level, picks a
---- per-consequence template, substitutes slots, dispatches via dynamic_news_manager.PushToChannel.
---- Only write is ap_core_record.set_reported on the gossiped entry (record owns the flag).
+--- ap_ext_news: news composer; picks an unreported record on the actor's level, fills a per-consequence template, dispatches via dynamic_news_manager.
 
 local IsStalker, get_object_story_id, get_actor_true_community = IsStalker, get_object_story_id, get_actor_true_community
 local pairs, tostring = pairs, tostring
@@ -30,7 +27,7 @@ local _templates_by_consequence = {}
 local _locale = nil
 local _pending_dispatch = nil
 
--- Load a numbered template pool: walk prefix_001..N until miss/empty
+-- Load a numbered template pool, walking prefix_001..N until a miss or empty.
 local function _load_pool(prefix)
     local arr = {}
     for i = 1, MAX_TEMPLATE_VARIANTS do
@@ -42,7 +39,7 @@ local function _load_pool(prefix)
     return arr
 end
 
--- Build per-consequence template tables (5 variants per consequence per locale)
+-- Build per-consequence template tables (variants per consequence per locale).
 local function _build_templates()
     local by_cons = {}
     for _, cons_id in pairs(CONSEQUENCE) do
@@ -52,14 +49,14 @@ local function _build_templates()
     return by_cons
 end
 
--- XML lookup that returns empty string on miss (never leaks the key id as the value)
+-- XML lookup that returns empty string on miss (never leaks the key id as the value).
 local function _get_xml(key)
     local v = game_translate_string(key)
     if v and v ~= key and v ~= "" then return v end
     return ""
 end
 
--- Detect current game language from system.ltx
+-- Detect the current game language from system.ltx.
 local function _get_locale()
     if not ini_sys then return "eng" end
     local lang = ini_sys:r_string_ex("string_table", "language")
@@ -67,9 +64,8 @@ local function _get_locale()
     return "eng"
 end
 
--- Hours-since descriptor for #ago#: resolved inline from XML. Empty only when game_hours_then
--- is missing (data gap). delta=0 (same game-hour) renders as the recent string so templates
--- never lose staleness info or collapse "since/from #ago#" to bare prepositions.
+-- Hours-since descriptor for #ago#, resolved inline from XML; empty only when game_hours_then is missing (data gap).
+-- delta=0 (same game-hour) renders as the recent string, so templates never collapse "since/from #ago#" to a bare preposition.
 local function _format_ago_text(game_hours_then)
     if not game_hours_then then return "" end
     local delta = math_floor(xtime.get_game_sec() / 3600) - game_hours_then
@@ -87,10 +83,8 @@ local function _get_side_slots(entry, prefix)
     return faction, name, species
 end
 
--- Resolve location display from smart_id (stable, smarts do not despawn mid-session)
--- Engine smart names sometimes embed a period to separate level/sublocation
--- (e.g. "Great Swamp. Northern Village"). Replace ". " with ", " so the location reads
--- as a single comma-separated phrase inside a sentence.
+-- Resolve location display from smart_id (stable, smarts do not despawn mid-session).
+-- Engine smart names embed a period for level/sublocation; ". " becomes ", " so the location reads as one comma-separated phrase.
 local function _format_location(smart_id)
     if not smart_id then return "" end
     local smart = xobject_se(smart_id)
@@ -116,8 +110,8 @@ local function _build_slots(entry)
     }
 end
 
--- Substitute slot table into template. Unknown #key# tokens are kept as-is
--- (Lua gsub: a nil return leaves the match unchanged).
+-- Substitute the slot table into the template; unknown #key# tokens are kept as-is.
+-- Lua gsub leaves an unmatched token unchanged on a nil return.
 local function _format_template(template, slots)
     return (string_gsub(template, "#([%w_]+)#", function(key) return slots[key] end))
 end
@@ -173,7 +167,7 @@ local function _collect_eligible()
     return entries
 end
 
--- Clean output: trim, dedupe whitespace, strip space-before-punctuation, collapse artifacts from empty slots
+-- Clean output: trim, dedupe whitespace, strip space-before-punctuation, collapse artifacts from empty slots.
 local function _format_output(result)
     if not result or result == "" then return nil end
     result = string_gsub(result, "^%s+", "")
@@ -219,9 +213,8 @@ local function _format_channels(channel_status)
     return table_concat(parts, ",")
 end
 
--- Pick a speaker: any online stalker passing canon channel, scope, and combat filters.
--- No proximity, no `npc:see`. db.OnlineStalkers is overwhelmingly the player's level so
--- "speaker on event level" follows from filtering events by level upstream.
+-- Pick a speaker: any online stalker passing the channel, scope, and combat filters (no proximity, no npc:see).
+-- db.OnlineStalkers is overwhelmingly the player's level, so "speaker on event level" follows from filtering events by level upstream.
 local function _select_speaker(actor_comm, scope, channel_status)
     local online = db.OnlineStalkers
     if not online then return nil end
@@ -246,12 +239,8 @@ local function _select_speaker(actor_comm, scope, channel_status)
     }
 end
 
--- Engine dispatch. Routes through dynamic_news_manager.PushToChannel when initialized;
--- falls back to xpda.publish_newsduring the ~27s cold-start window. Engine-side drops (enable_news,
--- NewsToggle, is_pda_charged, counter cap) are not duplicated here.
--- Called from run_news_tick AFTER the compose timer stops, so vanilla engine cost (PushToChannel:
--- UI texture lookup, sound init, shared_str ops) is timed and logged on its own dispatch line,
--- never attributed to the AP compose measurement.
+-- Engine dispatch: route through dynamic_news_manager.PushToChannel when initialized, else xpda.publish_news during the cold-start window.
+-- Called after the compose timer stops, so vanilla PushToChannel cost is logged on its own dispatch line, not the AP compose span.
 local function _run_engine_dispatch(picked, msg)
     local dnm = dynamic_news_manager and dynamic_news_manager.get_dynamic_news
                 and dynamic_news_manager.get_dynamic_news() or nil
@@ -271,20 +260,12 @@ local function _run_engine_dispatch(picked, msg)
         use_queued and "queued" or "fallback", picked.name, tostring(picked.channel), engine_timer:get_ms()) end
 end
 
--- CHATTER: immediate, localized one-off lines pushed by a producer the instant something happens,
--- instead of drained from the record queue. Reuses the news machinery: a producer hands a template
--- pool prefix, a slots table, and selection context (level, faction); publish_chatter gates it (local,
--- non-hostile, throttled), fills a variant, picks an online stalker as the voice (the same
--- _select_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
--- ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate from news.
+-- CHATTER: immediate one-off lines a producer pushes, reusing the news machinery (publish_chatter); templates in ui_st_ap_chatter.xml.
 
 local _chatter_pools = {}
 local _chatter_locale = nil
 
--- Chatter's own throttle (real-sec os.clock, independent of the news compose interval): at most one
--- chatter line every cfg.chatter_interval_sec. When many producers fire in one tick, without this
--- they would each speak at once; the throttle lets the first through and drops the rest. Ephemeral,
--- resets on load -- a short real-time throttle needs no persistence.
+-- Chatter throttle (real-sec os.clock): at most one line per cfg.chatter_interval_sec, so simultaneous producers don't all speak; ephemeral, resets on load.
 local _chatter_next = 0
 
 -- Locale-cached template pool for a chatter prefix (rebuilt on language switch, like the news pools).
@@ -302,15 +283,11 @@ local function _get_chatter_pool(prefix)
     return pool
 end
 
---- Push one chatter line for the given pool prefix, filled from slots. Returns true if a line was
---- spoken. Gated by cfg.chatter_enabled; needs an eligible online stalker (the voice) and a live
---- news channel, else it stays silent. Producers own the content decision (when, what facts);
---- this owns only voice + render + send, identical to the radio path.
+--- Push one chatter line for the pool prefix, filled from slots; returns true if a line was spoken.
+--- Gated (local, non-hostile, throttled), picks an online stalker voice, dispatches immediately to the actor, not via the radio channel queue.
 --- @param pool_prefix string Template id prefix, e.g. "st_ap_chatter_<type>"
 --- @param slots table Slot values keyed by placeholder name (#item#, #location#, ...)
---- @param opts table|nil Selection context: { level_id = number, faction = string }. level_id, if
----   set, must equal the player's current level (chatter is local). faction, if set, must not be at
----   war with the player (a loner hears nothing from a faction hostile to them).
+--- @param opts table|nil { level_id (must equal the player's current level, chatter is local), faction (must not be at war with the player) }
 --- @return boolean spoken
 local CHATTER_LOG = "[EXT.CHATTER]"
 
@@ -351,15 +328,11 @@ function publish_chatter(pool_prefix, slots, opts)
         if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
         return false
     end
-    -- nil channel_status: xpda.publish_newsis direct to the actor, not channel-routed, so the speaker only
-    -- needs to pass the scope filter; the news radio channel does not have to be receivable.
     local picked = _select_speaker(get_actor_true_community(), cfg.news_scope, nil)
     if not picked then
         if dbg then ap_core_debug.debug("%s skip %s: no speaker (scope=%s, nobody to say it)", CHATTER_LOG, pool_prefix, tostring(cfg.news_scope)) end
         return false
     end
-    -- Direct give_game_news (immediate), NOT dnm:PushToChannel which queues onto the radio's delayed
-    -- schedule. Chatter is instant and does not ride the news pipeline.
     xpda.publish_news(picked.name, msg, picked.icon)
     _chatter_next = now + cfg.chatter_interval_sec
     if dbg then ap_core_debug.debug("%s sent %s by %s: %s", CHATTER_LOG, pool_prefix, picked.name, msg) end
@@ -412,9 +385,8 @@ local function _build_news_tick()
     return { code = TRACE.SENT, sender = picked.name }
 end
 
---- run_news_tick: news pipeline tick. AP-side compose is timed as one span; engine dispatch
---- (vanilla dnm:PushToChannel / xpda.publish_news) runs AFTER the timer stops so vanilla cost is not
---- attributed to the AP compose measurement, and is logged on its own dispatch line.
+--- run_news_tick: news pipeline tick; AP-side compose is timed as one span.
+--- Engine dispatch runs after the timer stops, so vanilla cost is logged on its own line, not attributed to the AP compose span.
 function run_news_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
     _pending_dispatch = nil
