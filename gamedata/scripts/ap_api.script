@@ -4,9 +4,7 @@ local ap_core_const, ap_core_debug = ap_core_const, ap_core_debug
 local ap_core_broker, ap_core_record = ap_core_broker, ap_core_record
 local ap_core_consumer, ap_core_producer = ap_core_consumer, ap_core_producer
 
--- Foreign causes must declare one of AP's standard categories so they share AP's
--- per-category rate-limit caps and MCM organization. Built lazily (CAUSE_CATEGORY
--- is only guaranteed populated after ap_core_const has loaded).
+-- Foreign causes declare one of AP's standard categories (rate-limit caps + MCM); built lazily.
 local _CATEGORIES = nil
 local function _is_valid_category(category)
     if not _CATEGORIES then
@@ -41,17 +39,8 @@ local function _clone_entry(entry)
     return xtable.clone(entry)
 end
 
---- Returns a shallow-copied snapshot of the AP-scripted squads table (keyed by squad id).
---- Both the outer table and each inner entry are fresh per call -- callers can read or
---- mutate freely without affecting broker state. Each entry carries:
----   scripted_target, target_smart_id, tracked_at, on_arrive, on_arrive_args,
----   pre_release_gulag, arrived (optional), release_at (optional).
---- Off-map sessions additionally carry: offmap = true, dispatched_at. Scripted fields may be
---- nil after the squad is released at the destination while the session fields remain set until
---- the squad settles or the despawn safety net reclaims it.
---- Entry holds control state only; consequence/action/cause/identity belong to the activity
---- record (see get_record / get_records).
---- Prefer get_scripted_squad(id) for single-entry lookups (one entry copy, not the whole map).
+--- Shallow-copied snapshot of the AP-scripted squads table (keyed by squad id); the outer table and
+--- each entry are fresh per call. Prefer get_scripted_squad(id) for one lookup. Fields: architecture.md.
 function get_scripted_squads()
     local out = {}
     for k, entry in pairs(ap_core_broker.get_scripted_squads()) do out[k] = _clone_entry(entry) end
@@ -66,9 +55,8 @@ function get_scripted_squad(squad_id)
     return _clone_entry(ap_core_broker.get_scripted_squads()[squad_id])
 end
 
---- Most-recent activity record matching opts (AND logic on field equality).
---- Fast path { squad_id, assigned = true } reads the live index in O(1).
---- General path scans matching entries and returns the one with the highest cons_id.
+--- Most-recent activity record matching opts (AND on field equality). Fast path
+--- { squad_id, assigned = true } reads the live index O(1); else scans for the highest cons_id.
 --- @param opts table Filter fields. Required.
 --- @return table|nil
 function get_record(opts) return ap_core_record.get_record(opts) end
@@ -79,19 +67,12 @@ function get_record(opts) return ap_core_record.get_record(opts) end
 --- @return table Array of matching entries
 function get_records(opts) return ap_core_record.get_records(opts) end
 
---- Append an activity record after a successful register_squad / register_actor_target.
---- Broker captures display keys from the squad userdata so reads stay valid after the squad
---- despawns. Drives HUD markers, news compose, and external tooltip queries; foreign
---- integrators must call this for their consequences to render.
+--- Append an activity record after register_squad / register_actor_target; integrators must call it
+--- for their consequences to render (HUD markers, news, tooltips). Display keys are captured eagerly.
 --- @param subject_squad userdata Squad server object the consequence acted on
 --- @param cause_key string CAUSE.X enum value (also a localization id)
 --- @param consequence_key string CONSEQUENCE.X enum value (also a localization id)
---- @param opts table|nil { action_key, other_squad, smart, level_id, cause_id }
----   action_key  - ACTION.X enum value (player-facing label, localization id)
----   other_squad - optional second-party squad userdata
----   smart       - destination smart server object (id stored, resolved lazily)
----   level_id    - level the event happened on
----   cause_id    - optional correlator for sibling consequences
+--- @param opts table|nil { action_key (ACTION.X label), other_squad, smart (dst, id stored), level_id, cause_id (sibling correlator) }
 function add_record(subject_squad, cause_key, consequence_key, opts)
     return ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts)
 end
@@ -102,15 +83,11 @@ end
 --- @return boolean
 function release_squad(squad_id) return ap_core_broker.release_squad(squad_id) end
 
---- Script a squad to a smart terrain with full AP lifecycle (PDA marker, TTL,
---- release-hold, target reassertion). Marker rendering and player-facing labelling come
---- from the activity record; integrators should call ap_api.add_record after
---- register_squad success to populate it.
+--- Script a squad to a smart with full AP lifecycle (PDA marker, TTL, release-hold, reassertion);
+--- call ap_api.add_record after success to populate the marker/label from the activity record.
 --- @param squad userdata Squad server object
 --- @param smart userdata Smart terrain server object
---- @param opts table|nil { rush, on_arrive, on_arrive_args, pre_release_gulag }
----   on_arrive: optional; same value as consequence when registering an arrival handler
----              with register_consequence.
+--- @param opts table|nil { rush, on_arrive (same value as the consequence), on_arrive_args, pre_release_gulag }
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function register_squad(squad, smart, opts) return ap_core_broker.register_squad(squad, smart, opts) end
 
@@ -120,10 +97,8 @@ function register_squad(squad, smart, opts) return ap_core_broker.register_squad
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function register_actor_target(squad, opts) return ap_core_broker.register_actor_target(squad, opts) end
 
---- Resolve an action enum value to its localized phrase.
---- e.g. ACTION.MASSACRE_INVESTIGATE ("action:massacre_investigate") -> "Investigating a Massacre Site".
---- The action enum value is itself the localization id; get_text just translates.
---- Returns nil when the action is malformed or the id didn't resolve.
+--- Resolve an action enum value (itself the localization id) to its localized phrase; nil when
+--- malformed or unresolved. e.g. ACTION.MASSACRE_INVESTIGATE -> "Investigating a Massacre Site".
 --- @param action string Action enum value (e.g. ACTION.MASSACRE_INVESTIGATE)
 --- @return string|nil
 function get_text(action)
@@ -138,15 +113,8 @@ end
 --- @return string|nil Cause string (e.g. "cause:massacre"), or nil if unregistered
 function get_cause(consequence) return ap_core_consumer.get_cause(consequence) end
 
---- Register a radiant cause predicate. Auto-iterates RADIANT_CALLBACKS so the
---- predicate fires on every radiant tick. Predicate receives one squad and
---- returns either a publishing payload {cause, squad_id, level_id, ...} on
---- match, a {code = RESULT.FAILED_*, reason} table on reject, or nil.
----
---- Budget gating: integrators self-gate against their per-category cause budget
---- inside the predicate via ap_core_limiter.check_cause_rate_limit and
---- update_cause_counter, mirroring the existing ext-cause pattern.
----
+--- Register a radiant cause predicate (auto-iterates RADIANT_CALLBACKS). The predicate takes one squad
+--- and returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil; self-gate budget inside it.
 --- @param category string Must be one of ap_core_const.CAUSE_CATEGORY values
 --- @param predicate function(squad) -> table|nil
 --- @return boolean true if all registrations succeeded, false on any rejection
@@ -170,11 +138,8 @@ function register_radiant_cause(category, predicate)
     return ok
 end
 
---- Register a reactive cause predicate for one engine callback.
---- Predicate signature matches the engine callback's args. Returns either a
---- publishing payload {cause, squad_id, level_id, ...} on match, a
---- {code = RESULT.FAILED_*, reason} table on reject, or nil.
----
+--- Register a reactive cause predicate for one engine callback (predicate signature matches the
+--- callback args); returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil.
 --- @param callback string CALLBACK enum value
 --- @param category string Must be one of ap_core_const.CAUSE_CATEGORY values
 --- @param predicate function(...) -> table|nil
@@ -192,14 +157,9 @@ function register_reactive_cause(callback, category, predicate)
     }, predicate) == true
 end
 
---- Register a consequence handler. Strict: refuses duplicate names.
---- Call unregister_consequence(name) first if replacing an existing registration.
+--- Register a consequence handler. Strict: refuses duplicate names (unregister first to replace).
 --- @param name string Consequence registration name (also the arrival dispatch key)
---- @param opts table { cause, condition?, on_arrive_fn? }
----   cause: required; cause string the handler subscribes to (e.g. CAUSE.MASSACRE)
----   condition: optional gate; returns false to skip dispatch entirely
----   on_arrive_fn: optional function(squad, on_arrive_args) called when a squad
----     scripted by this consequence reaches its smart
+--- @param opts table { cause (required, subscribed cause string), condition? (false skips dispatch), on_arrive_fn? (squad, args on arrival) }
 --- @param handler function(event_data) -> { code = RESULT.X, ... }
 --- @return boolean true on success, false if already registered or args invalid
 function register_consequence(name, opts, handler)
