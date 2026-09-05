@@ -35,22 +35,14 @@ local cfg = ap_core_mcm.cfg
 local BARTER_POLICY = nil
 
 -- Load barter policy via the shared xinventory.load_policy kernel (same LTX shape as stash / loot).
--- Only the per-category `rules` hash is used; barter has no declaration-order priority (surplus is
--- surfaced by walking inventory, not filled top-down like trade's BUY pass).
+-- Only the per-category `rules` hash is used; barter has no declaration-order priority, unlike trade's BUY pass.
 local function _load_barter_policy()
     local blocks = xinventory.load_policy(POLICY_PATH, { "ap_barter_policy" })
     BARTER_POLICY = { rules = blocks.ap_barter_policy.rules }
 end
 
--- Count-band direction: hand the giver's per-category surplus to the receiver where the receiver is
--- below its own floor. iterate_surplus surfaces every giver item above its category max (weapon /
--- outfit / helmet are absent from the policy, so they never surface here -- the upgrade pass owns
--- them); on_surplus transfers only when the receiver is short on that category, tracking the
--- receiver's live count so it never overshoots the floor, and decrements the shared budget so the
--- total across both passes and both directions stays under barter_max_items. Returning true stops
--- the walk once the budget is spent. Both stalkers classify against the same shared `rules` (one
--- uniform barter block), so the receiver key resolves section-override-else-category the same way.
--- Per-NPC opts are computed once in barter() and threaded in (equipped slots never change mid-call).
+-- Count-band direction: hand the giver's per-category surplus to a receiver that is below its own floor.
+-- Transfers via iterate_surplus while the shared budget lasts; gear kinds are absent from the bands (the upgrade pass owns them).
 local function _run_surplus_transfer(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
     local rules = BARTER_POLICY.rules
@@ -75,10 +67,8 @@ local function _run_surplus_transfer(giver, giver_opts, receiver, receiver_opts,
     })
 end
 
--- Cost floor per gear kind the npc already carries: weapons the npc's most valuable equipped gun (so
--- only a genuine upgrade over everything it holds moves as recv_base, and the giver's own equipped as
--- give_base), outfit and helmet the equipped one of that kind. An empty slot reads 0, so any spare
--- clears it. opts is threaded from barter() (get_category_opts computed once per stalker).
+-- Cost floor per gear kind the npc carries: weapons take the most valuable equipped gun, outfit and helmet the equipped one of that kind.
+-- An empty slot reads 0, so any spare clears it; opts is threaded from barter().
 local function _get_equipped_baseline(npc, opts)
     local eq_pistol = opts.equipped_pistol_sec and (xinventory.get_cost(opts.equipped_pistol_sec) or 0) or 0
     local eq_rifle  = opts.equipped_rifle_sec  and (xinventory.get_cost(opts.equipped_rifle_sec)  or 0) or 0
@@ -91,13 +81,8 @@ local function _get_equipped_baseline(npc, opts)
     }
 end
 
--- Best giftable spare per gear kind in the giver's inventory. get_category (with the giver's opts)
--- marks equipped items "equipped" and drops them, so only spares reach here. A spare is giftable only
--- when its cost does NOT exceed the giver's own equipped of that kind (give_base): a spare better than
--- what the giver carries is the giver's own upgrade, kept -- this is what "an EXTRA weapon" means, and
--- it also stops a top gun ping-ponging between the two squads across the return pass. A "weapon" spare
--- with no ammo_class (knife / binocular / bolt -- WP_-class but not a firearm) is skipped: it is never
--- a gun upgrade, and without this an unarmed peer (recv_base.weapon 0) would take a spare knife.
+-- Best giftable spare per gear kind: a spare qualifies only when its cost does not exceed the giver's own equipped of that kind.
+-- Keeps the giver's own upgrades and stops gun ping-pong; a non-firearm "weapon" spare (no ammo_class: knife / binocular / bolt) is skipped.
 local function _find_best_spares(giver, giver_opts, give_base)
     local best = {}
     xinventory.iterate_inventory(giver:id(), function(_, item)
@@ -114,10 +99,8 @@ local function _find_best_spares(giver, giver_opts, give_base)
     return best
 end
 
--- Gear-upgrade direction: hand the giver's best giftable spare of each kind to the receiver only when
--- it beats what the receiver has equipped, by xinventory.get_cost. The best spare per kind is picked
--- in a single walk (no mid-iterate transfer), then moved if it clears the receiver's baseline and the
--- budget allows.
+-- Gear-upgrade direction: hand the giver's best giftable spare of each kind to the receiver only when it beats the receiver's equipped (by cost).
+-- The best spare per kind is picked in a single walk, then moved if it clears the receiver's baseline and the budget allows.
 local function _run_upgrade_transfer(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
     local recv_base = _get_equipped_baseline(receiver, receiver_opts)
@@ -133,12 +116,9 @@ local function _run_upgrade_transfer(giver, giver_opts, receiver, receiver_opts,
 end
 
 --- Run a two-way barter between two stalkers against the shared uniform policy.
---- Each direction runs the count-band pass then the gear-upgrade pass; visitor -> peer fills `given`,
---- peer -> visitor fills `received`. No money moves; items change hands via xinventory.transfer_item
---- only. Total moved capped by MCM barter_max_items.
+--- Each direction runs the count-band then gear-upgrade pass; no money moves, capped by MCM barter_max_items.
 --- @safety SAFE - nil-guarded visitor/peer; classify / iterate_* tolerant of nil items
---- @cost O(n inventory) | get_category_opts x2 (once per stalker, threaded into both directions);
----       per direction: 2 classify + 1 iterate_surplus + 1 iterate_inventory (spares) + 2 baselines
+--- @cost O(n inventory) | get_category_opts x2 (once per stalker); per direction: 2 classify + iterate_surplus + iterate_inventory + 2 baselines
 --- @param visitor game_object Arriving squad's commander
 --- @param peer game_object Stalker peer at the destination smart
 --- @return table { given = { sec, ... }, received = { sec, ... } } (visitor's perspective)

@@ -10,11 +10,8 @@ local _alignment_mutant_night = ap_ext_const.alignment_mutant_night
 local TACTICS_WEIGHT_LAST_OF_FACTION = 0.20
 local TACTICS_WEIGHT_SMART_TARGETED  = 0.20
 
---- Attempt one radiant sub-cause with uniform gating and tracing. Returns the publish payload when
---- the cause fires (result carries .cause), else nil. Skips silently before any timer when the
---- cause's MCM toggle is off, so a disabled cause never allocates a timer or emits a line; every
---- dynamic outcome (alignment, personality, threshold, scan, tactics) logs one line the same way.
---- The single per-sub-cause seam shared by every radiant generator (needs, instincts, area, stash).
+--- Attempt one radiant sub-cause with uniform gating and tracing; returns the publish payload when the cause fires (result carries .cause), else nil.
+--- The single per-sub-cause seam shared by every radiant generator; a disabled MCM toggle skips silently before any timer.
 --- @param enabled_key string cfg key of the cause toggle (e.g. "cause_hunger_campfire_enabled")
 --- @param log_prefix string cached bracket label
 --- @param fn function evaluator returning a publish payload (with .cause) or { code, reason }
@@ -49,21 +46,15 @@ function is_night()
     return hours >= 20 or hours < 5
 end
 
---- Nocturnal species (alignment_mutant_night) active at night, all others active during day
+--- Nocturnal species (alignment_mutant_night) active at night, all others active during day.
 function is_active_period(identity)
     local night = is_night()
     if _alignment_mutant_night[identity] then return night end
     return not night
 end
 
---- Compute a freshly-initialized timestamp for a per-squad cooldown DTO field so that
---- the squad starts already overdue (or close to it) instead of waiting a full threshold
---- to act on its first eval.
----
---- in_period needs land at 1.05x-1.50x threshold elapsed (just-overdue to clearly-overdue).
---- Out-of-period needs land at 1.20x-2.00x threshold elapsed (overdue, will fire when period flips).
---- Per-squad jitter (squad_id mod 32 minutes) prevents whole-cohort spike on the same need.
----
+--- Compute a starting timestamp for a per-squad cooldown DTO field so the squad begins already overdue, not waiting a full threshold.
+--- In-period needs land just-overdue, out-of-period more overdue; per-squad jitter prevents a whole-cohort spike.
 --- @param now number current game seconds
 --- @param threshold number threshold in game seconds
 --- @param in_period boolean true if the need's period matches current world period (or no period gate)
@@ -77,7 +68,7 @@ function init_overdue_timestamp(now, threshold, in_period, squad_id)
     return now - (factor * threshold) - jitter
 end
 
---- Check faction alignment (hard filter, deterministic)
+--- Check faction alignment (hard filter, deterministic).
 --- @param alignment table|nil Alignment hash set { ["faction"] = true, ... }
 --- @param community string Faction community string
 --- @return boolean true = faction is in alignment set (or no alignment defined)
@@ -86,9 +77,8 @@ function check_alignment(alignment, community)
     return alignment[community] == true
 end
 
---- Check faction personality (probability layer, runs after alignment)
---- Averages relevant traits for the faction, clamps to global PERSONALITY_FLOOR/CEILING, rolls.
---- INV_ traits are resolved as (1 - base_value) before averaging.
+--- Check faction personality (probability layer, runs after alignment).
+--- Averages relevant traits, clamps to PERSONALITY_FLOOR/CEILING, rolls; INV_ traits resolve as (1 - base_value) first.
 --- @param traits table Array of trait keys (e.g. { PERSONALITY.GREED, PERSONALITY.AGGRESSION })
 --- @param community string Faction community string
 --- @return boolean passed
@@ -116,8 +106,8 @@ function check_personality(traits, community)
     return math_random() < chance
 end
 
---- Keep candidates whose mutant species is in species_set and that pass the personality roll
---- Shared by the mutant reactive consequences (scavenge, hunt, haunt); species resolved per squad
+--- Keep candidates whose mutant species is in species_set and that pass the personality roll.
+--- Shared by the mutant reactive consequences (scavenge, hunt, haunt); species resolved per squad.
 --- @param candidates table Array of squad server objects
 --- @param species_set table Hash set { [species] = true }
 --- @param personality table Array of PERSONALITY trait keys
@@ -134,10 +124,8 @@ function filter_mutant_squads(candidates, species_set, personality)
     return out
 end
 
---- Roll a tactical-soundness check against random; true when candidate passes
---- Score starts at 1.0; subtracts WEIGHT_LAST_OF_FACTION when removing squad leaves its source
---- unguarded by its faction; subtracts WEIGHT_SMART_TARGETED when another scripted squad already
---- targets the destination. Radiant only; reactive consequences bypass.
+--- Roll a tactical-soundness check against random; true when the candidate passes.
+--- Score starts at 1.0, less WEIGHT_LAST_OF_FACTION (source left unguarded) and WEIGHT_SMART_TARGETED (dst already targeted); radiant only.
 --- @safety SAFE - xsmart.has_squad_of_faction + ap_core_broker.is_smart_targeted (both nil-guarded)
 --- @cost typically <5 luabind total (xsmart short-circuits; is_smart_targeted is pure Lua)
 --- @param squad se_squad Candidate squad
@@ -153,18 +141,16 @@ function is_tactically_eligible(squad, smart)
     return math_random() <= score
 end
 
---- Field smart: not a base and not already hosting a hub trader -- an ordinary contested smart the
---- takeovers (conquer / swarm / infest / territory) may claim. See xsmart.is_base /
---- xsmart.has_stalker_jobs for the engine-side semantics.
+--- Field smart: not a base and not hosting a hub trader, an ordinary contested smart the takeovers may claim.
+--- Conquer / swarm / infest / territory targets; see xsmart.is_base / xsmart.has_stalker_jobs for the engine semantics.
 --- @param smart smart_terrain
 --- @return boolean
 function is_field_smart(smart)
     return not xsmart.is_base(smart) and not xsmart.has_stalker_jobs(smart, xsmart.JOB_TYPE_TRADER)
 end
 
---- Last-smart floor: true when a community stationed at the smart holds no other smart on
---- that level, i.e. taking this one would erase its presence there. Target-side guard for
---- consequences whose targets can be occupied (infest); conquer/swarm targets are empty by filter.
+--- Last-smart floor: true when a community stationed here holds no other smart on that level (taking this one erases its presence).
+--- Target-side guard for consequences whose targets can be occupied (infest); conquer/swarm targets are empty by filter.
 --- @safety SAFE - false on nil smart or unresolved level_id
 --- @cost O(min(n,5)) stationed squads x xsmart.get_faction_smart_count (pure Lua on cache hit)
 --- @param smart smart_terrain Candidate target

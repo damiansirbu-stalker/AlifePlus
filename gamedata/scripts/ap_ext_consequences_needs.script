@@ -25,8 +25,7 @@ local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.NEEDS)
 local cfg = ap_core_mcm.cfg
 
 --- Trade arrival action: trade visitor inventory with any service NPC at the destination smart.
---- Delegates to ap_ext_trade.execute_trade; trade uses the per-rank LTX policy for categories and the
---- MCM trade_profit_max cap (economy > trade). One inline trade timer + line.
+--- Delegates to ap_ext_trade.execute_trade; uses the per-rank LTX policy and the MCM trade_profit_max cap (economy > trade).
 local function _on_arrive_action_trade(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
@@ -43,11 +42,8 @@ local function _on_arrive_action_trade(tid, visitor_go, args)
         table_concat(result.sold, ","), table_concat(result.bought, ","), tmr:get_ms()) end
 end
 
---- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
---- Counterpart of _on_arrive_action_trade -- delegates to ap_ext_barter.execute_barter, which moves items both
---- ways with no money via the per-rank ap_barter_policy.ltx. The peer pick excludes the arriving
---- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
---- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER).
+--- Barter arrival action: swap surplus for deficit with a same-faction stalker peer at the destination smart, no money.
+--- Delegates to ap_ext_barter.execute_barter (per-rank ap_barter_policy.ltx); no peer online yields NONE.
 local function _on_arrive_action_barter(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
@@ -105,9 +101,8 @@ local CONFIGS = {
       pre_release_gulag = PRE_RELEASE_GULAG.SOCIAL_OFFMAP, offmap = true },
 }
 
--- Invoke entry.arrive_action on the commander, gated by MCM enabled flag and commander
--- liveness. Returns the skip reason string if the action did not run (caller logs it),
--- or nil on success. Split out so _create_on_arrive stays at depth 2.
+-- Invoke entry.arrive_action on the commander, gated by the MCM enabled flag and commander liveness.
+-- Returns the skip reason if the action did not run (caller logs it), else nil; split out so _create_on_arrive stays at depth 2.
 local function _run_arrive_action(entry, tid, squad, args)
     if cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] == false then
         return "arrive_action_disabled"
@@ -119,8 +114,7 @@ local function _run_arrive_action(entry, tid, squad, args)
 end
 
 --- Reset need timestamp on arrival; run the entry's arrive_action if it has one.
---- Per-entry closure: the entry binds at registration time so the action ref doesn't need to
---- live in on_arrive_args (which is save-serialized).
+--- Per-entry closure: the entry binds at registration, so the action ref stays out of the save-serialized on_arrive_args.
 local function _create_on_arrive(entry)
     return function(squad, args)
         if not args or not args.dto_field then return end
