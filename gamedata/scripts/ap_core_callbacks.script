@@ -1,34 +1,8 @@
---- ap_core_callbacks: AlifePlus synthetic callbacks -- Anomaly events the base game never
---- exposed, declared into the vanilla _g.script callback registry (AddScriptCallback ->
---- axr_main.callback_add) so any cause RegisterScriptCallbacks on them exactly like a stock
---- callback (squad_on_npc_death, actor_on_item_use). Names are declared at module load, so
---- the two-phase boot (axr_main loads every script before calling any on_game_start) has the
---- intercept table populated before any subscriber binds; installs run in on_game_start.
----
---- Two events, two detection sources -- the source dictates the mechanism:
----   ap_squad_on_change (squad, changed|nil, prev, curr)
----     Custom event over live A-Life state; a squad has no call seam to hook, so we poll.
----     A staggered sweep (SWEEP_BATCH squads per 1s tick, constant cost vs squad count) walks
----     an id snapshot of SIMBOARD.squads (xsquad.collect_squad_ids), diffs 4 fields (gvid,
----     online, smart_id, current_action) and queues real transitions. A credit accumulator
----     emits exactly cfg.alife_rate fires per minute; each credit goes to a lane picked by
----     cfg.alife_ratio (Bresenham, actor's level vs background), oldest queued change first,
----     else the lane's next squad round-robin (the implicit keepalive). changed names the
----     differing fields; nil = round-robin fire with no transition. prev/curr are reused
----     tables: read-only during the callback, never retain refs. Supersedes polling the
----     vanilla squad_on_update firehose (~6600/min, no meaning per fire).
----   ap_npc_medkit_use (npc, medkit, kind)
----     Completes a vanilla seam: xr_eat_medkit.consume_medkit fires no callback, so a
----     function hook (xevent.register_hook) emits one before the original runs. kind is "health" or
----     "bleed" (xr_eat_medkit.script). No options.
----
---- Instrumentation is complete but costs one boolean when DEBUG is off: every stat
---- accumulator, xprofiler timing, and log line is gated on ap_core_debug.is_enabled().
+--- ap_core_callbacks: AlifePlus synthetic callbacks (ap_squad_on_change, ap_npc_medkit_use) declared into the vanilla callback registry.
 local clock, tostring, table_concat = os.clock, tostring, table.concat
 local RegisterScriptCallback, SendScriptCallback, AddScriptCallback =
     RegisterScriptCallback, SendScriptCallback, AddScriptCallback
--- CreateTimeEvent/ResetTimeEvent are called as globals at runtime, never cached:
--- demonized_time_events.script replaces them at load; a cached local points at a dead queue.
+-- CreateTimeEvent/ResetTimeEvent called as globals, never cached (demonized_time_events replaces them at load).
 local xevent, xlevel, xobject, xsquad, xprofiler = xevent, xlevel, xobject, xsquad, xprofiler
 local ap_core_debug = ap_core_debug
 
@@ -38,33 +12,19 @@ local LOG = ap_core_debug.format_bracket("callbacks")
 local LOG_SQUAD = ap_core_debug.format_bracket("callbacks:squad")
 local CLSID_SQUAD = clsid.online_offline_group_s
 
--- Declare both events at module load (phase 0), before any on_game_start subscriber can
--- reference the names. Declaration is passive registry bookkeeping; nothing runs.
+-- Declare both events at module load (phase 0), before any on_game_start subscriber references them.
 AddScriptCallback(CALLBACK.AP_SQUAD_ON_CHANGE)
 AddScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE)
 
---- ap_squad_on_change: detection walk + credit-driven fire engine.
---- The walk (SWEEP_BATCH squads per SWEEP_TICK_SEC tick, circular cursor over an id
---- snapshot from xsquad.collect_squad_ids) only detects and sorts: diff the 4 tracked
---- fields, queue changed ids, keep the live lane arrays current (an id moves lanes only
---- when its level changed; unregister evicts it promptly). Per-tick walk cost is O(batch),
---- independent of total squad count. The fire engine converts credit (cfg.alife_rate / 60
---- per tick) into fires: lane by Bresenham on cfg.alife_ratio, queued change first, else
---- round-robin -- total rate, lane mix, and full coverage are each enforced by counting,
---- not by timers. The per-squad refractory (os.clock) is the one clamp, protecting small
---- lanes from rapid re-fires of the same squad.
+--- ap_squad_on_change: a staggered detection walk queues changes; a credit-driven fire engine emits cfg.alife_rate/min across cur/bg lanes.
 
 local SWEEP_TICK_SEC = 1
 local SWEEP_BATCH = 20
 local SWEEP_REFRACTORY_SEC = 60
--- Candidate attempts per credit before the credit is dropped (candidates dead or inside
--- refractory); bounds the fire loop when a lane is tiny or the Zone is empty.
+-- Candidate attempts per credit before it is dropped; bounds the fire loop when a lane is tiny.
 local FIRE_ATTEMPTS_MAX = 8
 
---- Per-squad state: [squad_id] = { gvid, online, smart_id, action, fired_at, lane }.
---- gvid stands in for position: the engine advances m_game_vertex_id as the squad walks,
---- so it is a pre-quantized movement signal with no vector userdata allocation. lane is
---- the fire-lane the id currently sits in ("cur"/"bg"), maintained by _add_to_lane.
+--- Per-squad state: [squad_id] = { gvid, online, smart_id, action, fired_at, lane }; gvid is the movement signal.
 local _squad_snapshots = {}
 -- Walk cursor state: id snapshot of the squad pool (never live refs).
 local _squad_ids = nil
@@ -75,12 +35,7 @@ local _squad_pending = {
     bg = { items = {}, head = 1, tail = 0 },
 }
 local _squad_pending_set = {}
--- Live lane membership, consumed round-robin by the fire engine. One array per lane plus
--- _squad_pos_of[id] = index in its lane array (which array = snap.lane): the single
--- membership truth - an id is in exactly one array at exactly one index, moved in place
--- by _add_to_lane when its level changes, evicted by _remove_squad. Never rebuilt or swapped;
--- the engine's own alife scheduler round-robins a live registry the same way
--- (alife_schedule_registry.h:25-51).
+-- Live lane membership, round-robined by the fire engine; _squad_pos_of[id] is the single index truth (alife_schedule_registry.h:25-51).
 local _squad_lane = { cur = {}, bg = {} }
 local _squad_pos_of = {}
 local _squad_lane_cursor = { cur = 0, bg = 0 }
@@ -125,12 +80,8 @@ local function _add_to_lane(id, snap, is_cur)
     snap.lane = lane_key
 end
 
--- Evict one squad id from all sweep state, lane array first (the lane key lives on the
--- snapshot). The unregister handler is the prompt caller and is LOAD-BEARING, not
--- hygiene: dead ids never reappear in discovery snapshots, so the walk cannot clean the
--- lane arrays, and a recycled id resolves non-nil to its NEW occupant, so only the
--- destroy event marks the identity boundary (ids are pooled and reused,
--- xrServer.cpp:873 vfFreeID). The resolve-nil call sites are the backstop.
+-- Evict one squad id from all sweep state. The unregister handler must call it promptly: recycled
+-- ids resolve to a new occupant, so only the destroy event marks the identity boundary (xrServer.cpp:873).
 -- @cost O(1) | 0 luabind
 local function _remove_squad(id)
     local snap = _squad_snapshots[id]
@@ -139,10 +90,8 @@ local function _remove_squad(id)
     _squad_pending_set[id] = nil
 end
 
--- Diff the squad against its snapshot into the reused _squad_changed array.
--- Returns the number of changed fields (0 = unchanged).
--- @cost O(1) | 2 luabind trivial (m_game_vertex_id, online); smart_id and
---             current_action are Lua-side fields
+-- Diff the squad against its snapshot into the reused _squad_changed array; returns the changed count.
+-- @cost O(1) | 2 luabind trivial (m_game_vertex_id, online); smart_id/current_action are Lua-side
 local function _compute_diff(squad, snap)
     local changed_count = 0
     if snap.gvid ~= squad.m_game_vertex_id then
@@ -160,10 +109,8 @@ local function _compute_diff(squad, snap)
     return changed_count
 end
 
--- Visit one squad on the walk: resolve, place in its lane, diff, queue a detected
--- change. Never fires and never advances the snapshot; the fire engine does both, so a
--- queued change re-verifies against live fields at fire time. A squad is fireable from
--- the moment it is first seen - game start and mid-session spawn behave identically.
+-- Visit one squad on the walk: resolve, place in its lane, diff, queue a detected change. Never fires
+-- or advances the snapshot (the fire engine does), so a queued change re-verifies at fire time.
 -- @cost O(1) | 1 medium (alife_object via xobject.get_se) + 0-2 cached-graph lookups + diff
 local function _check_squad(id, actor_level, stat_on)
     local squad = xobject.get_se(id)
@@ -190,12 +137,8 @@ local function _check_squad(id, actor_level, stat_on)
     if stat_on then _squad_stat.detected = _squad_stat.detected + 1 end
 end
 
--- Bresenham lane pick for one credit. Returns true = current-level lane, false = background.
--- Reads cfg.alife_ratio live: the same slider the reactive ratio gate uses, so both lanes
--- share one mix source. Pure chooser: the counters advance in _run_credit AFTER a
--- successful fire, on the lane that actually fired, so the recorded mix is the real mix
--- even when the cross-lane fallback fires the other lane - a blocked lane keeps being
--- proposed (its counter frozen) and the mix reasserts the moment it unblocks.
+-- Bresenham lane pick for one credit (true = current level, false = background), reading cfg.alife_ratio
+-- live. Pure chooser: the counters advance in _run_credit after a successful fire, on the lane that fired.
 -- @cost O(1) | 0 luabind
 local function _select_lane()
     local bias = cfg.alife_ratio
@@ -236,10 +179,8 @@ local function _get_next_round_robin(lane_key)
     return list[cursor]
 end
 
--- Fire ap_squad_on_change for one squad id if it resolves and is past its refractory.
--- Re-diffs live fields against the snapshot so the payload is truthful at fire time (a
--- change that reverted between detection and fire goes out as a round-robin fire).
--- Returns true when the callback was sent (the credit is spent).
+-- Fire ap_squad_on_change for one squad id if it resolves and is past its refractory; re-diffs live
+-- fields so the payload is truthful (a reverted change goes out as a round-robin fire). True when sent.
 -- @cost O(1) | 1 medium resolve + diff + SendScriptCallback fan-out
 local function _notify_change(id, lane_key, now, stat_on)
     local squad = xobject.get_se(id)
@@ -256,8 +197,6 @@ local function _notify_change(id, lane_key, now, stat_on)
     _squad_curr.smart_id = squad.smart_id
     _squad_curr.action = squad.current_action
     if stat_on then
-        -- Per-fire trace: the one line that lets a log reader follow a specific event from
-        -- production into the producer's radiant tid chain.
         ap_core_debug.debug("%s fire sq=%d lane=%s kind=%s gvid=%s smart=%s online=%s action=%s",
             LOG_SQUAD, id, lane_key, changed_count > 0 and table_concat(_squad_changed, ",") or "turn",
             tostring(_squad_curr.gvid), tostring(_squad_curr.smart_id),
@@ -298,9 +237,8 @@ local function _try_lane(lane_key, now, attempts, stat_on)
     return attempts, false
 end
 
--- Spend one credit: pick the lane, try it, fall back to the other lane, drop the credit
--- after FIRE_ATTEMPTS_MAX dead candidates (despawned or inside refractory). The Bresenham
--- counter advances here, on the lane that actually fired (see _select_lane).
+-- Spend one credit: pick a lane, try it, fall back to the other, drop after FIRE_ATTEMPTS_MAX dead
+-- candidates. The Bresenham counter advances here, on the lane that actually fired.
 -- @cost O(attempts) | <= FIRE_ATTEMPTS_MAX resolves worst case, 1 typical
 local function _run_credit(now, stat_on)
     local lane_key = _select_lane() and "cur" or "bg"
@@ -338,9 +276,8 @@ local function _log_pass(pass_seconds)
     stat.tick_ms = 0; stat.tick_max = 0; stat.ticks = 0
 end
 
--- One tick: walk one batch (detection), accrue credit, spend whole credits (firing).
--- The id array rebuilds once per full pass via xsquad.collect_squad_ids; iteration never
--- touches the live SIMBOARD table, so mid-tick spawn/despawn cannot invalidate the walk.
+-- One tick: walk one batch (detection), accrue credit, spend whole credits (firing). The id array
+-- rebuilds per pass (xsquad.collect_squad_ids), so mid-tick spawn/despawn cannot invalidate the walk.
 -- @cost O(SWEEP_BATCH + fires) per tick, constant vs total squad count
 local function _update_sweep()
     ResetTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC)
@@ -378,11 +315,8 @@ local function _update_sweep()
     end
 end
 
--- Evict sweep state on squad despawn - the prompt path (see _remove_squad for why it is
--- load-bearing). Coverage is exact: sim_squad_scripted:on_unregister fires this callback
--- one line before it removes the id from SIMBOARD.squads (:1018-1019), and that removal
--- is the only one, so every id discovery can see gets this event on destroy. The
--- resolve-time _remove_squad calls catch anything exotic that bypasses it.
+-- Evict sweep state on squad despawn - the prompt path. sim_squad_scripted:on_unregister fires this
+-- one line before it removes the id from SIMBOARD.squads (:1018-1019), so coverage is exact.
 -- @cost O(1) | 1 luabind (clsid)
 local function _on_squad_unregister(se_obj)
     if not se_obj then return end
@@ -407,10 +341,7 @@ local function _reset_sweep()
     _squad_pass_started = 0
 end
 
---- ap_npc_medkit_use: heal-consumption hook.
---- xr_eat_medkit.consume_medkit exposes no callback; the hook fires ours before the
---- original runs, so the medkit still exists for the subscriber (consume_medkit releases
---- it via alife_release_id).
+--- ap_npc_medkit_use: hook on xr_eat_medkit.consume_medkit (no vanilla callback); fires ours before the original.
 
 -- @cost O(1) install | per heal: 1 SendScriptCallback + original consume_medkit
 local function _register_medkit_hook()
