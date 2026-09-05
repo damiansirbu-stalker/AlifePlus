@@ -1,8 +1,4 @@
---- ap_core_producer: Dispatches cause predicates on callbacks.
---- Gate chains: radiant (BUDGET->PROTECTION->EVAL) on ap_squad_on_change (the
---- ap_core_callbacks squad sweep, which enforces rate and current-level/background mix at
---- production from cfg.alife_rate/alife_ratio, so no ratio gate remains on the radiant
---- path), reactive (PACER->RATIO->EVAL) on engine event callbacks.
+--- ap_core_producer: Dispatches cause predicates; radiant chain (budget/protection/eval) and reactive chain (pacer/ratio/eval).
 local pairs, type, unpack = pairs, type, unpack
 local RegisterScriptCallback = RegisterScriptCallback
 local xprofiler, xtrace = xprofiler, xtrace
@@ -14,8 +10,7 @@ local cfg = ap_core_mcm.cfg
 local hud = ap_core_hud
 local hud_collecting = ap_core_hud.is_collecting
 local sr, sx = hud.r, hud.x
--- 2^15: the point where the on/off counters are folded back, so a long session
--- cannot grow them without bound.
+-- 2^15: fold the on/off counters back so a long session cannot grow them without bound.
 local COUNTER_FOLD_AT = 32768
 
 local _handlers = {}
@@ -25,8 +20,7 @@ local _reactive_event_limiter = nil
 --- Radiant callback sources (built from registrations with cause_type = RADIANT)
 local _radiant_callbacks = {}
 
---- Phase flag: false during on_game_start (subscribe deferred to actor_on_first_update),
---- true after first_update (register() subscribes new callbacks synchronously).
+--- Phase flag: false until actor_on_first_update, then register() subscribes synchronously.
 local _first_update_done = false
 
 --- Callbacks that are always on the player's map (actor/npc game_objects only exist online)
@@ -37,8 +31,7 @@ local _always_on_map = {
     [CALLBACK.AP_NPC_MEDKIT_USE] = true,
 }
 
---- Weighted fair share counters for on-map vs off-map ratio enforcement (reactive only;
---- the radiant mix is enforced at production inside the ap_core_callbacks sweep).
+--- Weighted fair-share counters for reactive on-map vs off-map ratio (radiant mix is enforced in the sweep).
 local _reactive_ct = { on = 0, off = 0 }
 
 --- GATE: RATIO (reactive 2/3)
@@ -109,9 +102,6 @@ local function _check_cross_type(cause_type, callback)
     return nil
 end
 
---- Publish a cause result. Rate-limit is enforced upstream (pre-handler check on entry.category
---- in _eval_*); by the time we reach here the publish is guaranteed to go through. Increment
---- counter keyed on entry.category so the next pre-check sees the +1.
 -- Log a cause evaluation outcome: the cause it fired, a rejection code:reason, or nil.
 local function _log_cause(log_prefix, tid, result, ms)
     if result == nil then
@@ -132,14 +122,8 @@ local function _try_publish(on_map, result, category, cause_type)
         result.cause, category, result.squad_id, on_map, result.level_id)
 end
 
---- Evaluate all reactive cause handlers for a callback that passed all gates.
---- Pre-checks per-handler category rate-limit before running predicate (skip wasted work on
---- rate-blocked categories). Predicates build their post-decision payload under the picked
---- cause; producer calls the handler directly and logs the outcome.
---- @param handlers table Indexed array of registered handlers for this callback
---- @param on_map boolean|nil On-map status for ratio logging
--- Run one reactive handler; publish on cause, classify on non-publishing rejection.
--- Times the predicate and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
+-- Run one reactive handler: publish on cause, classify on a non-publishing rejection; times and
+-- logs the outcome when DEBUG is on.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_reactive(on_map, entry, args, sc)
     local dbg = ap_core_debug.is_enabled()
@@ -159,10 +143,6 @@ local function _try_reactive(on_map, entry, args, sc)
 end
 
 local function _run_reactive_handlers(handlers, on_map, ...)
-    -- Lua 5.1 vararg fan-out: we dispatch the same ... to N handlers in the loop below.
-    -- Capturing {...} once + unpack(args) per handler is the only way to preserve args
-    -- across loop iterations. Allocation is ~50us/sec in dense combat; acceptable cost
-    -- for reactive pipeline fan-out.
     local args = {...}
     local sc = hud_collecting()
     for i = 1, #handlers do
@@ -170,8 +150,7 @@ local function _run_reactive_handlers(handlers, on_map, ...)
     end
 end
 
---- Cascade buffer for radiant entries. Maintained write-through by register() (append on new,
---- replace in place on re-register). Shuffled in-place per tick; avoids per-tick allocation.
+--- Cascade buffer for radiant entries; write-through by register(), shuffled in place per tick.
 local _cascade_buf = {}
 local math_random = math.random
 
@@ -185,11 +164,8 @@ local function _set_cascade_entry(handler, entry)
     end
 end
 
---- Cascade through radiant generators in random order. Stop on first publish.
---- Per-cause check budget is reset here and consumed inside generators per cause attempt.
---- Predicates self-gate against their per-category cause-rate budget; producer doesn't.
--- Run one radiant cascade entry; publish on cause (caller breaks), classify on non-publishing.
--- Times the cascade entry and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
+-- Run one radiant cascade entry: publish on cause (caller breaks), classify on a non-publishing
+-- rejection; times and logs the outcome when DEBUG is on.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_radiant(on_map, squad, entry, sc)
     local dbg = ap_core_debug.is_enabled()
@@ -221,12 +197,8 @@ local function _run_radiant_cascade(on_map, squad)
     end
 end
 
---- Radiant callback handler for ap_squad_on_change, fired by the ap_core_callbacks sweep
---- (the prev/curr payload args are not consumed here; generators receive the squad only;
---- changed is read for fire-kind telemetry: array = change fire, nil = keepalive fire).
---- Gates: BUDGET(1/2) -> is_protected(2/2) -> EVAL(cascade). Rate and level mix are
---- enforced at production inside the sweep, not rejected here.
---- Counters in each gate count what the gate BLOCKED (not what passed). events is input count.
+--- Radiant handler for ap_squad_on_change (the ap_core_callbacks sweep): gates BUDGET -> is_protected
+--- -> EVAL cascade. Rate and level mix are enforced in the sweep, not here.
 local function _on_radiant(squad, changed)
     if #_cascade_buf == 0 then return end
     local sc = hud_collecting()
@@ -238,21 +210,13 @@ local function _on_radiant(squad, changed)
             sr.sweep_keepalives = sr.sweep_keepalives + 1
         end
     end
-    -- Gate 1: BUDGET peek. Radiant is 1:1 publish->dispatch and the consumer refuses past
-    -- global_consequence_max_events per window, so when that window is full every evaluation
-    -- is provably wasted work (RULES + SCAN + publish thrown away at the consumer) and would
-    -- violate the cause publish contract. Non-consuming read; the counter only advances in
-    -- the consumer's _on_success.
     if not ap_core_limiter.check_global_consequence_rate_limit() then
         ap_core_debug.debug("[PRODUCER.RADIANT] BUDGET_DENIED sq=%s", squad.id)
         if sc then sr.deny_budget = sr.deny_budget + 1 end
         return
     end
-    -- Gate 2: is_protected (full eligibility check)
     local protected, reason, detail, name = ap_core_broker.is_protected(squad)
     if protected then
-        -- Gate the log: name is nil for owner/scripted/active_role/task_target rejects,
-        -- so squad:section_name() would fire on every reject when DEBUG is off.
         if ap_core_debug.is_enabled() then
             ap_core_debug.debug("[PRODUCER.RADIANT] PROTECTED squad=%d reason=%s detail=%s name=%s",
                 squad.id, reason or "?", detail or "?", name or squad:section_name() or "?")
@@ -260,9 +224,6 @@ local function _on_radiant(squad, changed)
         if sc then sr.protected = sr.protected + 1 end
         return
     end
-    -- EVAL cascade. No ratio gate: the sweep already produced this fire under the
-    -- configured rate and current-level/background mix; rejecting here would fight
-    -- the intake control. on_map (squad.online) stays a payload/telemetry fact only.
     _run_radiant_cascade(squad.online, squad)
 end
 
@@ -275,9 +236,7 @@ local function _resolve_on_map(callback_type, first_arg)
     return nil
 end
 
---- Reactive entry point (~6.5/sec)
---- Gates: PACER(1/3) -> RATIO(2/3) -> EVAL(3/3)
---- Counters in each gate count what the gate BLOCKED (not what passed). events is input count.
+--- Reactive entry point: gates PACER -> RATIO -> EVAL. Counters count what each gate blocked.
 local function _on_reactive(callback_type, ...)
     local handlers = _handlers[callback_type]
     if not handlers or #handlers == 0 then return end
@@ -342,13 +301,8 @@ local function _init_subscriptions()
     end
 end
 
---- Register a cause handler. Predicate publishes specific cause via result.cause; producer
---- never knows the cause string at registration time. Dedup is by handler function ref.
---- Category drives rate-limit grouping (decision 3+15): same-category handlers share one budget.
---- name is the log label: a CAUSE.X string for reactive (1:1 with the cause), or a
---- generator-family string for radiant cascades ("needs", "instincts", "area", "stash").
---- Write-through: maintains _handlers, _radiant_callbacks, _cascade_buf synchronously. After
---- actor_on_first_update, also subscribes the engine callback for new callbacks (late-bind).
+--- Register a cause handler (dedup by function ref); category drives rate-limit grouping, name is
+--- the log label. Write-through to _handlers/_radiant_callbacks/_cascade_buf, late-binding after first update.
 --- @cost O(1) amortized | 0 luabind (one table insert per registration)
 --- @param config table { callback, cause_type, category, name }
 --- @param handler function(...) Handler function
@@ -407,9 +361,8 @@ local function _on_first_update()
     _first_update_done = true
 end
 
---- on_game_start: reset state + register deferred init (no cross-module reads).
---- The ap_squad_on_change sweep installs itself in ap_core_callbacks.on_game_start and reads
---- cfg.alife_rate/alife_ratio live, so the producer only subscribes (via RADIANT_CALLBACKS).
+--- on_game_start: reset state + register deferred init. The ap_squad_on_change sweep installs itself
+--- in ap_core_callbacks and reads the rate/ratio live, so the producer only subscribes.
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}
