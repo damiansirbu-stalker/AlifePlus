@@ -7,17 +7,11 @@ local xsquad, xcreature, xinventory, xevent, xpda, get_object_squad = xsquad, xc
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
--- Outpost service sidearm: fixed base-game sections (user ruling 2026-08-01, no candidate probing).
--- Both ship with vanilla Anomaly and survive into GAMMA; a service spawns with an empty <supplies>
--- (counter profile), so the pistol is given at creation, offline-capable via xinventory.create_item.
+-- Outpost service sidearm: fixed base-game sections, given at creation (offline-capable).
 local SERVICE_WEAPON = "wpn_pm"
 local SERVICE_AMMO = "ammo_9x18_fmj"
 local SERVICE_AMMO_ROUNDS = 30
--- Outpost services spawn from the vanilla sim_default_<faction>_<role> profiles, which roll rank
--- 10000-20000 (professional to master), a hub-VIP rank wrong for a field merchant. It makes him a
--- needlessly strong fighter and inflates the faction-relation swing when he is killed, since the
--- relation code weights a kill by the victim's rank. _set_service_rank corrects it on the server
--- object the instant the member is created, before any tick or read.
+-- Field-merchant rank; vanilla service profiles roll a hub-VIP rank (corrected by _set_service_rank).
 local SERVICE_RANK = 0
 
 local CONQUEST_KEY = "ap_conquest"
@@ -28,11 +22,7 @@ local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
 
---- Species allowed to take territory (pack / lair creatures that overrun and hold a place). Solo
---- apex / psi bosses (pseudogiant, chimera, burer, controller, poltergeist, karlik) never multiply
---- onto a smart; trash mobs (rat, tushkano, flesh, zombie) never nest. The list equals the effective
---- set: every entry passes the causes' feral/predator/aberrant alignment gate. Public: gates BOTH
---- swarm and infest, in the descriptors here (enforcement) and in ap_ext_causes_area (no wasted trips).
+--- Species allowed to take territory (pack/lair creatures); public, gates swarm and infest.
 INFEST_SPECIES = {
     bloodsucker = true, snork = true, cat = true, dog = true, pseudodog = true, psy_dog = true,
     lurker = true, psysucker = true, fracture = true, boar = true,
@@ -43,12 +33,7 @@ MUT_CONQUEST = "conquest"
 MUT_SWARM = "swarm"
 MUT_INFEST = "infest"
 
--- Outpost services (conquest only). A held conquer smart grows ONE service NPC (trader / barman /
--- mechanic / medic) that trades, repairs, or heals -- spawned by the smart through a faction-tagged
--- respawn entry (rides the exclusive gate as a passenger to the conquest entry), then stocked via
--- xcreature.create_trader on the scan once online. The NPC keeps its FACTION community, so vanilla and
--- every AP-family system treat it as an ordinary faction trader. Trader config is per-faction (the
--- irregular vanilla map, verified on disk); barman/medic/mechanic share the generic configs.
+-- Per-faction trader trade configs; barman/medic/mechanic use the generic configs.
 local TRADE_PATH = "items\\trade\\"
 local TRADER_CFG = {
     army = "trade_military", bandit = "trade_bandit", csky = "trade_csky_spore", dolg = "trade_duty",
@@ -62,21 +47,13 @@ local ROLE_CFG = {
 local SERVICE_ROLES = { "trader", "barman", "mechanic", "medic" }
 local _ROLE_SET = { trader = true, barman = true, mechanic = true, medic = true }
 local SERVICE_KEY_PREFIX = "ap_service_"
--- Guard detail respawn row key: one row per outpost, num = the plan's guard count, squads = the
--- faction's danger-tier pool. Guards are ordinary faction combat squads that live as pinned
--- residents; they carry no trade, no icon, no loot-null -- only the pin.
+-- Guard detail respawn row key: pinned faction combat squads, no trade or icon, only the pin.
 local GUARD_KEY = "ap_guard"
--- Service suitability floor: a conquered smart grows a service (trader/barman/mechanic/medic) only
--- with room for a squad AND a gathering anchor (campfire or surge shelter); else it stays guard-only.
--- The floor is deliberately low (excludes only max_pop 0 dead spots) -- the campfire/surge anchor is
--- the real "inhabited camp" discriminator, since most Zone camps read max_pop 1.
+-- Service suitability floor: needs squad room plus a campfire or surge-shelter anchor.
 local SERVICE_MIN_MAX_POP = 1
--- The generic assortment every stalker starts with (xr_logic.script:113 default); what an unmade
--- leftover service is re-inited to at decay-in-view.
+-- Generic trade assortment (xr_logic.script:113); an unmade leftover service is re-inited to it.
 local GENERIC_TRADE = "items\\trade\\trade_generic.ltx"
--- Engine PDA role spots (stalker_generic.reset_show_spot vocabulary, stalker_generic.script:98-126).
--- Added directly on the online service (map_add_object_spot) -- no job carries level_spot anymore --
--- and re-added by the scan when a scheme reset removed it (reset_show_spot removes first, :70).
+-- Engine PDA role spots (stalker_generic.script:98-126); the scan re-adds after a scheme reset.
 local SERVICE_ICON = {
     trader   = { icon = "ui_pda2_trader_location",   hint = "st_ui_pda_legend_trader" },
     barman   = { icon = "ui_pda2_barman_location",   hint = "st_ui_pda_legend_barman" },
@@ -100,18 +77,11 @@ local function _parse_role(prop)
     return (role and _ROLE_SET[role]) and role or nil
 end
 
--- Live per-type state, keyed by mutation name; _pending holds saved entries between load_state and
--- the on_game_load restore. The on-disk format keeps the historical keys (conquered_smarts /
--- swarmed_smarts / infested_smarts) via mut.save_key, so old saves keep resolving. Conquest entries
--- carry the outpost PLAN, rolled once at conquest: .services = { [role]=true } (the service rows)
--- and .guards = N (the guard row's quota). The 60s scan re-writes the rows from the plan.
+-- Live per-type mutation state; conquest entries carry the outpost plan (.services, .guards).
 local _state = { conquest = {}, swarm = {}, infest = {} }
 local _pending = {}
 local _decay_collector = {}
--- Pinned outpost squads (services + guard detail): squad_id -> { smart_id, smart_name, section,
--- role, held_at, stocked }. role is a service role or "guard"; section is the squad section pinned
--- at hold time (the identity check against server-id recycling). scripted_target holds them at the
--- smart; the scan reasserts. _hold_drop_collector is the prune scratch list.
+-- Pinned outpost squads: squad_id -> { smart_id, smart_name, section, role, held_at, stocked }.
 local _held_squads = {}
 local _held_pending = nil
 local _hold_drop_collector = {}
@@ -185,10 +155,7 @@ function can_infest_on_level(level_id)
     return true
 end
 
--- One descriptor per mutation type. apply/clear are the xsmart_spawn calls; refresh=true updates the
--- timestamp on a same-identity re-hit (conquest/swarm), refresh=false rejects a re-hit (infest); cap
--- gates admission and restore (infest only). ts_field / save_key preserve the on-disk format. The
--- identity (faction or species) is stored under .faction for all three (historical + trace reads it).
+-- One descriptor per mutation type: the apply/clear calls, refresh vs reject, cap, and save keys.
 local MUTATIONS = {
     conquest = {
         name = MUT_CONQUEST, key = CONQUEST_KEY, id_word = "faction", refresh = true, grows_services = true,
@@ -1128,15 +1095,7 @@ local function _on_npc_creation(squad, se_obj, spawn_smart)
     CreateTimeEvent("ap_spawn_deferred", squad.id, 0, _on_spawn_deferred, squad.id, spawn_smart.id)
 end
 
--- Outpost stock policy: which item kinds a service sells, ONE BLOCK PER ROLE. Loaded once at
--- on_game_start from ap_outpost_stock_policy.ltx, a file separate from the loadout policies because
--- it caps a SHELF, not a loadout. Per role because a cap that suits a trader guts a specialist: a
--- barman's whole trade is food and drink, a medic's is medical, a mechanic's is tools and parts, and
--- one blanket block left each of them with a handful of items (field-measured 2026-07-26).
--- _stock_policy[role] = rules; nil when no role block loaded, and a role with no block is unfiltered.
--- The `money` key per block is the role's BANKROLL (rubles the service holds after every restock;
--- caps the cash a player can extract by selling per restock cycle); extracted via the loader's
--- specials path into _stock_money[role]. An absent money row leaves the role unclamped, logged.
+-- Outpost stock policy: per-role shelf caps plus a money bankroll, from ap_outpost_stock_policy.ltx.
 local STOCK_POLICY_PATH = "alifeplus\\ap_outpost_stock_policy.ltx"
 local STOCK_POLICY_PREFIX = "ap_outpost_stock_"
 local STOCK_FILTER_EV = "ap_outpost_stock_filter"
@@ -1198,32 +1157,6 @@ local function _is_service_npc(npc)
     local sec = squad and squad.section_name and squad:section_name()
     return sec ~= nil and sec:sub(1, #SERVICE_KEY_PREFIX) == SERVICE_KEY_PREFIX
 end
-
--- Supplies-tier control for outpost traders, keeping them below the faction's hub trader.
--- trade_manager.update picks the supplies section per restock from the config's buy_supplies
--- condlist against ACTOR state -- goodwill thresholds plus the heavy_pockets money achievement
--- (trade_manager.script:141-153, trade_stalker_owl.ltx:7). Because the outpost trader uses his
--- faction's own config, the picked tier is EXACTLY what that faction's hub trader would show the
--- player right now: his earned standing. Two levers shape it downward:
---   penalty (mutator_area_conquest_trader_supplies_penalty) - tiers BELOW the earned pick, so the
---     outpost always trails the hub and scales with the player's standing (default 1: one rung
---     below hub). 0 disables the relative rule.
---   cap (mutator_area_conquest_trader_supplies_tier) - absolute ceiling regardless of standing.
--- effective = clamp(min(picked - penalty, cap), 1, picked). The control PREEMPTS the original
--- restock; it cannot ride it with a second buy_supplies after the fact, because buy_supplies
--- wipes only client-REGISTERED items (CPurchaseList::process -> sell_useless_items walks
--- inventory().m_all, InventoryOwner.cpp:600-622) and spawns the new tier ASYNC
--- (Level().spawn_item, purchase_list.cpp:68) -- a same-frame second call misses the first batch
--- entirely and the two tiers MERGE on the shelf. So when a restock is due (the vanilla gate
--- mirrored, trade_manager.script:133-139) and the clamp would bite, this stamps resupply_time in
--- vanilla's own saved shape (a fresh table, so every stamp-identity restock hook still sees a
--- real restock), runs ONE buy_supplies at the effective tier, and records current_buy_supplies;
--- the original then still runs its buy/sell condition setup and skips its own restock on the
--- fresh stamp. When the clamp would not bite (low standing, penalty 0, unparseable tier name),
--- nothing is stamped and the vanilla restock proceeds untouched. trader_autoinject-family
--- restock hooks fire on deferred time events after the wrapper tail and see a normal trader
--- with a real stamp. Tier names are uniform supplies_1..N across all 12 faction configs
--- (contiguous from 1), so supplies_(effective) always exists for 1 <= effective < picked.
 
 -- trade_manager keeps its CTime<->table converters file-local (trade_manager.script:9-23); the
 -- stamp written here must be that exact saved shape, so both are mirrored verbatim.
@@ -1343,11 +1276,7 @@ local function _reset_bankroll(npc, id, role)
     ap_core_debug.debug("[MUTATOR.SMART] bankroll: npc=%d role=%s money=%d", id, role, bankroll)
 end
 
--- trade_manager.update wrapper for outpost services. For a due trader restock where the clamp
--- bites, _try_preempt_below_hub stocks first and the original skips its own restock on the fresh
--- stamp (force_refresh dropped so a forced call cannot restock a second time over the preempt);
--- every service resets its money bankroll and defers the category filter on a detected restock
--- (preempted or vanilla).
+-- trade_manager.update wrapper for outpost services: below-hub preempt, bankroll reset, stock filter.
 local _org_update_trade
 local function _update_trade(npc, force_refresh)
     local entry = npc and _get_service_entry(npc)
@@ -1365,10 +1294,7 @@ local function _update_trade(npc, force_refresh)
     end
 end
 
--- trader_autoinject.get_trader_type wrapper. The classifier reads the ACTIVE logic section's
--- `trade` key and returns -1 without one (trader_autoinject.script:85-111); with no runtime job
--- carrying the key, every destockifier / injector-family addon would skip outpost services.
--- A ledgered service answers its role's constant directly; everyone else falls through.
+-- trader_autoinject.get_trader_type wrapper (script:85-111); a ledgered service answers its role.
 local _org_get_trader_type
 local _trader_type_by_role
 local function _get_trader_type(npc)
@@ -1378,17 +1304,7 @@ local function _get_trader_type(npc)
     return _org_get_trader_type(npc)
 end
 
--- Random-task gate for outpost services. Vanilla resolves an NPC's task pool from its logic
--- `task_section` and falls back to `npc:section() .. "_task_"` (axr_task_manager.script:860-869).
--- A service spawns from sim_default_<faction>_<role> and configs/misc/task/tm_warfare.ltx defines
--- exactly those sections, so a field trader hands out the Warfare pool. Those tasks cannot be
--- completed without Warfare installed: [sim_default_csky_trader_task_3] runs
--- =setup_companion_task(ecolog_companion_task_1) on accept and carries
--- condlist_0 = {!squad_exist(ecolog_companion_task_1)} fail. In a non-Warfare game _G.WARFARE is
--- false (warfare.script:275-278), so setup_companion_task (axr_companions.script:741) skips its
--- escort-spawn branch, finds no smart, and returns without creating the squad; condlist_0 then fails
--- the escort the moment the player takes it (field report 2026-07-26). A post in
--- the field is a shop, not a task giver -- gate the pool rather than curate task sections.
+-- Random-task gate: service profiles hand out the Warfare task pool, uncompletable without Warfare.
 local _org_build_available_tasks
 local _hub_gated = {}
 
