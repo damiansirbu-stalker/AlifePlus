@@ -21,7 +21,7 @@ local TACTICS_WEIGHT_SMART_TARGETED  = 0.20
 --- @return table|nil publish payload when the cause fired, else nil
 function try_cause(enabled_key, log_prefix, fn, ...)
     if not cfg[enabled_key] then return nil end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local result = fn(...)
     tmr:stop()

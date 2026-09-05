@@ -253,7 +253,7 @@ local function _companion_exempt(obj)
     if cfg.loot_include_companions or not _current_looker then return false end
     local looker_squad = get_object_squad(_current_looker)
     if not looker_squad or not xsquad.is_companion(looker_squad) then return false end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s reserve_own corpse=%s looker=%s -> exempt:companion",
             LOG, obj:id(), _current_looker:id())
     end
@@ -275,7 +275,7 @@ local function _excluded_reserve_own(v, obj)
     local actor_pos = actor:position()
     local reserved = _within(actor_pos, corpse_pos, cfg.loot_reserve_own_radius)
         and not xcombat.has_wall_between(actor_pos, corpse_pos)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s reserve_own corpse=%s dist=%.1f range=%s -> %s", LOG, obj:id(),
             actor_pos:distance_to(corpse_pos), cfg.loot_reserve_own_radius,
             reserved and "reserved" or "lapsed")
@@ -312,7 +312,7 @@ local function _excluded_squad_claim(v, obj, looker)
         blocked = _within(owner:position(), corpse_pos, radius)
     end
     if blocked then _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n) end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s npc_vs_npc corpse=%s owner=%s looker=%s -> %s", LOG, corpse_id,
             tostring(v.squad or v.killer), looker:id(), blocked and "blocked" or "free")
     end
@@ -368,7 +368,7 @@ local function _on_death(victim, killer)
     local squad_id = squad and squad.id or nil
     if squad_id and axr_companions.companion_squads[squad_id] then return end
     _record(victim_id, killer_id, squad_id)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s squad=%s", LOG, victim_id, killer_id, tostring(squad_id))
     end
 end
@@ -386,7 +386,7 @@ local function _on_hit(obj, _amount, _dir, who, bone_index)
     local victim_id = obj:id()
     if get_object_story_id(victim_id) then return end
     _record(victim_id, _ac_id, nil)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s actor_kill=true (via hit)", LOG, victim_id, _ac_id)
     end
 end
@@ -395,7 +395,7 @@ end
 --- Unowned corpses (no trace) and the actor's own kills return nil. Within block-npc's TTL the decision
 --- delegates to _npc_claimer (a squad member or lone killer within radius with a clear line to the body).
 --- Traces the claim for owned corpses -- claimed-by, or void reason (own_kill / stale / walled_or_absent) --
---- when ap_core_debug.enabled(). The corpse object is required for the position, so call sites that
+--- when ap_core_debug.is_enabled(). The corpse object is required for the position, so call sites that
 --- hold only an id resolve it first.
 --- @cost O(1) | ttl lookup + freshness; _npc_claimer only when an NPC owner exists and is fresh
 local function _claim_owner(corpse)
@@ -403,7 +403,7 @@ local function _claim_owner(corpse)
     local id = corpse:id()
     local v = id and _owner:get(id)
     if not v then return nil end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local owner, why
     if v.killer == _ac_id then
@@ -461,7 +461,7 @@ local function _on_before_key_press(_key, bind, _dis, flags)
     if not owner then return end
     flags.ret_value = false
     _warn_once(obj, owner)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked open corpse=%s owner=%s", LOG, obj:id(), owner:id())
     end
 end
@@ -479,7 +479,7 @@ local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     if not owner then return end
     xinventory.disable_move(flags)
     _warn_once(corpse, owner)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner:id())
     end
 end
@@ -495,7 +495,7 @@ local function _veto_dotmarks(id, flags)
     if not owner then return end
     flags.ret_value = false
     _warn_once(corpse, owner)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked dotmarks corpse=%s owner=%s", LOG, id, owner:id())
     end
 end

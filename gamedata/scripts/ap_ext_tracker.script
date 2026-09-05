@@ -29,7 +29,7 @@ local function _on_save_state(m_data)
         killers = _ap_killers,
         alphas = _ap_alphas,
     }
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[TRACKER] save: killers=%d alphas=%d needs=%d instincts=%d",
             xtable.get_count(_ap_killers), xtable.get_count(_ap_alphas), _ap_stalker_needs:get_size(), _ap_mutant_instincts:get_size())
     end
@@ -53,14 +53,14 @@ local function _on_load_state(m_data)
     _ap_squad_opportunities = xttltable.create_fifo_cache({ capacity = 100 })
     if type(saved.killers) ~= "table" then ap_core_debug.warn("[TRACKER] load: missing killers, fresh init") end
     if type(saved.alphas) ~= "table" then ap_core_debug.warn("[TRACKER] load: missing alphas, fresh init") end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[TRACKER] load: killers=%d alphas=%d",
             xtable.get_count(_ap_killers), xtable.get_count(_ap_alphas))
     end
 end
 
 local function _dump_killers()
-    if not ap_core_world_trace.enabled() then return end
+    if not ap_core_world_trace.is_enabled() then return end
     local parts = {}
     for id, count in pairs(_ap_killers) do
         parts[#parts + 1] = id .. "=" .. count
@@ -246,7 +246,7 @@ function reset_squad_opportunity(squad_id, key, now)
 end
 
 local function _on_squad_npc_death(squad, npc, killer)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
     local killer_id = ap_core_util.get_entity_id(killer)

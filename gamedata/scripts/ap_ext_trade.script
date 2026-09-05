@@ -244,7 +244,7 @@ function trade(npc, seller)
         xcreature.transfer_money(npc, delta - cap, seller)
     end
 
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s npc=%d tier=%s sold=%d[%s] bought=%d[%s] cash=%d->%d",
             LOG, npc:id(), tier_name, #sold, table_concat(sold, ","),
             #bought, table_concat(bought, ","), cash_before, xcreature.get_money(npc))
@@ -257,7 +257,7 @@ end
 -- (aggregated, one line). This is the trade feature's OWN hook, decoupled from the market and
 -- outpost-service dumps, so any trader you open reports its shelf. No-op when world trace is off.
 local function _on_trade_started()
-    if not ap_core_world_trace.enabled() then return end
+    if not ap_core_world_trace.is_enabled() then return end
     -- The partner is the actor's talk target. xactor.get_talking_npc wraps the engine primitive
     -- db.actor:get_talking_npc() (the authoritative GetTalkPartner); no raw engine call here.
     local npc = xactor.get_talking_npc()

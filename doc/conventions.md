@@ -181,7 +181,7 @@ The `[tid={id}]` and the `[X.XXms]` duration appear together on a flow line; a l
 
 ### Component Prefixes
 
-Pipeline labels are composed by `ap_core_debug.bracket(constant)` (uppercase, `:` -> `.`): `[CAUSE.{NAME}]`, `[CONSEQUENCE.{NAME}]`, plus the family roots (`[NEEDS]`, `[STASH]`, ...). Non-pipeline modules carry a literal `LOG` prefix: `[EXT.MARKET]`, `[EXT.LOOTSEL]`, `[CORE.CACHE]`, `[SQUAD]`, `[PRODUCER]`. No hardcoded `[CAUSE.X]` literals in pipeline files; each caches its bracket strings at module load (`entry.log_prefix`).
+Pipeline labels are composed by `ap_core_debug.format_bracket(constant)` (uppercase, `:` -> `.`): `[CAUSE.{NAME}]`, `[CONSEQUENCE.{NAME}]`, plus the family roots (`[NEEDS]`, `[STASH]`, ...). Non-pipeline modules carry a literal `LOG` prefix: `[EXT.MARKET]`, `[EXT.LOOTSEL]`, `[CORE.CACHE]`, `[SQUAD]`, `[PRODUCER]`. No hardcoded `[CAUSE.X]` literals in pipeline files; each caches its bracket strings at module load (`entry.log_prefix`).
 
 ### Tracing
 
@@ -189,7 +189,7 @@ Correlation is a plain integer `tid` (a monotonic counter from `xtrace.new().id`
 
 ### Scan tracing (`find_smart`, `find_squads`, `find_first_smart`)
 
-The finders are plain (no `*_observed` variant). `ap_core_util.find_squads` / `find_smart` emit a `[DISPATCH.FIND_*]` DEBUG line (count and params, or a no-smart line on miss) under `ap_core_debug.enabled()`; below DEBUG they run straight through with no line. The calling flow's own inline timer owns the timing; the finder pushes no span.
+The finders are plain (no `*_observed` variant). `ap_core_util.find_squads` / `find_smart` emit a `[DISPATCH.FIND_*]` DEBUG line (count and params, or a no-smart line on miss) under `ap_core_debug.is_enabled()`; below DEBUG they run straight through with no line. The calling flow's own inline timer owns the timing; the finder pushes no span.
 
 ### Log Levels
 
@@ -206,7 +206,7 @@ The finders are plain (no `*_observed` variant). `ap_core_util.find_squads` / `f
 |------|--------|
 | Inline timing | Each big flow times itself with `xprofiler.new_if(dbg)` and logs one summary line. No per-call wrapper. |
 | Timer null below DEBUG | `xprofiler.new_if(false)` returns the shared null singleton (zero allocation, `get_ms()` returns 0); the tid is not minted. |
-| No engine calls for logging | Log only what's already computed. IDs over names. Never fetch names just for logging. Gate a DEBUG log whose args read userdata (e.g. `squad:section_name()`) behind `if ap_core_debug.enabled()`. |
+| No engine calls for logging | Log only what's already computed. IDs over names. Never fetch names just for logging. Gate a DEBUG log whose args read userdata (e.g. `squad:section_name()`) behind `if ap_core_debug.is_enabled()`. |
 | code / reason | `code` and `reason` stay on result tables as control flow and HUD stats, not logging cruft. No other free scalars on result tables. |
 | Cause returns | Predicates return `{ cause, ...payload }` on success, `{ code, reason }` on rejection. |
 | Trace goal | Grep a `tid` -> see the cause line and its synchronous consequence line. |

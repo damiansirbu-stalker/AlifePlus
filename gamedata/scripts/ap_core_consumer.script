@@ -12,7 +12,7 @@ local _subscribed = false
 local _subscribe_event
 
 local hud = ap_core_hud
-local hud_collecting = ap_core_hud.collecting
+local hud_collecting = ap_core_hud.is_collecting
 
 --- Register a consequence handler for an event. Strict: refuses duplicate names.
 --- Caller must call unregister(name) first if replacing.
@@ -45,7 +45,7 @@ function register(name, config, handler)
     end
 
     local entries = _registry[event]
-    entries[#entries + 1] = { name = name, condition = config.condition, handler = handler, log_prefix = ap_core_debug.bracket(name) }
+    entries[#entries + 1] = { name = name, condition = config.condition, handler = handler, log_prefix = ap_core_debug.format_bracket(name) }
     _cause_for[name] = event
     if _subscribed and #entries == 1 then
         _subscribe_event(event)
@@ -106,7 +106,7 @@ local function _dispatch_entry(entry, event_type, event_data, is_radiant, sc)
         return false, false
     end
     if entry.condition and not entry.condition() then return false, false end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local result = entry.handler(event_data)
     tmr:stop()

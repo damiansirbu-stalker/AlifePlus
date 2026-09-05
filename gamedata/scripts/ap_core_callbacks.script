@@ -23,7 +23,7 @@
 ---     "bleed" (xr_eat_medkit.script). No options.
 ---
 --- Instrumentation is complete but costs one boolean when DEBUG is off: every stat
---- accumulator, xprofiler timing, and log line is gated on ap_core_debug.enabled().
+--- accumulator, xprofiler timing, and log line is gated on ap_core_debug.is_enabled().
 local clock, tostring, table_concat = os.clock, tostring, table.concat
 local RegisterScriptCallback, SendScriptCallback, AddScriptCallback =
     RegisterScriptCallback, SendScriptCallback, AddScriptCallback
@@ -34,8 +34,8 @@ local ap_core_debug = ap_core_debug
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
-local LOG = ap_core_debug.bracket("callbacks")
-local LOG_SQUAD = ap_core_debug.bracket("callbacks:squad")
+local LOG = ap_core_debug.format_bracket("callbacks")
+local LOG_SQUAD = ap_core_debug.format_bracket("callbacks:squad")
 local CLSID_SQUAD = clsid.online_offline_group_s
 
 -- Declare both events at module load (phase 0), before any on_game_start subscriber can
@@ -344,7 +344,7 @@ end
 -- @cost O(SWEEP_BATCH + fires) per tick, constant vs total squad count
 local function _squad_tick()
     ResetTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC)
-    local stat_on = ap_core_debug.enabled()
+    local stat_on = ap_core_debug.is_enabled()
     local prof = xprofiler.new_if(stat_on):start()
     local now = clock()
     if not _squad_ids or _squad_pos >= #_squad_ids then

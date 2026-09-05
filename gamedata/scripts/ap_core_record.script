@@ -60,7 +60,7 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
         return nil
     end
     opts = opts or {}
-    local enabled = ap_core_debug.enabled()
+    local enabled = ap_core_debug.is_enabled()
     local subject_squad_id = subject_squad.id
     local other = opts.other_squad
     local tmr_s = xprofiler.new_if(enabled):start()
@@ -216,7 +216,7 @@ local function _on_save_state(m_data)
         entries = _records_export(),
         seq     = _record_seq,
     }
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:get_size())
     end
 end
@@ -226,7 +226,7 @@ local function _on_load_state(m_data)
     if type(saved) ~= "table" then saved = {} end
     _record_seq = saved.seq or 0
     _records_import(saved.entries)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:get_size())
     end
 end

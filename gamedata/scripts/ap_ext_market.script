@@ -203,7 +203,7 @@ local function _fifo_add(store, faction, section, label)
     list[#list + 1] = section
     local evicted
     if #list > _fifo_max() then evicted = table_remove(list, 1) end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s %s faction=%s +%s n=%d%s", LOG, label, faction, section, #list,
             evicted and (" evict=" .. evicted) or "")
     end
@@ -226,7 +226,7 @@ local function _observe_trade(orig, npc, seller)
     local squad = xsquad.get_squad_by_member(npc:id())
     local faction = squad and xsquad.get_community(squad)
     if not _is_market_faction(faction) then return result end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s observe faction=%s npc=%d sold=%s bought=%s", LOG, faction, npc:id(),
             table_concat(sold, ","), table_concat(bought, ","))
     end
@@ -255,7 +255,7 @@ end
 --- "sellout") so a restock's interleaved passes read apart in the log. Always returns false so
 --- eligibility guards can `return _skip(...)` in one line.
 local function _skip(dir, section, why, ...)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s %s skip %s " .. why, LOG, dir, section, ...)
     end
     return false
@@ -310,18 +310,18 @@ local function _try_inject_section(ctx, sec)
     local key, rule = _rule_for(sec, category, ctx.rules)
     local used = ctx.cat_count[key] or 0
     if used >= rule.max then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s inject skip %s cat-cap %s full", LOG, sec, key) end
+        if ap_core_debug.is_enabled() then ap_core_debug.debug("%s inject skip %s cat-cap %s full", LOG, sec, key) end
         return false
     end
     local item_se = xinventory.create_item(sec, ctx.trader_id, { cond = ctx.cond })
     if not (item_se and item_se.id) then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s inject spawn-fail %s", LOG, sec) end
+        if ap_core_debug.is_enabled() then ap_core_debug.debug("%s inject spawn-fail %s", LOG, sec) end
         return false
     end
     _market_goods[item_se.id] = { trader_id = ctx.trader_id, inject_time = ctx.now, section = sec }
     _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
     ctx.cat_count[key] = used + 1
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s inject %s id=%d base=%d premium=%sx cond=%.2f", LOG, sec, item_se.id,
             xinventory.get_cost(sec) or 0, _premium(), ctx.cond)
     end
@@ -336,7 +336,7 @@ local function _resolve_trader_role(trader)
     local section = se:section_name()
     local role_info = section and xdata.npc_roles[section]
     if role_info and role_info.faction then return role_info end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s restock trader=%d no-role sec=%s", LOG, trader:id(), tostring(section))
     end
     return nil
@@ -395,7 +395,7 @@ local function _try_sellout_class(ctx, cls, items)
     local held = items and #items or 0
     local remove = math_floor(held * ctx.pct / 100)
     if remove <= 0 then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s sellout skip %s held=%d below-share", LOG, cls, held) end
+        if ap_core_debug.is_enabled() then ap_core_debug.debug("%s sellout skip %s held=%d below-share", LOG, cls, held) end
         return 0
     end
     _shuffle(items)
@@ -408,7 +408,7 @@ local function _try_sellout_class(ctx, cls, items)
     for sec in pairs(removed_secs) do
         _claimed:set(ctx.faction .. "|" .. sec, true, ctx.window)
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s sellout trader=%d class=%s removed=%d/held=%d", LOG, ctx.trader_id, cls, remove, held)
     end
     return remove, next(removed_secs)
@@ -456,11 +456,11 @@ local function _sellout_at_trader(trader)
     if not role_info then return end
     local faction = role_info.faction
     local trader_id = trader:id()
-    local tname = ap_core_debug.enabled() and (trader:character_name() or "?") or "?"
+    local tname = ap_core_debug.is_enabled() and (trader:character_name() or "?") or "?"
 
     local rules = MARKET_POLICY.trader_sell
     local eligible = _eligible_sections(_trader_sold, faction, role_info, rules, "sellout")
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s sellout trader=%d(%s) faction=%s pct=%d cap=%d eligible=%d", LOG,
             trader_id, tname, faction, pct, cap, #eligible)
     end
@@ -485,7 +485,7 @@ local function _sellout_at_trader(trader)
             if removed > best_removed then best_removed, best_sec = removed, sec end
         end
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s sellout trader=%d(%s) faction=%s sold_out=%d/%d", LOG,
             trader_id, tname, faction, sold_out, cap)
     end
@@ -529,11 +529,11 @@ local function _inject_at_trader(trader)
     local role_info = _resolve_trader_role(trader)
     if not role_info then return end
     local faction = role_info.faction
-    local tname = ap_core_debug.enabled() and (trader:character_name() or "?") or "?"
+    local tname = ap_core_debug.is_enabled() and (trader:character_name() or "?") or "?"
 
     local rules = MARKET_POLICY.trader_buy
     local eligible = _eligible_sections(_trader_bought, faction, role_info, rules, "inject")
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s restock trader=%d(%s) faction=%s cap=%d eligible=%d", LOG, trader:id(), tname, faction, cap, #eligible)
     end
     if #eligible == 0 then return end
@@ -555,10 +555,10 @@ local function _inject_at_trader(trader)
             if cost > best_cost then best_cost, best_sec = cost, sec end
         end
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s restock trader=%d(%s) faction=%s injected=%d/%d", LOG, trader:id(), tname, faction, injected, cap)
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s chatter gate trader=%d best=%s cost=%d min=%d", LOG, trader:id(),
             tostring(best_sec), best_cost, CHATTER_MIN_COST)
     end
@@ -571,10 +571,10 @@ end
 local function _restock_deferred(trader_id)
     local trader = xobject.get_go(trader_id)
     if trader then
-        local dbg = ap_core_debug.enabled()
+        local dbg = ap_core_debug.is_enabled()
         -- Market flow's per-trader dump: the raw restock stock, before this module's sellout/inject
         -- reshape. A world-state dump, so it goes to the world log, not the decision trace.
-        if ap_core_world_trace.enabled() then xinventory.log_inventory(trader, "market", ap_core_world_trace.debug) end
+        if ap_core_world_trace.is_enabled() then xinventory.log_inventory(trader, "market", ap_core_world_trace.debug) end
         local tmr = xprofiler.new_if(dbg):start()
         _sellout_at_trader(trader)
         _inject_at_trader(trader)
@@ -645,7 +645,7 @@ end
 -- exactly which trader the player visited and whether it carried market stock. Skips the actor's own
 -- (sell-side) items.
 local function _log_trade_view(obj)
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_debug.is_enabled() then return end
     local parent = obj:parent()
     local actor = db.actor
     if not parent or (actor and parent:id() == actor:id()) then return end
@@ -673,7 +673,7 @@ local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     local base = obj:cost() or 0
     local price = math_floor(base * _premium() * (profile and profile.discount or 1))
     ret.new_cost = price
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s price id=%d base=%d cond=%.2f -> %d", LOG, obj:id(), base, obj:condition(), price)
     end
 end
@@ -715,7 +715,7 @@ end
 local function _release_expired()
     local now = xtime.get_game_sec()
     local window = _goods_window_sec()
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local count = 0
     for id, tag in pairs(_market_goods) do
         if now - tag.inject_time >= window then
@@ -731,7 +731,7 @@ local function _release_expired()
         _market_goods[id] = nil
         _release_buf[i] = nil
     end
-    if count > 0 and ap_core_debug.enabled() then
+    if count > 0 and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s released %d expired", LOG, count)
     end
     -- Periodic re-arm: ResetTimeEvent + return false (re-CreateTimeEvent with the same id no-ops
@@ -771,7 +771,7 @@ local function _validate_market_goods()
             dropped = dropped + 1
         end
     end
-    if dropped > 0 and ap_core_debug.enabled() then
+    if dropped > 0 and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s load dropped %d stale goods", LOG, dropped)
     end
 end

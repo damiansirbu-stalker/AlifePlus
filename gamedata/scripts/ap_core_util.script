@@ -81,7 +81,7 @@ function find_squads(pos, opts)
         opts.source = ap_core_cache.squads_on_level(opts.level_id)
     end
     local result, skipped_protected = xsquad.find_squads(pos, opts)
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         local params = "factions=" .. _serialize_factions(opts.factions)
             .. " lv=" .. tostring(opts.level_id or "any")
             .. string_format(" dist=%s-%s", tostring(opts.min_distance or 0), tostring(opts.max_distance))
@@ -101,7 +101,7 @@ function find_squads(pos, opts)
     end
     local preempt_opts = ap_core_broker.build_preempt_opts(caller_opts)
     local preempt_result = xsquad.find_squads(pos, preempt_opts)
-    if ap_core_debug.enabled() and #preempt_result > 0 then
+    if ap_core_debug.is_enabled() and #preempt_result > 0 then
         local ids = {}
         for i = 1, #preempt_result do ids[i] = tostring(preempt_result[i].id) end
         ap_core_debug.debug("[DISPATCH.FIND_SQUADS] preempt count=%d ids=%s", #preempt_result, table_concat(ids, ","))
@@ -137,12 +137,12 @@ end
 --- @return table|nil Smart server object or nil
 function find_smart(pos, opts)
     local source = opts and opts.level_id and ap_core_cache.smarts_on_level(opts.level_id)
-    if not ap_core_debug.enabled() and not source then
+    if not ap_core_debug.is_enabled() and not source then
         return xsmart.find_smart(pos, opts)
     end
     local local_opts = opts and xtable.clone(opts) or {}
     if source then local_opts.source = source end
-    if not ap_core_debug.enabled() then
+    if not ap_core_debug.is_enabled() then
         return xsmart.find_smart(pos, local_opts)
     end
     local original_filter = local_opts.filter

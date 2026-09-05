@@ -256,7 +256,7 @@ local function _do_engine_dispatch(picked, msg)
     local dnm = dynamic_news_manager and dynamic_news_manager.get_dynamic_news
                 and dynamic_news_manager.get_dynamic_news() or nil
     local use_queued = dnm and dnm.PushToChannel
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local engine_timer = xprofiler.new_if(dbg):start()
     if use_queued then
         dnm:PushToChannel(picked.channel, {
@@ -315,7 +315,7 @@ end
 local CHATTER_LOG = "[EXT.CHATTER]"
 
 function send_chatter(pool_prefix, slots, opts)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     if not cfg.chatter_enabled or not slots then
         if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
         return false
@@ -418,7 +418,7 @@ end
 function compose_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
     _pending_dispatch = nil
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local result = _compose_tick_impl()
     tmr:stop()

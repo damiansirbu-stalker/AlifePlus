@@ -29,7 +29,7 @@ local STORY_FLAG = {
     RADAR_OFF = "bar_deactivate_radar_done",
 }
 
-local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
+local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.NEEDS)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_human = ap_ext_const.alignment_human
@@ -112,7 +112,7 @@ end
 
 local function _find_overdue_needs(dto, now, identity)
     local is_active = ap_ext_util.is_active_period(identity)
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local out = {}
     for i = 1, #NEEDS do
         local need = NEEDS[i]
@@ -212,7 +212,7 @@ end
 local function _try_one_need_cause(squad, level_id, overdue_entry, entry, budget)
     if entry.need ~= overdue_entry.need.need then return nil end
     if overdue_entry.period_mismatch then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
+        if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
         return nil
     end
     return ap_ext_util.try_cause(entry.enabled_key, entry.log_prefix, _eval_cause,
@@ -358,7 +358,7 @@ function on_game_start()
     }
 
     for i = 1, #CAUSES do
-        CAUSES[i].log_prefix = ap_core_debug.bracket(CAUSES[i].cause)
+        CAUSES[i].log_prefix = ap_core_debug.format_bracket(CAUSES[i].cause)
         CAUSES[i].enabled_key = "cause_" .. CAUSES[i].name .. "_enabled"
     end
 

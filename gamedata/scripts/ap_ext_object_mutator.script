@@ -54,7 +54,7 @@ local function _try_apply_mark(npc_id)
     local name = MARK_PARTICLES[npc_id % #MARK_PARTICLES + 1]
     obj:start_particles(name, bone)
     _marks[npc_id] = { name = name, bone = bone }
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s mark id=%d particle=%s bone=%s", LOG, npc_id, name, bone)
     end
 end
@@ -68,7 +68,7 @@ local function _stop_mark(npc_id)
     local obj = xobject.get_go(npc_id)
     if obj then obj:stop_particles(mark.name, mark.bone) end
     _marks[npc_id] = nil
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s mark_stop id=%d particle=%s", LOG, npc_id, mark.name)
     end
 end
@@ -116,7 +116,7 @@ local function _on_monster_before_hit(monster, shit, _bone_id, _flags)
         monster:set_custom_panic_threshold(0)
         _panic_applied[victim_id] = true
     end
-    if (dealt or taken) and ap_core_debug.enabled() then
+    if (dealt or taken) and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s monster_hit victim=%d dealt=%s taken=%s power=%.3f",
             LOG, victim_id, tostring(dealt), tostring(taken), shit.power)
     end
@@ -127,7 +127,7 @@ end
 local function _on_npc_before_hit(npc, shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
     local dealt = _scale_dealt(shit)
-    if dealt and ap_core_debug.enabled() then
+    if dealt and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s npc_hit victim=%d dealt=%.3f power=%.3f", LOG, npc:id(), dealt, shit.power)
     end
 end
@@ -140,7 +140,7 @@ local function _on_actor_before_hit(shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
     local base = shit.power
     local dealt = _scale_dealt(shit)
-    if dealt and ap_core_debug.enabled() then
+    if dealt and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s actor_hit dealt=%.3f base=%.3f -> power=%.3f (+%.1f%%)",
             LOG, dealt, base, shit.power, (dealt - 1) * 100)
     end
@@ -170,7 +170,7 @@ local function _on_monster_loot_init(victim, loot_table)
         if not loot_table[section] then loot_table[section] = { count = 0 } end
         loot_table[section].count = loot_table[section].count + 1
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s alpha_loot id=%d species=%s level=%d", LOG, victim:id(), species, level)
     end
 end
@@ -232,7 +232,7 @@ local function _rebuild()
             if obj then obj:set_default_panic_threshold() end
         end
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s rebuild: %d alphas, %d marked", LOG, xtable.get_count(_alpha_ids), xtable.get_count(_marks))
     end
 end

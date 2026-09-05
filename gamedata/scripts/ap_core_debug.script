@@ -10,11 +10,11 @@ local log = xlog.get_logger("AP", { outfile = "alifeplus.log", level = "WARN" })
 -- the logger's own default flush threshold (xlog buffers below it).
 local _log_levels = xlog.get_levels()
 
-function enabled()
+function is_enabled()
     return log.get_level() >= 5
 end
 
-function bracket(c)
+function format_bracket(c)
     local label = c:upper():gsub(":", ".")
     return "[" .. label .. "]"
 end
@@ -34,7 +34,7 @@ function err(fmt, ...)
 end
 
 function debug(fmt, ...)
-    if not enabled() then return end
+    if not is_enabled() then return end
     log.debug(fmt, ...)
 end
 

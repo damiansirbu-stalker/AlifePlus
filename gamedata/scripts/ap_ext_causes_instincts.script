@@ -19,7 +19,7 @@ local RANGE_SCENT = ap_core_const.RANGE_SCENT
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
 local PERSONALITY = ap_ext_const.PERSONALITY
 
-local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
+local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.INSTINCTS)
 
 local cfg = ap_core_mcm.cfg
 local _alignment_mutant = ap_ext_const.alignment_mutant
@@ -202,7 +202,7 @@ end
 local function _try_one_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end
     if opts.overdue.period_mismatch then
-        if ap_core_debug.enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", opts.entry.log_prefix) end
+        if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", opts.entry.log_prefix) end
         return nil
     end
     return ap_ext_util.try_cause(opts.entry.enabled_key, opts.entry.log_prefix, _eval_cause,
@@ -222,7 +222,7 @@ end
 
 local function _find_overdue_drives(dto, now, species)
     local is_active = ap_ext_util.is_active_period(species)
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local out = {}
     for i = 1, #INSTINCTS do
         local inst = INSTINCTS[i]
@@ -332,7 +332,7 @@ function on_game_start()
     }
 
     for i = 1, #CAUSES do
-        CAUSES[i].log_prefix = ap_core_debug.bracket(CAUSES[i].cause)
+        CAUSES[i].log_prefix = ap_core_debug.format_bracket(CAUSES[i].cause)
         CAUSES[i].enabled_key = "cause_" .. CAUSES[i].name .. "_enabled"
     end
 

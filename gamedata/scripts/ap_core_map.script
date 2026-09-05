@@ -159,7 +159,7 @@ end
 local function _update_markers()
     ResetTimeEvent(MARKER_TIMER_EV, UPDATE_MARKERS, UPDATE_MARKERS_SEC)
     if not cfg.map_markers then return false end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local now = clock()
     if (now - _last_validate_at) >= VALIDATE_MARKERS_SEC then

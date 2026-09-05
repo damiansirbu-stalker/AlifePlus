@@ -8,7 +8,7 @@ local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local cfg = ap_core_mcm.cfg
-local _debug_enabled = ap_core_debug.enabled
+local _debug_enabled = ap_core_debug.is_enabled
 
 local DUMP_INTERVAL_SEC = 10
 
@@ -38,13 +38,13 @@ local _hud = nil
 
 --- Check if statistics overlay is active
 --- @cost O(1) | 0 luabind
-function enabled()
+function is_enabled()
     return cfg.statistics_position ~= "off"
 end
 
 --- Check if counter collection is active (overlay on OR debug on)
 --- @cost O(1) | 0 luabind
-function collecting()
+function is_collecting()
     return cfg.statistics_position ~= "off" or _debug_enabled()
 end
 
@@ -228,7 +228,7 @@ local function _win_delta(col, field, session_minutes)
 end
 
 local function _dump()
-    if not collecting() then return end
+    if not is_collecting() then return end
     local elapsed = clock() - _start_time
     local minutes = elapsed / 60
     if minutes < 0.1 then minutes = 0.1 end
@@ -240,7 +240,7 @@ end
 local function _on_dump_timer()
     -- return true self-removes the time event: an expired event whose callback returns nil is
     -- re-invoked every actor update (_g.script ProcessEventQueue). _start_collecting re-creates it.
-    if not collecting() then return true end
+    if not is_collecting() then return true end
     _dump()
     ResetTimeEvent("ap_stats", "dump", DUMP_INTERVAL_SEC)
 end
@@ -476,8 +476,8 @@ local function _reposition()
 end
 
 local function _on_option_change()
-    local now_enabled = enabled()
-    local now_collecting = collecting()
+    local now_enabled = is_enabled()
+    local now_collecting = is_collecting()
     -- Collection transitions
     if now_collecting and not _was_counters then
         _start_collecting()
@@ -512,8 +512,8 @@ local function _on_gui_hide()
 end
 
 local function _on_first_update()
-    _was_counters = collecting()
-    _was_enabled = enabled()
+    _was_counters = is_collecting()
+    _was_enabled = is_enabled()
     if _was_counters then _start_collecting() end
     if _was_enabled then _show_hud() end
 end

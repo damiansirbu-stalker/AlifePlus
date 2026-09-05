@@ -299,7 +299,7 @@ local function _mutate(mut, smart_id, identity, level_id)
     local entry = { faction = identity, level_id = level_id, [mut.ts_field] = now }
     if mut.grows_services then _roll_plan(entry, smart_id) end
     tbl[smart_id] = entry
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d base=%s", mut.name, smart_id, mut.id_word, identity, level_id, tostring(xsmart.is_base(smart)))
     end
     return true
@@ -422,7 +422,7 @@ _roll_plan = function(entry, smart_id)
     end
     local g_max = cfg.mutator_area_conquest_guards_per_smart
     entry.guards = (g_max > 0) and math_random(1, g_max) or 0
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         local roles = {}
         for role in pairs(entry.services) do roles[#roles + 1] = role end
         ap_core_debug.debug("[MUTATOR.SMART] plan: smart=%d faction=%s services=%s guards=%d",
@@ -576,7 +576,7 @@ local function _update_service(squad_id, entry)
             entry.smart_id, entry.role, squad_id, squad and "unledgered" or "gone")
         return false
     end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local prev_target = dbg and squad.scripted_target
     if xsquad.set_target(squad, entry.smart_name) and dbg then
         local cur = xobject.get_se(squad.smart_id)
@@ -793,7 +793,7 @@ end
 -- and reassert stops for good -- the handoff point past which a cleared pin is never restored.
 -- @cost noop when debug off (single enabled() gate); on decay only
 local function _log_hold_release(smart_id, entry, squad_id)
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_debug.is_enabled() then return end
     local sq = xobject.get_se(squad_id)
     local cur = sq and xobject.get_se(sq.smart_id)
     ap_core_debug.debug("[MUTATOR.SMART] hold_release: smart=%d role=%s squad=%d pin=%s cur_smart=%s base=%s (no reassert after this)",
@@ -845,7 +845,7 @@ local function _reapply_entry(mut, smart_id, data)
     if not smart then return end
     mut.apply(smart, mut.key, data.faction, cfg[mut.num_cfg])
     if mut.grows_services then _reapply_service_entries(smart, data) end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s squads=%d (held)",
             mut.name, smart_id, mut.id_word, data.faction, _count_smart_squads(smart_id))
     end
@@ -943,7 +943,7 @@ end
 local function _update_mutations()
     ResetTimeEvent(TIMER_EV, SCAN_ID, SCAN_INTERVAL_SEC)
     local now = xtime.get_game_sec()
-    local prof = xprofiler.new_if(ap_core_debug.enabled())
+    local prof = xprofiler.new_if(ap_core_debug.is_enabled())
     prof:reset():start()
     for _, mut in pairs(MUTATIONS) do _update_entries(mut, now) end
     prof:stop(); local update_ms = prof:get_ms()
@@ -959,8 +959,8 @@ local function _update_mutations()
     prof:reset():start()
     _pace_respawns(now)
     prof:stop(); local pace_ms = prof:get_ms()
-    if ap_core_world_trace.enabled() then _log_services() end
-    if ap_core_debug.enabled() then
+    if ap_core_world_trace.is_enabled() then _log_services() end
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[MUTATOR.SMART] scan: update=%.2f adopt=%.2f holds=%.2f stock=%.2f pace=%.2f ms",
             update_ms, adopt_ms, holds_ms, stock_ms, pace_ms)
     end
@@ -1106,7 +1106,7 @@ local function _on_spawn_deferred(squad_id, smart_id)
     if not squad then return true end
     local prop = squad.respawn_point_prop_section
     _try_pin_spawn(squad, smart_id, prop, xtime.get_game_sec())
-    if not ap_core_debug.enabled() then return true end
+    if not ap_core_debug.is_enabled() then return true end
     local mut = _mut_by_key[prop]
     if not mut then return true end
     local data = _state[mut.name][smart_id]
@@ -1124,7 +1124,7 @@ end
 -- @cost O(1) | 1 luabind (set_rank)
 local function _set_service_rank(se_obj)
     if not (se_obj and se_obj.set_rank) then return end
-    local trace = ap_core_debug.enabled()
+    local trace = ap_core_debug.is_enabled()
     local before = trace and se_obj:rank()
     se_obj:set_rank(SERVICE_RANK)
     if trace then
@@ -1150,7 +1150,7 @@ local function _on_npc_creation(squad, se_obj, spawn_smart)
     if _state.conquest[smart_id] or _state.swarm[smart_id] or _state.infest[smart_id] then
         _respawn_stamp[smart_id] = xtime.get_game_sec()
     end
-    if not _state.conquest[smart_id] and not ap_core_debug.enabled() then return end
+    if not _state.conquest[smart_id] and not ap_core_debug.is_enabled() then return end
     CreateTimeEvent("ap_spawn_deferred", squad.id, 0, _on_spawn_deferred, squad.id, spawn_smart.id)
 end
 
@@ -1500,7 +1500,7 @@ local function _on_squad_npc_death(squad, se_npc, _)
             entry.smart_id, entry.role, se_npc.id)
         return
     end
-    if ap_core_world_trace.enabled() then xinventory.log_inventory(victim, "service", ap_core_world_trace.debug) end
+    if ap_core_world_trace.is_enabled() then xinventory.log_inventory(victim, "service", ap_core_world_trace.debug) end
     xinventory.iterate_inventory(victim:id(), _release_item)
     ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d",
         entry.smart_id, entry.role, se_npc.id)

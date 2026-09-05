@@ -29,10 +29,10 @@ local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
-local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.OPPORTUNITIES)
-local LOG_LOOT = ap_core_debug.bracket(CONSEQUENCE.STASH_LOOT)
-local LOG_AMBUSH = ap_core_debug.bracket(CONSEQUENCE.STASH_AMBUSH)
-local LOG_FILL = ap_core_debug.bracket(CONSEQUENCE.STASH_FILL)
+local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.OPPORTUNITIES)
+local LOG_LOOT = ap_core_debug.format_bracket(CONSEQUENCE.STASH_LOOT)
+local LOG_AMBUSH = ap_core_debug.format_bracket(CONSEQUENCE.STASH_AMBUSH)
+local LOG_FILL = ap_core_debug.format_bracket(CONSEQUENCE.STASH_FILL)
 
 local cfg = ap_core_mcm.cfg
 
@@ -259,7 +259,7 @@ local function _arrive_loot(squad, args)
         return
     end
 
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     local taken_secs = {}
@@ -333,7 +333,7 @@ local function _arrive_fill(squad, args)
         return
     end
 
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     local picks = _collect_fill_picks(squad, STASH_POLICY.fill_max)

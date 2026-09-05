@@ -84,7 +84,7 @@ local function _build_smart_bucket()
     _smarts_by_level = {}
     local queue = {}
     for smart in xsmart.iterate_smarts() do queue[#queue + 1] = smart end
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local count = #queue
     local build_ms = 0
     xslice.start(SMART_BUILD_QUEUE, queue, {
@@ -142,7 +142,7 @@ local function _build_stash_bucket()
     for stash_id in pairs(treasure_manager.caches) do
         queue[#queue + 1] = stash_id
     end
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local count = #queue
     local build_ms = 0
     xslice.start(STASH_BUILD_QUEUE, queue, {
@@ -204,7 +204,7 @@ local function _build_squad_bucket()
     _squads_by_level = {}
     local queue = {}
     for squad in xsquad.iterate_squads() do queue[#queue + 1] = squad.id end
-    local debug_on = ap_core_debug.enabled()
+    local debug_on = ap_core_debug.is_enabled()
     local count = #queue
     local build_ms = 0
     xslice.start(SQUAD_BUILD_QUEUE, queue, {

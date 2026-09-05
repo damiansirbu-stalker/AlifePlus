@@ -12,7 +12,7 @@ local CALLBACK = ap_core_const.CALLBACK
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local cfg = ap_core_mcm.cfg
 local hud = ap_core_hud
-local hud_collecting = ap_core_hud.collecting
+local hud_collecting = ap_core_hud.is_collecting
 local sr, sx = hud.r, hud.x
 -- 2^15: the point where the on/off counters are folded back, so a long session
 -- cannot grow them without bound.
@@ -142,7 +142,7 @@ end
 -- Times the predicate and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_reactive(on_map, entry, args, sc)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     local result = entry.handler(unpack(args))
@@ -192,7 +192,7 @@ end
 -- Times the cascade entry and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_one_radiant(on_map, squad, entry, sc)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     local result = entry.handler(squad)
@@ -253,7 +253,7 @@ local function _on_radiant(squad, changed)
     if protected then
         -- Gate the log: name is nil for owner/scripted/active_role/task_target rejects,
         -- so squad:section_name() would fire on every reject when DEBUG is off.
-        if ap_core_debug.enabled() then
+        if ap_core_debug.is_enabled() then
             ap_core_debug.debug("[PRODUCER.RADIANT] PROTECTED squad=%d reason=%s detail=%s name=%s",
                 squad.id, reason or "?", detail or "?", name or squad:section_name() or "?")
         end
@@ -383,7 +383,7 @@ function register(config, handler)
     end
     local entries = _handlers[callback]
     local existing_idx = _find_handler_index_by_handler(entries, handler)
-    local entry = { handler = handler, cause_type = cause_type, category = category, name = name, log_prefix = ap_core_debug.bracket(name) }
+    local entry = { handler = handler, cause_type = cause_type, category = category, name = name, log_prefix = ap_core_debug.format_bracket(name) }
     entries[existing_idx or #entries + 1] = entry
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true

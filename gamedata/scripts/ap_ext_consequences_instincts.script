@@ -11,7 +11,7 @@ local ACTION = ap_core_const.ACTION
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
-local LOG = ap_core_debug.bracket(CAUSE_CATEGORY.INSTINCTS)
+local LOG = ap_core_debug.format_bracket(CAUSE_CATEGORY.INSTINCTS)
 
 local cfg = ap_core_mcm.cfg
 
@@ -34,7 +34,7 @@ local CONFIGS = {
 
 local function _on_arrive(squad, args)
     if not args then return end
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     if args.dto_field then

@@ -246,7 +246,7 @@ local function _release_to_dwell(squad_or_id)
 end
 
 local function _log_proximity(source, squad, smart, data)
-    if not ap_core_debug.enabled() then return end
+    if not ap_core_debug.is_enabled() then return end
     local dist, threshold, gvid_match, same_level = xsmart.get_proximity(squad, smart)
     ap_core_debug.debug(
         "[SQUAD] %s: squad=%d handler=%s dist=%.0f threshold=%.0f gvid=%s level=%s action=%s assigned=%s scripted=%s",
@@ -327,7 +327,7 @@ end
 -- caller should drop the entry (squad despawned).
 local function _scan_offmap_entry(squad_id, squad, data, now)
     if _check_offmap_despawn(squad_id, squad, data, now) then return true end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[SQUAD.OFFMAP] scan_entry: squad=%d section=%s online=%s age=%.1fh",
             squad_id, squad:section_name(), tostring(squad.online or false),
             (now - (data.dispatched_at or now)) / 3600)
@@ -400,7 +400,7 @@ function register_squad(squad, smart, opts)
     }
     _finalize_data(data, squad.id, opts, preserved, now)
     _ap_scripted_squads[squad.id] = data
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[SQUAD] register_squad: squad=%d section=%s -> %s offmap=%s",
             squad.id, squad:section_name(), name, tostring(opts.offmap or false))
     end
@@ -641,7 +641,7 @@ end
 -- fallback once the ~6 fire vertices fill (xr_campfire_point.script:104-108) -- not visible here.
 -- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
 local function _log_member_jobs(squad, smart)
-    if not ap_core_world_trace.enabled() then return end
+    if not ap_core_world_trace.is_enabled() then return end
     local sname = tostring(smart:name())
     if not (smart.online and smart.is_on_actor_level) then
         ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
@@ -851,8 +851,8 @@ local function _update_scripted_squads()
     ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
     if xslice.is_active("broker_scan") then return end
     if not next(_ap_scripted_squads) then return end
-    local debug_on = ap_core_debug.enabled()
-    local world_on = ap_core_world_trace.enabled()
+    local debug_on = ap_core_debug.is_enabled()
+    local world_on = ap_core_world_trace.is_enabled()
     local now = world_on and xtime.get_game_sec()
     local queue = {}
     for squad_id, data in pairs(_ap_scripted_squads) do
@@ -882,7 +882,7 @@ local function _on_save_state(m_data)
     m_data.ap_core_broker = {
         ap_scripted_squads = _ap_scripted_squads,
     }
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.get_count(_ap_scripted_squads))
     end
 end
@@ -920,7 +920,7 @@ local function _on_load_state(m_data)
     for _, data in pairs(_ap_scripted_squads) do
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
-    if ap_core_debug.enabled() then
+    if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.get_count(_ap_scripted_squads))
     end
 end

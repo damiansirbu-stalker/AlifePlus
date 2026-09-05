@@ -116,7 +116,7 @@ local function _trim_key(npc_id, key, bucket, max, count)
         xinventory.release_item(entry.item)
         count = count - _looted_unit(bucket.cat, entry.item)
         released = released + 1
-        if ap_core_debug.enabled() then
+        if ap_core_debug.is_enabled() then
             ap_core_debug.debug("%s release npc=%d key=%s sec=%s cost=%d count=%d/%d",
                 LOG, npc_id, key, entry.sec, entry.cost, count, max)
         end
@@ -140,7 +140,7 @@ local function _trim_npc_deferred(npc_id)
     local npc = xobject.get_go(npc_id)
     if not npc or not npc:alive() or xcreature.is_unscriptable(npc) then return true end
 
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     local rules = LOOT_POLICY.rules
     local cat_opts = xinventory.get_category_opts(npc)

@@ -20,7 +20,7 @@ local CONSEQUENCE = ap_core_const.CONSEQUENCE
 local ACTION = ap_core_const.ACTION
 local PRE_RELEASE_GULAG = ap_core_const.PRE_RELEASE_GULAG
 
-local LOG_INIT = ap_core_debug.bracket(CAUSE_CATEGORY.NEEDS)
+local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.NEEDS)
 
 local cfg = ap_core_mcm.cfg
 
@@ -28,7 +28,7 @@ local cfg = ap_core_mcm.cfg
 --- Delegates to ap_ext_trade.trade; trade uses the per-rank LTX policy for categories and the
 --- MCM trade_profit_max cap (economy > trade). One inline trade timer + line.
 local function _arrive_action_trade(tid, visitor_go, args)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
     local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
@@ -49,7 +49,7 @@ end
 --- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
 --- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER).
 local function _arrive_action_barter(tid, visitor_go, args)
-    local dbg = ap_core_debug.enabled()
+    local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
     local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id, xcreature.get_community(visitor_go))
@@ -124,7 +124,7 @@ end
 local function _make_on_arrive(entry)
     return function(squad, args)
         if not args or not args.dto_field then return end
-        local dbg = ap_core_debug.enabled()
+        local dbg = ap_core_debug.is_enabled()
         local tid = dbg and xtrace.new().id or 0
         local tmr = xprofiler.new_if(dbg):start()
         ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.get_game_sec())
@@ -174,7 +174,7 @@ end
 
 function on_game_start()
     for i = 1, #CONFIGS do
-        CONFIGS[i].log_prefix = ap_core_debug.bracket(CONFIGS[i].consequence)
+        CONFIGS[i].log_prefix = ap_core_debug.format_bracket(CONFIGS[i].consequence)
     end
     for i = 1, #CONFIGS do
         local entry = CONFIGS[i]
