@@ -337,7 +337,7 @@ end
 
 -- Count squads currently stationed at a smart (SIMBOARD occupancy). Trace/diagnostic use only.
 -- @cost O(k) stationed squads | 0 luabind (pure Lua hash walk on SIMBOARD.smarts)
-local function _count_smart_squads(smart_id)
+local function _get_smart_squad_count(smart_id)
     local squads = xsmart.get_smart_squads(smart_id)
     if not squads then return 0 end
     local count = 0
@@ -384,7 +384,7 @@ local function _get_eligible_role_count(data, role, taken)
     return _faction_role_count_on_level(data.level_id, data.faction, role)
 end
 
-local function _pick_service_role(data, taken)
+local function _select_service_role(data, taken)
     local best_role, best_count
     for i = 1, #SERVICE_ROLES do
         local role = SERVICE_ROLES[i]
@@ -416,7 +416,7 @@ _roll_plan = function(entry, smart_id)
     local budget = cfg.mutator_area_conquest_services_max_per_level - _service_count_on_level(entry.level_id)
     if want > budget then want = budget end
     for _ = 1, want do
-        local role = _pick_service_role(entry, entry.services)
+        local role = _select_service_role(entry, entry.services)
         if not role then break end
         entry.services[role] = true
     end
@@ -847,7 +847,7 @@ local function _reapply_entry(mut, smart_id, data)
     if mut.grows_services then _reapply_service_entries(smart, data) end
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s squads=%d (held)",
-            mut.name, smart_id, mut.id_word, data.faction, _count_smart_squads(smart_id))
+            mut.name, smart_id, mut.id_word, data.faction, _get_smart_squad_count(smart_id))
     end
 end
 
@@ -1011,7 +1011,7 @@ end
 -- saved numeric guards field marks a plan-era entry (carried verbatim); its absence marks an
 -- older save -- or the migration's reset -- and rolls a FRESH plan under the current sliders,
 -- so held smarts from older saves become mini bases on load. Split out for the complexity cap.
-local function _restore_entry(mut, data, now, smart_id)
+local function _load_entry(mut, data, now, smart_id)
     local entry = { faction = data.faction, level_id = data.level_id, [mut.ts_field] = data[mut.ts_field] or now }
     if mut.grows_services then
         if type(data.guards) == "number" then
@@ -1022,7 +1022,7 @@ local function _restore_entry(mut, data, now, smart_id)
         end
         -- Trader feature turned off (main-menu toggle, takes effect on load): drop the service plan so
         -- _reapply_service_entries injects no ap_service_<role> rows and no service respawns. The already
-        -- spawned service bodies are removed in _restore_holds. Guards and conquest ownership are kept.
+        -- spawned service bodies are removed in _load_holds. Guards and conquest ownership are kept.
         if not cfg.mutator_area_conquest_grow_services then entry.services = {} end
     end
     return entry
@@ -1032,7 +1032,7 @@ end
 -- dropped. Infest re-checks its per-level cap (can be lowered between sessions), counting entries
 -- already restored in this pass; conquest/swarm do not -- their hold ceiling is a cause-time gate
 -- on NEW takes, so an over-cap save simply stops renewing and decays out.
-local function _restore(mut, now)
+local function _load_pending(mut, now)
     local pending = _pending[mut.name]
     if not pending then return end
     if not cfg or not cfg[mut.mutate_cfg] then
@@ -1047,7 +1047,7 @@ local function _restore(mut, now)
             if mut.cap and not mut.cap(data.level_id) then
                 skipped = skipped + 1
             else
-                tbl[smart_id] = _restore_entry(mut, data, now, smart_id)
+                tbl[smart_id] = _load_entry(mut, data, now, smart_id)
                 restored = restored + 1
             end
         end
@@ -1067,7 +1067,7 @@ end
 -- Trader feature off (grow_services): the ledger IS the list of spawned service bodies, so each
 -- non-guard entry is despawned here (offline-safe at load, no open trade dialog to break) and not
 -- restored; guards stay. This is the clean teardown for untoggling outpost traders / removing the mod.
-local function _restore_holds()
+local function _load_holds()
     _held_squads = {}
     if type(_held_pending) ~= "table" then _held_pending = nil; return end
     local purge_services = not cfg.mutator_area_conquest_grow_services
@@ -1091,8 +1091,8 @@ end
 
 local function _on_game_load()
     local now = xtime.get_game_sec()
-    for _, mut in pairs(MUTATIONS) do _restore(mut, now) end
-    _restore_holds()
+    for _, mut in pairs(MUTATIONS) do _load_pending(mut, now) end
+    _load_holds()
     _update_mutations()
 end
 
@@ -1454,7 +1454,7 @@ end
 -- at dialog load. dm_ordered_task_completed_dialog is deliberately left open, so a mission taken
 -- before this gate existed can still be turned in.
 -- @cost O(1) | 1 luabind (who_is_npc) + the _get_service_entry probe, on dialog open only
-local function _make_hub_gate(org)
+local function _create_hub_gate(org)
     return function(first_speaker, second_speaker)
         local npc = first_speaker and second_speaker
             and dialogs.who_is_npc(first_speaker, second_speaker)
@@ -1469,7 +1469,7 @@ local function _gate_hub_predicate(module, fn_name)
     if _hub_gated[fn_name] then return end
     if type(module) ~= "table" or type(module[fn_name]) ~= "function" then return end
     _hub_gated[fn_name] = true
-    module[fn_name] = _make_hub_gate(module[fn_name])
+    module[fn_name] = _create_hub_gate(module[fn_name])
 end
 
 -- keep_item's release idiom (death_manager.script:403), reused per item on a nulled corpse.

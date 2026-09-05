@@ -107,8 +107,8 @@ local CONFIGS = {
 
 -- Invoke entry.arrive_action on the commander, gated by MCM enabled flag and commander
 -- liveness. Returns the skip reason string if the action did not run (caller logs it),
--- or nil on success. Split out so _make_on_arrive stays at depth 2.
-local function _invoke_arrive_action(entry, tid, squad, args)
+-- or nil on success. Split out so _create_on_arrive stays at depth 2.
+local function _run_arrive_action(entry, tid, squad, args)
     if cfg["consequence_" .. entry.name .. "_arrive_action_enabled"] == false then
         return "arrive_action_disabled"
     end
@@ -121,7 +121,7 @@ end
 --- Reset need timestamp on arrival; run the entry's arrive_action if it has one.
 --- Per-entry closure: the entry binds at registration time so the action ref doesn't need to
 --- live in on_arrive_args (which is save-serialized).
-local function _make_on_arrive(entry)
+local function _create_on_arrive(entry)
     return function(squad, args)
         if not args or not args.dto_field then return end
         local dbg = ap_core_debug.is_enabled()
@@ -130,7 +130,7 @@ local function _make_on_arrive(entry)
         ap_ext_tracker.reset_stalker_need(squad.id, args.dto_field, xtime.get_game_sec())
         local skip
         if entry.arrive_action then
-            skip = _invoke_arrive_action(entry, tid, squad, args)
+            skip = _run_arrive_action(entry, tid, squad, args)
         end
         tmr:stop()
         if dbg then
@@ -140,11 +140,11 @@ local function _make_on_arrive(entry)
     end
 end
 
-local function _make_condition(enabled_key)
+local function _create_condition(enabled_key)
     return function() return cfg[enabled_key] end
 end
 
-local function _make_handler(entry)
+local function _create_handler(entry)
     return function(event_data)
         local squad = xobject.get_se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
@@ -181,9 +181,9 @@ function on_game_start()
         local enabled_key = "consequence_" .. entry.name .. "_enabled"
         ap_core_consumer.register(entry.consequence, {
             event = entry.event,
-            condition = _make_condition(enabled_key),
-            on_arrive = _make_on_arrive(entry),
-        }, _make_handler(entry))
+            condition = _create_condition(enabled_key),
+            on_arrive = _create_on_arrive(entry),
+        }, _create_handler(entry))
     end
     ap_core_debug.info(LOG_INIT .. " Initialized: %d consequences", #CONFIGS)
 end

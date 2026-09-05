@@ -34,7 +34,7 @@ local _patched = false
 
 -- FIX 1: sim_squad_scripted roster desync. Independent of FIX 2 -- a missing class skips this fix
 -- only, not the create_squad guard.
-local function _install_roster_sync()
+local function _register_roster_sync()
     local squad_class = sim_squad_scripted and sim_squad_scripted.sim_squad_scripted
     if not squad_class then
         ap_core_debug.err("[CORE.ANOMALY] sim_squad_scripted class missing; roster sync not installed")
@@ -61,7 +61,7 @@ local function _install_roster_sync()
 end
 
 -- FIX 2: create_squad CTD guard. Pre-flight wrap rejects a missing section or invalid spawn smart, returns nil.
-local function _install_create_squad_guard()
+local function _register_create_squad_guard()
     local board_class = sim_board and sim_board.simulation_board
     if not (board_class and board_class.create_squad) then
         ap_core_debug.err("[CORE.ANOMALY] simulation_board.create_squad missing; create_squad guard not installed")
@@ -88,6 +88,6 @@ end
 function on_game_start()
     if _patched then return end
     _patched = true
-    _install_roster_sync()
-    _install_create_squad_guard()
+    _register_roster_sync()
+    _register_create_squad_guard()
 end

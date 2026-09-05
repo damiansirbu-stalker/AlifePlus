@@ -141,7 +141,7 @@ end
 -- { code, reason } on rejection. The enable gate and the timing/logging live in the shared
 -- ap_ext_util.try_cause seam. budget: per-_on_smart table { remaining = N }; RULES rejections free,
 -- a SCAN reach consumes one slot.
-local function _eval_cause(squad, level_id, overdue_entry, entry, budget)
+local function _compute_cause(squad, level_id, overdue_entry, entry, budget)
     if not ap_ext_util.check_alignment(entry.alignment, squad.player_id) then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
     end
@@ -215,7 +215,7 @@ local function _try_one_need_cause(squad, level_id, overdue_entry, entry, budget
         if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
         return nil
     end
-    return ap_ext_util.try_cause(entry.enabled_key, entry.log_prefix, _eval_cause,
+    return ap_ext_util.try_cause(entry.enabled_key, entry.log_prefix, _compute_cause,
         squad, level_id, overdue_entry, entry, budget)
 end
 

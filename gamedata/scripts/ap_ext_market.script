@@ -151,7 +151,7 @@ local function _parse_chance_row(value)
 end
 
 --- Invoke fn(key, value) for every non-empty key/value line of an ini section.
-local function _each_kv(ini, section, fn)
+local function _iterate_kv(ini, section, fn)
     if not ini:section_exist(section) then return end
     for i = 0, ini:line_count(section) - 1 do
         local _, key, value = ini:r_line_ex(section, i, "", "")
@@ -164,8 +164,8 @@ end
 local function _load_rank_ruleset()
     local ini = ini_file(POLICY_PATH)
     local floor, bands = {}, {}
-    _each_kv(ini, FLOOR_SECTION, function(key, value) floor[key] = value end)
-    _each_kv(ini, CHANCE_SECTION, function(key, value) bands[key] = _parse_chance_row(value) end)
+    _iterate_kv(ini, FLOOR_SECTION, function(key, value) floor[key] = value end)
+    _iterate_kv(ini, CHANCE_SECTION, function(key, value) bands[key] = _parse_chance_row(value) end)
     RANK_RULESET = { floor = floor, bands = bands }
 end
 
@@ -609,7 +609,7 @@ end
 --- trader_on_restock when the winning trader_autoinject variant does not declare it) silently drops the
 --- registration, which would be a silent feature kill. Touch trade_manager first so xevent.register_hook can
 --- rawget it.
-local function _setup_restock()
+local function _init_restock()
     local _ = trade_manager
     xevent.register_hook("trade_manager", "update", _update_wrapper)
     ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
@@ -748,7 +748,7 @@ end
 
 local function _on_load(m_data)
     -- Data only: no alife queries here (LOAD_STATE fires before entities exist). Stale-id
-    -- validation is deferred to _on_first_update via _validate_market_goods.
+    -- validation is deferred to _on_first_update via _check_market_goods.
     local data = m_data and m_data[SAVE_KEY]
     if not data then return end
     -- Type-guarded loads: a corrupt shape is dropped, not assigned, so a later _fifo_add / release
@@ -763,7 +763,7 @@ end
 --- between save and load). Runs once at first update, when alife queries are safe. A recycled id
 --- that survives here is still rejected at pricing time by the parent==trader guard in
 --- _on_get_item_cost, so premium never mis-applies.
-local function _validate_market_goods()
+local function _check_market_goods()
     local dropped = 0
     for id in pairs(_market_goods) do
         if not xobject.get_se(id) then
@@ -781,11 +781,11 @@ end
 local function _on_first_update()
     if _subscribed then return end
     _subscribed = true
-    _validate_market_goods()
+    _check_market_goods()
     local _ = ap_ext_trade
     xevent.register_hook("ap_ext_trade", "trade", _observe_trade)
     RegisterScriptCallback(CALLBACK.ON_GET_ITEM_COST, _on_get_item_cost)
-    _setup_restock()
+    _init_restock()
     CreateTimeEvent(RELEASE_EV, RELEASE_EV, RELEASE_PERIOD_MS / 1000, _release_expired)
     ap_core_debug.info("%s subscribed", LOG)
 end

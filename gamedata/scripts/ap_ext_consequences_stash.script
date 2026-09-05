@@ -13,7 +13,7 @@
 --- stash when any tool / part / upgrade section is present.
 ---
 --- Ammo categories (ammo_slot_*_t*) loot via per-member resolution: each stash ammo section
---- is matched against `_scan_squad`'s member_opts to find an owner whose pistol or rifle takes
+--- is matched against `_collect_squad_counts`'s member_opts to find an owner whose pistol or rifle takes
 --- that round. Section-only resolution (`get_section_category`) is used for non-ammo entries.
 
 local string_sub = string.sub
@@ -79,7 +79,7 @@ end
 -- (and drops untouchable / equipped). An item the policy never names has no key in counts, so it
 -- is invisible to fill / loot -- that is how smoke stays out of stashes (it is simply unlisted).
 -- @cost O(items_in_inventory) | per item: 1 policy_key call (cached chain hits in xinventory)
-local function _scan_member(member_se, member_ids, _opts_out, counts)
+local function _collect_member_counts(member_se, member_ids, _opts_out, counts)
     local member_id = member_se.id
     member_ids[#member_ids + 1] = member_id
     local npc_go = xobject.get_go(member_id)
@@ -96,12 +96,12 @@ end
 -- Walk squad members. Returns (member_ids, member_opts, counts) where counts is {[category]=n}.
 -- member_ids covers online + offline via squad_members iterator (preserves round-robin shape).
 -- member_opts is populated for ONLINE members only (xobject.get_go is nil for offline).
-local function _scan_squad(squad)
+local function _collect_squad_counts(squad)
     local member_ids, member_opts, counts = {}, {}, {}
     if not squad or not squad.squad_members then return member_ids, member_opts, counts end
     if squad:npc_count() == 0 then return member_ids, member_opts, counts end
     for member_se in squad:squad_members() do
-        _scan_member(member_se, member_ids, member_opts, counts)
+        _collect_member_counts(member_se, member_ids, member_opts, counts)
     end
     return member_ids, member_opts, counts
 end
@@ -252,7 +252,7 @@ local function _arrive_loot(squad, args)
         return
     end
 
-    local member_ids, member_opts, counts = _scan_squad(squad)
+    local member_ids, member_opts, counts = _collect_squad_counts(squad)
     if #member_ids == 0 then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d no_members, clearing stash", stash_id, squad.id)
         xstash.collect_stash_items(stash_id)
@@ -290,7 +290,7 @@ end
 -- Per-member pick handler for fill pass. Mutates picks + surplus. Each item resolves to its
 -- policy key (section if the policy names it, else category) so a deposit only happens for keys
 -- with surplus -- an unlisted item (e.g. smoke) has no key in surplus and is never deposited.
-local function _pick_for_member(member_id, opts, surplus, picks, fill_max)
+local function _select_for_member(member_id, opts, surplus, picks, fill_max)
     local rules = STASH_POLICY.rules
     xinventory.iterate_inventory(member_id, function(_, item)
         if #picks >= fill_max then return end
@@ -306,7 +306,7 @@ end
 local function _collect_fill_picks(squad, fill_max)
     local picks = {}
     if fill_max <= 0 then return picks end
-    local member_ids, member_opts, counts = _scan_squad(squad)
+    local member_ids, member_opts, counts = _collect_squad_counts(squad)
     if #member_ids == 0 then return picks end
 
     local surplus = xinventory.build_surplus_map(counts, STASH_POLICY.rules)
@@ -314,7 +314,7 @@ local function _collect_fill_picks(squad, fill_max)
     for i = 1, #member_ids do
         if #picks >= fill_max then break end
         local member_id = member_ids[i]
-        _pick_for_member(member_id, member_opts[member_id], surplus, picks, fill_max)
+        _select_for_member(member_id, member_opts[member_id], surplus, picks, fill_max)
     end
     return picks
 end
@@ -381,11 +381,11 @@ local CONFIGS = {
       interruptable = false },
 }
 
-local function _make_condition(enabled_key)
+local function _create_condition(enabled_key)
     return function() return cfg[enabled_key] end
 end
 
-local function _make_handler(entry)
+local function _create_handler(entry)
     return function(event_data)
         local squad = xobject.get_se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
@@ -416,9 +416,9 @@ function on_game_start()
         local entry = CONFIGS[i]
         ap_core_consumer.register(entry.consequence, {
             event = entry.event,
-            condition = _make_condition(entry.enabled_key),
+            condition = _create_condition(entry.enabled_key),
             on_arrive = entry.on_arrive_fn,
-        }, _make_handler(entry))
+        }, _create_handler(entry))
     end
     ap_core_debug.info(LOG_INIT .. " Initialized: 3 consequences (loot, ambush, fill)")
 end

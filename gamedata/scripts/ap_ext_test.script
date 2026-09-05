@@ -118,7 +118,7 @@ local function _stalkers_on_level()
 end
 
 -- Append `picks` sampled sections from a category (repeats acceptable, pools are large).
-local function _sample_sections(out, category, picks)
+local function _select_sections(out, category, picks)
     local pool = xinventory.get_category_sections(category)
     if #pool == 0 then return end
     for _ = 1, picks do
@@ -136,7 +136,7 @@ local function _kit_sections()
     for i = 1, #KIT do
         local entry = KIT[i]
         local picked = {}
-        _sample_sections(picked, entry.category, entry.picks)
+        _select_sections(picked, entry.category, entry.picks)
         for pick_index = 1, #picked do
             _push_repeated(out, picked[pick_index], entry.count)
         end
@@ -252,10 +252,10 @@ local function _fill_stashes()
     local filled = 0
     for i = 1, #stashes do
         local items = {}
-        _sample_sections(items, "medkit", 2)
-        _sample_sections(items, "bandage", 2)
-        _sample_sections(items, "food", 2)
-        _sample_sections(items, "ammo_not_equipped", 2)
+        _select_sections(items, "medkit", 2)
+        _select_sections(items, "bandage", 2)
+        _select_sections(items, "food", 2)
+        _select_sections(items, "ammo_not_equipped", 2)
         if #items > 0 and xstash.add_stash_items(stashes[i].id, items) then
             filled = filled + 1
             ap_core_debug.debug("[TEST] fill_stashes stash=%d items=%d", stashes[i].id, #items)
@@ -307,7 +307,7 @@ end
 
 -- A squad section hostile to the target faction: mutants half the time (they attack any
 -- stalker), else a random enemy faction's generic sim squad.
-local function _pick_hostile_section(target_faction)
+local function _select_hostile_section(target_faction)
     if math_random() < 0.5 then
         local species = xmath.select(HOSTILE_SPECIES)
         return xsmart_spawn.SQUADS_BY_SPECIES[species][1]
@@ -339,7 +339,7 @@ local function _spawn_hostiles()
         ap_core_debug.debug("[TEST] spawn_hostiles skip: target squad %d has no smart", target.id)
         return
     end
-    local section = _pick_hostile_section(target.player_id)
+    local section = _select_hostile_section(target.player_id)
     if not section then return end
     local squad = xsquad.create_squad(smart, section)
     if not squad then return end
@@ -392,7 +392,7 @@ end
 
 -- A random field smart ON the actor's level, so the seeded population spawns where the actor can walk up
 -- and watch it (trade at a trader, alert / combat near a fight), never on maps he cannot see. nil if none.
-local function _pick_field_smart(actor_level)
+local function _select_field_smart(actor_level)
     local fields = _pop_fields
     if #fields == 0 then return nil end
     for _ = 1, 10 do
@@ -442,7 +442,7 @@ end
 -- Spawn one seeded squad at a field smart on the actor's level; track it and return true, or false if no
 -- smart / section / squad resolved. Flat guards keep the top-up loop shallow.
 local function _spawn_one_pop(actor_level)
-    local smart = _pick_field_smart(actor_level)
+    local smart = _select_field_smart(actor_level)
     if not smart then return false end
     local section = _pop_section()
     if not section then return false end

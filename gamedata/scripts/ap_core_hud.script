@@ -423,13 +423,13 @@ function UIStatsHUD:Refresh(minutes, elapsed_sec)
     local secs = math_floor(elapsed_sec % 60)
     self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", hours, mins, secs))
     for i = 1, #self._entries do
-        self:_refresh_row(self._entries[i], minutes)
+        self:_update_row(self._entries[i], minutes)
     end
 end
 
 -- Refresh one row's cells. A nonzero LOSS percentage is the go-look signal: red only
 -- when it means something.
-function UIStatsHUD:_refresh_row(entry, minutes)
+function UIStatsHUD:_update_row(entry, minutes)
     entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
     entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
     local extra = _extra_text(entry, minutes)

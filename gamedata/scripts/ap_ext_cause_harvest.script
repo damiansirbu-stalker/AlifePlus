@@ -19,7 +19,7 @@ local _pickup_cooldown = xttltable.create_ttl_table({
     clock = os.clock,
 })
 
-local function _evaluate(item, npc)
+local function _compute_cause(item, npc)
     if not cfg.cause_harvest_enabled then return { code = RESULT.FAILED_RULES, reason = REASON.DISABLED } end
     if not item then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
@@ -75,8 +75,8 @@ local function _evaluate(item, npc)
 end
 
 local _adapters = {
-    [CALLBACK.ACTOR_ON_ITEM_TAKE] = function(item) return _evaluate(item, nil) end,
-    [CALLBACK.NPC_ON_ITEM_TAKE]   = function(npc, item) return _evaluate(item, npc) end,
+    [CALLBACK.ACTOR_ON_ITEM_TAKE] = function(item) return _compute_cause(item, nil) end,
+    [CALLBACK.NPC_ON_ITEM_TAKE]   = function(npc, item) return _compute_cause(item, npc) end,
 }
 
 function on_game_start()

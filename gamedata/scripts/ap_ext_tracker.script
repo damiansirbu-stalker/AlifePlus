@@ -35,7 +35,7 @@ local function _on_save_state(m_data)
     end
 end
 
-local function _validate_alphas(loaded)
+local function _check_alphas(loaded)
     local result = {}
     for id, data in pairs(loaded) do
         if data.level and data.kills then result[id] = data end
@@ -47,7 +47,7 @@ local function _on_load_state(m_data)
     _ap_alpha_dead:clear()
     local saved = m_data.ap_ext_tracker or {}
     _ap_killers = (type(saved.killers) == "table") and saved.killers or {}
-    _ap_alphas = _validate_alphas((type(saved.alphas) == "table") and saved.alphas or {})
+    _ap_alphas = _check_alphas((type(saved.alphas) == "table") and saved.alphas or {})
     _ap_stalker_needs = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_mutant_instincts = xttltable.create_fifo_cache({ capacity = 100 })
     _ap_squad_opportunities = xttltable.create_fifo_cache({ capacity = 100 })
@@ -59,7 +59,7 @@ local function _on_load_state(m_data)
     end
 end
 
-local function _dump_killers()
+local function _log_killers()
     if not ap_core_world_trace.is_enabled() then return end
     local parts = {}
     for id, count in pairs(_ap_killers) do
@@ -80,7 +80,7 @@ local function _register_kill(killer_id, victim_id)
     local new = old + 1
     _ap_killers[killer_id] = new
     ap_core_debug.debug("[TRACKER] _register_kill: killer=%d victim=%d %d->%d", killer_id, victim_id or -1, old, new)
-    _dump_killers()
+    _log_killers()
     return new
 end
 
@@ -275,7 +275,7 @@ end
 -- Drop saved ids that no longer resolve to a stalker or mutant. Catches entries that leaked
 -- through a save via paths that bypass server_entity_on_unregister (callbacks.md); the class
 -- check also drops ids recycled onto a different entity kind. Broker load-sweep pattern.
-local function _sweep_recycled_ids(map)
+local function _iterate_recycled_ids(map)
     local dropped = 0
     for id in pairs(map) do
         if not xcreature.is_npc(id) then
@@ -287,8 +287,8 @@ local function _sweep_recycled_ids(map)
 end
 
 local function _on_game_load()
-    local dropped_killers = _sweep_recycled_ids(_ap_killers)
-    local dropped_alphas = _sweep_recycled_ids(_ap_alphas)
+    local dropped_killers = _iterate_recycled_ids(_ap_killers)
+    local dropped_alphas = _iterate_recycled_ids(_ap_alphas)
     if dropped_killers > 0 or dropped_alphas > 0 then
         ap_core_debug.info("[TRACKER] load_sweep: dropped killers=%d alphas=%d", dropped_killers, dropped_alphas)
     end

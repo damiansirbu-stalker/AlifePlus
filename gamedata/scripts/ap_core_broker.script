@@ -26,7 +26,7 @@ local cfg = ap_core_mcm.cfg
 local _ap_scripted_squads = {}
 local _arrival_handlers = {}
 
--- Module-level reusable scratch table for _sweep_recycled_ids; cleared on each call to
+-- Module-level reusable scratch table for _iterate_recycled_ids; cleared on each call to
 -- avoid per-call allocation. Demonized pattern (mod-evaluation.md S-tier convention).
 local _to_drop = {}
 
@@ -325,7 +325,7 @@ end
 
 -- Per-scan off-map state update: despawn safety net + diagnostics. Returns true when the
 -- caller should drop the entry (squad despawned).
-local function _scan_offmap_entry(squad_id, squad, data, now)
+local function _update_offmap_entry(squad_id, squad, data, now)
     if _check_offmap_despawn(squad_id, squad, data, now) then return true end
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[SQUAD.OFFMAP] scan_entry: squad=%d section=%s online=%s age=%.1fh",
@@ -778,7 +778,7 @@ local function _update_chase(squad_id, squad, data, now)
 end
 
 --- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag. Off-map sessions add
---- the despawn safety-net check via _scan_offmap_entry.
+--- the despawn safety-net check via _update_offmap_entry.
 local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
@@ -791,7 +791,7 @@ local function _update_scripted_squad(squad_id)
         return
     end
     local now = xtime.get_game_sec()
-    if data.offmap and _scan_offmap_entry(squad_id, squad, data, now) then
+    if data.offmap and _update_offmap_entry(squad_id, squad, data, now) then
         _ap_scripted_squads[squad_id] = nil
         return
     end
@@ -892,7 +892,7 @@ end
 -- engine class (script_zone, item) after the original squad was released. Without this,
 -- the next save would re-emit the stale ids permanently and the scan would touch the
 -- recycled object on every tick.
-local function _sweep_recycled_ids(dict)
+local function _iterate_recycled_ids(dict)
     local count = 0
     for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
     for id in pairs(dict) do
@@ -928,7 +928,7 @@ end
 -- on_game_load fires from bind_stalker.net_spawn after server entities are registered.
 -- This is the safe point for alife_object queries against the just-restored save state.
 local function _on_game_load()
-    local dropped_scripted = _sweep_recycled_ids(_ap_scripted_squads)
+    local dropped_scripted = _iterate_recycled_ids(_ap_scripted_squads)
     if dropped_scripted > 0 then
         ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d", dropped_scripted)
     end

@@ -222,7 +222,7 @@ end
 -- Pick a speaker: any online stalker passing canon channel, scope, and combat filters.
 -- No proximity, no `npc:see`. db.OnlineStalkers is overwhelmingly the player's level so
 -- "speaker on event level" follows from filtering events by level upstream.
-local function _pick_speaker(actor_comm, scope, channel_status)
+local function _select_speaker(actor_comm, scope, channel_status)
     local online = db.OnlineStalkers
     if not online then return nil end
     local storage = db.storage
@@ -275,7 +275,7 @@ end
 -- instead of drained from the record queue. Reuses the news machinery: a producer hands a template
 -- pool prefix, a slots table, and selection context (level, faction); send_chatter gates it (local,
 -- non-hostile, throttled), fills a variant, picks an online stalker as the voice (the same
--- _pick_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
+-- _select_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
 -- ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate from news.
 
 local _chatter_pools = {}
@@ -353,7 +353,7 @@ function send_chatter(pool_prefix, slots, opts)
     end
     -- nil channel_status: xpda.publish_newsis direct to the actor, not channel-routed, so the speaker only
     -- needs to pass the scope filter; the news radio channel does not have to be receivable.
-    local picked = _pick_speaker(get_actor_true_community(), cfg.news_scope, nil)
+    local picked = _select_speaker(get_actor_true_community(), cfg.news_scope, nil)
     if not picked then
         if dbg then ap_core_debug.debug("%s skip %s: no speaker (scope=%s, nobody to say it)", CHATTER_LOG, pool_prefix, tostring(cfg.news_scope)) end
         return false
@@ -367,7 +367,7 @@ function send_chatter(pool_prefix, slots, opts)
 end
 
 -- Pick the per-consequence template pool for the focal entry.
-local function _pick_template(entry)
+local function _select_template(entry)
     local cons_name = entry.consequence_key:match("^consequence:(.+)") or ""
     return _templates_by_consequence[cons_name], cons_name
 end
@@ -387,7 +387,7 @@ local function _compose_tick_impl()
     local entries = _collect_eligible()
     if #entries == 0 then return { code = TRACE.NONE } end
     local entry = entries[math_random(#entries)]
-    local pool, cons_name = _pick_template(entry)
+    local pool, cons_name = _select_template(entry)
     if not pool or #pool == 0 then
         ap_core_record.mark_reported(entry.cons_id)
         return { code = TRACE.NO_TEMPLATES, cons = cons_name or "?" }
@@ -402,7 +402,7 @@ local function _compose_tick_impl()
     local msg = _clean_output(_substitute(template, slots))
     if not msg then return { code = TRACE.NO_MSG, cons = cons_name or "?" } end
     local actor_comm = get_actor_true_community()
-    local picked = _pick_speaker(actor_comm, cfg.news_scope, channel_status)
+    local picked = _select_speaker(actor_comm, cfg.news_scope, channel_status)
     if not picked then
         return { code = TRACE.NO_SENDER, scope = cfg.news_scope,
             actor_comm = actor_comm or "?", channels = _format_channels(channel_status) }

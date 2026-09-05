@@ -73,7 +73,7 @@ end
 -- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
 -- is_taken keys on the SPECIES (swarm identity), so a same-species re-swarm refreshes while any
 -- other live mutation blocks the smart.
-local function _make_swarm_filter(player_id, species)
+local function _create_swarm_filter(player_id, species)
     local mutator = ap_ext_smart_mutator
     return function(smart)
         if not xsmart.is_smart_empty(smart.id) then return false end
@@ -83,21 +83,21 @@ local function _make_swarm_filter(player_id, species)
     end
 end
 
-local function _make_lair_filter(player_id)
+local function _create_lair_filter(player_id)
     return function(smart)
         return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
-local function _make_surge_filter(player_id)
+local function _create_surge_filter(player_id)
     return function(smart)
         return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
-local function _make_lair_or_surge_filter(player_id)
+local function _create_lair_or_surge_filter(player_id)
     return function(smart)
         return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
@@ -105,9 +105,9 @@ local function _make_lair_or_surge_filter(player_id)
 end
 
 local function _resolve_infest_filter(species, player_id)
-    if _alignment_mutant_feral[species]    then return _make_lair_filter(player_id) end
-    if _alignment_mutant_predator[species] then return _make_lair_or_surge_filter(player_id) end
-    if _alignment_mutant_aberrant[species] then return _make_surge_filter(player_id) end
+    if _alignment_mutant_feral[species]    then return _create_lair_filter(player_id) end
+    if _alignment_mutant_predator[species] then return _create_lair_or_surge_filter(player_id) end
+    if _alignment_mutant_aberrant[species] then return _create_surge_filter(player_id) end
     return nil
 end
 
@@ -231,7 +231,7 @@ local function _eligible_swarm(squad, species, now, level_id, budget)
     end
     budget.remaining = budget.remaining - 1
     local smart = ap_core_util.find_smart(squad.position,
-        { level_id = level_id, filter = _make_swarm_filter(squad.player_id, species), max_distance = RANGE_EYE })
+        { level_id = level_id, filter = _create_swarm_filter(squad.player_id, species), max_distance = RANGE_EYE })
     if not smart then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SMART } end
     if not ap_ext_util.is_tactically_eligible(squad, smart) then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }

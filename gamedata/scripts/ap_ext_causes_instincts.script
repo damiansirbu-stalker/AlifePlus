@@ -67,25 +67,25 @@ end
 
 local _is_field_smart = ap_ext_util.is_field_smart
 
-local function _make_territory_filter(player_id)
+local function _create_territory_filter(player_id)
     return function(smart)
         return xsmart.is_territory(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
-local function _make_lair_filter(player_id)
+local function _create_lair_filter(player_id)
     return function(smart)
         return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
-local function _make_surge_filter(player_id)
+local function _create_surge_filter(player_id)
     return function(smart)
         return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
 end
 
-local function _make_territory_or_lair_filter(player_id)
+local function _create_territory_or_lair_filter(player_id)
     return function(smart)
         return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
@@ -156,7 +156,7 @@ end
 -- { code, reason } on rejection. The enable gate and the timing/logging live in the shared
 -- ap_ext_util.try_cause seam. budget: per-_on_smart table { remaining = N }; RULES rejections free,
 -- a SCAN reach consumes one slot.
-local function _eval_cause(squad, level_id, overdue, species, entry, budget)
+local function _compute_cause(squad, level_id, overdue, species, entry, budget)
     if entry.alignment and not entry.alignment[species] then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
     end
@@ -205,7 +205,7 @@ local function _try_one_drive_cause(squad, level_id, opts, budget)
         if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", opts.entry.log_prefix) end
         return nil
     end
-    return ap_ext_util.try_cause(opts.entry.enabled_key, opts.entry.log_prefix, _eval_cause,
+    return ap_ext_util.try_cause(opts.entry.enabled_key, opts.entry.log_prefix, _compute_cause,
         squad, level_id, opts.overdue, opts.species, opts.entry, budget)
 end
 
@@ -306,23 +306,23 @@ function on_game_start()
           scan = "scatter",
           personality = { PERSONALITY.INV_AGGRESSION, PERSONALITY.SURVIVAL } },
         { cause = CAUSE.FEED, name = "feed", drive = "feed",
-          make_filter = function(sq) return _make_territory_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_territory_filter(sq.player_id) end,
           personality = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION } },
         { cause = CAUSE.SLUMBER_FIELD, name = "slumber_field", drive = "slumber",
           alignment = _alignment_mutant_cowardly,
-          make_filter = function(sq) return _make_territory_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_territory_filter(sq.player_id) end,
           personality = { PERSONALITY.SURVIVAL } },
         { cause = CAUSE.SLUMBER_LAIR, name = "slumber_lair", drive = "slumber",
           alignment = _alignment_lair,
-          make_filter = function(sq) return _make_lair_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_lair_filter(sq.player_id) end,
           personality = { PERSONALITY.SURVIVAL } },
         { cause = CAUSE.SLUMBER_SURGE, name = "slumber_surge", drive = "slumber",
           alignment = _alignment_surge,
-          make_filter = function(sq) return _make_surge_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_surge_filter(sq.player_id) end,
           personality = { PERSONALITY.SURVIVAL } },
         { cause = CAUSE.ROAM, name = "roam", drive = "roam",
           alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator),
-          make_filter = function(sq) return _make_territory_or_lair_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_territory_or_lair_filter(sq.player_id) end,
           find_opts = function(sq) return { max_distance = RANGE_SCENT, exclude_id = sq.smart_id } end,
           personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY } },
         { cause = CAUSE.PACK, name = "pack", drive = "pack",

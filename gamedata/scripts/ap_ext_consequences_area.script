@@ -70,11 +70,11 @@ local CONFIGS = {
         pre_release_gulag = PRE_RELEASE_GULAG.AREA_INFEST, on_arrive = _on_arrive_infest },
 }
 
-local function _make_condition(enabled_key)
+local function _create_condition(enabled_key)
     return function() return cfg[enabled_key] end
 end
 
-local function _make_handler(entry)
+local function _create_handler(entry)
     return function(event_data)
         local squad = xobject.get_se(event_data.squad_id)
         if not squad then return { code = RESULT.FAILED_SCAN, reason = REASON.NO_SQUAD } end
@@ -109,9 +109,9 @@ function on_game_start()
         local enabled_key = "consequence_" .. entry.name .. "_enabled"
         ap_core_consumer.register(entry.consequence, {
             event = entry.event,
-            condition = _make_condition(enabled_key),
+            condition = _create_condition(enabled_key),
             on_arrive = entry.on_arrive,
-        }, _make_handler(entry))
+        }, _create_handler(entry))
     end
     ap_core_debug.info(LOG .. " Initialized: %d consequences", #CONFIGS)
 end

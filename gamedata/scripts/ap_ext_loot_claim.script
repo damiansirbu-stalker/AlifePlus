@@ -87,7 +87,7 @@ local _yield_tip_next = 0
 --- Write an ownership row. killer == actor id flags an actor kill (reserve-own); squad set flags a squad
 --- kill (block-npc reads any living member); squad nil with a non-actor killer is a lone-NPC kill.
 --- @cost O(1) | 1 game_sec (2 luabind) + 1 ttl set
-local function _record(victim_id, killer_id, squad_id)
+local function _set_owner(victim_id, killer_id, squad_id)
     _owner:set(victim_id, { killer = killer_id, squad = squad_id, t = xtime.get_game_sec() })
 end
 
@@ -358,7 +358,7 @@ local function _on_death(victim, killer)
     if get_object_story_id(victim_id) then return end
     if victim:has_info("npcx_is_companion") then return end
     if killer_id == _ac_id then
-        _record(victim_id, _ac_id, nil)
+        _set_owner(victim_id, _ac_id, nil)
         return
     end
     if not xcreature.is_stalker(killer) then return end
@@ -367,7 +367,7 @@ local function _on_death(victim, killer)
     local squad = get_object_squad(killer)
     local squad_id = squad and squad.id or nil
     if squad_id and axr_companions.companion_squads[squad_id] then return end
-    _record(victim_id, killer_id, squad_id)
+    _set_owner(victim_id, killer_id, squad_id)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s squad=%s", LOG, victim_id, killer_id, tostring(squad_id))
     end
@@ -385,7 +385,7 @@ local function _on_hit(obj, _amount, _dir, who, bone_index)
     if who:id() ~= _ac_id then return end
     local victim_id = obj:id()
     if get_object_story_id(victim_id) then return end
-    _record(victim_id, _ac_id, nil)
+    _set_owner(victim_id, _ac_id, nil)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s actor_kill=true (via hit)", LOG, victim_id, _ac_id)
     end
@@ -424,7 +424,7 @@ end
 
 --- Count the _001..N variants of a tip pool in the loaded string table, walking until a miss
 --- (translate returns the key / nil / empty), mirroring ap_ext_news.script:_load_pool.
-local function _count_pool(prefix, max)
+local function _get_pool_count(prefix, max)
     for i = 1, max do
         local id = string_format("%s_%03d", prefix, i)
         local text = game.translate_string(id)
@@ -536,9 +536,9 @@ end
 function on_game_start()
     _owner = xttltable.create_ttl_table({ default_ttl = OWNER_TTL_MAX_SEC, clock = xtime.get_game_sec })
     _tip_ttl = xttltable.create_ttl_table({ default_ttl = TIP_TTL_SEC })
-    _warn_n = _count_pool(WARN_PREFIX, MAX_WARN_VARIANTS)
-    _reserve_yield_n = _count_pool(RESERVE_YIELD_PREFIX, MAX_YIELD_VARIANTS)
-    _npcvnpc_yield_n = _count_pool(NPCVNPC_YIELD_PREFIX, MAX_YIELD_VARIANTS)
+    _warn_n = _get_pool_count(WARN_PREFIX, MAX_WARN_VARIANTS)
+    _reserve_yield_n = _get_pool_count(RESERVE_YIELD_PREFIX, MAX_YIELD_VARIANTS)
+    _npcvnpc_yield_n = _get_pool_count(NPCVNPC_YIELD_PREFIX, MAX_YIELD_VARIANTS)
 
     -- on_game_start re-runs on every save load, each time in a fresh Lua VM: a load reinits the VM
     -- and wipes all module locals, xevent hook state included (proof chain in ap_core_cache: a
