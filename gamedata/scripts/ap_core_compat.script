@@ -10,17 +10,14 @@ local _pending_remove = {}
 local _purge_services_pending = false
 
 -- Queue a squad id for engine-side release at on_game_load.
--- load_state runs before objects().load() (alife_storage_manager.cpp:141), so
--- xobject.get_se returns nil and xsquad.release_squad would no-op. Drained post-STATE_Read.
+-- load_state runs before objects().load (alife_storage_manager.cpp:141), so get_se is nil then; drained post-STATE_Read.
 local function _push_release(squad_id)
     if type(squad_id) ~= "number" then return end
     _pending_release[#_pending_release + 1] = squad_id
 end
 
--- Queue a squad for engine-side removal (delete, not release). Same timing as _push_release.
--- The section travels with the id: freed server ids are pooled and reused
--- (xrServer.cpp:873 vfFreeID), so a hold entry written before its squad died can name an id that now
--- belongs to something else, and the drain compares the section before deleting anything.
+-- Queue a squad for engine-side removal (delete, not release); same timing as _push_release.
+-- The section travels with the id: freed server ids are pooled and reused (xrServer.cpp:873 vfFreeID), so the drain compares the section first.
 local function _push_removal(squad_id, section)
     if type(squad_id) ~= "number" then return end
     _pending_remove[#_pending_remove + 1] = { id = squad_id, section = section }
@@ -33,8 +30,8 @@ local function _clear_services(services)
     for i = 1, #_to_remove do services[_to_remove[i]] = nil end
 end
 
--- Drop every service hold and queue its squad for removal; guard holds stay (they are combat squads,
--- not services, and the outpost keeps its detail).
+-- Drop every service hold and queue its squad for removal; guard holds stay.
+-- Guards are combat squads, not services, and the outpost keeps its detail.
 local function _clear_service_holds(holds)
     for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, entry in pairs(holds) do
@@ -46,17 +43,8 @@ local function _clear_service_holds(holds)
     for i = 1, #_to_remove do holds[_to_remove[i]] = nil end
 end
 
---- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries, and let growth rebuild
---- them under the current rules. The one-service-per-outpost rule guards growth only, so a save
---- written before it keeps every role it grew: field logs show outposts holding trader, barman and
---- mechanic at once, standing in a rank, with one outpost eating its whole level budget so no other
---- outpost on that map can ever grow a service. Keeping one of the three would carry a legacy NPC's
---- stock, trade config and spot forward and pick an arbitrary survivor, so all of them go and the
---- next growth roll seats a fresh service at the corrected spot geometry.
---- Empties the service sets and drops the service holds; the squads themselves go at on_game_load,
---- the documented safe mutation point -- entities registered, no update tick yet
---- (doc/library/modding/script-loading.md:425-455). load_state is too early for that: it runs before
---- objects().load (alife_storage_manager.cpp:141), so no server entity exists.
+--- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries so growth rebuilds under the current one-service-per-outpost rule.
+--- Empties the service sets and drops service holds; squads go at on_game_load (script-loading.md:425-455), the safe mutation point after objects().load.
 --- Mutates both tables IN PLACE: ap_ext_smart_mutator captures them by reference at its own
 --- load_state and dispatch order is nondeterministic (axr_main.script:272), so a parent-key nil
 --- could be missed if the mutator's load_state ran first.
@@ -73,16 +61,6 @@ local function _v185_to_v186_clear_outpost_services(m_data)
     if type(holds) == "table" then _clear_service_holds(holds) end
 end
 
---- v1.8.6 -> v1.8.7: outpost mini-base redesign (plan rows + pin; no spot job, no visuals, no
---- respawn-pacing writes). ONE migration from the last released version (1.8.6); the never-shipped
---- intermediate dev stamps are folded in. Resets every conquest entry's outpost state -- services
---- cleared and the plan marker (guards) dropped, so the mutator rolls a FRESH plan under the current
---- MCM sliders for each legacy held smart at restore. Service holds drop with their squads. Old
---- pinned-guard holds (the retired forced-stay garrison) drop too and their squads are queued for
---- RELEASE (they were ordinary conquest spawns, so clearing the pin returns them to the sim). Then
---- arms the world purge of every outpost-service NPC still standing -- an ap_service_ squad, or a
---- squadless sim_default_<faction>_<role> orphan -- drained by _flush_outpost_services at
---- on_game_load, where the live squads exist. Growth reseats a fresh one under the new rules.
 -- Reset one saved conquest entry's outpost state: services cleared, plan marker + dead field dropped.
 local function _reset_saved_plan(data)
     if type(data) ~= "table" then return end
@@ -103,6 +81,8 @@ local function _release_saved_guard_holds(holds)
     for i = 1, #_to_remove do holds[_to_remove[i]] = nil end
 end
 
+-- v1.8.6 -> v1.8.7: outpost mini-base redesign; reset every conquest entry so the mutator rolls a fresh plan under current MCM sliders.
+-- Service holds drop with their squads, old pinned-guard holds release to the sim, and the world outpost-service purge is armed for on_game_load.
 local function _v186_to_v187_reset_outposts(m_data)
     local saved = m_data.ap_ext_smart_mutator
     local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
@@ -143,18 +123,15 @@ local function _flush_releases()
     end
 end
 
--- Identity guard for a queued removal: the live squad must still carry the section pinned when the
--- hold was written. Entries saved before the section was recorded skip the compare.
+-- Identity guard for a queued removal: the live squad must still carry the section pinned when the hold was written.
+-- Entries saved before the section was recorded skip the compare.
 local function _is_same_section(squad, section)
     if not section then return true end
     return squad:section_name() == section
 end
 
--- Drain queued removals. Each member's PDA trade spot goes first: the icon is added by the engine
--- from the job's `level_spot` key (stalker_generic.update_level_spot) and vanilla only clears it on
--- death, so a removal that skips it leaves the icon on the map at a dissolved post.
--- A queued removal runs once per save and deletes a live NPC, so it reports per squad, not just a
--- total: a bare count cannot tell a removal from a skip, and a skip is what a recycled id looks like.
+-- Drain queued removals; each member's PDA trade spot goes first (stalker_generic.update_level_spot), or the icon lingers at a dissolved post.
+-- Reports per squad, not just a total: a bare count cannot tell a removal from a skip, and a skip is what a recycled id looks like.
 local function _flush_removals()
     if #_pending_remove == 0 then return end
     local debug_on = ap_core_debug.is_enabled()
@@ -196,19 +173,8 @@ local function _get_service_role(sec)
     return (role and _SERVICE_ROLES[role]) and role or nil
 end
 
---- Purge every outpost-service NPC in the world, by BOTH identities (see the _v186_to_v187 and
---- _v188 changesets). Squad identity: an ap_service_ squad section is AlifePlus-only, so every
---- such squad is queued for removal, tracked or not. NPC identity: a stalker wearing a
---- sim_default_<faction>_<role> service profile with NO resolving squad is an ORPHAN leftover --
---- old builds could delete a service squad out from under its member, and a squadless NPC is
---- invisible to the squad sweep, standing or wandering forever (field, 2026-08-01: an orphaned
---- trader walked Cordon and survived every purge). Vanilla story mode never leaves sim_default
---- service profiles squadless, so an orphan match is ours by construction; squadded foreign
---- sim_default NPCs are untouched. One pass over the server-object pool at load (once per save
---- lineage, the changeset gates it), then the queues drain in the same on_game_load pass.
---- @cost O(CSE pool) one-shot walk + O(services) queue | migration-only, never a per-session cost
--- Collector for one CSE: append a squadless service NPC's id to `orphans`. An NPC whose group_id
--- resolves to a live squad is left to the squad sweep.
+-- Collector for one CSE: append a squadless service NPC's id to `orphans`.
+-- An NPC whose group_id resolves to a live squad is left to the squad sweep.
 local function _collect_orphan_service(se, orphans)
     if not _get_service_role(se.section_name and se:section_name()) then return end
     local squad = xsquad.get_squad_by_member(se.id)
@@ -228,6 +194,9 @@ local function _release_orphan_service(sim, npc_id, debug_on)
     return 1
 end
 
+-- Purge every outpost-service NPC by both identities: an ap_service_ squad (AlifePlus-only), and a squadless sim_default_<faction>_<role> orphan.
+-- One pass over the CSE pool at load (the changeset gates it once per save lineage); the queues drain in the same on_game_load pass.
+-- @cost O(CSE pool) one-shot walk + O(services) queue | migration-only, never a per-session cost
 local function _flush_outpost_services()
     local sim = alife()
     if not sim then return end
@@ -247,10 +216,8 @@ local function _flush_outpost_services()
     end
 end
 
---- Drain queued engine-side work. on_game_load is the documented safe mutation point: entities are
---- registered and no update tick has run yet (doc/library/modding/script-loading.md:425-455). The
---- orphan-service sweep queues into the same removal list before the drain, so one pass deletes both
---- the changeset-queued removals and the orphans.
+--- Drain queued engine-side work; on_game_load is the documented safe mutation point (script-loading.md:425-455): entities registered, no update tick yet.
+--- The orphan-service sweep queues into the same removal list first, so one pass deletes the changeset-queued removals and the orphans.
 local function _on_game_load()
     _flush_releases()
     if _purge_services_pending then _purge_services_pending = false; _flush_outpost_services() end

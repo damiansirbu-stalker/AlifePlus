@@ -56,8 +56,8 @@ local INSTINCTS = {
 --- Each cause carries: cause const, name, parent drive, alignment subset, personality, filter.
 local CAUSES
 
--- In-place Fisher-Yates shuffle. Removes order bias so peer causes under the same drive
--- (e.g. the three slumber variants) get equal first-pick on each tick.
+-- In-place Fisher-Yates shuffle over CAUSES.
+-- Removes order bias so peer causes under one drive (e.g. the three slumber variants) get equal first-pick each tick.
 local function _shuffle_causes()
     for i = #CAUSES, 2, -1 do
         local j = math_random(i)
@@ -152,10 +152,8 @@ local function _find_scatter_smart(squad, level_id, species)
     return smart
 end
 
--- Per-cause RULES + SCAN evaluator. Returns the publish payload (with .cause) on SUCCESS, or
--- { code, reason } on rejection. The enable gate and the timing/logging live in the shared
--- ap_ext_util.try_cause seam. budget: per-_on_smart table { remaining = N }; RULES rejections free,
--- a SCAN reach consumes one slot.
+-- Per-cause RULES + SCAN evaluator; returns the publish payload (with .cause) on SUCCESS, or { code, reason } on rejection.
+-- The enable gate and timing/logging live in ap_ext_util.try_cause; RULES rejections are free, a SCAN reach consumes one budget slot.
 local function _compute_cause(squad, level_id, overdue, species, entry, budget)
     if entry.alignment and not entry.alignment[species] then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT }
@@ -194,10 +192,8 @@ local function _compute_cause(squad, level_id, overdue, species, entry, budget)
     }
 end
 
--- Per-cause attempt for one CAUSES entry under an overdue drive. Filters to the entry's own drive and
--- drops a period-mismatched drive, then hands the enable gate, timing, and outcome log to the shared
--- ap_ext_util.try_cause seam. period_mismatch drives are walked only at DEBUG (see _find_overdue_drives);
--- each emits a failed_rules:wrong_period line so dormant/active drops are not silent.
+-- Per-cause attempt for one CAUSES entry under an overdue drive: filter to the entry's own drive, drop a period-mismatched drive.
+-- Hands the enable gate, timing, and outcome log to ap_ext_util.try_cause; period_mismatch drives are walked only at DEBUG.
 -- opts: { species, overdue, entry, drive }
 local function _try_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end

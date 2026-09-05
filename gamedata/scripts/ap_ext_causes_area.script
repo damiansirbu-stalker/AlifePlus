@@ -53,11 +53,8 @@ local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
 local _is_field_smart = ap_ext_util.is_field_smart
 local _is_last_faction_smart = ap_ext_util.is_last_faction_smart
 
--- Human-only. No can_accept_faction; engine's has_jobs_for self-rejects mismatched stalker
--- communities on arrival (release_no_jobs). xsmart.has_jobs_for cite: stalker job assignment
--- requires smart.props[community] to be set; mismatch yields nil job, has_jobs_for false.
--- is_taken skips smarts under a live mutation (other than this faction's own conquest, which
--- refreshes) -- takeovers end by decay, never by another takeover.
+-- Human-only, no can_accept_faction: engine has_jobs_for self-rejects a mismatched stalker community on arrival (release_no_jobs).
+-- is_taken skips smarts under a live mutation, except this faction's own conquest (which refreshes); takeovers end by decay.
 local function _build_conquer_filter(player_id)
     local mutator = ap_ext_smart_mutator
     return function(smart)
@@ -68,11 +65,8 @@ local function _build_conquer_filter(player_id)
     end
 end
 
--- Mutant variant of conquer. Needs upfront can_accept_faction because mob_home stubs are
--- oversupplied for mutants (gulag_general.script:1018-1022) so has_jobs_for rarely rejects.
--- Without this gate, dispatched mutant dwells at a species-mismatched smart until pre_release_gulag.
--- is_taken keys on the SPECIES (swarm identity), so a same-species re-swarm refreshes while any
--- other live mutation blocks the smart.
+-- Mutant variant of conquer: needs upfront can_accept_faction because mob_home stubs are oversupplied for mutants (gulag_general.script:1018-1022).
+-- Without it a dispatched mutant dwells at a species-mismatched smart until pre_release_gulag; is_taken keys on species (a same-species re-swarm refreshes).
 local function _create_swarm_filter(player_id, species)
     local mutator = ap_ext_smart_mutator
     return function(smart)
@@ -145,9 +139,8 @@ local function _get_census(level_id)
     return census
 end
 
--- Inverse-share eligibility: pass chance = 1 - own share of the level's squad population. A
--- zero-presence side always passes (intruders always have a door), the dominant side passes
--- rarely but is never banned (user ruling: less, not never).
+-- Inverse-share eligibility: pass chance = 1 - own share of the level's squad population.
+-- A zero-presence side always passes (intruders always have a door); the dominant side passes rarely but is never banned (user ruling: less, not never).
 local function _check_census_share(census, count)
     if not census or census.total == 0 then return true end
     local share = count / census.total
@@ -167,8 +160,8 @@ local function _read_dto_field(squad_id, field, now)
     return opp_dto[field] or 0
 end
 
--- Per-cause RULES + SCAN. Returns publish payload (with .cause) on SUCCESS,
--- or { code = FAILED_*, reason = REASON.* } on rejection. The shared ap_ext_util.try_cause gates and logs each call.
+-- Per-cause RULES + SCAN; returns the publish payload (with .cause) on SUCCESS, or { code = FAILED_*, reason = REASON.* } on rejection.
+-- The shared ap_ext_util.try_cause gates and logs each call.
 local function _compute_conquer(squad, now, level_id, budget)
     if not _alignment_conquer_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_util.is_active_period(squad.player_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end

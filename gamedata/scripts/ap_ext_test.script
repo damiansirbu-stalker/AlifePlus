@@ -144,10 +144,8 @@ local function _kit_sections()
     return out
 end
 
--- The engine strict-reads item fields at spawn (inv_weight for every item, k_ap for ammo), so a
--- dormant / technical section missing one is a CTD on create_item -- tch_upgr lacks inv_weight,
--- ammo_dyno lacks k_ap. Only spawn sections that carry inv_weight; real items always do. (Ammo k_ap
--- is filtered upstream in xinventory's spawnable ammo pool.)
+-- The engine strict-reads item fields at spawn (inv_weight per item, k_ap for ammo), so a section missing one is a CTD on create_item.
+-- Only spawn sections that carry inv_weight; real items always do (ammo k_ap is filtered upstream in xinventory's spawnable pool).
 local function _spawnable(sec)
     return ini_sys:r_float_ex(sec, "inv_weight") ~= nil
 end
@@ -211,8 +209,8 @@ end
 -- shows high-value goods (artefacts, devices). Engine clamps character rank to [0, 56000].
 local RANK_DEFAULT = 30000
 
---- Set the player's character rank. run_string ap_ext_test.rank(25000). With no arg it jumps to
---- expert, which opens the top market rank bands so the echo carries high-value goods.
+--- Set the player's character rank; run_string ap_ext_test.rank(25000).
+--- With no arg it jumps to expert, which opens the top market rank bands so the echo carries high-value goods.
 --- @novalidate(code.unused_export, reason:"console command")
 function rank(value)
     local actor = db.actor
@@ -225,9 +223,8 @@ function rank(value)
     ap_core_debug.debug("[TEST] rank target=%d before=%d after=%d", target, before, after)
 end
 
---- Advance the game clock. run_string ap_ext_test.time(48). With no arg it advances 24 h, one
---- default restock cycle, so traders resupply and the market injects and sells out; it also matures
---- the radiant Hull/MVT windows during a soak.
+--- Advance the game clock; run_string ap_ext_test.time(48).
+--- With no arg it advances 24 h (one restock cycle), so traders resupply, the market injects and sells out, and radiant Hull/MVT windows mature.
 --- @novalidate(code.unused_export, reason:"console command")
 function time(hours)
     local delta_hours = hours or DEFAULT_SKIP_HOURS
@@ -305,8 +302,8 @@ local function _online_stalker_squads()
     return squads
 end
 
--- A squad section hostile to the target faction: mutants half the time (they attack any
--- stalker), else a random enemy faction's generic sim squad.
+-- A squad section hostile to the target faction: mutants half the time (they attack any stalker).
+-- Else a random enemy faction's generic sim squad.
 local function _select_hostile_section(target_faction)
     if math_random() < 0.5 then
         local species = xmath.select(HOSTILE_SPECIES)
@@ -322,9 +319,8 @@ local function _select_hostile_section(target_faction)
     return xmath.select(xmath.select(enemies))
 end
 
--- Spawn one squad hostile to a random online stalker squad, at that squad's smart, so real
--- combat and real deaths drive the reactive pipeline. xsquad.create_squad rides the vanilla
--- board path (roster assignment + squad_on_npc_creation fire).
+-- Spawn one squad hostile to a random online stalker squad, at that squad's smart, so real combat and deaths drive the reactive pipeline.
+-- xsquad.create_squad rides the vanilla board path (roster assignment + squad_on_npc_creation fire).
 local function _spawn_hostiles()
     if _prune_spawned() >= SPAWN_MAX_ALIVE then
         ap_core_debug.debug("[TEST] spawn_hostiles skip: %d spawned squads still alive", #_spawned_hostiles)
@@ -378,8 +374,8 @@ local POP_HUMAN_FACTIONS = { "stalker", "csky", "bandit" }
 local _pop_squads = {}
 local _pop_fields = nil
 
--- Every smart that is not a base and hosts no hub trader (ap_ext_util.is_field_smart) -- the smarts
--- AP's takeovers may claim. Built once from the map-wide SIMBOARD registry.
+-- Every smart that is not a base and hosts no hub trader (ap_ext_util.is_field_smart), the smarts AP's takeovers may claim.
+-- Built once from the map-wide SIMBOARD registry.
 local function _build_field_smarts()
     local out = {}
     local by_name = xsmart.get_smarts_by_names()
@@ -390,8 +386,8 @@ local function _build_field_smarts()
     return out
 end
 
--- A random field smart ON the actor's level, so the seeded population spawns where the actor can walk up
--- and watch it (trade at a trader, alert / combat near a fight), never on maps he cannot see. nil if none.
+-- A random field smart ON the actor's level, so the seeded population spawns where the actor can walk up and watch.
+-- Trade at a trader, alert / combat near a fight, never on maps he cannot see; nil if none.
 local function _select_field_smart(actor_level)
     local fields = _pop_fields
     if #fields == 0 then return nil end
@@ -402,9 +398,8 @@ local function _select_field_smart(actor_level)
     return nil
 end
 
--- A section to seed: a roaming human faction (loner / clear sky / bandit) 70% of the time, else a mutant
--- species squad (swarm / infest). The human factions route to traders, so trade/barter get candidates;
--- AP's own personality + census-share gate still decides who takes territory. Guarded against a missing pool.
+-- A section to seed: a roaming human faction (loner / clear sky / bandit) 70% of the time, else a mutant species squad (swarm / infest).
+-- Human factions route to traders so trade/barter get candidates; AP's personality + census-share gate still decides who takes territory.
 local function _pop_section()
     if math_random() < 0.7 then
         local faction = POP_HUMAN_FACTIONS[math_random(1, #POP_HUMAN_FACTIONS)]
@@ -425,10 +420,8 @@ local function _prune_pop()
     return #alive
 end
 
--- Sellable surplus onto each member of a freshly spawned (offline) population squad, so a squad routing to
--- a trader carries goods to sell. Weapons are sell-all (trade policy max 0) = guaranteed surplus; one ammo
--- box tops it. xinventory.create_item is offline-safe (falls back to the member's smart position). Small on
--- purpose - one pass covers up to POP_MAX_PER_PASS squads.
+-- Sellable surplus onto each member of a freshly spawned (offline) population squad, so a squad routing to a trader carries goods to sell.
+-- Weapons are sell-all (trade policy max 0) plus one ammo box; xinventory.create_item is offline-safe (falls back to the member's smart position).
 local function _seed_pop_squad(squad)
     if squad:npc_count() == 0 then return end
     local ammo = xinventory.get_category_sections("ammo_not_equipped")
@@ -439,8 +432,8 @@ local function _seed_pop_squad(squad)
     end
 end
 
--- Spawn one seeded squad at a field smart on the actor's level; track it and return true, or false if no
--- smart / section / squad resolved. Flat guards keep the top-up loop shallow.
+-- Spawn one seeded squad at a field smart on the actor's level; track it and return true, or false if no smart / section / squad resolved.
+-- Flat guards keep the top-up loop shallow.
 local function _spawn_one_pop(actor_level)
     local smart = _select_field_smart(actor_level)
     if not smart then return false end
@@ -453,9 +446,8 @@ local function _spawn_one_pop(actor_level)
     return true
 end
 
--- One top-up pass: keep POP_TARGET squads alive at field smarts on the actor's level, POP_MAX_PER_PASS
--- new per pass. The squads then live, move, fight, and trip AP's causes on their own. Bails when the
--- alife object count reaches POP_ALIFE_CEILING, so the driver can never exhaust the id pool.
+-- One top-up pass: keep POP_TARGET squads alive at field smarts on the actor's level, POP_MAX_PER_PASS new per pass.
+-- The squads then live, move, fight, and trip AP's causes; bails at POP_ALIFE_CEILING so the driver never exhausts the id pool.
 local function _seed_population()
     local actor = db.actor
     if not actor then return end
@@ -512,15 +504,8 @@ local function _runner_tick()
     return false
 end
 
---- Start or stop the driver. While on it re-seeds live world state on a timer so the real AP pipeline
---- runs with no further input: every 5 min a map-wide territory population is topped up (squads kept
---- alive at field smarts on OTHER levels, driving conquest / swarm / infest and off-map routing away
---- from you) and each online stalker on your level gets a surplus kit (items above the trade/loot
---- caps, plus armour plates) and cash; every 10 min nearby stashes are filled and one squad hostile
---- to a random stalker squad is spawned; every 15 min an artefact drops by you. The surplus and cash
---- drive trade and the faction market at traders; the hostile squad drives combat, and the deaths that
---- follow drive the massacre / squadkill / loot / wounded reactions. Run time() to mature the territory
---- game-hour thresholds. Call again to stop.
+--- Start or stop the driver; while on, it re-seeds live world state on a timer so the real AP pipeline runs with no further input.
+--- Territory population, surplus kits and cash, stash fills, hostile spawns, and artefact drops (see ACTIONS); run time() to mature game-hour gates.
 --- @novalidate(code.unused_export, reason:"console command")
 function drive()
     if _runner then

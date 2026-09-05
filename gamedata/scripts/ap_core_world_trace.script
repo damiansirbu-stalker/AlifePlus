@@ -90,8 +90,8 @@ local function _format_csq_line(id, se, entry)
         _format_pos(se.position))
 end
 
--- Emit an AP-controlled squad (all levels) plus its dispatch record if one is still live. Guards
--- is_squad because the engine recycles freed ids (ap_core_broker._sweep_recycled_ids documents this).
+-- Emit an AP-controlled squad (all levels) plus its dispatch record if one is still live.
+-- Guards is_squad because the engine recycles freed ids (ap_core_broker._sweep_recycled_ids documents this).
 local function _log_csq(id)
     local se = xobject.get_se(id)
     if not se then return end
@@ -102,8 +102,8 @@ local function _log_csq(id)
     _acc.csq = _acc.csq + 1
 end
 
--- Emit one actor-level squad and tally its smart occupancy for the SMARTPOP histogram. The id comes
--- from the per-level cache bucket, so it is already on _acc.level; is_squad guards id recycling.
+-- Emit one actor-level squad and tally its smart occupancy for the SMARTPOP histogram.
+-- The id comes from the per-level cache bucket, so it is already on _acc.level; is_squad guards id recycling.
 local function _log_sq(id)
     local se = xobject.get_se(id)
     if not se then return end
@@ -114,8 +114,8 @@ local function _log_sq(id)
     _acc.sq = _acc.sq + 1
 end
 
--- Classify one online object and emit it as A-Life presence: a stalker (name for clip tracing) or
--- a mutant (species). Neither reads relation/scheme/threat -- that is the perception domain, not A-Life.
+-- Classify one online object and emit it as A-Life presence: a stalker (name for clip tracing) or a mutant (species).
+-- Neither reads relation/scheme/threat; that is the perception domain, not A-Life.
 local function _log_obj(id)
     local st = db.storage[id]
     local obj = st and st.object
@@ -150,8 +150,8 @@ local function _run_diag_item(item)
     return true
 end
 
--- xslice on_done: emit the occupancy histogram (the "gathered in one spot" signal) and the summary,
--- then flush the buffered lines.
+-- xslice on_done: emit the occupancy histogram (the "gathered in one spot" signal) and the summary.
+-- Then flush the buffered lines.
 local function _log_diag_summary()
     local pop = {}
     for smart, count in pairs(_acc.smartpop) do pop[#pop + 1] = { smart = smart, count = count } end
@@ -165,8 +165,8 @@ local function _log_diag_summary()
     _scripted = nil
 end
 
--- Snapshot ids only (pure Lua table-key walks, 0 luabind): AP-controlled squads (all levels), the
--- actor-level squad bucket from ap_core_cache, and every online object (classified inside the drain).
+-- Snapshot ids only (pure Lua table-key walks, 0 luabind): AP-controlled squads and the actor-level squad bucket from ap_core_cache.
+-- Every online object is included, classified inside the drain.
 local function _build_snapshot()
     local items = {}
     if _scripted then
@@ -182,8 +182,8 @@ local function _build_snapshot()
     return items
 end
 
--- Kick one dump: smarts synchronously (bounded, tens per level), then a frame-spread drain of the
--- rest. Skips its own cycle while a prior drain is still running so the two never overlap.
+-- Kick one dump: smarts synchronously (bounded, tens per level), then a frame-spread drain of the rest.
+-- Skips its own cycle while a prior drain is still running so the two never overlap.
 local function _start_diag()
     ResetTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC)
     if xslice.is_active(DRAIN_QUEUE) then return end
@@ -198,8 +198,8 @@ local function _start_diag()
     xslice.start(DRAIN_QUEUE, items, { step = DRAIN_STEP, func = _run_diag_item, on_done = _log_diag_summary })
 end
 
--- Apply the world_trace_enabled toggle: dump the settings snapshot and register the diag timer when
--- turning on, cancel any running drain, remove the timer and flush when turning off. Nothing runs while off.
+-- Apply the world_trace_enabled toggle: on turning on, dump the settings snapshot and register the diag timer.
+-- Turning off cancels any running drain, removes the timer, and flushes; nothing runs while off.
 local function _apply_enabled()
     local want = ap_core_mcm.get_config("world_trace_enabled") and true or false
     if want == _enabled then return end
