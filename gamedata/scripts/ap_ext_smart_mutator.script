@@ -1,25 +1,4 @@
---- ap_ext_smart_mutator: Runtime smart terrain mutations (conquest, swarm, infestation).
---- One descriptor-driven lifecycle -- inject/refresh, a 60s re-apply and a per-respawn faction
---- re-assert against the engine rebuilding respawn_params from LTX on load and reverting
---- smart.faction each online tick; plus decay and save/restore. conquest / swarm / infest
---- are entries in MUTATIONS; all three take exclusive ownership (sole spawn), and a taken smart is
---- never retaken -- is_taken rejects cross-identity and cross-type hits, so takeovers end by decay.
---- Their only real differences (identity is a faction or a species, refresh vs reject on a re-hit,
---- the INFEST_SPECIES allowlist on both mutant types, the infest per-level cap, the spawn count,
---- the cfg keys, the timestamp/save keys) are descriptor fields, not copied code. A new mutation
---- type is a new descriptor, not a new copy.
---- Conquest additionally grows a MINI BASE: at conquest the outpost rolls a plan ONCE (1..N service
---- roles + a guard detail, MCM sliders) and writes one respawn_params row per resident; the ENGINE
---- spawns and replaces them at the world's own pacing (try_respawn: one spawn per cycle, per-row
---- live counters, never in the player's view). Every spawn is pinned at birth via scripted_target,
---- ranked 0 and armed with a sidearm; a service gets its role trade config once online, a money
---- bankroll per restock, and the engine PDA role icon. WHAT spawns is the plan rows; WHEN is a
---- per-mutation MCM interval (mutator_area_*_respawn_minutes, game-minutes) that paces refills through
---- the engine's own last_respawn_update stamp -- the field vanilla try_respawn and ZCP
---- smr_pop.smart_can_respawn both gate on, so it bites on GAMMA and vanilla alike; smart.respawn_idle
---- (which ZCP ignores) is never written. Decay removes AP state and
---- rows only: online services are unmade in place, offline services deleted, guards stay behind
---- as ordinary residents holding the ruins.
+--- ap_ext_smart_mutator: Smart-terrain mutations (conquest/swarm/infest); descriptor lifecycle inject/re-apply/decay/save; conquest grows a mini-base outpost.
 
 local pairs, next, type, tonumber, tostring, RegisterScriptCallback = pairs, next, type, tonumber, tostring, RegisterScriptCallback
 local math_floor, math_random, string_match, string_sub, string_format = math.floor, math.random, string.match, string.sub, string.format
@@ -406,8 +385,6 @@ end
 -- @cost O(rolled roles * conquered) meters, at conquest only
 _build_plan = function(entry, smart_id)
     entry.services = {}
-    -- Suitability gate: services only grow at a smart that reads as an inhabited camp (offline-safe
-    -- place-types, since conquest can fire off the actor level). Unsuitable -> want 0 = guard-only.
     local smart = xobject.get_se(smart_id)
     local suitable = smart and (smart.max_population or 0) >= SERVICE_MIN_MAX_POP
         and (xsmart.has_campfire(smart) or xsmart.has_surge_shelter(smart))
@@ -1020,9 +997,6 @@ local function _load_entry(mut, data, now, smart_id)
         else
             _build_plan(entry, smart_id)
         end
-        -- Trader feature turned off (main-menu toggle, takes effect on load): drop the service plan so
-        -- _apply_service_entries injects no ap_service_<role> rows and no service respawns. The already
-        -- spawned service bodies are removed in _load_holds. Guards and conquest ownership are kept.
         if not cfg.mutator_area_conquest_grow_services then entry.services = {} end
     end
     return entry
@@ -1174,9 +1148,6 @@ local function _load_stock_policy()
     local sections = {}
     for i = 1, #SERVICE_ROLES do sections[i] = STOCK_POLICY_PREFIX .. SERVICE_ROLES[i] end
     local loaded = xinventory.load_policy(STOCK_POLICY_PATH, sections, _STOCK_SPECIALS)
-    -- load_policy yields an EMPTY block (not nil) for a missing file or section, so only a block
-    -- holding at least one rule arms that role, and a gap is loud -- the ruled failure mode is
-    -- "never silently open" (user ruling 2026-07-25).
     local out, money, count, money_count = nil, nil, 0, 0
     for i = 1, #SERVICE_ROLES do
         local role = SERVICE_ROLES[i]
@@ -1339,8 +1310,6 @@ local function _filter_stock(npc, npc_id, role)
         counted[key] = total
         if total > rule.max then drop[#drop + 1] = item end
     end)
-    -- Guard each release on a live server object: a straggler still mid-spawn has a game object
-    -- but no server object yet (the "alife_release | no server object" engine error), skip it.
     local removed = 0
     for i = 1, #drop do
         if xobject.get_se(drop[i]:id()) then
@@ -1538,25 +1507,15 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_CREATION, _on_npc_creation)
     RegisterScriptCallback(CALLBACK.SQUAD_ON_NPC_DEATH, _on_squad_npc_death)
     RegisterScriptCallback(CALLBACK.ON_TRY_RESPAWN, _on_try_respawn)
-    -- Function-level patch (no callback fires inside trade_manager.update; pattern per
-    -- doc/library/modding/script-loading.md monkey-patch section). Raw assignment, not
-    -- xevent.register_hook: the hook registry is single-slot per function key and ap_ext_market already
-    -- holds trade_manager.update; both wrap orders with that hook are correct (its restock
-    -- inject is deferred 0.1s; the below-hub preempt and stamp are synchronous inside this
-    -- wrapper, so either nesting sees a completed restock). The type probe both guards
-    -- a harness without vanilla scripts and triggers the in-game auto-load of trade_manager.
     if not _org_update_trade and type(trade_manager) == "table" and type(trade_manager.update) == "function" then
         _org_update_trade = trade_manager.update
         trade_manager.update = _update_trade
     end
-    -- Same raw-assignment patch shape, one per task reader (see the task gate above).
     if not _org_build_available_tasks and type(axr_task_manager) == "table"
         and type(axr_task_manager.generate_available_tasks) == "function" then
         _org_build_available_tasks = axr_task_manager.generate_available_tasks
         axr_task_manager.generate_available_tasks = _build_available_tasks
     end
-    -- Same shape on the destockifier-family classifier; absent module (no such addon installed)
-    -- probes nil and the wrap is skipped.
     if not _org_get_trader_type and type(trader_autoinject) == "table"
         and type(trader_autoinject.get_trader_type) == "function" then
         _org_get_trader_type = trader_autoinject.get_trader_type
