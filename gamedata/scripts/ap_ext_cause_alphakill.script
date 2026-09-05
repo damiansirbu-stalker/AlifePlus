@@ -47,8 +47,8 @@ local function _on_death(squad, npc, killer)
 
     local species = squad and xcreature.get_mutant_species(squad.id)
 
-    ap_core_limiter.increment_cause_counter(CATEGORY)
-    ap_core_limiter.increment_causer_counter(killer_id)
+    ap_core_limiter.update_cause_counter(CATEGORY)
+    ap_core_limiter.update_causer_counter(killer_id)
     return {
         cause = CAUSE.ALPHAKILL,
         id = victim_id,

@@ -136,7 +136,7 @@ end
 --- Get the cause string a consequence subscribes to.
 --- @param consequence string Consequence registration name
 --- @return string|nil Cause string (e.g. "cause:massacre"), or nil if unregistered
-function get_cause(consequence) return ap_core_consumer.cause_of(consequence) end
+function get_cause(consequence) return ap_core_consumer.get_cause(consequence) end
 
 --- Register a radiant cause predicate. Auto-iterates RADIANT_CALLBACKS so the
 --- predicate fires on every radiant tick. Predicate receives one squad and
@@ -145,7 +145,7 @@ function get_cause(consequence) return ap_core_consumer.cause_of(consequence) en
 ---
 --- Budget gating: integrators self-gate against their per-category cause budget
 --- inside the predicate via ap_core_limiter.check_cause_rate_limit and
---- increment_cause_counter, mirroring the existing ext-cause pattern.
+--- update_cause_counter, mirroring the existing ext-cause pattern.
 ---
 --- @param category string Must be one of ap_core_const.CAUSE_CATEGORY values
 --- @param predicate function(squad) -> table|nil

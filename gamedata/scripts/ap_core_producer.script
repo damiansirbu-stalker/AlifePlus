@@ -46,7 +46,7 @@ local _reactive_ct = { on = 0, off = 0 }
 --- @param on_map boolean true = on-map, false = off-map
 --- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
 --- @return boolean true = allowed, false = blocked
-local function _alife_ratio_gate(on_map, ct)
+local function _check_alife_ratio(on_map, ct)
     if ct.on + ct.off >= COUNTER_FOLD_AT then
         ct.on = 0
         ct.off = 0
@@ -80,7 +80,7 @@ end
 
 --- GATE: PACER-REACTIVE (reactive 1/3)
 --- @cost O(1) | 0 luabind (os.clock is Lua C API, not luabind)
-local function _reactive_pacer_gate(callback_type)
+local function _check_reactive_pacer(callback_type)
     if not _reactive_event_limiter then
         _reactive_event_limiter = xttltable.create_token_bucket({
             capacity = ap_core_const.REACTIVE_EVENT_BURST,
@@ -158,7 +158,7 @@ local function _try_one_reactive(on_map, entry, args, sc)
     if sc then hud.classify_cause(result, false) end
 end
 
-local function _eval_reactive_handlers(handlers, on_map, ...)
+local function _run_reactive_handlers(handlers, on_map, ...)
     -- Lua 5.1 vararg fan-out: we dispatch the same ... to N handlers in the loop below.
     -- Capturing {...} once + unpack(args) per handler is the only way to preserve args
     -- across loop iterations. Allocation is ~50us/sec in dense combat; acceptable cost
@@ -176,7 +176,7 @@ local _cascade_buf = {}
 local math_random = math.random
 
 --- Replace the entry in _cascade_buf whose handler ref matches. Used by register() on re-register.
-local function _replace_cascade_entry(handler, entry)
+local function _set_cascade_entry(handler, entry)
     for i = 1, #_cascade_buf do
         if _cascade_buf[i].handler == handler then
             _cascade_buf[i] = entry
@@ -209,7 +209,7 @@ local function _try_one_radiant(on_map, squad, entry, sc)
     return false
 end
 
-local function _eval_radiant_cascade(on_map, squad)
+local function _run_radiant_cascade(on_map, squad)
     local cascade_size = #_cascade_buf
     for i = cascade_size, 2, -1 do
         local j = math_random(i)
@@ -263,7 +263,7 @@ local function _on_radiant(squad, changed)
     -- EVAL cascade. No ratio gate: the sweep already produced this fire under the
     -- configured rate and current-level/background mix; rejecting here would fight
     -- the intake control. on_map (squad.online) stays a payload/telemetry fact only.
-    _eval_radiant_cascade(squad.online, squad)
+    _run_radiant_cascade(squad.online, squad)
 end
 
 --- Resolve on-map status for a reactive callback from known-online callbacks or squad.online
@@ -284,20 +284,20 @@ local function _on_reactive(callback_type, ...)
     local sc = hud_collecting()
 
     if sc then sx.events = sx.events + 1 end
-    if not _reactive_pacer_gate(callback_type) then
+    if not _check_reactive_pacer(callback_type) then
         if sc then sx.pacer = sx.pacer + 1 end
         return
     end
 
     local first_arg = select(1, ...)
     local on_map = _resolve_on_map(callback_type, first_arg)
-    if on_map ~= nil and not _alife_ratio_gate(on_map, _reactive_ct) then
+    if on_map ~= nil and not _check_alife_ratio(on_map, _reactive_ct) then
         ap_core_debug.debug("[PRODUCER.REACTIVE] ALIFE_RATIO_BLOCKED callback=%s alife_ratio=%d on=%d off=%d",
             callback_type, cfg.alife_ratio, _reactive_ct.on, _reactive_ct.off)
         if sc then sx.ratio = sx.ratio + 1 end
         return
     end
-    _eval_reactive_handlers(handlers, on_map, ...)
+    _run_reactive_handlers(handlers, on_map, ...)
 end
 
 local function _create_reactive_dispatcher(callback)
@@ -388,7 +388,7 @@ function register(config, handler)
     if cause_type == CAUSE_TYPE.RADIANT then
         _radiant_callbacks[callback] = true
         if existing_idx then
-            _replace_cascade_entry(handler, entry)
+            _set_cascade_entry(handler, entry)
         else
             _cascade_buf[#_cascade_buf + 1] = entry
         end

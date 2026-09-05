@@ -1,6 +1,6 @@
 # AlifePlus Integration
 
-This file is for mods that want to react to AlifePlus, drive squads through it, or add their own causes and consequences. Everything you call goes through *ap_api*, plus two supported read-only surfaces for pipeline participants: the enums in *ap_core_const* (*CAUSE_CATEGORY*, *CAUSE_TYPE*, *RESULT*, *REASON*, *CALLBACK*) and the self-gating pair in *ap_core_limiter* (*check_cause_rate_limit* / *increment_cause_counter*). Every other *ap_core_\** module is internal; using it directly is not supported across versions.
+This file is for mods that want to react to AlifePlus, drive squads through it, or add their own causes and consequences. Everything you call goes through *ap_api*, plus two supported read-only surfaces for pipeline participants: the enums in *ap_core_const* (*CAUSE_CATEGORY*, *CAUSE_TYPE*, *RESULT*, *REASON*, *CALLBACK*) and the self-gating pair in *ap_core_limiter* (*check_cause_rate_limit* / *update_cause_counter*). Every other *ap_core_\** module is internal; using it directly is not supported across versions.
 
 > [!IMPORTANT]
 > Always feature-detect. *ap_api* may exist but lack a specific function; check the function before calling it. Every example below follows this convention.
@@ -253,7 +253,7 @@ local function _predicate(squad)
     end
     local smart = find_empty_smart_near(squad)
     if not smart then return nil end
-    ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.update_cause_counter(CATEGORY)
     return {
         cause     = CAUSE_AMBUSH,
         squad_id  = squad.id,
@@ -308,7 +308,7 @@ Conventions:
 - Consequence names: namespace as *"consequence:&lt;modname&gt;_&lt;event&gt;"* so the consequence enum value is itself a valid localization id.
 - Pass the consequence registration name as *on_arrive* if you want the consequence to handle its own arrivals.
 - Always call *add_record* after a SUCCESS dispatch. Without a record, no marker is shown and news cannot narrate the event.
-- Self-gate against the per-category cause budget with *ap_core_limiter.check_cause_rate_limit* and *increment_cause_counter*. The framework does not gate this for you.
+- Self-gate against the per-category cause budget with *ap_core_limiter.check_cause_rate_limit* and *update_cause_counter*. The framework does not gate this for you.
 - Predicate payload must include *squad_id* and *level_id* (AP debug log reads them).
 
 Predicate return shapes:

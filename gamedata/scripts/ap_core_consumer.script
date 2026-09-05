@@ -81,20 +81,20 @@ end
 --- @cost O(1) | 0 luabind
 --- @param consequence string Consequence registration name
 --- @return string|nil Cause string (e.g. "cause:massacre"), or nil
-function cause_of(consequence)
+function get_cause(consequence)
     return _cause_for[consequence]
 end
 
 -- @cost O(1) | 0 luabind
 local function _on_success(entry_name, is_radiant, event_data)
-    if is_radiant then ap_core_limiter.increment_global_consequence_counter() end
-    ap_core_limiter.increment_consequence_counter(entry_name)
+    if is_radiant then ap_core_limiter.update_global_consequence_counter() end
+    ap_core_limiter.update_consequence_counter(entry_name)
     if event_data then event_data._fired = true end
 end
 
 
 -- Dispatch one consequence. Returns (stop, ran): stop ends the loop, ran means the handler executed.
-local function _dispatch_entry(entry, event_type, event_data, is_radiant, sc)
+local function _run_entry(entry, event_type, event_data, is_radiant, sc)
     if is_radiant and not ap_core_limiter.check_global_consequence_rate_limit() then
         ap_core_debug.debug("[CONSUMER] GLOBAL_RATE_EXHAUSTED consequence=%s cause=%s", entry.name, event_type)
         if sc then hud.inc_cap() end
@@ -123,7 +123,7 @@ local function _dispatch_entry(entry, event_type, event_data, is_radiant, sc)
     return false, true
 end
 
-local function _process(event_type, event_data)
+local function _run_consequences(event_type, event_data)
     local consequences = _registry[event_type]
     if not consequences or #consequences == 0 then return end
 
@@ -143,7 +143,7 @@ local function _process(event_type, event_data)
     local ran_count = 0
 
     for i = 1, count do
-        local stop, ran = _dispatch_entry(consequences[i], event_type, event_data, is_radiant, sc)
+        local stop, ran = _run_entry(consequences[i], event_type, event_data, is_radiant, sc)
         if stop then break end
         if not ran or is_radiant then goto continue end
         ran_count = ran_count + 1
@@ -153,12 +153,12 @@ local function _process(event_type, event_data)
 end
 
 
-local function _make_handler(event)
-    return function(event_data) _process(event, event_data) end
+local function _create_handler(event)
+    return function(event_data) _run_consequences(event, event_data) end
 end
 
 _subscribe_event = function(event)
-    ap_core_util.event_subscribe(event, _make_handler(event), "consumer")
+    ap_core_util.event_subscribe(event, _create_handler(event), "consumer")
 end
 
 local function _subscribe()

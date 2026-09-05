@@ -45,8 +45,8 @@ local function _on_squad_npc_death(squad, npc, killer)
         return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
     end
 
-    ap_core_limiter.increment_cause_counter(CATEGORY)
-    ap_core_limiter.increment_causer_counter(killer_id)
+    ap_core_limiter.update_cause_counter(CATEGORY)
+    ap_core_limiter.update_causer_counter(killer_id)
     return {
         cause = CAUSE.SQUADKILL,
         squad_id = squad.id,

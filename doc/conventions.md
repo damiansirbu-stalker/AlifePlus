@@ -91,7 +91,7 @@ Causes are predicates. Return `{ cause = CAUSE.X, ...payload }` or `nil`.
 
 | Element | Owner | Purpose |
 |---------|-------|---------|
-| Rate limiter | Predicate | Self-gates the per-CAUSE_CATEGORY sliding window (`ap_core_limiter.check_cause_rate_limit` at the top, `increment_cause_counter` on publish); the producer does not rate-check |
+| Rate limiter | Predicate | Self-gates the per-CAUSE_CATEGORY sliding window (`ap_core_limiter.check_cause_rate_limit` at the top, `update_cause_counter` on publish); the producer does not rate-check |
 | Enabled gate | Predicate | MCM toggle (`cause_<name>_enabled`), early return |
 | World-state filter | Predicate | Business logic that decides whether to publish |
 

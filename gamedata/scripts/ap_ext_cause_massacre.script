@@ -46,8 +46,8 @@ local function _on_squad_npc_death(squad, se_victim, se_killer)
     end
 
     _deaths:remove(smart.id)
-    ap_core_limiter.increment_cause_counter(CATEGORY)
-    ap_core_limiter.increment_causer_counter(se_killer.id)
+    ap_core_limiter.update_cause_counter(CATEGORY)
+    ap_core_limiter.update_causer_counter(se_killer.id)
     return {
         cause = CAUSE.MASSACRE,
         smart = smart,

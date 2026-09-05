@@ -180,7 +180,7 @@ local function _eval_cause(squad, level_id, overdue_entry, entry, budget)
     if not ap_ext_util.is_tactically_eligible(squad, smart) then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_TACTICS }
     end
-    if entry.offmap then ap_core_limiter.increment_offmap_counter(level_id) end
+    if entry.offmap then ap_core_limiter.update_offmap_counter(level_id) end
     return {
         cause = entry.cause,
         dto_field = overdue_entry.need.field,
@@ -258,7 +258,7 @@ local function _on_smart(squad)
     end
     if not result then return { code = RESULT.FAILED_RULES, reason = REASON.NO_BRANCH, community = squad.player_id } end
 
-    ap_core_limiter.increment_cause_counter(CATEGORY)
+    ap_core_limiter.update_cause_counter(CATEGORY)
     return result
 end
 

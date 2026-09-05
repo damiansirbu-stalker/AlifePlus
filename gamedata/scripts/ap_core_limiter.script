@@ -19,14 +19,14 @@ end
 local _cause_counter = nil
 local _consequence_limiter = nil
 
-local function _ensure_cause_counter()
+local function _get_cause_counter()
     if not _cause_counter then
         _cause_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.CAUSE_WINDOW_SEC })
     end
     return _cause_counter
 end
 
-local function _ensure_consequence_limiter()
+local function _get_consequence_limiter()
     if not _consequence_limiter then
         local max = cfg.consequence_max_events
         local window = ap_core_const.CONSEQUENCE_WINDOW_SEC
@@ -43,7 +43,7 @@ end
 --- @param max number Cap for this counter; counter < max = allowed
 --- @return boolean allowed, number count, number max
 function check_cause_rate_limit(key, max)
-    local counter = _ensure_cause_counter()
+    local counter = _get_cause_counter()
     local count = counter:get_count(_get_cause_rate_key(key))
     if count >= max then
         return false, count, max
@@ -54,29 +54,29 @@ end
 --- Increment per-key cause counter after publish.
 --- @cost O(1) | 0 luabind
 --- @param key string Counter key (same key passed to check_cause_rate_limit)
-function increment_cause_counter(key)
-    local counter = _ensure_cause_counter()
+function update_cause_counter(key)
+    local counter = _get_cause_counter()
     counter:add(_get_cause_rate_key(key))
 end
 
 --- Check consequence rate limit via token bucket peek (true = allowed, false = blocked)
 --- @cost O(1) | 0 luabind
 function check_consequence_rate_limit(name)
-    local limiter = _ensure_consequence_limiter()
+    local limiter = _get_consequence_limiter()
     return limiter:check(_get_consequence_rate_key(name))
 end
 
 --- Acquire consequence token after success
 --- @cost O(1) | 0 luabind
-function increment_consequence_counter(name)
-    local limiter = _ensure_consequence_limiter()
+function update_consequence_counter(name)
+    local limiter = _get_consequence_limiter()
     limiter:get_token(_get_consequence_rate_key(name))
 end
 
 local _GLOBAL_CONSEQUENCE_RATE_KEY = "global_consequence"
 local _global_consequence_counter = nil
 
-local function _ensure_global_consequence_counter()
+local function _get_global_consequence_counter()
     if not _global_consequence_counter then
         _global_consequence_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.GLOBAL_CONSEQUENCE_WINDOW_SEC })
     end
@@ -86,14 +86,14 @@ end
 --- Check global consequence rate limit (true = allowed, false = max events reached in window)
 --- @cost O(1) | 0 luabind
 function check_global_consequence_rate_limit()
-    local counter = _ensure_global_consequence_counter()
+    local counter = _get_global_consequence_counter()
     return counter:get_count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
 end
 
 --- Increment global consequence counter after a consequence fires
 --- @cost O(1) | 0 luabind
-function increment_global_consequence_counter()
-    local counter = _ensure_global_consequence_counter()
+function update_global_consequence_counter()
+    local counter = _get_global_consequence_counter()
     counter:add(_GLOBAL_CONSEQUENCE_RATE_KEY)
 end
 
@@ -139,7 +139,7 @@ end
 --- Increment offmap counter after a successful offmap dispatch.
 --- @cost O(1) | 0 luabind
 --- @param level_id number Source map id
-function increment_offmap_counter(level_id)
+function update_offmap_counter(level_id)
     _offmap_counter:add(_get_offmap_rate_key(level_id))
 end
 
@@ -172,7 +172,7 @@ end
 --- Increment the per-causer counter after a reactive cause publishes.
 --- @cost O(1) | 0 luabind
 --- @param causer_id number|nil Source entity id
-function increment_causer_counter(causer_id)
+function update_causer_counter(causer_id)
     if not causer_id then return end
     _causer_counter:add(_get_causer_rate_key(causer_id))
 end

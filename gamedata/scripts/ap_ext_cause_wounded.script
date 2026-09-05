@@ -59,8 +59,8 @@ local function _on_npc_medkit_use(npc, _medkit, kind)
     if not se_npc then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
     local level_id = xlevel.get_level_id(se_npc)
 
-    ap_core_limiter.increment_cause_counter(CATEGORY)
-    ap_core_limiter.increment_causer_counter(npc:id())
+    ap_core_limiter.update_cause_counter(CATEGORY)
+    ap_core_limiter.update_causer_counter(npc:id())
     return {
         cause = CAUSE.WOUNDED,
         npc_id = npc:id(),
@@ -92,8 +92,8 @@ local function _on_actor_item_use(_item, section)
         return { code = RESULT.FAILED_RULES, reason = REASON.CAUSER_EXHAUSTED }
     end
 
-    ap_core_limiter.increment_cause_counter(CATEGORY)
-    ap_core_limiter.increment_causer_counter(xconst.ACTOR_ENTITY_ID)
+    ap_core_limiter.update_cause_counter(CATEGORY)
+    ap_core_limiter.update_causer_counter(xconst.ACTOR_ENTITY_ID)
     return {
         cause = CAUSE.WOUNDED,
         npc_id = nil,
