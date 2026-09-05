@@ -64,7 +64,7 @@ local FIRE_ATTEMPTS_MAX = 8
 --- Per-squad state: [squad_id] = { gvid, online, smart_id, action, fired_at, lane }.
 --- gvid stands in for position: the engine advances m_game_vertex_id as the squad walks,
 --- so it is a pre-quantized movement signal with no vector userdata allocation. lane is
---- the fire-lane the id currently sits in ("cur"/"bg"), maintained by _lane_place.
+--- the fire-lane the id currently sits in ("cur"/"bg"), maintained by _add_to_lane.
 local _squad_snapshots = {}
 -- Walk cursor state: id snapshot of the squad pool (never live refs).
 local _squad_ids = nil
@@ -78,7 +78,7 @@ local _squad_pending_set = {}
 -- Live lane membership, consumed round-robin by the fire engine. One array per lane plus
 -- _squad_pos_of[id] = index in its lane array (which array = snap.lane): the single
 -- membership truth - an id is in exactly one array at exactly one index, moved in place
--- by _lane_place when its level changes, evicted by _evict. Never rebuilt or swapped;
+-- by _add_to_lane when its level changes, evicted by _remove_squad. Never rebuilt or swapped;
 -- the engine's own alife scheduler round-robins a live registry the same way
 -- (alife_schedule_registry.h:25-51).
 local _squad_lane = { cur = {}, bg = {} }
@@ -99,7 +99,7 @@ local _squad_pass_started = 0
 -- Remove id from its lane array: swap-with-last keeps the array dense at O(1); the
 -- cursor clamps so a shrunken lane never leaves it out of range.
 -- @cost O(1) | 0 luabind
-local function _lane_remove(id, lane_key)
+local function _remove_from_lane(id, lane_key)
     local index = _squad_pos_of[id]
     if not index then return end
     local list = _squad_lane[lane_key]
@@ -115,10 +115,10 @@ end
 -- Put id in the lane implied by is_cur, moving it out of the other lane when its level
 -- changed. No-op on the common path (lane unchanged): one field compare.
 -- @cost O(1) | 0 luabind
-local function _lane_place(id, snap, is_cur)
+local function _add_to_lane(id, snap, is_cur)
     local lane_key = is_cur and "cur" or "bg"
     if snap.lane == lane_key then return end
-    if snap.lane then _lane_remove(id, snap.lane) end
+    if snap.lane then _remove_from_lane(id, snap.lane) end
     local list = _squad_lane[lane_key]
     list[#list + 1] = id
     _squad_pos_of[id] = #list
@@ -132,9 +132,9 @@ end
 -- destroy event marks the identity boundary (ids are pooled and reused,
 -- xrServer.cpp:873 vfFreeID). The resolve-nil call sites are the backstop.
 -- @cost O(1) | 0 luabind
-local function _evict(id)
+local function _remove_squad(id)
     local snap = _squad_snapshots[id]
-    if snap and snap.lane then _lane_remove(id, snap.lane) end
+    if snap and snap.lane then _remove_from_lane(id, snap.lane) end
     _squad_snapshots[id] = nil
     _squad_pending_set[id] = nil
 end
@@ -143,7 +143,7 @@ end
 -- Returns the number of changed fields (0 = unchanged).
 -- @cost O(1) | 2 luabind trivial (m_game_vertex_id, online); smart_id and
 --             current_action are Lua-side fields
-local function _squad_diff(squad, snap)
+local function _compute_diff(squad, snap)
     local changed_count = 0
     if snap.gvid ~= squad.m_game_vertex_id then
         changed_count = changed_count + 1; _squad_changed[changed_count] = "gvid"
@@ -165,10 +165,10 @@ end
 -- queued change re-verifies against live fields at fire time. A squad is fireable from
 -- the moment it is first seen - game start and mid-session spawn behave identically.
 -- @cost O(1) | 1 medium (alife_object via xobject.get_se) + 0-2 cached-graph lookups + diff
-local function _squad_visit(id, actor_level, stat_on)
+local function _check_squad(id, actor_level, stat_on)
     local squad = xobject.get_se(id)
     if not squad then
-        _evict(id)
+        _remove_squad(id)
         return
     end
     if stat_on then _squad_stat.visits = _squad_stat.visits + 1 end
@@ -178,11 +178,11 @@ local function _squad_visit(id, actor_level, stat_on)
         snap = { gvid = squad.m_game_vertex_id, online = not not squad.online,
             smart_id = squad.smart_id, action = squad.current_action, fired_at = 0 }
         _squad_snapshots[id] = snap
-        _lane_place(id, snap, is_cur)
+        _add_to_lane(id, snap, is_cur)
         return
     end
-    _lane_place(id, snap, is_cur)
-    if _squad_diff(squad, snap) == 0 or _squad_pending_set[id] then return end
+    _add_to_lane(id, snap, is_cur)
+    if _compute_diff(squad, snap) == 0 or _squad_pending_set[id] then return end
     _squad_pending_set[id] = true
     local fifo = is_cur and _squad_pending.cur or _squad_pending.bg
     fifo.tail = fifo.tail + 1
@@ -192,12 +192,12 @@ end
 
 -- Bresenham lane pick for one credit. Returns true = current-level lane, false = background.
 -- Reads cfg.alife_ratio live: the same slider the reactive ratio gate uses, so both lanes
--- share one mix source. Pure chooser: the counters advance in _squad_spend_credit AFTER a
+-- share one mix source. Pure chooser: the counters advance in _run_credit AFTER a
 -- successful fire, on the lane that actually fired, so the recorded mix is the real mix
 -- even when the cross-lane fallback fires the other lane - a blocked lane keeps being
 -- proposed (its counter frozen) and the mix reasserts the moment it unblocks.
 -- @cost O(1) | 0 luabind
-local function _squad_pick_lane()
+local function _select_lane()
     local bias = cfg.alife_ratio
     local ct = _squad_lane_ct
     if ct.cur + ct.bg >= 32768 then ct.cur = 0; ct.bg = 0 end
@@ -209,7 +209,7 @@ end
 
 -- Pop the oldest still-pending change id from a lane FIFO (skips despawn-evicted ids).
 -- @cost amortized O(1) | 0 luabind
-local function _squad_pop_pending(fifo)
+local function _pop_pending(fifo)
     local items = fifo.items
     while fifo.head <= fifo.tail do
         local id = items[fifo.head]
@@ -227,7 +227,7 @@ end
 
 -- Next round-robin candidate id from a lane's live array, nil when the lane is empty.
 -- @cost O(1) | 0 luabind
-local function _squad_next_round_robin(lane_key)
+local function _get_next_round_robin(lane_key)
     local list = _squad_lane[lane_key]
     local size = #list
     if size == 0 then return nil end
@@ -241,15 +241,15 @@ end
 -- change that reverted between detection and fire goes out as a round-robin fire).
 -- Returns true when the callback was sent (the credit is spent).
 -- @cost O(1) | 1 medium resolve + diff + SendScriptCallback fan-out
-local function _squad_fire(id, lane_key, now, stat_on)
+local function _notify_change(id, lane_key, now, stat_on)
     local squad = xobject.get_se(id)
     if not squad then
-        _evict(id)
+        _remove_squad(id)
         return false
     end
     local snap = _squad_snapshots[id]
     if not snap or (now - snap.fired_at) < SWEEP_REFRACTORY_SEC then return false end
-    local changed_count = _squad_diff(squad, snap)
+    local changed_count = _compute_diff(squad, snap)
     for index = changed_count + 1, #_squad_changed do _squad_changed[index] = nil end
     _squad_curr.gvid = squad.m_game_vertex_id
     _squad_curr.online = not not squad.online
@@ -280,34 +280,34 @@ end
 -- Try to fire from one lane: oldest queued change first, then round-robin. Returns the
 -- remaining attempt budget and whether a fire happened.
 -- @cost O(attempts) | <= attempts resolves worst case, 1 typical
-local function _squad_try_lane(lane_key, now, attempts, stat_on)
+local function _try_lane(lane_key, now, attempts, stat_on)
     local fifo = _squad_pending[lane_key]
     while attempts > 0 do
-        local id = _squad_pop_pending(fifo)
+        local id = _pop_pending(fifo)
         if not id then break end
         attempts = attempts - 1
-        if _squad_fire(id, lane_key, now, stat_on) then return attempts, true end
+        if _notify_change(id, lane_key, now, stat_on) then return attempts, true end
     end
     local remaining = #_squad_lane[lane_key]
     while attempts > 0 and remaining > 0 do
         attempts = attempts - 1
         remaining = remaining - 1
-        local id = _squad_next_round_robin(lane_key)
-        if id and _squad_fire(id, lane_key, now, stat_on) then return attempts, true end
+        local id = _get_next_round_robin(lane_key)
+        if id and _notify_change(id, lane_key, now, stat_on) then return attempts, true end
     end
     return attempts, false
 end
 
 -- Spend one credit: pick the lane, try it, fall back to the other lane, drop the credit
 -- after FIRE_ATTEMPTS_MAX dead candidates (despawned or inside refractory). The Bresenham
--- counter advances here, on the lane that actually fired (see _squad_pick_lane).
+-- counter advances here, on the lane that actually fired (see _select_lane).
 -- @cost O(attempts) | <= FIRE_ATTEMPTS_MAX resolves worst case, 1 typical
-local function _squad_spend_credit(now, stat_on)
-    local lane_key = _squad_pick_lane() and "cur" or "bg"
-    local attempts, fired = _squad_try_lane(lane_key, now, FIRE_ATTEMPTS_MAX, stat_on)
+local function _run_credit(now, stat_on)
+    local lane_key = _select_lane() and "cur" or "bg"
+    local attempts, fired = _try_lane(lane_key, now, FIRE_ATTEMPTS_MAX, stat_on)
     if not fired then
         lane_key = lane_key == "cur" and "bg" or "cur"
-        attempts, fired = _squad_try_lane(lane_key, now, attempts, stat_on)
+        attempts, fired = _try_lane(lane_key, now, attempts, stat_on)
     end
     if not fired then
         if stat_on then _squad_stat.dropped = _squad_stat.dropped + 1 end
@@ -325,7 +325,7 @@ end
 -- Emit the pass summary and reset the accumulators. Caller gates on stat_on, so this only
 -- runs with DEBUG enabled.
 -- @cost O(1) | log write only
-local function _squad_log_pass(pass_seconds)
+local function _log_pass(pass_seconds)
     local stat = _squad_stat
     local avg_ms = stat.ticks > 0 and stat.tick_ms / stat.ticks or 0
     ap_core_debug.debug(
@@ -342,13 +342,13 @@ end
 -- The id array rebuilds once per full pass via xsquad.collect_squad_ids; iteration never
 -- touches the live SIMBOARD table, so mid-tick spawn/despawn cannot invalidate the walk.
 -- @cost O(SWEEP_BATCH + fires) per tick, constant vs total squad count
-local function _squad_tick()
+local function _update_sweep()
     ResetTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC)
     local stat_on = ap_core_debug.is_enabled()
     local prof = xprofiler.new_if(stat_on):start()
     local now = clock()
     if not _squad_ids or _squad_pos >= #_squad_ids then
-        if _squad_ids and stat_on then _squad_log_pass(now - _squad_pass_started) end
+        if _squad_ids and stat_on then _log_pass(now - _squad_pass_started) end
         _squad_pass_started = now
         local ids, count = xsquad.collect_squad_ids(_squad_ids)
         _squad_ids = ids
@@ -360,13 +360,13 @@ local function _squad_tick()
     local last = _squad_pos + SWEEP_BATCH
     if last > #ids then last = #ids end
     for index = _squad_pos + 1, last do
-        _squad_visit(ids[index], actor_level, stat_on)
+        _check_squad(ids[index], actor_level, stat_on)
     end
     _squad_pos = last
     _squad_credit = _squad_credit + cfg.alife_rate * (SWEEP_TICK_SEC / 60)
     while _squad_credit >= 1 do
         _squad_credit = _squad_credit - 1
-        _squad_spend_credit(now, stat_on)
+        _run_credit(now, stat_on)
     end
     if stat_on then
         prof:stop()
@@ -378,21 +378,21 @@ local function _squad_tick()
     end
 end
 
--- Evict sweep state on squad despawn - the prompt path (see _evict for why it is
+-- Evict sweep state on squad despawn - the prompt path (see _remove_squad for why it is
 -- load-bearing). Coverage is exact: sim_squad_scripted:on_unregister fires this callback
 -- one line before it removes the id from SIMBOARD.squads (:1018-1019), and that removal
 -- is the only one, so every id discovery can see gets this event on destroy. The
--- resolve-time _evict calls catch anything exotic that bypasses it.
+-- resolve-time _remove_squad calls catch anything exotic that bypasses it.
 -- @cost O(1) | 1 luabind (clsid)
-local function _squad_on_entity_unregister(se_obj)
+local function _on_squad_unregister(se_obj)
     if not se_obj then return end
     if se_obj:clsid() == CLSID_SQUAD then
-        _evict(se_obj.id)
+        _remove_squad(se_obj.id)
     end
 end
 
 -- Reset all mutable sweep state so a new game or a mid-session load starts clean.
-local function _squad_reset()
+local function _reset_sweep()
     _squad_snapshots = {}
     _squad_ids = nil
     _squad_pos = 0
@@ -413,7 +413,7 @@ end
 --- it via alife_release_id).
 
 -- @cost O(1) install | per heal: 1 SendScriptCallback + original consume_medkit
-local function _medkit_install()
+local function _register_medkit_hook()
     return xevent.register_hook("xr_eat_medkit", "consume_medkit", function(orig, npc, medkit, kind)
         SendScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE, npc, medkit, kind)
         return orig(npc, medkit, kind)
@@ -424,9 +424,9 @@ end
 
 --- Install both events: the squad sweep (despawn eviction + 1s tick) and the medkit hook.
 function on_game_start()
-    _squad_reset()
-    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _squad_on_entity_unregister)
-    CreateTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC, _squad_tick)
-    _medkit_install()
+    _reset_sweep()
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_squad_unregister)
+    CreateTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC, _update_sweep)
+    _register_medkit_hook()
     ap_core_debug.info(LOG .. " Initialized (squad sweep + medkit hook)")
 end
