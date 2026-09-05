@@ -25,7 +25,7 @@ local function _on_arrive_conquer(squad, args)
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
-    ap_ext_smart_mutator.conquer_smart(args.target_smart_id, args.identity, args.level_id)
+    ap_ext_smart_mutator.apply_conquest(args.target_smart_id, args.identity, args.level_id)
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s [tid=%d] arrive conquer smart=%d identity=%s [%.2fms]", LOG, tid,
@@ -39,7 +39,7 @@ local function _on_arrive_swarm(squad, args)
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
-    ap_ext_smart_mutator.swarm_smart(args.target_smart_id, args.identity, args.level_id)
+    ap_ext_smart_mutator.apply_swarm(args.target_smart_id, args.identity, args.level_id)
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s [tid=%d] arrive swarm smart=%d species=%s [%.2fms]", LOG, tid,
@@ -53,7 +53,7 @@ local function _on_arrive_infest(squad, args)
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
-    ap_ext_smart_mutator.infest_smart(args.target_smart_id, args.species, args.level_id)
+    ap_ext_smart_mutator.apply_infest(args.target_smart_id, args.species, args.level_id)
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s [tid=%d] arrive infest smart=%d species=%s [%.2fms]", LOG, tid,

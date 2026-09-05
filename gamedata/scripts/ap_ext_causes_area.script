@@ -183,7 +183,7 @@ local function _compute_conquer(squad, now, level_id, budget)
     if not _check_census_share(census, census and (census.by_comm[squad.player_id] or 0) or 0) then
         return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
     end
-    if ap_ext_smart_mutator.conquest_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level then
+    if ap_ext_smart_mutator.get_conquest_count(squad.player_id, level_id) >= cfg.cause_area_conquer_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
     end
     if budget.remaining <= 0 then
@@ -223,7 +223,7 @@ local function _compute_swarm(squad, species, now, level_id, budget)
     if not _check_census_share(census, census and census.mutant or 0) then
         return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
     end
-    if ap_ext_smart_mutator.swarm_count(level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level then
+    if ap_ext_smart_mutator.get_swarm_count(level_id) >= cfg.cause_area_swarm_max_faction_smarts_per_level then
         return { code = RESULT.FAILED_RULES, reason = REASON.MAX_FACTION_SMARTS }
     end
     if budget.remaining <= 0 then
