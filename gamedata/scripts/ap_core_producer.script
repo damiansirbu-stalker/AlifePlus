@@ -34,7 +34,7 @@ local _always_on_map = {
 --- Weighted fair-share counters for reactive on-map vs off-map ratio (radiant mix is enforced in the sweep).
 local _reactive_ct = { on = 0, off = 0 }
 
---- GATE: RATIO (reactive 2/3)
+--- Ratio gate (reactive 2/3): allow one event by the on-map vs off-map fair-share ratio (cfg.alife_ratio).
 --- @cost O(1) | 0 luabind
 --- @param on_map boolean true = on-map, false = off-map
 --- @param ct table { on=N, off=N } mutable counter pair (one per pipeline, allocated once)
@@ -71,7 +71,7 @@ local function _check_alife_ratio(on_map, ct)
     return false
 end
 
---- GATE: PACER-REACTIVE (reactive 1/3)
+--- Pacer gate (reactive 1/3): rate-limit reactive events through a shared token bucket.
 --- @cost O(1) | 0 luabind (os.clock is Lua C API, not luabind)
 local function _check_reactive_pacer(callback_type)
     if not _reactive_event_limiter then
@@ -91,7 +91,7 @@ local function _find_handler_index_by_handler(entries, handler)
     return nil
 end
 
--- Check structural invariant: radiant and reactive causes must not share a callback
+-- Check the structural invariant: radiant and reactive causes must not share a callback.
 local function _check_cross_type(cause_type, callback)
     if cause_type == CAUSE_TYPE.REACTIVE and _radiant_callbacks[callback] then
         return "reactive cause on radiant callback"
@@ -122,8 +122,8 @@ local function _try_publish(on_map, result, category, cause_type)
         result.cause, category, result.squad_id, on_map, result.level_id)
 end
 
--- Run one reactive handler: publish on cause, classify on a non-publishing rejection; times and
--- logs the outcome when DEBUG is on.
+-- Run one reactive handler: publish on cause, classify on a non-publishing rejection.
+-- Times and logs the outcome when DEBUG is on.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_reactive(on_map, entry, args, sc)
     local dbg = ap_core_debug.is_enabled()
@@ -164,8 +164,8 @@ local function _set_cascade_entry(handler, entry)
     end
 end
 
--- Run one radiant cascade entry: publish on cause (caller breaks), classify on a non-publishing
--- rejection; times and logs the outcome when DEBUG is on.
+-- Run one radiant cascade entry: publish on cause (caller breaks), classify on a non-publishing rejection.
+-- Times and logs the outcome when DEBUG is on.
 -- @cost O(1) | 0 luabind (delegates to handler)
 local function _try_radiant(on_map, squad, entry, sc)
     local dbg = ap_core_debug.is_enabled()
@@ -197,8 +197,8 @@ local function _run_radiant_cascade(on_map, squad)
     end
 end
 
---- Radiant handler for ap_squad_on_change (the ap_core_callbacks sweep): gates BUDGET -> is_protected
---- -> EVAL cascade. Rate and level mix are enforced in the sweep, not here.
+--- Radiant handler for ap_squad_on_change (the ap_core_callbacks sweep): gates BUDGET -> is_protected -> EVAL cascade.
+--- Rate and level mix are enforced in the sweep, not here.
 local function _on_radiant(squad, changed)
     if #_cascade_buf == 0 then return end
     local sc = hud_collecting()
@@ -227,7 +227,7 @@ local function _on_radiant(squad, changed)
     _run_radiant_cascade(squad.online, squad)
 end
 
---- Resolve on-map status for a reactive callback from known-online callbacks or squad.online
+--- Resolve on-map status for a reactive callback from known-online callbacks or squad.online.
 -- @cost O(1) | 0 luabind
 local function _resolve_on_map(callback_type, first_arg)
     local on_map = _always_on_map[callback_type]
@@ -280,7 +280,7 @@ local function _subscribe_late(callback, cause_type)
     ap_core_debug.debug("[PRODUCER.LATE_BIND] subscribed callback=%s type=%s", callback, cause_type)
 end
 
---- Subscribe radiant (shared _on_radiant) and reactive (per-callback _on_reactive)
+--- Subscribe radiant (shared _on_radiant) and reactive (per-callback _on_reactive) callbacks.
 local function _init_subscriptions()
     for callback in pairs(_radiant_callbacks) do
         if _subscribed[callback] then goto continue end
@@ -301,8 +301,8 @@ local function _init_subscriptions()
     end
 end
 
---- Register a cause handler (dedup by function ref); category drives rate-limit grouping, name is
---- the log label. Write-through to _handlers/_radiant_callbacks/_cascade_buf, late-binding after first update.
+--- Register a cause handler (dedup by function ref); category drives rate-limit grouping, name is the log label.
+--- Write-through to _handlers/_radiant_callbacks/_cascade_buf, late-binding after first update.
 --- @cost O(1) amortized | 0 luabind (one table insert per registration)
 --- @param config table { callback, cause_type, category, name }
 --- @param handler function(...) Handler function
@@ -361,8 +361,8 @@ local function _on_first_update()
     _first_update_done = true
 end
 
---- on_game_start: reset state + register deferred init. The ap_squad_on_change sweep installs itself
---- in ap_core_callbacks and reads the rate/ratio live, so the producer only subscribes.
+--- on_game_start: reset state + register deferred init.
+--- The ap_squad_on_change sweep installs itself in ap_core_callbacks and reads the rate/ratio live, so the producer only subscribes.
 function on_game_start()
     _dispatchers = {}
     _subscribed = {}

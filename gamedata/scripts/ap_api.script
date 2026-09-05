@@ -39,8 +39,8 @@ local function _clone_entry(entry)
     return xtable.clone(entry)
 end
 
---- Shallow-copied snapshot of the AP-scripted squads table (keyed by squad id); the outer table and
---- each entry are fresh per call. Prefer get_scripted_squad(id) for one lookup. Fields: architecture.md.
+--- Shallow-copied snapshot of the AP-scripted squads table (keyed by squad id); the outer table and each entry are fresh per call.
+--- Prefer get_scripted_squad(id) for one lookup; fields listed in architecture.md.
 function get_scripted_squads()
     local out = {}
     for k, entry in pairs(ap_core_broker.get_scripted_squads()) do out[k] = _clone_entry(entry) end
@@ -55,8 +55,8 @@ function get_scripted_squad(squad_id)
     return _clone_entry(ap_core_broker.get_scripted_squads()[squad_id])
 end
 
---- Most-recent activity record matching opts (AND on field equality). Fast path
---- { squad_id, assigned = true } reads the live index O(1); else scans for the highest cons_id.
+--- Most-recent activity record matching opts (AND on field equality).
+--- Fast path { squad_id, assigned = true } reads the live index O(1); else scans for the highest cons_id.
 --- @param opts table Filter fields. Required.
 --- @return table|nil
 function get_record(opts) return ap_core_record.get_record(opts) end
@@ -67,8 +67,8 @@ function get_record(opts) return ap_core_record.get_record(opts) end
 --- @return table Array of matching entries
 function get_records(opts) return ap_core_record.get_records(opts) end
 
---- Append an activity record after register_squad / register_actor_target; integrators must call it
---- for their consequences to render (HUD markers, news, tooltips). Display keys are captured eagerly.
+--- Append an activity record after register_squad / register_actor_target; integrators must call it for their consequences to render.
+--- Renders HUD markers, news, and tooltips; display keys are captured eagerly.
 --- @param subject_squad userdata Squad server object the consequence acted on
 --- @param cause_key string CAUSE.X enum value (also a localization id)
 --- @param consequence_key string CONSEQUENCE.X enum value (also a localization id)
@@ -77,14 +77,14 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
     return ap_core_record.add_record(subject_squad, cause_key, consequence_key, opts)
 end
 
---- Release a squad from AP scripted control by id. Returns false if the squad
---- isn't currently scripted by AP.
+--- Release a squad from AP scripted control by id.
+--- Returns false if the squad isn't currently scripted by AP.
 --- @param squad_id number
 --- @return boolean
 function release_squad(squad_id) return ap_core_broker.release_squad(squad_id) end
 
---- Script a squad to a smart with full AP lifecycle (PDA marker, TTL, release-hold, reassertion);
---- call ap_api.add_record after success to populate the marker/label from the activity record.
+--- Script a squad to a smart with full AP lifecycle (PDA marker, TTL, release-hold, reassertion).
+--- Call ap_api.add_record after success to populate the marker/label from the activity record.
 --- @param squad userdata Squad server object
 --- @param smart userdata Smart terrain server object
 --- @param opts table|nil { rush, on_arrive (same value as the consequence), on_arrive_args, pre_release_gulag }
@@ -97,8 +97,8 @@ function register_squad(squad, smart, opts) return ap_core_broker.register_squad
 --- @return table { code = RESULT.X, id, dst, dst_id }
 function register_actor_target(squad, opts) return ap_core_broker.register_actor_target(squad, opts) end
 
---- Resolve an action enum value (itself the localization id) to its localized phrase; nil when
---- malformed or unresolved. e.g. ACTION.MASSACRE_INVESTIGATE -> "Investigating a Massacre Site".
+--- Resolve an action enum value (itself the localization id) to its localized phrase; nil when malformed or unresolved.
+--- e.g. ACTION.MASSACRE_INVESTIGATE -> "Investigating a Massacre Site".
 --- @param action string Action enum value (e.g. ACTION.MASSACRE_INVESTIGATE)
 --- @return string|nil
 function get_text(action)
@@ -113,8 +113,8 @@ end
 --- @return string|nil Cause string (e.g. "cause:massacre"), or nil if unregistered
 function get_cause(consequence) return ap_core_consumer.get_cause(consequence) end
 
---- Register a radiant cause predicate (auto-iterates RADIANT_CALLBACKS). The predicate takes one squad
---- and returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil; self-gate budget inside it.
+--- Register a radiant cause predicate (auto-iterates RADIANT_CALLBACKS).
+--- The predicate takes one squad and returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil; self-gate budget inside it.
 --- @param category string Must be one of ap_core_const.CAUSE_CATEGORY values
 --- @param predicate function(squad) -> table|nil
 --- @return boolean true if all registrations succeeded, false on any rejection
@@ -138,8 +138,8 @@ function register_radiant_cause(category, predicate)
     return ok
 end
 
---- Register a reactive cause predicate for one engine callback (predicate signature matches the
---- callback args); returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil.
+--- Register a reactive cause predicate for one engine callback (predicate signature matches the callback args).
+--- Returns a publishing payload, a { code = RESULT.FAILED_*, reason } reject, or nil.
 --- @param callback string CALLBACK enum value
 --- @param category string Must be one of ap_core_const.CAUSE_CATEGORY values
 --- @param predicate function(...) -> table|nil
@@ -170,8 +170,8 @@ function register_consequence(name, opts, handler)
     }, handler)
 end
 
---- Unregister a consequence handler by name. Removes from event registry, clears
---- cause-of mapping, and unhooks any arrival handler registered under the same name.
+--- Unregister a consequence handler by name.
+--- Removes from event registry, clears cause-of mapping, and unhooks any arrival handler registered under the same name.
 --- @param name string Consequence registration name
 --- @return boolean true if removed, false if not registered
 function unregister_consequence(name) return ap_core_consumer.unregister(name) end

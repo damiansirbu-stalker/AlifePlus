@@ -8,7 +8,7 @@ local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_brok
 local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
 
---- Subscribe to an event with logging
+--- Subscribe to an event with logging.
 --- @cost O(1) | 0 luabind
 function subscribe_event(event_name, callback, subscriber_name)
     local ok = xbus.subscribe(event_name, callback, subscriber_name)
@@ -20,7 +20,7 @@ function subscribe_event(event_name, callback, subscriber_name)
     return ok
 end
 
---- Publish an event to xbus subscribers
+--- Publish an event to xbus subscribers.
 --- @cost O(1) | 0 luabind
 --- @param event_name string Event name
 --- @param event_data table Event payload (carries the cause tid for log correlation)
@@ -30,8 +30,8 @@ function publish_event(event_name, event_data)
     return result
 end
 
---- Increment a TTL counter by key and return the new running count. Non-destructive: the caller
---- clears the key once it acts, so a blocked action keeps the accumulated cluster for the next call.
+--- Increment a TTL counter by key and return the new running count.
+--- Non-destructive: the caller clears the key once it acts, so a blocked action keeps the accumulated cluster for the next call.
 --- @cost O(1) | 0 luabind
 --- @param counter table TTL table instance (xttltable.create_ttl_table)
 --- @param key any Counter key
@@ -42,7 +42,7 @@ function add_count(counter, key)
     return count
 end
 
---- Extract entity ID from game_object or server_entity (handles both .id() method and .id field)
+--- Extract entity ID from game_object or server_entity (handles both .id() method and .id field).
 --- @cost O(1) | 1 luabind trivial (id: field read)
 --- @param obj userdata|nil Game object or server entity
 --- @return number|nil Valid ID or nil
@@ -61,8 +61,8 @@ local function _format_factions(factions)
     return #keys > 0 and table_concat(keys, ",") or "empty"
 end
 
---- Find squads, excluding AP-scripted squads before luabind; opts is not mutated. With opts.level_id,
---- iterates the per-level cache bucket (falls back to the global walk before the cache is built).
+--- Find squads, excluding AP-scripted squads before luabind; opts is not mutated.
+--- With opts.level_id, iterates the per-level cache bucket (falls back to the global walk before the cache is built).
 --- @cost O(n) squads | delegates to xsquad.find_squads, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, etc.)
@@ -103,8 +103,8 @@ function find_squads(pos, opts)
     return preempt_result
 end
 
---- Short-circuiting boolean any-match against the squad pool; same protection + level-scope layering
---- as find_squads, no preempt. Use for a yes/no answer where find_squads' collect-all wastes the walk.
+--- Short-circuiting boolean any-match against the squad pool; same protection + level-scope layering as find_squads, no preempt.
+--- Use for a yes/no answer where find_squads' collect-all wastes the walk.
 --- @cost O(1) | 0 luabind
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, exclude_*, match)
@@ -118,8 +118,8 @@ function has_squad(pos, opts)
     return xsquad.has_squad(pos, opts)
 end
 
---- Find the nearest smart matching the filter. With opts.level_id, iterates the per-level cache bucket
---- (falls back to the global walk before the cache is built).
+--- Find the nearest smart matching the filter.
+--- With opts.level_id, iterates the per-level cache bucket (falls back to the global walk before the cache is built).
 --- @cost O(n) squads | delegates to xsmart.find_first_smart, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table Options (forwarded to xsmart.find_smart)
@@ -152,8 +152,8 @@ function find_smart(pos, opts)
     return result
 end
 
---- Find first matching smart (distance-free). Use when the caller has no comparable position
---- frame (cross-level dispatch). Injects ap_core_cache.get_smarts_on_level when opts.level_id is set.
+--- Find first matching smart (distance-free); use when the caller has no comparable position frame (cross-level dispatch).
+--- Injects ap_core_cache.get_smarts_on_level when opts.level_id is set.
 --- @cost O(1) | 0 luabind
 --- @param opts table Options (forwarded to xsmart.find_first_smart)
 --- @return table|nil Smart server object or nil
@@ -178,8 +178,8 @@ local _DYN_HAS = {
     mechanic = function(s) return xsmart.has_mechanic_at_smart(s) end,
 }
 
---- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth);
---- nil for offline smarts. Arrival trade always runs online, so the online answer is what matters.
+--- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth); nil for offline smarts.
+--- Arrival trade always runs online, so the online answer is what matters.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return game_object|nil Online live NPC of this role at this smart, or nil
@@ -199,8 +199,8 @@ end
 
 local SERVICE_ROLES = { "trader", "medic", "mechanic" }
 
---- Any service NPC (trader / medic / mechanic) at smart. Tries roles in priority order
---- so trader wins when multiple are present.
+--- Any service NPC (trader / medic / mechanic) at smart.
+--- Tries roles in priority order so trader wins when multiple are present.
 --- @cost O(n) entries | 0 luabind (pure Lua table walk)
 --- @param smart smart_terrain
 --- @return game_object|nil
@@ -225,8 +225,8 @@ function has_service_npc_at_smart(smart)
     return false
 end
 
---- Routing-time predicate that any squad is stationed at the smart (SIMBOARD roster truth,
---- xsmart.is_smart_empty; cross-level and offline-safe). The precise peer check runs at arrival.
+--- Routing-time predicate that any squad is stationed at the smart (SIMBOARD roster truth, xsmart.is_smart_empty; cross-level and offline-safe).
+--- The precise peer check runs at arrival.
 --- @cost O(1) | 0 luabind
 --- @param smart smart_terrain
 --- @return boolean
@@ -235,8 +235,8 @@ function has_peer_squad_at_smart(smart)
     return not xsmart.is_smart_empty(smart.id)
 end
 
---- Resolve a stalker peer to barter with at a smart: first alive, scriptable, same-faction stalker in
---- npc_info not in the arriving squad. Same-faction is a direct community-string equality (not a relation).
+--- Resolve a stalker peer to barter with at a smart: first alive, scriptable, same-faction stalker in npc_info not in the arriving squad.
+--- Same-faction is a direct community-string equality (not a relation).
 --- @cost O(n) members | 1 luabind trivial per member (alive: field read)
 --- @param smart smart_terrain
 --- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
@@ -273,8 +273,8 @@ local function _is_target_lost(entry)
     return target:npc_count() <= 0
 end
 
--- RELEASE: chaser faction is no longer an enemy of the target faction. Only chases that opted in
--- (entry.check_relation, set by faction-vs-faction consequences) check this; mutant chases never do.
+-- RELEASE: chaser faction is no longer an enemy of the target faction.
+-- Only opted-in chases (entry.check_relation, set by faction-vs-faction consequences) check this; mutant chases never do.
 local function _is_no_longer_enemy(squad, entry)
     if not entry.check_relation then return false end
     local chaser_faction = squad.player_id
@@ -296,8 +296,8 @@ local function _is_target_story_protected(entry)
     return xobject.is_story(_get_chase_target_se(entry))
 end
 
--- RELEASE: chaser and target are on different maps. Chases never leave their map -- a target that
--- transitions is left behind. Stateless: compares the two live levels, no stored scope/home.
+-- RELEASE: chaser and target are on different maps; chases never leave their map, so a transitioning target is left behind.
+-- Stateless: compares the two live levels, no stored scope/home.
 local function _is_target_off_map(squad, entry)
     local chaser_level = xlevel.get_level_id(squad)
     if not chaser_level then return false end
@@ -322,8 +322,8 @@ local function _is_target_in_base(entry)
     return smart ~= nil and xsmart.is_base(smart)
 end
 
---- Decide whether to keep a chase scripted: RELEASE checks first, then soft PAUSE checks. Pure, so
---- safe from the scan and from dispatch (on a proposed entry stub).
+--- Decide whether to keep a chase scripted: RELEASE checks first, then soft PAUSE checks.
+--- Pure, so safe from the scan and from dispatch (on a proposed entry stub).
 --- @cost O(1) | 0 luabind
 --- @param squad se_squad The chaser
 --- @param entry table The _ap_scripted_squads entry (actor- or squad-target chase)

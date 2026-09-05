@@ -51,8 +51,8 @@ local _squad_stat = { visits = 0, detected = 0, fires_cur = 0, fires_bg = 0,
     fires_change = 0, fires_keep = 0, dropped = 0, tick_ms = 0, tick_max = 0, ticks = 0 }
 local _squad_pass_started = 0
 
--- Remove id from its lane array: swap-with-last keeps the array dense at O(1); the
--- cursor clamps so a shrunken lane never leaves it out of range.
+-- Remove id from its lane array: swap-with-last keeps the array dense at O(1).
+-- The cursor clamps so a shrunken lane never leaves it out of range.
 -- @cost O(1) | 0 luabind
 local function _remove_from_lane(id, lane_key)
     local index = _squad_pos_of[id]
@@ -67,8 +67,8 @@ local function _remove_from_lane(id, lane_key)
     if _squad_lane_cursor[lane_key] > #list then _squad_lane_cursor[lane_key] = 0 end
 end
 
--- Put id in the lane implied by is_cur, moving it out of the other lane when its level
--- changed. No-op on the common path (lane unchanged): one field compare.
+-- Put id in the lane implied by is_cur, moving it out of the other lane when its level changed.
+-- No-op on the common path (lane unchanged): one field compare.
 -- @cost O(1) | 0 luabind
 local function _add_to_lane(id, snap, is_cur)
     local lane_key = is_cur and "cur" or "bg"
@@ -80,8 +80,8 @@ local function _add_to_lane(id, snap, is_cur)
     snap.lane = lane_key
 end
 
--- Evict one squad id from all sweep state. The unregister handler must call it promptly: recycled
--- ids resolve to a new occupant, so only the destroy event marks the identity boundary (xrServer.cpp:873).
+-- Evict one squad id from all sweep state; the unregister handler must call it promptly.
+-- Recycled ids resolve to a new occupant, so only the destroy event marks the identity boundary (xrServer.cpp:873).
 -- @cost O(1) | 0 luabind
 local function _remove_squad(id)
     local snap = _squad_snapshots[id]
@@ -109,8 +109,8 @@ local function _compute_diff(squad, snap)
     return changed_count
 end
 
--- Visit one squad on the walk: resolve, place in its lane, diff, queue a detected change. Never fires
--- or advances the snapshot (the fire engine does), so a queued change re-verifies at fire time.
+-- Visit one squad on the walk: resolve, place in its lane, diff, queue a detected change.
+-- Never fires or advances the snapshot (the fire engine does), so a queued change re-verifies at fire time.
 -- @cost O(1) | 1 medium (alife_object via xobject.get_se) + 0-2 cached-graph lookups + diff
 local function _check_squad(id, actor_level, stat_on)
     local squad = xobject.get_se(id)
@@ -137,8 +137,8 @@ local function _check_squad(id, actor_level, stat_on)
     if stat_on then _squad_stat.detected = _squad_stat.detected + 1 end
 end
 
--- Bresenham lane pick for one credit (true = current level, false = background), reading cfg.alife_ratio
--- live. Pure chooser: the counters advance in _run_credit after a successful fire, on the lane that fired.
+-- Bresenham lane pick for one credit (true = current level, false = background), reading cfg.alife_ratio live.
+-- Pure chooser: the counters advance in _run_credit after a successful fire, on the lane that fired.
 -- @cost O(1) | 0 luabind
 local function _select_lane()
     local bias = cfg.alife_ratio
@@ -179,8 +179,8 @@ local function _get_next_round_robin(lane_key)
     return list[cursor]
 end
 
--- Fire ap_squad_on_change for one squad id if it resolves and is past its refractory; re-diffs live
--- fields so the payload is truthful (a reverted change goes out as a round-robin fire). True when sent.
+-- Fire ap_squad_on_change for one squad id if it resolves and is past its refractory; re-diffs live fields so the payload is truthful.
+-- A reverted change goes out as a round-robin fire; true when sent.
 -- @cost O(1) | 1 medium resolve + diff + SendScriptCallback fan-out
 local function _notify_change(id, lane_key, now, stat_on)
     local squad = xobject.get_se(id)
@@ -216,8 +216,8 @@ local function _notify_change(id, lane_key, now, stat_on)
     return true
 end
 
--- Try to fire from one lane: oldest queued change first, then round-robin. Returns the
--- remaining attempt budget and whether a fire happened.
+-- Try to fire from one lane: oldest queued change first, then round-robin.
+-- Returns the remaining attempt budget and whether a fire happened.
 -- @cost O(attempts) | <= attempts resolves worst case, 1 typical
 local function _try_lane(lane_key, now, attempts, stat_on)
     local fifo = _squad_pending[lane_key]
@@ -237,8 +237,8 @@ local function _try_lane(lane_key, now, attempts, stat_on)
     return attempts, false
 end
 
--- Spend one credit: pick a lane, try it, fall back to the other, drop after FIRE_ATTEMPTS_MAX dead
--- candidates. The Bresenham counter advances here, on the lane that actually fired.
+-- Spend one credit: pick a lane, try it, fall back to the other, drop after FIRE_ATTEMPTS_MAX dead candidates.
+-- The Bresenham counter advances here, on the lane that actually fired.
 -- @cost O(attempts) | <= FIRE_ATTEMPTS_MAX resolves worst case, 1 typical
 local function _run_credit(now, stat_on)
     local lane_key = _select_lane() and "cur" or "bg"
@@ -260,8 +260,8 @@ local function _run_credit(now, stat_on)
     return true
 end
 
--- Emit the pass summary and reset the accumulators. Caller gates on stat_on, so this only
--- runs with DEBUG enabled.
+-- Emit the pass summary and reset the accumulators.
+-- Caller gates on stat_on, so this only runs with DEBUG enabled.
 -- @cost O(1) | log write only
 local function _log_pass(pass_seconds)
     local stat = _squad_stat
@@ -276,8 +276,8 @@ local function _log_pass(pass_seconds)
     stat.tick_ms = 0; stat.tick_max = 0; stat.ticks = 0
 end
 
--- One tick: walk one batch (detection), accrue credit, spend whole credits (firing). The id array
--- rebuilds per pass (xsquad.collect_squad_ids), so mid-tick spawn/despawn cannot invalidate the walk.
+-- One tick: walk one batch (detection), accrue credit, spend whole credits (firing).
+-- The id array rebuilds per pass (xsquad.collect_squad_ids), so mid-tick spawn/despawn cannot invalidate the walk.
 -- @cost O(SWEEP_BATCH + fires) per tick, constant vs total squad count
 local function _update_sweep()
     ResetTimeEvent("ap_core_callbacks", "squad_sweep", SWEEP_TICK_SEC)
@@ -315,8 +315,8 @@ local function _update_sweep()
     end
 end
 
--- Evict sweep state on squad despawn - the prompt path. sim_squad_scripted:on_unregister fires this
--- one line before it removes the id from SIMBOARD.squads (:1018-1019), so coverage is exact.
+-- Evict sweep state on squad despawn, the prompt path.
+-- sim_squad_scripted:on_unregister fires this one line before it removes the id from SIMBOARD.squads (:1018-1019), so coverage is exact.
 -- @cost O(1) | 1 luabind (clsid)
 local function _on_squad_unregister(se_obj)
     if not se_obj then return end
