@@ -30,9 +30,8 @@ function publish_event(event_name, event_data)
     return result
 end
 
---- Increment a TTL counter by key and return the new running count. Non-destructive:
---- the caller clears the key itself (counter:remove(key)) once it acts on the count, so a
---- blocked action leaves the accumulated cluster intact for the next call instead of dropping it.
+--- Increment a TTL counter by key and return the new running count. Non-destructive: the caller
+--- clears the key once it acts, so a blocked action keeps the accumulated cluster for the next call.
 --- @cost O(1) | 0 luabind
 --- @param counter table TTL table instance (xttltable.create_ttl_table)
 --- @param key any Counter key
@@ -62,13 +61,8 @@ local function _format_factions(factions)
     return #keys > 0 and table_concat(keys, ",") or "empty"
 end
 
---- Find squads, excluding AP-scripted squads before luabind.
---- Caller's opts table is not mutated; protection fields are merged into a fresh
---- table built via ap_core_broker.build_protection_opts. When opts.level_id is set,
---- injects ap_core_cache.get_squads_on_level as opts.source so xsquad iterates the per-level
---- bucket instead of the global SIMBOARD.squads walk. Cache returns nil before
---- actor_on_first_update has run; in that window the call falls through to the
---- un-bucketed walk over ~700-800 squads.
+--- Find squads, excluding AP-scripted squads before luabind; opts is not mutated. With opts.level_id,
+--- iterates the per-level cache bucket (falls back to the global walk before the cache is built).
 --- @cost O(n) squads | delegates to xsquad.find_squads, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, etc.)
@@ -109,10 +103,8 @@ function find_squads(pos, opts)
     return preempt_result
 end
 
---- Short-circuiting boolean any-match against the squad pool.
---- Same protection + level-scope source layering as find_squads. No preempt — boolean answer
---- is final. Use when the consumer is yes/no (does any X exist nearby?) and find_squads'
---- collect-all-then-sample pattern wastes the walk.
+--- Short-circuiting boolean any-match against the squad pool; same protection + level-scope layering
+--- as find_squads, no preempt. Use for a yes/no answer where find_squads' collect-all wastes the walk.
 --- @cost O(1) | 0 luabind
 --- @param pos vector Origin position
 --- @param opts table|nil Caller options (factions, level_id, min/max_distance, exclude_*, match)
@@ -126,11 +118,8 @@ function has_squad(pos, opts)
     return xsquad.has_squad(pos, opts)
 end
 
---- Find nearest smart terrain matching filter criteria
---- When opts.level_id is set, injects ap_core_cache.get_smarts_on_level as opts.source so xsmart iterates
---- the per-level bucket instead of the global SIMBOARD.smarts_by_names walk. Cache returns nil before
---- actor_on_first_update has run; in that window the call falls through to the un-bucketed walk over
---- ~300-500 smarts (~1-2ms), which fits the 2ms ceiling.
+--- Find the nearest smart matching the filter. With opts.level_id, iterates the per-level cache bucket
+--- (falls back to the global walk before the cache is built).
 --- @cost O(n) squads | delegates to xsmart.find_first_smart, which carries the bridge count
 --- @param pos vector Origin position
 --- @param opts table Options (forwarded to xsmart.find_smart)
@@ -176,10 +165,7 @@ function find_first_smart(opts)
     return xsmart.find_first_smart(local_opts)
 end
 
---- Dynamic-walk dispatch tables for the role resolvers. Dynamic walk (xsmart.get_<role>_at_smart)
---- uses the engine-authoritative smart.npc_info roster + xsmart.get_npc_roles (Demonized-style
---- trade= classifier, multi-role set). Online-only: npc_info is empty for offline / off-actor-level
---- smarts. Off-map trader routing (SUPPLY_TRADER_OFFMAP) uses xsmart.is_base instead (a base is where a trader sits).
+--- Dynamic-walk dispatch tables for the role resolvers (smart.npc_info roster, online-only).
 local _DYN_GET = {
     trader   = function(s) return xsmart.get_trader_at_smart(s)   end,
     medic    = function(s) return xsmart.get_medic_at_smart(s)    end,
@@ -192,9 +178,8 @@ local _DYN_HAS = {
     mechanic = function(s) return xsmart.has_mechanic_at_smart(s) end,
 }
 
---- Resolve a service NPC at a smart by role via the engine-authoritative dynamic walk
---- (smart.npc_info, online truth). Returns nil for offline smarts (npc_info empty); arrival trade
---- always runs online (commander gate), so the online answer is the one that matters for the exchange.
+--- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth);
+--- nil for offline smarts. Arrival trade always runs online, so the online answer is what matters.
 --- @param smart smart_terrain
 --- @param role string "trader" | "medic" | "mechanic"
 --- @return game_object|nil Online live NPC of this role at this smart, or nil
@@ -240,11 +225,8 @@ function has_service_npc_at_smart(smart)
     return false
 end
 
---- Barter counterpart of has_service_npc_at_smart: a routing-time predicate that any squad is
---- physically stationed at the smart. Uses SIMBOARD roster truth (xsmart.is_smart_empty), which is
---- cross-level and offline safe, unlike the npc_info role walk. Combined with the cause's
---- exclude_enemy gate it means "a non-hostile squad is stationed here to barter with"; the precise
---- stalker-peer check runs at arrival in get_peer_stalker_at_smart (mirrors trader NO_TRADER skip).
+--- Routing-time predicate that any squad is stationed at the smart (SIMBOARD roster truth,
+--- xsmart.is_smart_empty; cross-level and offline-safe). The precise peer check runs at arrival.
 --- @cost O(1) | 0 luabind
 --- @param smart smart_terrain
 --- @return boolean
@@ -254,14 +236,7 @@ function has_peer_squad_at_smart(smart)
 end
 
 --- Resolve a stalker peer to barter with at a smart: first alive, scriptable, same-faction stalker in
---- the smart's npc_info roster whose squad is not the arriving squad. Mirrors get_service_npc_at_smart's
---- roster walk (smart.npc_info -> xobject.get_go), swapping the role test for stalker + scriptable and adding
---- the own-squad exclusion so a squad never barters with itself. is_unscriptable drops companions,
---- story, traders, and named NPCs (same gate ap_ext_loot_select uses). The community gate enforces the
---- own-faction rule at arrival: routing's exclude_enemy only rejects hostile smarts and the roster can
---- churn between routing and arrival, so the precise same-faction check lives here. is_factions_friends
---- would miss same-faction (the community_relation diagonal is neutral, not >= FRIENDS), so this is a
---- direct community-string equality, not a relation call.
+--- npc_info not in the arriving squad. Same-faction is a direct community-string equality (not a relation).
 --- @cost O(n) members | 1 luabind trivial per member (alive: field read)
 --- @param smart smart_terrain
 --- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
@@ -280,16 +255,9 @@ function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
     return nil
 end
 
--- CHASE LEASH: compute_chase decides KEEP / PAUSE / RELEASE for a chase entry
--- (actor- or squad-target), composed of small (bool) predicates -- the same shape
--- as the broker offmap despawn chain. Pure: reads xlibs atoms + the entry, no side
--- effects, so the broker scan (acts on the verdict) and dispatch (refuses a non-KEEP
--- start) both call it. Every predicate here is offline-safe; online-only conditions
--- (outmatched, lost-contact) are deferred.
+-- CHASE LEASH: compute_chase decides KEEP/PAUSE/RELEASE from small offline-safe predicates.
 
 local function _is_actor_chase(entry)
-    -- Among chase entries (the only ones compute_chase runs on), the actor chase is the one
-    -- without a squad target. Avoids reading scripted_target here -- the broker owns that field.
     return entry.target_squad_id == nil
 end
 
@@ -306,8 +274,7 @@ local function _is_target_lost(entry)
 end
 
 -- RELEASE: chaser faction is no longer an enemy of the target faction. Only chases that opted in
--- (entry.check_relation, set by the faction-vs-faction consequences) check this; mutant chases
--- pursue by species and never disengage on faction relation, so they leave the flag unset.
+-- (entry.check_relation, set by faction-vs-faction consequences) check this; mutant chases never do.
 local function _is_no_longer_enemy(squad, entry)
     if not entry.check_relation then return false end
     local chaser_faction = squad.player_id
@@ -355,9 +322,8 @@ local function _is_target_in_base(entry)
     return smart ~= nil and xsmart.is_base(smart)
 end
 
---- Decide whether to keep a chase scripted. RELEASE checks first (cheap before expensive),
---- then soft PAUSE checks. Pure; safe to call from the scan
---- and from dispatch (on a proposed entry stub).
+--- Decide whether to keep a chase scripted: RELEASE checks first, then soft PAUSE checks. Pure, so
+--- safe from the scan and from dispatch (on a proposed entry stub).
 --- @cost O(1) | 0 luabind
 --- @param squad se_squad The chaser
 --- @param entry table The _ap_scripted_squads entry (actor- or squad-target chase)
