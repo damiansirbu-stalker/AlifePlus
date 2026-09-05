@@ -17,7 +17,7 @@ local _record_assigned = {}
 
 -- Capture in-game clock at write so the HUD marker can show when the dispatch started.
 -- Returns "HH:MM" string or nil if game time is unavailable (early init / between levels).
-local function _capture_clock()
+local function _get_clock()
     local h, m = xtime.get_time_hm()
     if not h then return nil end
     return string_format("%02d:%02d", h, m)
@@ -26,7 +26,7 @@ end
 -- Capture one side's display keys from the live squad. Mutant squads carry a species key,
 -- stalker (and zombified-stalker) squads carry a community-string faction key. Either or
 -- both nil for a nil squad. Engine reads only; no domain tables.
-local function _capture_side(squad)
+local function _get_side_keys(squad)
     if not squad then return nil, nil, nil end
     local species = xcreature.get_mutant_species(squad)
     if species then
@@ -64,10 +64,10 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
     local subject_squad_id = subject_squad.id
     local other = opts.other_squad
     local tmr_s = xprofiler.new_if(enabled):start()
-    local s_fac, s_name, s_spec = _capture_side(subject_squad)
+    local s_fac, s_name, s_spec = _get_side_keys(subject_squad)
     tmr_s:stop()
     local tmr_o = xprofiler.new_if(enabled):start()
-    local o_fac, o_name, o_spec = _capture_side(other)
+    local o_fac, o_name, o_spec = _get_side_keys(other)
     tmr_o:stop()
     local prev = _record_assigned[subject_squad_id]
     if prev then prev.assigned = false end
@@ -84,7 +84,7 @@ function add_record(subject_squad, cause_key, consequence_key, opts)
         smart_id            = opts.smart and opts.smart.id or nil,
         level_id            = opts.level_id,
         game_hours          = math_floor(xtime.get_game_sec() / 3600),
-        started_clock       = _capture_clock(),
+        started_clock       = _get_clock(),
         subject_faction_key = s_fac,
         subject_name        = s_name,
         subject_species_key = s_spec,
@@ -121,12 +121,12 @@ end
 --- @safety SAFE - pure Lua table write
 --- @cost O(1) | 0 luabind
 --- @param cons_id number
-function mark_reported(cons_id)
+function set_reported(cons_id)
     local entry = _ap_record:get(cons_id)
     if entry then entry.reported = true end
 end
 
-local function _match(entry, opts)
+local function _is_match(entry, opts)
     for k, v in pairs(opts) do
         if entry[k] ~= v then return false end
     end
@@ -142,11 +142,11 @@ function get_records(opts)
     local list = {}
     if opts and opts.assigned then
         for _, entry in pairs(_record_assigned) do
-            if entry.assigned and _match(entry, opts) then list[#list + 1] = entry end
+            if entry.assigned and _is_match(entry, opts) then list[#list + 1] = entry end
         end
     else
         _ap_record:iterate(function(entry)
-            if not opts or _match(entry, opts) then list[#list + 1] = entry end
+            if not opts or _is_match(entry, opts) then list[#list + 1] = entry end
         end)
     end
     return list
@@ -161,20 +161,20 @@ function get_record(opts)
     if not opts then return nil end
     if opts.squad_id and opts.assigned then
         local entry = _record_assigned[opts.squad_id]
-        if entry and entry.assigned and _match(entry, opts) then return entry end
+        if entry and entry.assigned and _is_match(entry, opts) then return entry end
         return nil
     end
     local best
-    local function _consider(entry)
+    local function _update_best(entry)
         if not best or (entry.cons_id and entry.cons_id > (best.cons_id or 0)) then best = entry end
     end
     if opts.assigned then
         for _, entry in pairs(_record_assigned) do
-            if entry.assigned and _match(entry, opts) then _consider(entry) end
+            if entry.assigned and _is_match(entry, opts) then _update_best(entry) end
         end
     else
         _ap_record:iterate(function(entry)
-            if _match(entry, opts) then _consider(entry) end
+            if _is_match(entry, opts) then _update_best(entry) end
         end)
     end
     return best
@@ -191,13 +191,13 @@ local function _create_record_fifo()
 end
 
 -- Walk fifo into a plain array preserving insertion order. xttltable has no to_table primitive.
-local function _records_export()
+local function _build_record_array()
     local arr = {}
     _ap_record:iterate(function(entry) arr[#arr + 1] = entry end)
     return arr
 end
 
-local function _records_import(arr)
+local function _load_records(arr)
     _ap_record = _create_record_fifo()
     _record_assigned = {}
     if type(arr) ~= "table" then return end
@@ -213,7 +213,7 @@ end
 
 local function _on_save_state(m_data)
     m_data.ap_core_record = {
-        entries = _records_export(),
+        entries = _build_record_array(),
         seq     = _record_seq,
     }
     if ap_core_debug.is_enabled() then
@@ -225,7 +225,7 @@ local function _on_load_state(m_data)
     local saved = m_data.ap_core_record
     if type(saved) ~= "table" then saved = {} end
     _record_seq = saved.seq or 0
-    _records_import(saved.entries)
+    _load_records(saved.entries)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:get_size())
     end

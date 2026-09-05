@@ -49,7 +49,7 @@ local function _format_party(name_or_species, faction_display)
     return secondary or "?"
 end
 
-local function _xml(key)
+local function _get_xml(key)
     if not key then return "" end
     local v = game.translate_string(key)
     if v and v ~= key and v ~= "" then return v end
@@ -57,7 +57,7 @@ local function _xml(key)
 end
 
 -- Translate a key; return nil on miss / empty / round-trip echo (engine returns the key on miss).
-local function _translate_or_nil(key)
+local function _get_translation(key)
     if not key then return nil end
     local v = game.translate_string(key)
     if not v or v == key or v == "" then return nil end
@@ -65,22 +65,22 @@ local function _translate_or_nil(key)
 end
 
 -- Smart display name with sentence-flow normalization ("Great Swamp. Northern Village" -> "Great Swamp, Northern Village").
-local function _smart_display(smart_id)
+local function _get_smart_display(smart_id)
     if not smart_id then return nil end
     local smart = xobject.get_se(smart_id)
     if not smart then return nil end
-    local name = xlevel.get_smart_display_name(smart)
+    local name = xlevel.get_get_smart_display_name(smart)
     if not name or name == "" then return nil end
     return (name:gsub("%. ", ", "))
 end
 
-local function _mark_squad(entry)
+local function _render_marker(entry)
     local state = _marker_state[entry.squad_id]
     if state and state.cons_id == entry.cons_id then return end
     if not _hint_labels then _update_labels() end
 
-    local action = _translate_or_nil(entry.action_key)
-    local consequence = _translate_or_nil(entry.consequence_key)
+    local action = _get_translation(entry.action_key)
+    local consequence = _get_translation(entry.consequence_key)
     local headline
     if action and consequence then
         headline = action .. " [" .. consequence .. "]"
@@ -92,15 +92,15 @@ local function _mark_squad(entry)
         headline = entry.consequence_key or entry.action_key or "?"
     end
 
-    local subject = _format_party(entry.subject_name or _xml(entry.subject_species_key), _xml(entry.subject_faction_key))
+    local subject = _format_party(entry.subject_name or _get_xml(entry.subject_species_key), _get_xml(entry.subject_faction_key))
     local lines = { headline, _hint_labels.subject .. ": " .. subject }
     if entry.other_squad_id then
-        local other = _format_party(entry.other_name or _xml(entry.other_species_key), _xml(entry.other_faction_key))
+        local other = _format_party(entry.other_name or _get_xml(entry.other_species_key), _get_xml(entry.other_faction_key))
         lines[#lines + 1] = _hint_labels.other .. ": " .. other
     end
 
     local target_parts = {}
-    local smart_name = _smart_display(entry.smart_id)
+    local smart_name = _get_smart_display(entry.smart_id)
     if smart_name then target_parts[#target_parts + 1] = smart_name end
     -- Derive level from the destination smart, not entry.level_id. Off-map dispatches store
     -- source level_id (so news filtering matches the player level) but the marker should show
@@ -133,7 +133,7 @@ end
 
 local function _apply_markers()
     local records = ap_core_record.get_records({ assigned = true })
-    for i = 1, #records do _mark_squad(records[i]) end
+    for i = 1, #records do _render_marker(records[i]) end
 end
 
 -- Linger condition: record evicted/unassigned, server entity gone, or squad no longer scripted.

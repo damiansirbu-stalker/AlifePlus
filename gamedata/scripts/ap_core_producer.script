@@ -126,7 +126,7 @@ end
 
 local function _try_publish(on_map, result, category, cause_type)
     result.cause_type = cause_type
-    ap_core_util.event_publish(result.cause, result)
+    ap_core_util.publish_event(result.cause, result)
     if hud_collecting() then hud.inc_pub(cause_type) end
     ap_core_debug.debug("[PRODUCER] PUBLISHED cause=%s category=%s sq=%s on_map=%s level=%s",
         result.cause, category, result.squad_id, on_map, result.level_id)

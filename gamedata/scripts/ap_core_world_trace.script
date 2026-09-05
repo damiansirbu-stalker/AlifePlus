@@ -167,12 +167,12 @@ end
 
 -- Snapshot ids only (pure Lua table-key walks, 0 luabind): AP-controlled squads (all levels), the
 -- actor-level squad bucket from ap_core_cache, and every online object (classified inside the drain).
-local function _snapshot()
+local function _build_snapshot()
     local items = {}
     if _scripted then
         for id in pairs(_scripted) do items[#items + 1] = { k = "csq", id = id } end
     end
-    local squads = ap_core_cache.squads_on_level(_acc.level)
+    local squads = ap_core_cache.get_squads_on_level(_acc.level)
     if squads then
         for id in pairs(squads) do items[#items + 1] = { k = "sq", id = id } end
     end
@@ -184,7 +184,7 @@ end
 
 -- Kick one dump: smarts synchronously (bounded, tens per level), then a frame-spread drain of the
 -- rest. Skips its own cycle while a prior drain is still running so the two never overlap.
-local function _diag_kick()
+local function _start_diag()
     ResetTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC)
     if xslice.is_active(DRAIN_QUEUE) then return end
     local sim = alife()
@@ -194,7 +194,7 @@ local function _diag_kick()
     log.debug("[CORE.DIAG] %s", xsmart.format_smarts(level_id))
     _scripted = ap_core_broker.get_scripted_squads()
     _acc = { level = level_id, smartpop = {}, csq = 0, sq = 0, npc = 0, mut = 0, ms = 0 }
-    local items = _snapshot()
+    local items = _build_snapshot()
     xslice.start(DRAIN_QUEUE, items, { step = DRAIN_STEP, func = _run_diag_item, on_done = _log_diag_summary })
 end
 
@@ -207,7 +207,7 @@ local function _apply_enabled()
     if _enabled then
         _log_mcm_settings()
         RemoveTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID)
-        CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _diag_kick)
+        CreateTimeEvent(DIAG_TIMER_EV, DIAG_TIMER_ID, DIAG_INTERVAL_SEC, _start_diag)
         log.info("World trace enabled")
     else
         xslice.stop_queue(DRAIN_QUEUE, true)

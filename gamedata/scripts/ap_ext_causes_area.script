@@ -122,7 +122,7 @@ local _census = {}
 
 -- @cost O(squads on level) | 1 luabind medium (alife_object) per squad, once per level per TTL
 local function _build_census(level_id)
-    local pool = ap_core_cache.squads_on_level(level_id)
+    local pool = ap_core_cache.get_squads_on_level(level_id)
     if not pool then return nil end
     local by_comm, total, mutant = {}, 0, 0
     for squad_id in pairs(pool) do

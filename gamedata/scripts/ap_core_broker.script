@@ -409,11 +409,11 @@ function register_squad(squad, smart, opts)
 end
 
 --- Script squad to pursue player directly (no arrival detection)
---- Runs the evaluate_chase leash gate first and refuses a start the leash would immediately
+--- Runs the compute_chase leash gate first and refuses a start the leash would immediately
 --- pause/release (surge, actor-in-base, relation already friendly), matching register_squad_target;
 --- otherwise sets scripted_target="actor" via xsquad.set_target_actor (player movement prevents arrival checks)
 --- @safety SAFE - nil-guarded; gates before releasing, so a refused start leaves any existing chase intact
---- @cost O(1) | ~3 luabind medium on dispatch (evaluate_chase: actor smart, surge, optional relation)
+--- @cost O(1) | ~3 luabind medium on dispatch (compute_chase: actor smart, surge, optional relation)
 --- @param squad se_squad Squad server object
 --- @param opts table|nil { check_relation, interruptable }
 --- @return table { code = RESULT.X, id, dst, dst_id }
@@ -430,7 +430,7 @@ function register_actor_target(squad, opts)
         interruptable = not (opts and opts.interruptable == false),
     }
     -- Dispatch gate: refuse a chase the leash would immediately pause or release (matches register_squad_target).
-    local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
+    local verdict, reason = ap_core_util.compute_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
         ap_core_debug.debug("[SQUAD] register_actor_target: squad=%d refused verdict=%s reason=%s",
             squad.id, verdict, tostring(reason))
@@ -456,7 +456,7 @@ end
 --- target dies. The ap_core_chase get_script_target hook returns target_id (driving
 --- specific_update + the online reach-task fallback); the get_current_task hook moves the
 --- offline group toward the target live vertices. This dispatch only records the entry.
---- The periodic scan runs the evaluate_chase leash on this entry (target-death / opt-in relation /
+--- The periodic scan runs the compute_chase leash on this entry (target-death / opt-in relation /
 --- story / off-map release; base + surge pause; shared TTL); the dispatch gate below refuses a doomed start.
 --- @safety SAFE - nil-guarded, releases existing script before re-scripting
 --- @cost O(1) | 2 luabind trivial (current_action, __lock field writes)
@@ -478,7 +478,7 @@ function register_squad_target(squad, target_id, opts)
         interruptable = not (opts and opts.interruptable == false),
     }
     -- Dispatch gate: refuse a chase the leash would immediately pause or release.
-    local verdict, reason = ap_core_util.evaluate_chase(squad, entry)
+    local verdict, reason = ap_core_util.compute_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
         ap_core_debug.debug("[SQUAD] register_squad_target: squad=%d refused verdict=%s reason=%s",
             squad.id, verdict, tostring(reason))
@@ -714,7 +714,7 @@ local CHASE_MIN_PAUSE_SEC = 30
 -- Give up (release) if the target stays sheltered this long.
 local CHASE_MAX_PAUSE_SEC = 600
 
--- A chase entry: actor-target ("actor") or squad-target (target_squad_id). Runs the evaluate_chase
+-- A chase entry: actor-target ("actor") or squad-target (target_squad_id). Runs the compute_chase
 -- leash instead of the smart-dispatch arrival/gulag flow.
 local function _is_chase(data)
     return data.is_chase == true
@@ -749,11 +749,11 @@ local function _resume_chase(squad, data)
     ap_core_debug.debug("[SQUAD] chase_resume: squad=%d", squad.id)
 end
 
--- Unified chase leash: ask evaluate_chase, act on the verdict. RELEASE drops the script; PAUSE
+-- Unified chase leash: ask compute_chase, act on the verdict. RELEASE drops the script; PAUSE
 -- holds (max-pause cap -> release); KEEP resumes a paused chase (after a min hold) and reasserts
 -- the actor target (squad targets are driven by the ap_core_chase hooks).
 local function _update_chase(squad_id, squad, data, now)
-    local verdict, reason = ap_core_util.evaluate_chase(squad, data)
+    local verdict, reason = ap_core_util.compute_chase(squad, data)
     if verdict == VERDICT.RELEASE then
         ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=%s", squad_id, tostring(reason))
         _unregister_squad(squad)
@@ -806,7 +806,7 @@ local function _update_scripted_squad(squad_id)
             return
         end
     end
-    -- Chase entries (actor- or squad-target) run the evaluate_chase leash, not the smart flow.
+    -- Chase entries (actor- or squad-target) run the compute_chase leash, not the smart flow.
     if _is_chase(data) then
         _update_chase(squad_id, squad, data, now)
         return

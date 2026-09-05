@@ -136,7 +136,7 @@ local function _on_smart(squad)
     -- ap_core_cache returns whatever's bucketed for this level: nil during warmup if nothing
     -- on this level has been processed yet, partial mid-build, full after xslice finishes.
     -- nil = no candidate this tick; next tick has more.
-    local source = ap_core_cache.stashes_on_level(level_id)
+    local source = ap_core_cache.get_stashes_on_level(level_id)
     if not source then return { code = RESULT.FAILED_RULES, reason = REASON.NO_STASH_NEARBY } end
 
     local stashes = xstash.find_stashes(squad.position, { max_distance = RANGE_EYE, level_id = level_id, max_count = 1, source = source })

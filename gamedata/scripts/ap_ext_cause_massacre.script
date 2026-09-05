@@ -36,7 +36,7 @@ local function _on_squad_npc_death(squad, se_victim, se_killer)
     -- cluster clears only when a massacre actually publishes, so an exhausted (shared) REACTIONS
     -- budget or per-causer cap holds the deaths instead of dropping them uncounted, so the
     -- cluster grows through the sustained combat that produces it.
-    local count = ap_core_util.accumulate_count(_deaths, smart.id)
+    local count = ap_core_util.add_count(_deaths, smart.id)
     if count < cfg.cause_massacre_threshold then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }

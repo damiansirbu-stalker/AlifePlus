@@ -1,7 +1,7 @@
 --- ap_ext_news: news composer + per-consequence templates in ui_st_ap_news.xml.
 --- Reads ap_core_record.get_records, picks an unreported entry on the actor's level, picks a
 --- per-consequence template, substitutes slots, dispatches via dynamic_news_manager.PushToChannel.
---- Only write is ap_core_record.mark_reported on the gossiped entry (record owns the flag).
+--- Only write is ap_core_record.set_reported on the gossiped entry (record owns the flag).
 
 local IsStalker, get_object_story_id, get_actor_true_community = IsStalker, get_object_story_id, get_actor_true_community
 local pairs, tostring = pairs, tostring
@@ -389,13 +389,13 @@ local function _compose_tick_impl()
     local entry = entries[math_random(#entries)]
     local pool, cons_name = _select_template(entry)
     if not pool or #pool == 0 then
-        ap_core_record.mark_reported(entry.cons_id)
+        ap_core_record.set_reported(entry.cons_id)
         return { code = TRACE.NO_TEMPLATES, cons = cons_name or "?" }
     end
     local slots = _slots_for(entry)
     local filtered = _filter_variants(pool, slots)
     if #filtered == 0 then
-        ap_core_record.mark_reported(entry.cons_id)
+        ap_core_record.set_reported(entry.cons_id)
         return { code = TRACE.NO_MSG, cons = cons_name or "?", reason = REASON.ALL_FILTERED }
     end
     local template = filtered[math_random(#filtered)]
@@ -408,7 +408,7 @@ local function _compose_tick_impl()
             actor_comm = actor_comm or "?", channels = _format_channels(channel_status) }
     end
     _pending_dispatch = { picked = picked, msg = msg }
-    ap_core_record.mark_reported(entry.cons_id)
+    ap_core_record.set_reported(entry.cons_id)
     return { code = TRACE.SENT, sender = picked.name }
 end
 

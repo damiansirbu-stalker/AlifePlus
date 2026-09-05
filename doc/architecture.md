@@ -546,7 +546,7 @@ register_squad(squad, smart, opts) sets scripted_target via xsquad.acquire_squad
 
 register_actor_target(squad) scripts a squad to pursue the player using engine-native actor targeting (no arrival detection).
 
-register_squad_target(squad, target_id, opts) scripts a squad to pursue another squad by id via continuous coordinate homing (the ap_core_chase hooks; see Chase pattern). No arrival detection - the chase ends when the target dies or the leash releases. Both chase forms set entry.is_chase and run the evaluate_chase leash on the periodic scan instead of the arrival/gulag flow.
+register_squad_target(squad, target_id, opts) scripts a squad to pursue another squad by id via continuous coordinate homing (the ap_core_chase hooks; see Chase pattern). No arrival detection - the chase ends when the target dies or the leash releases. Both chase forms set entry.is_chase and run the compute_chase leash on the periodic scan instead of the arrival/gulag flow.
 
 ### Scripted-squad scan
 
@@ -713,7 +713,7 @@ Composer tick fires on an MCM-randomized interval (defaults 60-200s via news_int
 4. Substitute slots.
 5. Pick a speaker via _pick_speaker.
 6. Dispatch via dynamic_news_manager:PushToChannel (or xpda.send during the cold-start window).
-7. Mark the entry via ap_core_record.mark_reported (sets entry.reported on the record; the flag persists with the entry across save/load). Same record never narrated twice.
+7. Mark the entry via ap_core_record.set_reported (sets entry.reported on the record; the flag persists with the entry across save/load). Same record never narrated twice.
 
 ### Slots
 
@@ -761,7 +761,7 @@ NONE (disabled or no entries), NO_TEMPLATES, NO_MSG, NO_SENDER, SENT.
 ### Invariants
 
 - Squad-derived translation keys captured eagerly at add_record time. The engine value drives the slot: mutant squads get a species key (`st_ap_macros_species_<x>`), stalker / zombified-stalker squads get the raw community string (vanilla XML resolves). Smart / level / time stay lazy. Death-resilient: dead or unregistered squads remain renderable.
-- Storage is the activity record (ap_core_record). Gossip dedup is the entry.reported flag set by mark_reported; it persists with the entry and lapses only when the FIFO evicts. Template pools rebuild on locale change.
+- Storage is the activity record (ap_core_record). Gossip dedup is the entry.reported flag set by set_reported; it persists with the entry and lapses only when the FIFO evicts. Template pools rebuild on locale change.
 - Empty slots are nil-safe. Variant filter rejects, or slot substitutes to empty string and _clean_output collapses the gap.
 - Channel routing is speaker-driven: speaker's community = channel. No subject-faction channel mapping, no per-consequence routing rules.
 - Events pre-filtered to level.current() before random pick. Speaker pool db.OnlineStalkers (overwhelmingly the player's level).
@@ -1002,12 +1002,12 @@ Both hooks delegate to the captured original for any squad without a chase entry
 
 #### Leash
 
-`ap_core_util.evaluate_chase(squad, entry)` is the single retention decision for both chase kinds, returning `(verdict, reason)` with verdict in `VERDICT.{KEEP, PAUSE, RELEASE}`. It composes small offline-safe `is_*` predicates, RELEASE-before-PAUSE and cheap-before-expensive, short-circuiting on the first hit - the same `(bool, reason)` shape as the broker off-map despawn chain. Pure (no side effects), so the periodic scan and the dispatch both call it.
+`ap_core_util.compute_chase(squad, entry)` is the single retention decision for both chase kinds, returning `(verdict, reason)` with verdict in `VERDICT.{KEEP, PAUSE, RELEASE}`. It composes small offline-safe `is_*` predicates, RELEASE-before-PAUSE and cheap-before-expensive, short-circuiting on the first hit - the same `(bool, reason)` shape as the broker off-map despawn chain. Pure (no side effects), so the periodic scan and the dispatch both call it.
 
 - RELEASE: `_is_target_lost` (squad target gone or wiped; N/A for the actor), `_is_no_longer_enemy` (opt-in via `entry.check_relation` - faction chases set it, mutant species chases omit it because `is_factions_enemies` is false for undefined mutant pairs), `_is_target_story_protected` (target carries a story id), `_is_target_off_map` (chaser and target on different maps - stateless, so a chase never follows across a level change or leaks into the off-map session system).
 - PAUSE (resume when the condition clears): `_is_target_in_base` (target sheltered in a base smart), `xlevel.is_surge`. Every chaser pauses uniformly; no faction exemption.
 
-The scan (`ap_core_broker._update_chase`) acts on the verdict. RELEASE unscripts. PAUSE stops driving the engine target - the squad-target hook returns nil while paused, and the actor target is released and re-set on resume - with a min-hold (`CHASE_MIN_PAUSE_SEC`, hysteresis against base flicker) and a max-pause cap (`CHASE_MAX_PAUSE_SEC` -> release). KEEP resumes a paused chase and reasserts the actor target. The dispatch (`register_squad_target`) runs the same `evaluate_chase` on the proposed entry stub and refuses any start that is not KEEP. Both chase kinds also share the one ledger TTL (`SCRIPTED_SQUAD_TTL`), checked above the chase/smart split in the scan.
+The scan (`ap_core_broker._update_chase`) acts on the verdict. RELEASE unscripts. PAUSE stops driving the engine target - the squad-target hook returns nil while paused, and the actor target is released and re-set on resume - with a min-hold (`CHASE_MIN_PAUSE_SEC`, hysteresis against base flicker) and a max-pause cap (`CHASE_MAX_PAUSE_SEC` -> release). KEEP resumes a paused chase and reasserts the actor target. The dispatch (`register_squad_target`) runs the same `compute_chase` on the proposed entry stub and refuses any start that is not KEEP. Both chase kinds also share the one ledger TTL (`SCRIPTED_SQUAD_TTL`), checked above the chase/smart split in the scan.
 
 Persistence is the seed only: `_ap_scripted_squads` stores `target_squad_id`; the hooks regenerate the task each tick, so the engine saves neither the task nor `assigned_target_id`. A chase survives save/load and resumes within one scan.
 

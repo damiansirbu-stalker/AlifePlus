@@ -31,7 +31,7 @@ local function _on_squad_npc_death(squad, _npc, se_killer)
     -- Accumulate every eligible death into the base's cluster, then gate publication. The cluster
     -- clears only on an actual publish, so an exhausted (shared) REACTIONS budget or per-causer
     -- cap holds the deaths instead of dropping them uncounted.
-    local count = ap_core_util.accumulate_count(_deaths, smart.id)
+    local count = ap_core_util.add_count(_deaths, smart.id)
     if count < cfg.cause_basekill_threshold then return { code = RESULT.FAILED_RULES, reason = REASON.BELOW_THRESHOLD } end
     if not ap_core_limiter.check_cause_rate_limit(CATEGORY, cfg[CAP_KEY]) then
         return { code = RESULT.FAILED_RULES, reason = REASON.BUDGET_EXHAUSTED }
