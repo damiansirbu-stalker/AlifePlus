@@ -209,7 +209,7 @@ end
 -- drops a period-mismatched drive, then hands the enable gate, timing, and outcome log to the shared
 -- ap_ext_util.try_cause seam. period_mismatch needs are walked only at DEBUG (see _find_overdue_needs);
 -- each emits a failed_rules:wrong_period line so dormant/active drops are not silent.
-local function _try_one_need_cause(squad, level_id, overdue_entry, entry, budget)
+local function _try_need_cause(squad, level_id, overdue_entry, entry, budget)
     if entry.need ~= overdue_entry.need.need then return nil end
     if overdue_entry.period_mismatch then
         if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", entry.log_prefix) end
@@ -222,7 +222,7 @@ end
 --- Walk CAUSES belonging to one overdue need; first cause that publishes wins.
 local function _try_need(squad, level_id, overdue_entry, budget)
     for j = 1, #CAUSES do
-        local result = _try_one_need_cause(squad, level_id, overdue_entry, CAUSES[j], budget)
+        local result = _try_need_cause(squad, level_id, overdue_entry, CAUSES[j], budget)
         if result then return result end
     end
     return nil

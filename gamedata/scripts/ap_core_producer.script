@@ -141,7 +141,7 @@ end
 -- Run one reactive handler; publish on cause, classify on non-publishing rejection.
 -- Times the predicate and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
-local function _try_one_reactive(on_map, entry, args, sc)
+local function _try_reactive(on_map, entry, args, sc)
     local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
@@ -166,7 +166,7 @@ local function _run_reactive_handlers(handlers, on_map, ...)
     local args = {...}
     local sc = hud_collecting()
     for i = 1, #handlers do
-        _try_one_reactive(on_map, handlers[i], args, sc)
+        _try_reactive(on_map, handlers[i], args, sc)
     end
 end
 
@@ -191,7 +191,7 @@ end
 -- Run one radiant cascade entry; publish on cause (caller breaks), classify on non-publishing.
 -- Times the cascade entry and logs name, code:reason, timing when DEBUG on; passthrough otherwise.
 -- @cost O(1) | 0 luabind (delegates to handler)
-local function _try_one_radiant(on_map, squad, entry, sc)
+local function _try_radiant(on_map, squad, entry, sc)
     local dbg = ap_core_debug.is_enabled()
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
@@ -217,7 +217,7 @@ local function _run_radiant_cascade(on_map, squad)
     end
     local sc = hud_collecting()
     for i = 1, cascade_size do
-        if _try_one_radiant(on_map, squad, _cascade_buf[i], sc) then break end
+        if _try_radiant(on_map, squad, _cascade_buf[i], sc) then break end
     end
 end
 

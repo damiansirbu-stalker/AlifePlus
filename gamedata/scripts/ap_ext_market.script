@@ -103,7 +103,7 @@ local _claimed = nil
 -- inside the goods window routinely). Validated at first update: any entry whose item the engine
 -- purged on an offline restock between save and load is dropped; a recycled id that slips through is
 -- still caught at pricing time by the parent==trader guard in _on_get_item_cost, and at release time
--- by the parent==trader + section guard in _release_one (so a bought good is never released from the
+-- by the parent==trader + section guard in _release_good (so a bought good is never released from the
 -- buyer). section is absent on tags restored from a pre-fix save; the release guard treats a missing
 -- section as "cannot confirm identity" and leaves the good to the engine purge.
 local _market_goods = {}
@@ -685,7 +685,7 @@ end
 --- that was sold on, purged, or whose id the engine recycled) fails identity and is left untouched --
 --- the tag is dropped by the caller either way. Offline goods resolve to no game object and are left
 --- to the engine restock purge. This is the release-time backstop the tag-drop comment defers to.
-local function _release_one(id, tag)
+local function _release_good(id, tag)
     local obj = xobject.get_go(id)
     if not obj then return end
     local parent = obj:parent()
@@ -727,7 +727,7 @@ local function _release_expired()
     end
     for i = 1, count do
         local id = _release_buf[i]
-        _release_one(id, _market_goods[id])
+        _release_good(id, _market_goods[id])
         _market_goods[id] = nil
         _release_buf[i] = nil
     end

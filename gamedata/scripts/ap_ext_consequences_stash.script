@@ -121,7 +121,7 @@ end
 
 -- Match an untaken stash section to a non-ammo policy key. A stash section resolves the same
 -- way an item does: its own section name when the policy names that section, else its category.
-local function _find_section_for_category(index, key, rules)
+local function _find_category_section(index, key, rules)
     for j = 1, #index do
         local sec = index[j].sec
         local sec_key = (rules and rules[sec]) and sec or xinventory.get_section_category(sec)
@@ -133,7 +133,7 @@ end
 -- Walk members starting from the rotating cursor and return the first member whose
 -- equipped pistol or rifle accepts the given ammo section under category `cat`. Returns
 -- nil when no equipped weapon matches.
-local function _find_member_for_section(section, cat, member_ids, member_opts, cursor)
+local function _find_section_member(section, cat, member_ids, member_opts, cursor)
     local m_count = #member_ids
     for k = 0, m_count - 1 do
         local m_idx = ((cursor - 1 + k) % m_count) + 1
@@ -147,12 +147,12 @@ local function _find_member_for_section(section, cat, member_ids, member_opts, c
 end
 
 -- Per-member ammo match. Walks stash sections; for each untaken section, tries to match
--- it to a member's equipped weapons via _find_member_for_section starting from the
+-- it to a member's equipped weapons via _find_section_member starting from the
 -- rotating cursor. Returns (section_idx, member_id) of the first hit.
-local function _find_ammo_section_for_category(index, cat, member_ids, member_opts, cursor)
+local function _find_category_ammo_section(index, cat, member_ids, member_opts, cursor)
     for j = 1, #index do
         if not index[j].taken then
-            local m_id = _find_member_for_section(index[j].sec, cat, member_ids, member_opts, cursor)
+            local m_id = _find_section_member(index[j].sec, cat, member_ids, member_opts, cursor)
             if m_id then return j, m_id end
         end
     end
@@ -163,9 +163,9 @@ end
 -- Ammo categories route per-member; non-ammo use section-only resolution.
 local function _resolve_candidate(is_ammo, entry, ctx, cursor)
     if is_ammo then
-        return _find_ammo_section_for_category(ctx.index, entry.category, ctx.member_ids, ctx.member_opts, cursor)
+        return _find_category_ammo_section(ctx.index, entry.category, ctx.member_ids, ctx.member_opts, cursor)
     end
-    return _find_section_for_category(ctx.index, entry.category, ctx.rules), ctx.member_ids[cursor]
+    return _find_category_section(ctx.index, entry.category, ctx.rules), ctx.member_ids[cursor]
 end
 
 -- Fill ONE policy entry's min target by taking matching sections from stash. Returns
@@ -290,7 +290,7 @@ end
 -- Per-member pick handler for fill pass. Mutates picks + surplus. Each item resolves to its
 -- policy key (section if the policy names it, else category) so a deposit only happens for keys
 -- with surplus -- an unlisted item (e.g. smoke) has no key in surplus and is never deposited.
-local function _select_for_member(member_id, opts, surplus, picks, fill_max)
+local function _select_member_items(member_id, opts, surplus, picks, fill_max)
     local rules = STASH_POLICY.rules
     xinventory.iterate_inventory(member_id, function(_, item)
         if #picks >= fill_max then return end
@@ -314,7 +314,7 @@ local function _collect_fill_picks(squad, fill_max)
     for i = 1, #member_ids do
         if #picks >= fill_max then break end
         local member_id = member_ids[i]
-        _select_for_member(member_id, member_opts[member_id], surplus, picks, fill_max)
+        _select_member_items(member_id, member_opts[member_id], surplus, picks, fill_max)
     end
     return picks
 end

@@ -199,7 +199,7 @@ end
 -- ap_ext_util.try_cause seam. period_mismatch drives are walked only at DEBUG (see _find_overdue_drives);
 -- each emits a failed_rules:wrong_period line so dormant/active drops are not silent.
 -- opts: { species, overdue, entry, drive }
-local function _try_one_drive_cause(squad, level_id, opts, budget)
+local function _try_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end
     if opts.overdue.period_mismatch then
         if ap_core_debug.is_enabled() then ap_core_debug.debug("%s failed_rules:wrong_period", opts.entry.log_prefix) end
@@ -213,7 +213,7 @@ end
 local function _try_drive(squad, level_id, species, overdue_entry, budget)
     local drive_name = overdue_entry.instinct.instinct
     for j = 1, #CAUSES do
-        local result = _try_one_drive_cause(squad, level_id,
+        local result = _try_drive_cause(squad, level_id,
             { species = species, overdue = overdue_entry, entry = CAUSES[j], drive = drive_name }, budget)
         if result then return result end
     end
