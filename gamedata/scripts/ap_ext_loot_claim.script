@@ -1,6 +1,6 @@
 --- ap_ext_loot_claim: corpse loot ownership. Three flows share one owner ledger; each has its own
 --- radius + TTL and its own MCM toggle (no master switch -- recording is gated on any flow being
---- enabled, _recording_enabled):
+--- enabled, _is_recording_enabled):
 ---   reserve_own (loot_reserve_own)     -- reserve the actor's kills from NPC looters.
 ---   block_npc (loot_block_npc)         -- veto the actor opening a living NPC's claimed kill.
 ---   npc_vs_npc (loot_block_npc_vs_npc) -- reserve an NPC squad's kill from OTHER NPC looters.
@@ -82,7 +82,7 @@ local _fvt_hooked = false
 -- yield-tip pool sizes (counted at on_game_start) + shared cooldown gate (earliest os.clock allowed)
 local _reserve_yield_n = 0
 local _npcvnpc_yield_n = 0
-local _yield_tip_next = 0
+local _show_yield_tip_next = 0
 
 --- Write an ownership row. killer == actor id flags an actor kill (reserve-own); squad set flags a squad
 --- kill (block-npc reads any living member); squad nil with a non-actor killer is a lone-NPC kill.
@@ -94,7 +94,7 @@ end
 --- Any flow that reads the owner ledger enabled? Gates recording: with all three off there is nothing
 --- to read, so the kill-tracking writes are skipped. Replaces the old loot_enabled master.
 --- @cost O(1) | 3 cfg field reads
-local function _recording_enabled()
+local function _is_recording_enabled()
     return cfg.loot_reserve_own_enabled or cfg.loot_block_npc_enabled or cfg.loot_block_npc_vs_npc_enabled
 end
 
@@ -105,7 +105,7 @@ end
 --- bip01_spine (mutant corpses, part-loaded ragdolls). Resolve the bone id first and only read a
 --- bone that exists; anything else uses the plain object position.
 --- @cost O(1) | 2 luabind on the bone path (get_bone_id + bone_position), 1 on the fallback
-local function _corpse_pos(obj)
+local function _get_corpse_pos(obj)
     if obj.get_bone_id and obj:get_bone_id("bip01_spine") ~= INVALID_BONE_ID then
         return obj:bone_position("bip01_spine")
     end
@@ -115,19 +115,19 @@ end
 --- Is the claim still within the given half's TTL (game hours)? Compares against the stored death
 --- timestamp, so each half ages the same row independently.
 --- @cost O(1) | 1 game_sec (2 luabind) + arithmetic
-local function _fresh(v, ttl_hours)
+local function _is_fresh(v, ttl_hours)
     return (xtime.get_game_sec() - v.t) < ttl_hours * HOURS_TO_SECONDS
 end
 
 --- True when target is within radius of pos (squared compare; avoids the distance_to sqrt).
 --- @cost O(1) | 1 luabind (distance_to_sqr: no sqrt) + 1 mul
-local function _within(pos, target, radius)
+local function _is_in_range(pos, target, radius)
     return pos:distance_to_sqr(target) < radius * radius
 end
 
 
 --- Actor character name for the #name# slot, or nil.
-local function _actor_name()
+local function _get_actor_name()
     local actor = db.actor
     return actor and actor:character_name() or nil
 end
@@ -153,24 +153,24 @@ end
 --- when a line actually fires. name fills the #name# slot (the actor for reserve-own, nil = a nameless
 --- variant for npc-vs-npc).
 --- @cost O(1) | roll on the common bail; 1 relation + 1 distance past it; interval set only on a hit
-local function _yield_tip(npc, prefix, pool_n, name)
+local function _show_yield_tip(npc, prefix, pool_n, name)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local actor = db.actor
     if not actor or xcreature.is_enemy_to_actor(npc) then return end
     local now = os.clock()
-    if now < _yield_tip_next then return end
-    if not _within(npc:position(), actor:position(), YIELD_EARSHOT) then return end
-    _yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
+    if now < _show_yield_tip_next then return end
+    if not _is_in_range(npc:position(), actor:position(), YIELD_EARSHOT) then return end
+    _show_yield_tip_next = now + YIELD_TIP_INTERVAL_SEC
     xpda.show_npc_tip(npc, _resolve_pooled(prefix, pool_n, name), { sound = "news" })
 end
 
 
 --- First living, online squad member within radius of the corpse, or nil.
 --- @cost O(m) members, short-circuits on the first member within radius
-local function _first_member_within(squad, corpse_pos, radius)
+local function _find_member_in_range(squad, corpse_pos, radius)
     for member_id in xsquad.iterate_member_ids(squad) do
         local member = xobject.get_go(member_id)
-        if member and member:alive() and _within(member:position(), corpse_pos, radius) then
+        if member and member:alive() and _is_in_range(member:position(), corpse_pos, radius) then
             return member
         end
     end
@@ -185,19 +185,19 @@ end
 --- One member if it is alive, in range and has a clear line to the body, else nil
 --- @safety SAFE - nil-guarded on the lookup and on alive() before any position read
 --- @cost O(1) | 1 distance, 1 static ray only when in range
-local function _member_clear(member_id, corpse_pos, radius)
+local function _get_clear_member(member_id, corpse_pos, radius)
     local member = xobject.get_go(member_id)
     if not member then return nil end
     if not member:alive() then return nil end
     local mpos = member:position()
-    if not _within(mpos, corpse_pos, radius) then return nil end
+    if not _is_in_range(mpos, corpse_pos, radius) then return nil end
     if xcombat.has_wall_between(mpos, corpse_pos) then return nil end
     return member
 end
 
-local function _first_member_clear(squad, corpse_pos, radius)
+local function _find_first_clear_member(squad, corpse_pos, radius)
     for member_id in xsquad.iterate_member_ids(squad) do
-        local member = _member_clear(member_id, corpse_pos, radius)
+        local member = _get_clear_member(member_id, corpse_pos, radius)
         if member then return member end
     end
     return nil
@@ -206,14 +206,14 @@ end
 --- The squad member that holds the claim against the actor (block-npc), or nil. Companion squads and
 --- squads already at war with the actor cannot loot-lock a body away. Squad id is validated against
 --- recycling via xsquad.is_squad. The claim holds only while a member has a clear line to the body
---- (_first_member_clear).
---- @cost O(m) members | se + is_squad + companion + relation, then _first_member_clear
-local function _squad_claimer(squad_id, corpse_pos, radius)
+--- (_find_first_clear_member).
+--- @cost O(m) members | se + is_squad + companion + relation, then _find_first_clear_member
+local function _find_squad_claimer(squad_id, corpse_pos, radius)
     local squad = xobject.get_se(squad_id)
     if not xsquad.is_squad(squad) then return nil end
     if axr_companions.companion_squads[squad_id] then return nil end
     if game_relations.get_squad_relation_to_actor_by_id(squad_id) == "enemy" then return nil end
-    return _first_member_clear(squad, corpse_pos, radius)
+    return _find_first_clear_member(squad, corpse_pos, radius)
 end
 
 --- The lone killer when alive, non-zombied, not an enemy of the actor, within radius of the corpse,
@@ -222,25 +222,25 @@ end
 --- fire only when nothing solid stands between the killer and the body; the returned owner is both the
 --- block authority and the warn speaker.
 --- @cost O(1) | go + alive + community + relation + 1 distance + 1 static ray (only when in range)
-local function _lone_claimer(killer_id, corpse_pos, radius)
+local function _find_lone_claimer(killer_id, corpse_pos, radius)
     local owner = xobject.get_go(killer_id)
     if not owner or not owner:alive() then return nil end
     local comm = xcreature.get_community(owner)
     if comm == "zombied" then return nil end
     if comm and game_relations.is_factions_enemies(get_actor_true_community(), comm) then return nil end
     local opos = owner:position()
-    if not _within(opos, corpse_pos, radius) then return nil end
+    if not _is_in_range(opos, corpse_pos, radius) then return nil end
     if xcombat.has_wall_between(opos, corpse_pos) then return nil end
     return owner
 end
 
 --- The living NPC that holds a defensible claim on an NPC-owned corpse, or nil. Squad owner delegates
---- to _squad_claimer (a member within radius with a clear line to the body); a squadless killer to
---- _lone_claimer. The returned object is that clear-line member -- the block authority and warn speaker.
+--- to _find_squad_claimer (a member within radius with a clear line to the body); a squadless killer to
+--- _find_lone_claimer. The returned object is that clear-line member -- the block authority and warn speaker.
 --- @cost O(1) lone | O(m) members squad
-local function _npc_claimer(v, corpse_pos, radius)
-    if v.squad then return _squad_claimer(v.squad, corpse_pos, radius) end
-    return _lone_claimer(v.killer, corpse_pos, radius)
+local function _find_npc_claimer(v, corpse_pos, radius)
+    if v.squad then return _find_squad_claimer(v.squad, corpse_pos, radius) end
+    return _find_lone_claimer(v.killer, corpse_pos, radius)
 end
 
 --- Companion looker carve-out for reserve-own: true when the player has opted companions out of the
@@ -249,7 +249,7 @@ end
 --- before any squad resolution. _current_looker is the scanning NPC (published by _publish_looker);
 --- nil-guarded in case near_actor is ever called outside a scan. Traced, noop when debug disabled.
 --- @cost O(1) | 0 luabind when the toggle is on; get_object_squad (2 luabind) + is_companion (0) when off
-local function _companion_exempt(obj)
+local function _is_companion_exempt(obj)
     if cfg.loot_include_companions or not _current_looker then return false end
     local looker_squad = get_object_squad(_current_looker)
     if not looker_squad or not xsquad.is_companion(looker_squad) then return false end
@@ -263,24 +263,24 @@ end
 --- Exclusion rule -- reserve own: the actor's own fresh kill while the actor is within reserve radius
 --- of the corpse AND has a clear line to it (no wall between actor and body -- same rule as the block,
 --- so it favours neither side). Independent of which NPC is looking, except companions when
---- loot_include_companions is off (see _companion_exempt).
+--- loot_include_companions is off (see _is_companion_exempt).
 --- @cost O(1) | half/owner check first; 1 distance then 1 static ray only on an in-range actor kill
-local function _excluded_reserve_own(v, obj)
+local function _is_reserve_own_excluded(v, obj)
     if not cfg.loot_reserve_own_enabled then return false end
-    if not v or v.killer ~= _ac_id or not _fresh(v, cfg.loot_reserve_own_ttl) then return false end
-    if _companion_exempt(obj) then return false end
+    if not v or v.killer ~= _ac_id or not _is_fresh(v, cfg.loot_reserve_own_ttl) then return false end
+    if _is_companion_exempt(obj) then return false end
     local actor = db.actor
     if not actor then return true end
-    local corpse_pos = _corpse_pos(obj)
+    local corpse_pos = _get_corpse_pos(obj)
     local actor_pos = actor:position()
-    local reserved = _within(actor_pos, corpse_pos, cfg.loot_reserve_own_radius)
+    local reserved = _is_in_range(actor_pos, corpse_pos, cfg.loot_reserve_own_radius)
         and not xcombat.has_wall_between(actor_pos, corpse_pos)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s reserve_own corpse=%s dist=%.1f range=%s -> %s", LOG, obj:id(),
             actor_pos:distance_to(corpse_pos), cfg.loot_reserve_own_radius,
             reserved and "reserved" or "lapsed")
     end
-    if reserved then _yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n, _actor_name()) end
+    if reserved then _show_yield_tip(_current_looker, RESERVE_YIELD_PREFIX, _reserve_yield_n, _get_actor_name()) end
     return reserved
 end
 
@@ -290,28 +290,28 @@ end
 --- yanked). Companion/enemy owners never reach here: companion kills are not recorded, and actor
 --- relation is irrelevant NPC-vs-NPC.
 --- @cost O(1) | half/owner/claimed/fresh checks first; squad presence (O(m)) only past them
-local function _excluded_squad_claim(v, obj, looker)
+local function _is_squad_claim_excluded(v, obj, looker)
     if not cfg.loot_block_npc_vs_npc_enabled then return false end
     if not v or v.killer == _ac_id or not looker then return false end
     local corpse_id = obj:id()
     local st = db.storage[corpse_id]
     if st and st.corpse_already_selected ~= nil then return false end
-    if not _fresh(v, cfg.loot_block_npc_vs_npc_ttl) then return false end
-    local corpse_pos = _corpse_pos(obj)
+    if not _is_fresh(v, cfg.loot_block_npc_vs_npc_ttl) then return false end
+    local corpse_pos = _get_corpse_pos(obj)
     local radius = cfg.loot_block_npc_vs_npc_radius
     local blocked
     if v.squad then
         local looker_squad = get_object_squad(looker)
         if looker_squad and looker_squad.id == v.squad then return false end
         local squad = xobject.get_se(v.squad)
-        blocked = xsquad.is_squad(squad) and _first_member_within(squad, corpse_pos, radius) ~= nil
+        blocked = xsquad.is_squad(squad) and _find_member_in_range(squad, corpse_pos, radius) ~= nil
     else
         if v.killer == looker:id() then return false end
         local owner = xobject.get_go(v.killer)
         if not owner or not owner:alive() then return false end
-        blocked = _within(owner:position(), corpse_pos, radius)
+        blocked = _is_in_range(owner:position(), corpse_pos, radius)
     end
-    if blocked then _yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n) end
+    if blocked then _show_yield_tip(looker, NPCVNPC_YIELD_PREFIX, _npcvnpc_yield_n) end
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s npc_vs_npc corpse=%s owner=%s looker=%s -> %s", LOG, corpse_id,
             tostring(v.squad or v.killer), looker:id(), blocked and "blocked" or "free")
@@ -325,11 +325,11 @@ end
 --- comes from _current_looker, published by the find_valid_target wrapper (near_actor itself receives
 --- only the corpse).
 --- @cost O(1) | 1 ttl lookup + two rule checks that early-out before any luabind on the common path
-local function _npc_loot_excluded(orig, obj)
+local function _is_npc_loot_excluded(orig, obj)
     if not obj or not _ac_id then return orig(obj) end
     local v = _owner:get(obj:id())
-    if _excluded_reserve_own(v, obj) then return true end
-    if _excluded_squad_claim(v, obj, _current_looker) then return true end
+    if _is_reserve_own_excluded(v, obj) then return true end
+    if _is_squad_claim_excluded(v, obj, _current_looker) then return true end
     return orig(obj)
 end
 
@@ -351,7 +351,7 @@ end
 --- squad is a companion squad. Recording is gated by the master only -- the ledger feeds both halves.
 --- @cost O(1) | story id + victim companion always; is_stalker/companion/community + squad lookup for NPC killers
 local function _on_death(victim, killer)
-    if not _recording_enabled() or not victim or not killer then return end
+    if not _is_recording_enabled() or not victim or not killer then return end
     _ac_id = _ac_id or (db.actor and db.actor:id())
     local victim_id, killer_id = victim:id(), killer:id()
     if victim_id == killer_id then return end
@@ -379,7 +379,7 @@ end
 --- npc_on_hit_callback with who = actor; that death-hit is the only signal for an actor kill.
 --- @cost O(1) | bone_index string compare first; the owner write only on the actor's death-hit
 local function _on_hit(obj, _amount, _dir, who, bone_index)
-    if not _recording_enabled() or bone_index ~= "from_death_callback" then return end
+    if not _is_recording_enabled() or bone_index ~= "from_death_callback" then return end
     if not obj or not who then return end
     _ac_id = _ac_id or (db.actor and db.actor:id())
     if who:id() ~= _ac_id then return end
@@ -393,12 +393,12 @@ end
 
 --- The living NPC that holds a defensible claim on a corpse the actor is trying to open, or nil.
 --- Unowned corpses (no trace) and the actor's own kills return nil. Within block-npc's TTL the decision
---- delegates to _npc_claimer (a squad member or lone killer within radius with a clear line to the body).
+--- delegates to _find_npc_claimer (a squad member or lone killer within radius with a clear line to the body).
 --- Traces the claim for owned corpses -- claimed-by, or void reason (own_kill / stale / walled_or_absent) --
 --- when ap_core_debug.is_enabled(). The corpse object is required for the position, so call sites that
 --- hold only an id resolve it first.
---- @cost O(1) | ttl lookup + freshness; _npc_claimer only when an NPC owner exists and is fresh
-local function _claim_owner(corpse)
+--- @cost O(1) | ttl lookup + freshness; _find_npc_claimer only when an NPC owner exists and is fresh
+local function _find_claim_owner(corpse)
     if not corpse then return nil end
     local id = corpse:id()
     local v = id and _owner:get(id)
@@ -408,10 +408,10 @@ local function _claim_owner(corpse)
     local owner, why
     if v.killer == _ac_id then
         why = "own_kill"
-    elseif not _fresh(v, cfg.loot_block_npc_ttl) then
+    elseif not _is_fresh(v, cfg.loot_block_npc_ttl) then
         why = "stale"
     else
-        owner = _npc_claimer(v, _corpse_pos(corpse), cfg.loot_block_npc_radius)
+        owner = _find_npc_claimer(v, _get_corpse_pos(corpse), cfg.loot_block_npc_radius)
         if not owner then why = "walled_or_absent" end
     end
     tmr:stop()
@@ -435,14 +435,14 @@ end
 
 --- Tip the actor that the kill is claimed: a PDA tip headed by the speaking member's name + portrait,
 --- carrying a random line from the warn pool. The owner passed here already has a clear line to the body
---- (that is why _claim_owner returned it), so there is no separate voice gate -- block and line share the
+--- (that is why _find_claim_owner returned it), so there is no separate voice gate -- block and line share the
 --- one wall test. Throttled per corpse by _tip_ttl so a held/mashed USE key warns once per approach.
-local function _warn_once(corpse, owner)
+local function _show_warning(corpse, owner)
     local corpse_id = corpse:id()
     if _tip_ttl:get(corpse_id) then return end
     if not db.actor then return end
     _tip_ttl:set(corpse_id, true)
-    xpda.show_npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _actor_name()), { sound = "beep_1" })
+    xpda.show_npc_tip(owner, _resolve_pooled(WARN_PREFIX, _warn_n, _get_actor_name()), { sound = "beep_1" })
 end
 
 --- block-npc primary: veto opening a living NPC's claimed kill. on_before_key_press fires before the
@@ -457,10 +457,10 @@ local function _on_before_key_press(_key, bind, _dis, flags)
     if bind ~= key_bindings.kUSE then return end
     local obj = level.get_target_obj()
     if not obj then return end
-    local owner = _claim_owner(obj)
+    local owner = _find_claim_owner(obj)
     if not owner then return end
     flags.ret_value = false
-    _warn_once(obj, owner)
+    _show_warning(obj, owner)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked open corpse=%s owner=%s", LOG, obj:id(), owner:id())
     end
@@ -475,10 +475,10 @@ local function _on_item_before_move(flags, npc_id, _obj, mode, bag)
     if not cfg.loot_block_npc_enabled then return end
     if not xinventory.is_corpse_take(mode, bag) then return end
     local corpse = xobject.get_go(npc_id)
-    local owner = _claim_owner(corpse)
+    local owner = _find_claim_owner(corpse)
     if not owner then return end
     xinventory.disable_move(flags)
-    _warn_once(corpse, owner)
+    _show_warning(corpse, owner)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked take corpse=%s owner=%s", LOG, npc_id, owner:id())
     end
@@ -488,13 +488,13 @@ end
 --- action, which never fires the kUSE keystroke the keypress veto watches. Clearing flags.ret_value
 --- aborts the action; same decision as the keypress veto.
 --- @cost O(1) | master/half compare first; claim lookup only on a Dot Marks corpse interact
-local function _veto_dotmarks(id, flags)
+local function _on_dotmarks_loot(id, flags)
     if not cfg.loot_block_npc_enabled or not flags or not id then return end
     local corpse = xobject.get_go(id)
-    local owner = _claim_owner(corpse)
+    local owner = _find_claim_owner(corpse)
     if not owner then return end
     flags.ret_value = false
-    _warn_once(corpse, owner)
+    _show_warning(corpse, owner)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s blocked dotmarks corpse=%s owner=%s", LOG, id, owner:id())
     end
@@ -502,14 +502,14 @@ end
 
 --- dotmarks_on_manual_interact_release(id, mark, flags): primary single-press corpse open.
 local function _on_dotmarks_interact(id, _mark, flags)
-    _veto_dotmarks(id, flags)
+    _on_dotmarks_loot(id, flags)
 end
 
 --- dotmarks_on_before_secondary_action(id, mark, prompt, functor, flags): long-press take-all / autoloot.
 --- id is nil when ExecuteAction fires with no target arg; fall back to the prompt's own target, the
 --- same id the action runs on.
 local function _on_dotmarks_secondary(id, _mark, prompt, _functor, flags)
-    _veto_dotmarks(id or (prompt and prompt.args and prompt.args.id), flags)
+    _on_dotmarks_loot(id or (prompt and prompt.args and prompt.args.id), flags)
 end
 
 local function _on_first_update()
@@ -546,7 +546,7 @@ function on_game_start()
     -- installs cleanly every load. is_hooked only separates an already-installed hook (a repeat call
     -- within one VM) from a real hook failure; it is not a cross-load persistence check.
     if xevent.is_hooked("xr_corpse_detection", "near_actor")
-        or xevent.register_hook("xr_corpse_detection", "near_actor", _npc_loot_excluded) then
+        or xevent.register_hook("xr_corpse_detection", "near_actor", _is_npc_loot_excluded) then
         ap_core_debug.info("%s hooked xr_corpse_detection.near_actor", LOG)
     else
         ap_core_debug.warn("%s FAILED to hook xr_corpse_detection.near_actor", LOG)
