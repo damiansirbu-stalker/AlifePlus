@@ -65,7 +65,7 @@ end
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
 --- @param is_radiant boolean
-function classify_cause(result, is_radiant)
+function update_cause_stats(result, is_radiant)
     local counters = is_radiant and r or x
     if result.code == RESULT.FAILED_SCAN then
         counters.cause_scan = counters.cause_scan + 1
@@ -82,7 +82,7 @@ end
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
 --- @param is_radiant boolean
-function classify_csq(result, is_radiant)
+function update_csq_stats(result, is_radiant)
     local counters = is_radiant and r or x
     local code = result.code
     if code == RESULT.SUCCESS then
@@ -101,7 +101,7 @@ end
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param is_radiant boolean
-function inc_bucket(is_radiant)
+function update_bucket_stat(is_radiant)
     local counters = is_radiant and r or x
     counters.csq_bucket = counters.csq_bucket + 1
 end
@@ -110,7 +110,7 @@ end
 --- Called when consumer's global radiant cap exhausts; radiant-only by construction
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
-function inc_cap()
+function update_cap_stat()
     r.csq_cap = r.csq_cap + 1
 end
 
@@ -119,7 +119,7 @@ end
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param cause_type string CAUSE_TYPE.RADIANT or CAUSE_TYPE.REACTIVE
-function inc_pub(cause_type)
+function update_publish_stat(cause_type)
     if cause_type == CAUSE_TYPE.RADIANT then
         r.pub = r.pub + 1
     else
@@ -127,8 +127,8 @@ function inc_pub(cause_type)
     end
 end
 
--- csq tried = consequences classified (excludes rate-limited which never reach classify_csq)
-local function _csq_tried(counters)
+-- csq tried = consequences classified (excludes rate-limited which never reach update_csq_stats)
+local function _get_csq_tried(counters)
     return counters.consequences + counters.csq_rules + counters.csq_scan + counters.csq_action
 end
 
@@ -136,7 +136,7 @@ end
 -- { label, field } and "|" renders as a literal section separator. TOTAL and /MIN lines
 -- share the list, so adding or removing a counter is a one-line change and the label/value
 -- pairing cannot desync (the old hand-maintained positional format strings failed only at
--- dump time, only with statistics enabled). field "_csq_tried" resolves via _csq_tried().
+-- dump time, only with statistics enabled). field "_get_csq_tried" resolves via _get_csq_tried().
 -- Sections: sensor | gates | cause stage | publish stage | classify stage | exec.
 -- Within sections, position disambiguates collisions (rules/scan appear in cause and classify).
 local _R_FIELDS = {
@@ -144,25 +144,25 @@ local _R_FIELDS = {
     { "events", "events" }, { "window", "deny_budget" }, { "protected", "protected" }, "|",
     { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
     { "published", "pub" }, { "cap", "csq_cap" }, { "limiter", "csq_bucket" }, "|",
-    { "handlers", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
     { "executed", "consequences" },
 }
 local _X_FIELDS = {
     { "events", "events" }, { "throttle", "pacer" }, { "balance", "ratio" }, "|",
     { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
     { "published", "pub" }, { "limiter", "csq_bucket" }, "|",
-    { "handlers", "_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
     { "executed", "consequences" },
 }
 
 local function _resolve_field(counters, field)
-    if field == "_csq_tried" then return _csq_tried(counters) end
+    if field == "_get_csq_tried" then return _get_csq_tried(counters) end
     return counters[field] or 0
 end
 
 -- Compose one dump line. minutes nil = TOTAL (integers); minutes set = /MIN (per-minute floats).
 local _line_buf = {}
-local function _compose_line(prefix, fields, counters, minutes)
+local function _format_line(prefix, fields, counters, minutes)
     local count = 0
     for i = 1, #fields do
         local field = fields[i]
@@ -180,10 +180,10 @@ local function _compose_line(prefix, fields, counters, minutes)
 end
 
 local function _log_dump(minutes)
-    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL RADIANT: ", _R_FIELDS, r, nil))
-    ap_core_debug.info("%s", _compose_line("[STATS] TOTAL REACTIVE: ", _X_FIELDS, x, nil))
-    ap_core_debug.info("%s", _compose_line("[STATS] /MIN RADIANT: ", _R_FIELDS, r, minutes))
-    ap_core_debug.info("%s", _compose_line("[STATS] /MIN REACTIVE: ", _X_FIELDS, x, minutes))
+    ap_core_debug.info("%s", _format_line("[STATS] TOTAL RADIANT: ", _R_FIELDS, r, nil))
+    ap_core_debug.info("%s", _format_line("[STATS] TOTAL REACTIVE: ", _X_FIELDS, x, nil))
+    ap_core_debug.info("%s", _format_line("[STATS] /MIN RADIANT: ", _R_FIELDS, r, minutes))
+    ap_core_debug.info("%s", _format_line("[STATS] /MIN REACTIVE: ", _X_FIELDS, x, minutes))
 end
 
 -- Snapshot ring for sliding-window rates: 7 slots x 10s dumps = the newest snapshot at
@@ -202,24 +202,24 @@ end
 -- Copy both counter tables (plus the derived handlers total) into the ring.
 local function _push_snapshot()
     local snap_r, snap_x = xtable.clone(r), xtable.clone(x)
-    snap_r._csq_tried = _csq_tried(r)
-    snap_x._csq_tried = _csq_tried(x)
+    snap_r._get_csq_tried = _get_csq_tried(r)
+    snap_x._get_csq_tried = _get_csq_tried(x)
     _hist_pos = _hist_pos % HIST_SLOTS + 1
     _hist[_hist_pos] = { t = clock(), r = snap_r, x = snap_x }
 end
 
 -- Oldest ring snapshot (nil while the ring is empty; the first slot while it fills).
-local function _oldest_snapshot()
+local function _get_oldest_snapshot()
     local wrap = _hist[_hist_pos % HIST_SLOTS + 1]
     return wrap or _hist[1]
 end
 
 -- Windowed delta of one field in one pipeline column ("r"/"x"), with the window length
 -- in minutes. Falls back to the whole session when the ring has no snapshot yet.
-local function _win_delta(col, field, session_minutes)
+local function _get_win_delta(col, field, session_minutes)
     local live = col == "r" and r or x
-    local live_value = field == "_csq_tried" and _csq_tried(live) or (live[field] or 0)
-    local snapshot = _oldest_snapshot()
+    local live_value = field == "_get_csq_tried" and _get_csq_tried(live) or (live[field] or 0)
+    local snapshot = _get_oldest_snapshot()
     if not snapshot then return live_value, session_minutes end
     local snapshot_col = col == "r" and snapshot.r or snapshot.x
     local minutes = (clock() - snapshot.t) / 60
@@ -227,13 +227,13 @@ local function _win_delta(col, field, session_minutes)
     return live_value - (snapshot_col[field] or 0), minutes
 end
 
-local function _dump()
+local function _log_stats()
     if not is_collecting() then return end
     local elapsed = clock() - _start_time
     local minutes = elapsed / 60
     if minutes < 0.1 then minutes = 0.1 end
     _log_dump(minutes)
-    if _hud then _hud:Refresh(minutes, elapsed) end
+    if _hud then _hud:update_display(minutes, elapsed) end
     _push_snapshot()
 end
 
@@ -241,7 +241,7 @@ local function _on_dump_timer()
     -- return true self-removes the time event: an expired event whose callback returns nil is
     -- re-invoked every actor update (_g.script ProcessEventQueue). _start_collecting re-creates it.
     if not is_collecting() then return true end
-    _dump()
+    _log_stats()
     ResetTimeEvent("ap_stats", "dump", DUMP_INTERVAL_SEC)
 end
 
@@ -288,10 +288,10 @@ local _ROWS = {
     { type = "section", label = "OUTCOME" },
     { type = "output", label = "published",   field = "pub", rate = "r" },
     { type = "filter", label = "limiter",     field = "csq_bucket", denom = "pub", pct = "rx", loss = true },
-    { type = "output", label = "handlers",    field = "_csq_tried", rate = "r" },
-    { type = "filter", label = "rules",       field = "csq_rules",  denom = "_csq_tried", pct = "rx" },
-    { type = "filter", label = "scan",        field = "csq_scan",   denom = "_csq_tried", pct = "rx" },
-    { type = "filter", label = "action",      field = "csq_action", denom = "_csq_tried", pct = "rx" },
+    { type = "output", label = "handlers",    field = "_get_csq_tried", rate = "r" },
+    { type = "filter", label = "rules",       field = "csq_rules",  denom = "_get_csq_tried", pct = "rx" },
+    { type = "filter", label = "scan",        field = "csq_scan",   denom = "_get_csq_tried", pct = "rx" },
+    { type = "filter", label = "action",      field = "csq_action", denom = "_get_csq_tried", pct = "rx" },
     { type = "output", label = "executed",    field = "consequences", rate = "r" },
 }
 
@@ -336,14 +336,14 @@ function UIStatsHUD:__init() super()
     self._clr_cream = clr_cream
     self._clr_red = clr_red
 
-    self._elapsed = self:_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_cream)
+    self._elapsed = self:_build_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_cream)
 
     local hdr_y = ROW_H + 2
-    self:_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
-    self:_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
+    self:_build_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
+    self:_build_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
     -- The counts are since-load totals; the right column is a different clock (sliding
     -- 60s window), so it says so.
-    self:_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
+    self:_build_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
 
     self._entries = {}
     for row_idx = 1, #_ROWS do
@@ -356,16 +356,16 @@ end
 -- Build one overlay row: a section header line, or label + two value cells + extra cell.
 function UIStatsHUD:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
     if row.type == "section" then
-        self:_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
+        self:_build_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
         return
     end
     local value_clr = clr_cream
     if row.type == "output" then value_clr = clr_green
     elseif row.loss then value_clr = clr_red end
-    self:_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
-    local val_r = self:_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)
-    local val_x = self:_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", value_clr)
-    local extra = self:_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_cream)
+    self:_build_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
+    local val_r = self:_build_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)
+    local val_x = self:_build_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", value_clr)
+    local extra = self:_build_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_cream)
     self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
         field = row.field, field_x = row.field_x, row_type = row.type,
         denom = row.denom, rate = row.rate, pct = row.pct, loss = row.loss }
@@ -373,7 +373,7 @@ end
 
 function UIStatsHUD:__finalize() end
 
-function UIStatsHUD:_text(xml, px, py, pw, text, color)
+function UIStatsHUD:_build_text(xml, px, py, pw, text, color)
     local st = xml:InitStatic("line", self)
     st:SetWndPos(vector2():set(px, py))
     st:SetWndSize(vector2():set(pw, ROW_H))
@@ -386,38 +386,38 @@ local function _get_value(entry, counters, is_x)
     if is_x and entry.field_x == false then return "-" end
     if not is_x and entry.field == false then return "-" end
     local field = (is_x and entry.field_x) or entry.field
-    if field == "_csq_tried" then return _csq_tried(counters) end
+    if field == "_get_csq_tried" then return _get_csq_tried(counters) end
     return counters[field] or 0
 end
 
 -- Windowed numerator/denominator pair for a percentage row. Source "r"/"x" reads one
 -- pipeline column; "rx" sums both (rows the two pipelines share).
-local function _pct_deltas(entry, session_minutes)
+local function _compute_pct_deltas(entry, session_minutes)
     local field = entry.field or entry.field_x
     if entry.pct == "rx" then
-        local blocked_r = _win_delta("r", entry.field, session_minutes)
-        local blocked_x = _win_delta("x", entry.field_x or entry.field, session_minutes)
-        local denom_r = _win_delta("r", entry.denom, session_minutes)
-        local denom_x = _win_delta("x", entry.denom, session_minutes)
+        local blocked_r = _get_win_delta("r", entry.field, session_minutes)
+        local blocked_x = _get_win_delta("x", entry.field_x or entry.field, session_minutes)
+        local denom_r = _get_win_delta("r", entry.denom, session_minutes)
+        local denom_x = _get_win_delta("x", entry.denom, session_minutes)
         return blocked_r + blocked_x, denom_r + denom_x
     end
-    return _win_delta(entry.pct, field, session_minutes), _win_delta(entry.pct, entry.denom, session_minutes)
+    return _get_win_delta(entry.pct, field, session_minutes), _get_win_delta(entry.pct, entry.denom, session_minutes)
 end
 
 -- Extra column: sliding-window per-minute rate (rate rows) or sliding-window percentage
 -- of the row's denominator (pct rows). Empty when there is nothing to report.
-local function _extra_text(entry, session_minutes)
+local function _build_extra_text(entry, session_minutes)
     if entry.rate then
-        local delta, minutes = _win_delta(entry.rate, entry.field, session_minutes)
+        local delta, minutes = _get_win_delta(entry.rate, entry.field, session_minutes)
         return string_format("%.1f/m", delta / minutes)
     end
     if not entry.pct then return "" end
-    local blocked, denom = _pct_deltas(entry, session_minutes)
+    local blocked, denom = _compute_pct_deltas(entry, session_minutes)
     if denom <= 0 or blocked <= 0 then return "" end
     return string_format("%d%%", blocked * 100 / denom)
 end
 
-function UIStatsHUD:Refresh(minutes, elapsed_sec)
+function UIStatsHUD:update_display(minutes, elapsed_sec)
     local hours = math_floor(elapsed_sec / 3600)
     local mins = math_floor((elapsed_sec % 3600) / 60)
     local secs = math_floor(elapsed_sec % 60)
@@ -432,7 +432,7 @@ end
 function UIStatsHUD:_update_row(entry, minutes)
     entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
     entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
-    local extra = _extra_text(entry, minutes)
+    local extra = _build_extra_text(entry, minutes)
     local extra_ctl = entry.extra:TextControl()
     extra_ctl:SetText(extra)
     if entry.loss then
@@ -467,7 +467,7 @@ local function _hide_hud()
     ap_core_debug.info("[STATS] HUD off")
 end
 
-local function _reposition()
+local function _reset_hud()
     if _hud then
         get_hud():RemoveDialogToRender(_hud)
         _hud = UIStatsHUD()
@@ -490,7 +490,7 @@ local function _on_option_change()
     elseif not now_enabled and _was_enabled then
         _hide_hud()
     elseif now_enabled and _was_enabled then
-        _reposition()
+        _reset_hud()
     end
     _was_enabled = now_enabled
     _was_counters = now_collecting
