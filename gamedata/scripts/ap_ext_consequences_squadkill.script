@@ -19,13 +19,13 @@ local cfg = ap_core_mcm.cfg
 local _alignment_revenge = xtable.merge(ap_ext_const.alignment_unprincipled, ap_ext_const.alignment_outlaw)
 local _personality_revenge = { PERSONALITY.AGGRESSION, PERSONALITY.RELATION }
 
--- Revenge chase helpers (only used by _handler_revenge)
+-- Revenge chase helpers (only used by _run_revenge)
 
 local _move_actor_chasers = ap_ext_common.register_actor_chasers
 
 local _move_squad_chasers = ap_ext_common.register_squad_chasers
 
-local function _handler_revenge(event_data)
+local function _run_revenge(event_data)
     if not ap_ext_util.check_alignment(_alignment_revenge, event_data.victim_faction) then
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = event_data.victim_faction }
     end
@@ -83,6 +83,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.SQUADKILL_REVENGE, {
         event = CAUSE.SQUADKILL,
         condition = function() return cfg.consequence_squadkill_revenge_enabled end,
-    }, _handler_revenge)
+    }, _run_revenge)
     ap_core_debug.info(LOG_INIT .. " Initialized: 1 consequence (revenge)")
 end

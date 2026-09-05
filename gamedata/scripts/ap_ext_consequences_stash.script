@@ -60,14 +60,14 @@ local function _load_stash_policy()
     }
 end
 
-local function _stash_has_untouchable(sections)
+local function _has_untouchable(sections)
     for i = 1, #sections do
         if xinventory.is_in_category(sections[i], "untouchable") then return true end
     end
     return false
 end
 
-local function _stash_has_crafting(sections)
+local function _has_crafting(sections)
     for i = 1, #sections do
         if xinventory.is_in_category(sections[i], "crafting") then return true end
     end
@@ -107,7 +107,7 @@ local function _collect_squad_counts(squad)
 end
 
 -- Index stash sections with cost + a `taken` flag, for the two loot passes.
-local function _index_with_cost(sections)
+local function _build_cost_index(sections)
     local idx = {}
     for i = 1, #sections do
         idx[i] = { sec = sections[i], cost = xinventory.get_cost(sections[i]) or DEFAULT_COST, taken = false }
@@ -133,7 +133,7 @@ end
 -- Walk members starting from the rotating cursor and return the first member whose
 -- equipped pistol or rifle accepts the given ammo section under category `cat`. Returns
 -- nil when no equipped weapon matches.
-local function _match_section_to_member(section, cat, member_ids, member_opts, cursor)
+local function _find_member_for_section(section, cat, member_ids, member_opts, cursor)
     local m_count = #member_ids
     for k = 0, m_count - 1 do
         local m_idx = ((cursor - 1 + k) % m_count) + 1
@@ -147,12 +147,12 @@ local function _match_section_to_member(section, cat, member_ids, member_opts, c
 end
 
 -- Per-member ammo match. Walks stash sections; for each untaken section, tries to match
--- it to a member's equipped weapons via _match_section_to_member starting from the
+-- it to a member's equipped weapons via _find_member_for_section starting from the
 -- rotating cursor. Returns (section_idx, member_id) of the first hit.
 local function _find_ammo_section_for_category(index, cat, member_ids, member_opts, cursor)
     for j = 1, #index do
         if not index[j].taken then
-            local m_id = _match_section_to_member(index[j].sec, cat, member_ids, member_opts, cursor)
+            local m_id = _find_member_for_section(index[j].sec, cat, member_ids, member_opts, cursor)
             if m_id then return j, m_id end
         end
     end
@@ -171,7 +171,7 @@ end
 -- Fill ONE policy entry's min target by taking matching sections from stash. Returns
 -- updated cursor. ctx carries non-mutated per-loot state { index, member_ids,
 -- member_opts, counts, taken_secs, rules }.
-local function _loot_entry(entry, ctx, cursor)
+local function _run_loot_entry(entry, ctx, cursor)
     if entry.rule.min <= 0 then return cursor end
     local cat = entry.category
     local current = ctx.counts[cat] or 0
@@ -189,16 +189,16 @@ local function _loot_entry(entry, ctx, cursor)
     return cursor
 end
 
--- Per-category loot pass. Walk policy entries in declaration order; delegates each entry to _loot_entry.
-local function _loot_by_category(ctx)
+-- Per-category loot pass. Walk policy entries in declaration order; delegates each entry to _run_loot_entry.
+local function _run_category_loot(ctx)
     local cursor = 1
     for i = 1, #STASH_POLICY.entries do
-        cursor = _loot_entry(STASH_POLICY.entries[i], ctx, cursor)
+        cursor = _run_loot_entry(STASH_POLICY.entries[i], ctx, cursor)
     end
 end
 
 -- Extras pass. Top-N by cost from sections not taken by the category pass.
-local function _loot_extras(index, member_ids, taken_secs)
+local function _run_loot_extras(index, member_ids, taken_secs)
     if STASH_POLICY.extras_max <= 0 then return end
     local leftover = {}
     for i = 1, #index do
@@ -221,7 +221,7 @@ end
 ---   1. Untouchable in stash -> skip whole stash (no loot, no clear). Always-on.
 ---   2. Crafting in stash AND MCM toolkit-skip on -> skip whole stash (preserve toolkits).
 ---   3. Otherwise: per-category loot pass + extras pass + clear stash.
-local function _arrive_loot(squad, args)
+local function _on_arrive_loot(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
     local stash_id = args.stash_id
@@ -233,13 +233,13 @@ local function _arrive_loot(squad, args)
     if not sections or #sections == 0 then return end
 
     -- Untouchable preservation (always-on; quest items must survive)
-    if _stash_has_untouchable(sections) then
+    if _has_untouchable(sections) then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d untouchable_present, skipping", stash_id, squad.id)
         return
     end
 
     -- Crafting preservation (MCM-gated)
-    if cfg.consequence_stash_loot_skip_crafting and _stash_has_crafting(sections) then
+    if cfg.consequence_stash_loot_skip_crafting and _has_crafting(sections) then
         ap_core_debug.debug(LOG_LOOT .. " arrive: stash=%d squad=%d crafting_present, skipping", stash_id, squad.id)
         return
     end
@@ -263,8 +263,8 @@ local function _arrive_loot(squad, args)
     local tid = dbg and xtrace.new().id or 0
     local tmr = xprofiler.new_if(dbg):start()
     local taken_secs = {}
-    local index = _index_with_cost(sections)
-    _loot_by_category({
+    local index = _build_cost_index(sections)
+    _run_category_loot({
         index       = index,
         member_ids  = member_ids,
         member_opts = member_opts,
@@ -272,7 +272,7 @@ local function _arrive_loot(squad, args)
         taken_secs  = taken_secs,
         rules       = STASH_POLICY.rules,
     })
-    _loot_extras(index, member_ids, taken_secs)
+    _run_loot_extras(index, member_ids, taken_secs)
     xstash.collect_stash_items(stash_id)
     tmr:stop()
     if dbg then
@@ -281,7 +281,7 @@ local function _arrive_loot(squad, args)
     end
 end
 
-local function _arrive_ambush(squad, args)
+local function _on_arrive_ambush(squad, args)
     if not args then return end
     ap_core_debug.debug(LOG_AMBUSH .. " arrive: stash=%d squad=%d", args.stash_id, squad.id)
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
@@ -321,7 +321,7 @@ end
 
 --- Fill a stash. Deposit any category whose squad count exceeds policy max, total per-event
 --- capped by STASH_POLICY.fill_max.
-local function _arrive_fill(squad, args)
+local function _on_arrive_fill(squad, args)
     if not args then return end
     ap_ext_tracker.reset_squad_opportunity(squad.id, args.dto_field, xtime.get_game_sec())
     local stash_id = args.stash_id
@@ -364,19 +364,19 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.STASH_LOOT, action = ACTION.STASH_LOOT,     event = CAUSE.STASH_LOOT,
       name = "stash_loot",
       enabled_key = "consequence_stash_loot_enabled",
-      on_arrive_fn = _arrive_loot,
+      on_arrive_fn = _on_arrive_loot,
       pre_release_gulag = PRE_RELEASE_GULAG.STASH_LOOT,
       interruptable = false },
     { consequence = CONSEQUENCE.STASH_AMBUSH, action = ACTION.STASH_AMBUSH, event = CAUSE.STASH_AMBUSH,
       name = "stash_ambush",
       enabled_key = "consequence_stash_ambush_enabled",
-      on_arrive_fn = _arrive_ambush,
+      on_arrive_fn = _on_arrive_ambush,
       pre_release_gulag = PRE_RELEASE_GULAG.STASH_AMBUSH,
       interruptable = true },
     { consequence = CONSEQUENCE.STASH_FILL, action = ACTION.STASH_FILL,     event = CAUSE.STASH_FILL,
       name = "stash_fill",
       enabled_key = "consequence_stash_fill_enabled",
-      on_arrive_fn = _arrive_fill,
+      on_arrive_fn = _on_arrive_fill,
       pre_release_gulag = PRE_RELEASE_GULAG.STASH_FILL,
       interruptable = false },
 }

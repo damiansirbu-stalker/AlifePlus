@@ -27,7 +27,7 @@ local cfg = ap_core_mcm.cfg
 --- Trade arrival action: trade visitor inventory with any service NPC at the destination smart.
 --- Delegates to ap_ext_trade.trade; trade uses the per-rank LTX policy for categories and the
 --- MCM trade_profit_max cap (economy > trade). One inline trade timer + line.
-local function _arrive_action_trade(tid, visitor_go, args)
+local function _on_arrive_action_trade(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
@@ -44,11 +44,11 @@ local function _arrive_action_trade(tid, visitor_go, args)
 end
 
 --- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
---- Counterpart of _arrive_action_trade -- delegates to ap_ext_barter.barter, which moves items both
+--- Counterpart of _on_arrive_action_trade -- delegates to ap_ext_barter.barter, which moves items both
 --- ways with no money via the per-rank ap_barter_policy.ltx. The peer pick excludes the arriving
 --- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
 --- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER).
-local function _arrive_action_barter(tid, visitor_go, args)
+local function _on_arrive_action_barter(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
@@ -78,13 +78,13 @@ local CONFIGS = {
     { consequence = CONSEQUENCE.SHELTER_OUTDOOR, action = ACTION.SHELTER_OUTDOOR,   event = CAUSE.SHELTER_OUTDOOR,  name = "shelter_outdoor",
       pre_release_gulag = PRE_RELEASE_GULAG.SHELTER_OUTDOOR },
     { consequence = CONSEQUENCE.SUPPLY_TRADER, action = ACTION.SUPPLY_TRADER,       event = CAUSE.SUPPLY_TRADER,    name = "supply_trader",
-      arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
+      arrive_action = _on_arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER },
     { consequence = CONSEQUENCE.SUPPLY_TRADER_OFFMAP, action = ACTION.SUPPLY_TRADER_OFFMAP, event = CAUSE.SUPPLY_TRADER_OFFMAP, name = "supply_trader_offmap",
-      arrive_action = _arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
+      arrive_action = _on_arrive_action_trade,     pre_release_gulag = PRE_RELEASE_GULAG.SUPPLY_TRADER_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.BARTER, action = ACTION.BARTER,                       event = CAUSE.BARTER,           name = "barter",
-      arrive_action = _arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER },
+      arrive_action = _on_arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER },
     { consequence = CONSEQUENCE.BARTER_OFFMAP, action = ACTION.BARTER_OFFMAP,         event = CAUSE.BARTER_OFFMAP,    name = "barter_offmap",
-      arrive_action = _arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER_OFFMAP, offmap = true },
+      arrive_action = _on_arrive_action_barter,    pre_release_gulag = PRE_RELEASE_GULAG.BARTER_OFFMAP, offmap = true },
     { consequence = CONSEQUENCE.MONEY_HARVEST, action = ACTION.MONEY_HARVEST,       event = CAUSE.MONEY_HARVEST,    name = "money_harvest",
       pre_release_gulag = PRE_RELEASE_GULAG.MONEY_HARVEST },
     { consequence = CONSEQUENCE.MONEY_HUNT, action = ACTION.MONEY_HUNT,             event = CAUSE.MONEY_HUNT,       name = "money_hunt",

@@ -154,7 +154,7 @@ local function _check_census_share(census, count)
     return math_random() >= share
 end
 
-local function _squad_has_alpha(squad)
+local function _has_alpha(squad)
     for member_id in xsquad.iterate_member_ids(squad) do
         if ap_ext_tracker.is_alpha(member_id) then return true end
     end
@@ -169,7 +169,7 @@ end
 
 -- Per-cause RULES + SCAN. Returns publish payload (with .cause) on SUCCESS,
 -- or { code = FAILED_*, reason = REASON.* } on rejection. The shared ap_ext_util.try_cause gates and logs each call.
-local function _eligible_conquer(squad, now, level_id, budget)
+local function _compute_conquer(squad, now, level_id, budget)
     if not _alignment_conquer_human[squad.player_id] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_util.is_active_period(squad.player_id) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
     local elapsed = now - _read_dto_field(squad.id, CONQUER_FIELD, now)
@@ -208,7 +208,7 @@ local function _eligible_conquer(squad, now, level_id, budget)
     }
 end
 
-local function _eligible_swarm(squad, species, now, level_id, budget)
+local function _compute_swarm(squad, species, now, level_id, budget)
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
@@ -249,7 +249,7 @@ local function _eligible_swarm(squad, species, now, level_id, budget)
     }
 end
 
-local function _eligible_infest(squad, species, now, level_id, budget)
+local function _compute_infest(squad, species, now, level_id, budget)
     if not _alignment_conquer_mutant[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
     if not ap_ext_smart_mutator.INFEST_SPECIES[species] then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, species = species } end
     if not ap_ext_util.is_active_period(species) then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_PERIOD } end
@@ -260,7 +260,7 @@ local function _eligible_infest(squad, species, now, level_id, budget)
     if not ap_ext_util.check_personality(_personality_infest, species) then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_PERSONALITY }
     end
-    if not _squad_has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
+    if not _has_alpha(squad) then return { code = RESULT.FAILED_RULES, reason = REASON.NOT_ALPHA } end
     local census = _get_census(level_id)
     if not _check_census_share(census, census and census.mutant or 0) then
         return { code = RESULT.FAILED_RULES, reason = REASON.DOMINANT_SHARE }
@@ -312,14 +312,14 @@ local function _on_smart(squad)
         local species = xcreature.get_mutant_species(squad.id)
         if not species then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id } end
         if math_random(2) == 1 then
-            result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget)
-            if not result then result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget) end
+            result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _compute_infest, squad, species, now, level_id, budget)
+            if not result then result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _compute_swarm, squad, species, now, level_id, budget) end
         else
-            result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _eligible_swarm, squad, species, now, level_id, budget)
-            if not result then result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _eligible_infest, squad, species, now, level_id, budget) end
+            result = ap_ext_util.try_cause(EN_SWARM, LOG_SWARM, _compute_swarm, squad, species, now, level_id, budget)
+            if not result then result = ap_ext_util.try_cause(EN_INFEST, LOG_INFEST, _compute_infest, squad, species, now, level_id, budget) end
         end
     elseif _alignment_conquer_human[squad.player_id] then
-        result = ap_ext_util.try_cause(EN_CONQUER, LOG_CONQUER, _eligible_conquer, squad, now, level_id, budget)
+        result = ap_ext_util.try_cause(EN_CONQUER, LOG_CONQUER, _compute_conquer, squad, now, level_id, budget)
     else
         return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT, community = squad.player_id }
     end

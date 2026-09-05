@@ -22,7 +22,7 @@ local _move_actor_chasers = ap_ext_common.register_actor_chasers
 local _move_squad_chasers = ap_ext_common.register_squad_chasers
 
 -- Keep candidates of the victim's exact species that pass the aggression roll.
-local function _same_species_hunters(candidates, victim_species)
+local function _find_same_species_hunters(candidates, victim_species)
     local hunters = {}
     for _, squad in ipairs(candidates) do
         local species = xcreature.get_mutant_species(squad.id)
@@ -33,7 +33,7 @@ local function _same_species_hunters(candidates, victim_species)
     return hunters
 end
 
-local function _handler(event_data)
+local function _run_hunt(event_data)
     local killer_id, level_id = event_data.killer_id, event_data.level_id
     local position = event_data.position
     local victim_species = event_data.species
@@ -55,7 +55,7 @@ local function _handler(event_data)
         level_id = level_id, max_count = cfg.consequence_alphakill_targeted_max_squads,
         allow_preempt = true,
     })
-    local hunters = _same_species_hunters(candidates, victim_species)
+    local hunters = _find_same_species_hunters(candidates, victim_species)
     local moved = {}
     local code, reason = RESULT.SUCCESS, nil
     if #candidates == 0 then
@@ -85,6 +85,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.ALPHAKILL_TARGETED, {
         event = CAUSE.ALPHAKILL,
         condition = function() return cfg.consequence_alphakill_targeted_enabled end,
-    }, _handler)
+    }, _run_hunt)
     ap_core_debug.info(LOG .. " Initialized")
 end

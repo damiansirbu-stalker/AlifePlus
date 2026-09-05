@@ -31,7 +31,7 @@ local _move_actor_chasers = ap_ext_common.register_actor_chasers
 local _move_squad_chasers = ap_ext_common.register_squad_chasers
 
 -- Keep chasers hostile to the taker's community that pass the rob personality roll.
-local function _eligible_robbers(chasers, target_community)
+local function _find_eligible_robbers(chasers, target_community)
     local robbers = {}
     for _, squad in ipairs(chasers) do
         if game_relations.is_factions_enemies(squad.player_id, target_community)
@@ -42,7 +42,7 @@ local function _eligible_robbers(chasers, target_community)
     return robbers
 end
 
-local function _handler_rob(event_data)
+local function _run_rob(event_data)
     local taker_is_player = event_data.taker_is_player
     local taker_squad_id = event_data.taker_squad_id
     local position, level_id = event_data.position, event_data.level_id
@@ -64,7 +64,7 @@ local function _handler_rob(event_data)
         exclude_squad_id = event_data.taker_squad_id,
         allow_preempt = true,
     })
-    local robbers = _eligible_robbers(chasers, target_community)
+    local robbers = _find_eligible_robbers(chasers, target_community)
     local moved = {}
     local code, reason = RESULT.SUCCESS, nil
     if #chasers == 0 then
@@ -92,7 +92,7 @@ end
 
 --- harvest_haunt: aberrant mutants converge on pickup site
 
-local function _handler_haunt(event_data)
+local function _run_haunt(event_data)
     local position, level_id = event_data.position, event_data.level_id
     if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
@@ -130,10 +130,10 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.HARVEST_ROB, {
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_rob_enabled end,
-    }, _handler_rob)
+    }, _run_rob)
     ap_core_consumer.register(CONSEQUENCE.HARVEST_HAUNT, {
         event = CAUSE.HARVEST,
         condition = function() return cfg.consequence_harvest_haunt_enabled end,
-    }, _handler_haunt)
+    }, _run_haunt)
     ap_core_debug.info(LOG_INIT .. " Initialized (harvest_rob, harvest_haunt)")
 end

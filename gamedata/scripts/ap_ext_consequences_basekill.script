@@ -23,7 +23,7 @@ local _personality_support = { PERSONALITY.DISCIPLINE, PERSONALITY.RELATION }
 local _alignment_flee = xtable.subtract(ap_ext_const.alignment_human, ap_ext_const.alignment_principled)
 local _personality_flee = { PERSONALITY.INV_DISCIPLINE, PERSONALITY.INV_TERRITORY }
 
-local function _handler_support(event_data)
+local function _run_support(event_data)
     local smart = event_data.smart
     local factions, position, level_id = event_data.factions, event_data.position, event_data.level_id
     if not smart or not factions or not position then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
@@ -59,7 +59,7 @@ local function _handler_support(event_data)
     return { code = RESULT.SUCCESS }
 end
 
-local function _handler_flee(event_data)
+local function _run_flee(event_data)
     local smart, factions = event_data.smart, event_data.factions
     local level_id = event_data.level_id
     if not smart or not factions then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_ARGS } end
@@ -104,10 +104,10 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.BASEKILL_SUPPORT, {
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_support_enabled end,
-    }, _handler_support)
+    }, _run_support)
     ap_core_consumer.register(CONSEQUENCE.BASEKILL_FLEE, {
         event = CAUSE.BASEKILL,
         condition = function() return cfg.consequence_basekill_flee_enabled end,
-    }, _handler_flee)
+    }, _run_flee)
     ap_core_debug.info(LOG_INIT .. " Initialized: 2 consequences (support, flee)")
 end

@@ -13,7 +13,7 @@ local LOG = ap_core_debug.format_bracket(CONSEQUENCE.ALPHA_PROMOTE)
 
 local cfg = ap_core_mcm.cfg
 
-local function _handler(event_data)
+local function _run_promote(event_data)
     local killer_id = event_data.killer_id
     if not killer_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_KILLER } end
     local is_new = not ap_ext_tracker.is_alpha(killer_id)
@@ -43,6 +43,6 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.ALPHA_PROMOTE, {
         event = CAUSE.ALPHA,
         condition = function() return cfg.consequence_alpha_promote_enabled end,
-    }, _handler)
+    }, _run_promote)
     ap_core_debug.info(LOG .. " Initialized")
 end

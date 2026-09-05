@@ -28,7 +28,7 @@ local _personality_scavenge = { PERSONALITY.SURVIVAL, PERSONALITY.PERCEPTION }
 local _alignment_loot = ap_ext_const.alignment_outlaw
 local _personality_loot = { PERSONALITY.GREED, PERSONALITY.PERCEPTION }
 
-local function _handler_investigate(event_data)
+local function _run_investigate(event_data)
     local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
     if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
     local investigate_faction = event_data.faction
@@ -64,7 +64,7 @@ local function _handler_investigate(event_data)
     return { code = RESULT.SUCCESS }
 end
 
-local function _handler_scavenge(event_data)
+local function _run_scavenge(event_data)
     local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
     if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
@@ -94,7 +94,7 @@ local function _handler_scavenge(event_data)
     return { code = RESULT.SUCCESS }
 end
 
-local function _handler_loot(event_data)
+local function _run_loot(event_data)
     local position, smart, level_id = event_data.position, event_data.smart, event_data.level_id
     if not position or not smart then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
@@ -133,14 +133,14 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_INVESTIGATE, {
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_investigate_enabled end,
-    }, _handler_investigate)
+    }, _run_investigate)
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_SCAVENGE, {
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_scavenge_enabled end,
-    }, _handler_scavenge)
+    }, _run_scavenge)
     ap_core_consumer.register(CONSEQUENCE.MASSACRE_LOOT, {
         event = CAUSE.MASSACRE,
         condition = function() return cfg.consequence_massacre_loot_enabled end,
-    }, _handler_loot)
+    }, _run_loot)
     ap_core_debug.info(LOG_INIT .. " Initialized: 3 consequences (investigate, scavenge, loot)")
 end

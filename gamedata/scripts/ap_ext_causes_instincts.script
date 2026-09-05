@@ -91,7 +91,7 @@ local function _create_territory_or_lair_filter(player_id)
     end
 end
 
-local function _pack_smart_has_kin(smart_id, community)
+local function _has_pack_kin(smart_id, community)
     local squads = xsmart.get_smart_squads(smart_id)
     if not squads then return false end
     for squad_id in pairs(squads) do
@@ -106,7 +106,7 @@ local function _build_pack_filter(community, exclude_smart_id)
         if not _is_field_smart(smart) then return false end
         if not xsmart.can_accept_faction(smart, community) then return false end
         if smart.id == exclude_smart_id then return false end
-        return _pack_smart_has_kin(smart.id, community)
+        return _has_pack_kin(smart.id, community)
     end
 end
 
@@ -138,7 +138,7 @@ local function _build_scatter_filter(threats, player_id)
 end
 
 --- Resolve which filter to use for a scatter cause (pre-checked threats by tier).
-local function _scatter_smart(squad, level_id, species)
+local function _find_scatter_smart(squad, level_id, species)
     local tier = _food_chain_tier[species]
     local threats = tier and _scatter_from[tier]
     local smart
@@ -169,7 +169,7 @@ local function _compute_cause(squad, level_id, overdue, species, entry, budget)
     budget.remaining = budget.remaining - 1
     local smart
     if entry.scan == "scatter" then
-        smart = _scatter_smart(squad, level_id, species)
+        smart = _find_scatter_smart(squad, level_id, species)
     else
         local filter = entry.make_filter(squad)
         local opts = entry.find_opts and entry.find_opts(squad) or { level_id = level_id, filter = filter, max_distance = RANGE_SCENT }

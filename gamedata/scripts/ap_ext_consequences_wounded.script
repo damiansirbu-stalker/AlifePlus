@@ -31,7 +31,7 @@ local function _get_faction(npc_id, is_player)
     return xcreature.get_community(npc_id)
 end
 
-local function _handler_help(event_data)
+local function _run_help(event_data)
     local npc_id, is_player = event_data.npc_id, event_data.is_player
     local position, level_id = event_data.position, event_data.level_id
     if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
@@ -75,7 +75,7 @@ local function _handler_help(event_data)
     return { code = RESULT.SUCCESS }
 end
 
-local function _handler_hunt(event_data)
+local function _run_hunt(event_data)
     local position, level_id = event_data.position, event_data.level_id
     if not position then return { code = RESULT.FAILED_RULES, reason = REASON.NO_POS } end
 
@@ -117,10 +117,10 @@ function on_game_start()
     ap_core_consumer.register(CONSEQUENCE.WOUNDED_HELP, {
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_help_enabled end,
-    }, _handler_help)
+    }, _run_help)
     ap_core_consumer.register(CONSEQUENCE.WOUNDED_HUNT, {
         event = CAUSE.WOUNDED,
         condition = function() return cfg.consequence_wounded_hunt_enabled end,
-    }, _handler_hunt)
+    }, _run_hunt)
     ap_core_debug.info(LOG_INIT .. " Initialized: 2 consequences (help, hunt)")
 end
