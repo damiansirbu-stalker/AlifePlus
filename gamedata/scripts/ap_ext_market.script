@@ -415,7 +415,7 @@ local function _try_sellout_class(ctx, cls, items)
 end
 
 --- Push one chatter line when a trader has just run short of a staple, the sell-out mirror of the
---- restock chatter (_try_chatter). The channel (ap_ext_news.send_chatter) owns speaker + throttle +
+--- restock chatter (_try_chatter). The channel (ap_ext_news.publish_chatter) owns speaker + throttle +
 --- level + non-hostile-faction gates; this only names the trader, the depleted item, and where.
 --- Silent if the trader's level cannot be resolved.
 --- @param trader game_object The trader that ran short
@@ -425,7 +425,7 @@ local function _try_sellout_chatter(trader, section, faction)
     local se = xobject.get_se(trader:id())
     local level_id = se and xlevel.get_level_id(se)
     if not level_id then return end
-    ap_ext_news.send_chatter("st_ap_chatter_market_short", {
+    ap_ext_news.publish_chatter("st_ap_chatter_market_short", {
         trader   = trader:character_name() or "",
         item     = xinventory.get_item_name(section),
         location = xlevel.get_level_name(level_id) or "",
@@ -494,9 +494,9 @@ end
 
 --- Push one chatter line about a notable item this trader just took in, but only when the trader is
 --- on the player's current level (chatter is local). Delivery reuses the news speaker + sender via
---- ap_ext_news.send_chatter; with no eligible nearby stalker to voice it, nothing is said.
+--- ap_ext_news.publish_chatter; with no eligible nearby stalker to voice it, nothing is said.
 --- Announce a notable restock through the chatter channel. This only describes the event (the
---- trader, the item, where); the channel (ap_ext_news.send_chatter) owns the selection policy --
+--- trader, the item, where); the channel (ap_ext_news.publish_chatter) owns the selection policy --
 --- whether the subject is on the player's map, whether the faction is non-hostile, who voices it,
 --- and the throttle. Stays silent if the trader's level cannot be resolved.
 --- @param trader game_object The trader that restocked
@@ -506,7 +506,7 @@ local function _try_chatter(trader, section, faction)
     local se = xobject.get_se(trader:id())
     local level_id = se and xlevel.get_level_id(se)
     if not level_id then return end
-    ap_ext_news.send_chatter("st_ap_chatter_market", {
+    ap_ext_news.publish_chatter("st_ap_chatter_market", {
         trader   = trader:character_name() or "",
         item     = xinventory.get_item_name(section),
         location = xlevel.get_level_name(level_id) or "",

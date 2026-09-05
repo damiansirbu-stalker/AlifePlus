@@ -18,7 +18,7 @@ local alignment_human = ap_ext_const.alignment_human
 
 local cfg = ap_core_mcm.cfg
 local COMPOSER_TIMER_EV = "ap_ext_news"
-local COMPOSE_TICK = "compose_tick"
+local COMPOSE_TICK = "run_news_tick"
 local NEWS_LOG = "[EXT.NEWS]"
 
 
@@ -53,14 +53,14 @@ local function _build_templates()
 end
 
 -- XML lookup that returns empty string on miss (never leaks the key id as the value)
-local function _xml(key)
+local function _get_xml(key)
     local v = game_translate_string(key)
     if v and v ~= key and v ~= "" then return v end
     return ""
 end
 
 -- Detect current game language from system.ltx
-local function _detect_locale()
+local function _get_locale()
     if not ini_sys then return "eng" end
     local lang = ini_sys:r_string_ex("string_table", "language")
     if lang and lang ~= "" then return lang end
@@ -70,19 +70,19 @@ end
 -- Hours-since descriptor for #ago#: resolved inline from XML. Empty only when game_hours_then
 -- is missing (data gap). delta=0 (same game-hour) renders as the recent string so templates
 -- never lose staleness info or collapse "since/from #ago#" to bare prepositions.
-local function _ago_text(game_hours_then)
+local function _format_ago_text(game_hours_then)
     if not game_hours_then then return "" end
     local delta = math_floor(xtime.get_game_sec() / 3600) - game_hours_then
     if delta < 0 then return "" end
-    return _xml(delta < 2 and "st_ap_macros_ago_recent" or "st_ap_macros_ago_hours")
+    return _get_xml(delta < 2 and "st_ap_macros_ago_recent" or "st_ap_macros_ago_hours")
 end
 
 -- Resolve slots for one side of a news entry. Translates XML keys at compose time.
-local function _side_slots(entry, prefix)
+local function _get_side_slots(entry, prefix)
     local faction_key = entry[prefix .. "_faction_key"]
     local species_key = entry[prefix .. "_species_key"]
-    local faction = faction_key and _xml(faction_key) or ""
-    local species = species_key and _xml(species_key) or ""
+    local faction = faction_key and _get_xml(faction_key) or ""
+    local species = species_key and _get_xml(species_key) or ""
     local name = entry[prefix .. "_name"] or ""
     return faction, name, species
 end
@@ -91,7 +91,7 @@ end
 -- Engine smart names sometimes embed a period to separate level/sublocation
 -- (e.g. "Great Swamp. Northern Village"). Replace ". " with ", " so the location reads
 -- as a single comma-separated phrase inside a sentence.
-local function _location_display(smart_id)
+local function _format_location(smart_id)
     if not smart_id then return "" end
     local smart = xobject_se(smart_id)
     if not smart then return "" end
@@ -101,24 +101,24 @@ local function _location_display(smart_id)
 end
 
 -- Build slot table for a focal entry.
-local function _slots_for(entry)
-    local s_fac, s_name, s_spec = _side_slots(entry, "subject")
-    local o_fac, o_name, o_spec = _side_slots(entry, "other")
+local function _build_slots(entry)
+    local s_fac, s_name, s_spec = _get_side_slots(entry, "subject")
+    local o_fac, o_name, o_spec = _get_side_slots(entry, "other")
     local level = entry.level_id and (xlevel.get_level_name(entry.level_id) or "") or ""
-    local location = _location_display(entry.smart_id)
+    local location = _format_location(entry.smart_id)
     if location == "" then location = level end
     return {
         subject_faction = s_fac, subject_name = s_name, subject_species = s_spec,
         other_faction   = o_fac, other_name   = o_name, other_species   = o_spec,
         location = location,
         level    = level,
-        ago      = _ago_text(entry.game_hours),
+        ago      = _format_ago_text(entry.game_hours),
     }
 end
 
 -- Substitute slot table into template. Unknown #key# tokens are kept as-is
 -- (Lua gsub: a nil return leaves the match unchanged).
-local function _substitute(template, slots)
+local function _format_template(template, slots)
     return (string_gsub(template, "#([%w_]+)#", function(key) return slots[key] end))
 end
 
@@ -174,7 +174,7 @@ local function _collect_eligible()
 end
 
 -- Clean output: trim, dedupe whitespace, strip space-before-punctuation, collapse artifacts from empty slots
-local function _clean_output(result)
+local function _format_output(result)
     if not result or result == "" then return nil end
     result = string_gsub(result, "^%s+", "")
     result = string_gsub(result, "%s+$", "")
@@ -188,7 +188,7 @@ local function _clean_output(result)
 end
 
 -- Scope filter: speaker's faction must match the configured scope vs the actor's faction.
-local function _passes_scope(comm, actor_comm, scope)
+local function _is_in_scope(comm, actor_comm, scope)
     if scope == SCOPE_OWN then return comm == actor_comm end
     if scope == SCOPE_ALLIES then
         if comm == actor_comm then return true end
@@ -233,7 +233,7 @@ local function _select_speaker(actor_comm, scope, channel_status)
         local npc = st and st.object
         local comm = _is_speaker_npc_eligible(npc, id) and npc:character_community() or nil
         if comm and alignment_human[comm] and (not channel_status or channel_status[comm])
-            and _passes_scope(comm, actor_comm, scope) then
+            and _is_in_scope(comm, actor_comm, scope) then
             pool[#pool + 1] = npc
         end
     end
@@ -249,10 +249,10 @@ end
 -- Engine dispatch. Routes through dynamic_news_manager.PushToChannel when initialized;
 -- falls back to xpda.publish_newsduring the ~27s cold-start window. Engine-side drops (enable_news,
 -- NewsToggle, is_pda_charged, counter cap) are not duplicated here.
--- Called from compose_tick AFTER the compose timer stops, so vanilla engine cost (PushToChannel:
+-- Called from run_news_tick AFTER the compose timer stops, so vanilla engine cost (PushToChannel:
 -- UI texture lookup, sound init, shared_str ops) is timed and logged on its own dispatch line,
 -- never attributed to the AP compose measurement.
-local function _do_engine_dispatch(picked, msg)
+local function _run_engine_dispatch(picked, msg)
     local dnm = dynamic_news_manager and dynamic_news_manager.get_dynamic_news
                 and dynamic_news_manager.get_dynamic_news() or nil
     local use_queued = dnm and dnm.PushToChannel
@@ -273,7 +273,7 @@ end
 
 -- CHATTER: immediate, localized one-off lines pushed by a producer the instant something happens,
 -- instead of drained from the record queue. Reuses the news machinery: a producer hands a template
--- pool prefix, a slots table, and selection context (level, faction); send_chatter gates it (local,
+-- pool prefix, a slots table, and selection context (level, faction); publish_chatter gates it (local,
 -- non-hostile, throttled), fills a variant, picks an online stalker as the voice (the same
 -- _select_speaker the radio uses), and dispatches now. No speaker -> not said. Templates live in
 -- ui_st_ap_chatter.xml (st_ap_chatter_<type>_NNN), separate from news.
@@ -288,8 +288,8 @@ local _chatter_locale = nil
 local _chatter_next = 0
 
 -- Locale-cached template pool for a chatter prefix (rebuilt on language switch, like the news pools).
-local function _chatter_pool(prefix)
-    local loc = _detect_locale()
+local function _get_chatter_pool(prefix)
+    local loc = _get_locale()
     if loc ~= _chatter_locale then
         _chatter_locale = loc
         _chatter_pools = {}
@@ -314,7 +314,7 @@ end
 --- @return boolean spoken
 local CHATTER_LOG = "[EXT.CHATTER]"
 
-function send_chatter(pool_prefix, slots, opts)
+function publish_chatter(pool_prefix, slots, opts)
     local dbg = ap_core_debug.is_enabled()
     if not cfg.chatter_enabled or not slots then
         if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
@@ -336,7 +336,7 @@ function send_chatter(pool_prefix, slots, opts)
         if dbg then ap_core_debug.debug("%s skip %s: throttled (%.1fs left)", CHATTER_LOG, pool_prefix, _chatter_next - now) end
         return false
     end
-    local pool = _chatter_pool(pool_prefix)
+    local pool = _get_chatter_pool(pool_prefix)
     if #pool == 0 then
         if dbg then ap_core_debug.debug("%s skip %s: empty pool (XML not loaded?)", CHATTER_LOG, pool_prefix) end
         return false
@@ -346,7 +346,7 @@ function send_chatter(pool_prefix, slots, opts)
         if dbg then ap_core_debug.debug("%s skip %s: all %d variants filtered (missing slot)", CHATTER_LOG, pool_prefix, #pool) end
         return false
     end
-    local msg = _clean_output(_substitute(filtered[math_random(#filtered)], slots))
+    local msg = _format_output(_format_template(filtered[math_random(#filtered)], slots))
     if not msg then
         if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
         return false
@@ -372,8 +372,8 @@ local function _select_template(entry)
     return _templates_by_consequence[cons_name], cons_name
 end
 
-local function _compose_tick_impl()
-    local current_locale = _detect_locale()
+local function _build_news_tick()
+    local current_locale = _get_locale()
     if current_locale ~= _locale then
         _locale = current_locale
         _templates_by_consequence = _build_templates()
@@ -392,14 +392,14 @@ local function _compose_tick_impl()
         ap_core_record.set_reported(entry.cons_id)
         return { code = TRACE.NO_TEMPLATES, cons = cons_name or "?" }
     end
-    local slots = _slots_for(entry)
+    local slots = _build_slots(entry)
     local filtered = _filter_variants(pool, slots)
     if #filtered == 0 then
         ap_core_record.set_reported(entry.cons_id)
         return { code = TRACE.NO_MSG, cons = cons_name or "?", reason = REASON.ALL_FILTERED }
     end
     local template = filtered[math_random(#filtered)]
-    local msg = _clean_output(_substitute(template, slots))
+    local msg = _format_output(_format_template(template, slots))
     if not msg then return { code = TRACE.NO_MSG, cons = cons_name or "?" } end
     local actor_comm = get_actor_true_community()
     local picked = _select_speaker(actor_comm, cfg.news_scope, channel_status)
@@ -412,35 +412,35 @@ local function _compose_tick_impl()
     return { code = TRACE.SENT, sender = picked.name }
 end
 
---- compose_tick: news pipeline tick. AP-side compose is timed as one span; engine dispatch
+--- run_news_tick: news pipeline tick. AP-side compose is timed as one span; engine dispatch
 --- (vanilla dnm:PushToChannel / xpda.publish_news) runs AFTER the timer stops so vanilla cost is not
 --- attributed to the AP compose measurement, and is logged on its own dispatch line.
-function compose_tick()
+function run_news_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
     _pending_dispatch = nil
     local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
-    local result = _compose_tick_impl()
+    local result = _build_news_tick()
     tmr:stop()
     if dbg then ap_core_debug.debug("%s compose %s%s [%.2fms]", NEWS_LOG, result.code or "?",
         result.reason and ":" .. result.reason or "", tmr:get_ms()) end
     local pending = _pending_dispatch
     if pending then
         _pending_dispatch = nil
-        _do_engine_dispatch(pending.picked, pending.msg)
+        _run_engine_dispatch(pending.picked, pending.msg)
     end
     return result
 end
 
-local function _next_delay()
+local function _get_next_delay()
     local lo, hi = cfg.news_interval_min_sec, cfg.news_interval_max_sec
     if lo > hi then lo, hi = hi, lo end
     return math_random(lo, hi)
 end
 
 local function _on_compose_timer()
-    ResetTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _next_delay())
-    compose_tick()
+    ResetTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _get_next_delay())
+    run_news_tick()
     return false
 end
 
