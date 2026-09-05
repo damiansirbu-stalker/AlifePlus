@@ -1,4 +1,4 @@
---- ap_ext_cause_wounded: Detects healing item usage by NPCs and player
+--- ap_ext_cause_wounded: subscriber that detects NPC/player heal-item use; the detection hook lives in ap_core_callbacks.
 local get_actor_true_community, xobject, xsquad, xsmart, xlevel, xconst = get_actor_true_community, xobject, xsquad, xsmart, xlevel, xconst
 local ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer = ap_core_debug, ap_core_broker, ap_core_limiter, ap_core_producer
 
@@ -14,12 +14,7 @@ local LOG = ap_core_debug.format_bracket(CAUSE.WOUNDED)
 
 local cfg = ap_core_mcm.cfg
 
--- A section is a wound heal if it is a medical item whose engine booster restores health or stops
--- bleeding. The boost keys are the same signal GAMMA's Body Health System uses to classify heals
--- (itms_manager.script boost_health_restore / boost_bleeding_restore), so any modpack's medkit,
--- bandage, or coagulant is recognised with no item-name list. The kind == i_medical gate excludes
--- edibles that restore trace health (cooked mutant meat is kind i_mutant_cooked with a small
--- boost_health_restore), so eating does not read as being wounded. Cached per section.
+-- A section is a wound heal when kind == i_medical with boost_health_restore or boost_bleeding_restore > 0 (itms_manager.script keys); cached.
 local _heal_cache = {}
 
 local function _is_heal_section(section)
@@ -111,8 +106,6 @@ local _adapters = {
 }
 
 function on_game_start()
-    -- Detection lives in ap_core_callbacks (hook on xr_eat_medkit.consume_medkit, installed
-    -- there at on_game_start); this file is a pure subscriber.
     local cbs = ap_core_const.WOUNDED_CALLBACKS
     for i = 1, #cbs do
         ap_core_producer.register({

@@ -1,5 +1,4 @@
---- ap_ext_causes_stash: State-classifier picker. Peeks one stash in EYE range,
---- classifies empty/non-empty, branches by alignment + items count, publishes specific cause.
+--- ap_ext_causes_stash: state-classifier picker; peeks one stash in EYE range, branches by alignment + item count, publishes a specific cause.
 
 local xsmart, xtime, xlevel, xstash, xtable = xsmart, xtime, xlevel, xstash, xtable
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache = ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_cache
@@ -52,12 +51,8 @@ local _personality_by_cause = {
     [CAUSE.STASH_AMBUSH] = { traits = _personality_ambush },
 }
 
---- World-state classifier. Emits ordered list of eligible sibling causes; caller cascades
---- the list on RULES (threshold + personality), first to pass reaches the 1 SCAN slot.
---- Empty stash + fill-eligible alignment -> [STASH_FILL].
---- Non-empty + outlaw + items_count >= cause_stash_ambush_min_items -> [STASH_AMBUSH, STASH_LOOT]
----   when the squad is also loot-eligible (outlaws are both); ambush preferred, loot as fallback.
---- Non-empty + loot-eligible (non-outlaw) -> [STASH_LOOT].
+--- World-state classifier: emit the ordered list of eligible sibling causes, cascaded by the caller on RULES to the one SCAN slot.
+--- Empty + fill-eligible -> STASH_FILL; non-empty outlaw over the min-items -> STASH_AMBUSH then STASH_LOOT; non-empty loot-eligible -> STASH_LOOT.
 local function _select_branches(community, is_empty, items_count, out)
     if is_empty then
         if _alignment_fill[community] then
@@ -74,10 +69,8 @@ local function _select_branches(community, is_empty, items_count, out)
     return out
 end
 
--- Per-cause threshold + personality + SCAN for the cause picked by _pick_branch.
--- Returns publish payload (with .cause) on SUCCESS, rejection result otherwise.
--- The shared ap_ext_util.try_cause gates, times, and logs each picked-cause attempt.
--- opts: { now, stash, items_count, cause_const }
+-- Per-cause threshold + personality + SCAN for the picked cause; returns the publish payload (with .cause) on SUCCESS, else a rejection.
+-- The shared ap_ext_util.try_cause gates, times, and logs each attempt; opts { now, stash, items_count, cause_const }.
 local function _try_picked_cause(squad, level_id, opts)
     local cause_const = opts.cause_const
     local keys = KEYS_BY_CAUSE[cause_const]
@@ -133,9 +126,6 @@ local function _on_smart(squad)
     local level_id = xlevel.get_level_id(squad)
     if not level_id then return { code = RESULT.FAILED_RULES, reason = REASON.NO_LEVEL_ID } end
 
-    -- ap_core_cache returns whatever's bucketed for this level: nil during warmup if nothing
-    -- on this level has been processed yet, partial mid-build, full after xslice finishes.
-    -- nil = no candidate this tick; next tick has more.
     local source = ap_core_cache.get_stashes_on_level(level_id)
     if not source then return { code = RESULT.FAILED_RULES, reason = REASON.NO_STASH_NEARBY } end
 

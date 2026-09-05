@@ -1,7 +1,4 @@
---- ap_core_map: PDA map markers for AP-dispatched squads.
---- Reads activity record (assigned=true), mirrors each entry as an engine map spot
---- via xpda. Per-squad shadow state {_marker_state}; entries linger for
---- MARKER_LINGER_SEC after the record evicts / entity dies / squad unscripts.
+--- ap_core_map: PDA map markers for AP-dispatched squads, mirroring each assigned activity record as an engine map spot via xpda.
 local pairs, clock, tostring, RegisterScriptCallback = pairs, os.clock, tostring, RegisterScriptCallback
 local table_concat = table.concat
 local xobject, xlevel, xpda, xprofiler, xtable = xobject, xlevel, xpda, xprofiler, xtable
@@ -17,16 +14,11 @@ local UPDATE_MARKERS_SEC = 10
 local VALIDATE_MARKERS_SEC = 20
 local _last_validate_at = 0
 
--- Marker render-state, owned exclusively by this module. Keyed by squad_id.
--- { cons_id = number, remove_at = number|nil }
--- cons_id: record monotonic id of the entry last rendered. Cache miss when entry refreshed.
--- remove_at: set when the squad enters linger; nil otherwise.
+-- Marker render-state owned by this module, keyed by squad_id: cons_id (last-rendered record id, cache miss on refresh), remove_at (set on linger, else nil).
 local _marker_state = {}
 
 local _teleport_label = nil
--- Localized scaffolding labels for the marker hint lines; ": " is composed in code so the XML
--- carries bare words (no trailing-space fragility). Refreshed on language switch, built lazily
--- on first use.
+-- Localized marker hint-line labels; ": " is composed in code so the XML carries bare words, refreshed on language switch, built lazily.
 local _hint_labels = nil
 
 local function _update_labels()
@@ -39,8 +31,8 @@ local function _update_labels()
     }
 end
 
--- Build "Name (Faction)" for stalkers, "species" for mutants (faction_display empty after the bucket
--- removal), or "Faction" alone if name absent. Mutants' name slot receives species_display.
+-- Build "Name (Faction)" for stalkers, or "species" for mutants (faction_display empty), or "Faction" alone if the name is absent.
+-- Mutants' name slot receives species_display.
 local function _format_party(name_or_species, faction_display)
     local primary = (name_or_species and name_or_species ~= "") and name_or_species or nil
     local secondary = (faction_display and faction_display ~= "") and faction_display or nil
@@ -74,6 +66,7 @@ local function _get_smart_display(smart_id)
     return (name:gsub("%. ", ", "))
 end
 
+-- Render one squad's map marker from its activity record; the level shown is the destination smart's, not the record's source level_id.
 local function _render_marker(entry)
     local state = _marker_state[entry.squad_id]
     if state and state.cons_id == entry.cons_id then return end
@@ -102,9 +95,6 @@ local function _render_marker(entry)
     local target_parts = {}
     local smart_name = _get_smart_display(entry.smart_id)
     if smart_name then target_parts[#target_parts + 1] = smart_name end
-    -- Derive level from the destination smart, not entry.level_id. Off-map dispatches store
-    -- source level_id (so news filtering matches the player level) but the marker should show
-    -- where the squad is going.
     local level_id_for_display
     if entry.smart_id then
         local smart_se = xobject.get_se(entry.smart_id)
@@ -223,8 +213,8 @@ local function _on_option_change()
     end
 end
 
+-- On level transition the engine wipes markers, so clear our shadow state and re-arm the timer.
 local function _on_first_update()
-    -- Engine wipes markers on level transition; clear our shadow state too.
     xpda.clear_squad_markers()
     _marker_state = {}
     _last_validate_at = 0
