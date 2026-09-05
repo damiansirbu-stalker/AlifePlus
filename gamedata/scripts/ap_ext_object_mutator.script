@@ -94,7 +94,7 @@ end
 
 -- Dealt-scaling shared by all three victim seams: an alpha attacker multiplies the hit.
 -- @cost O(1) | 1 luabind (draftsman:id) only when the hit has an attacker object
-local function _scale_dealt(shit)
+local function _apply_dealt_scale(shit)
     local attacker = shit.draftsman
     local mult = attacker and _hit_power_dealt[attacker:id()]
     if mult then shit.power = shit.power * mult end
@@ -108,7 +108,7 @@ end
 -- @cost O(1) | pure-Lua early-out when no alphas are alive; 1-2 luabind on an alpha-involved hit
 local function _on_monster_before_hit(monster, shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
-    local dealt = _scale_dealt(shit)
+    local dealt = _apply_dealt_scale(shit)
     local victim_id = monster:id()
     local taken = _hit_power_taken[victim_id]
     if taken then shit.power = shit.power * taken end
@@ -126,7 +126,7 @@ end
 -- @cost O(1) | pure-Lua early-out when no alphas are alive
 local function _on_npc_before_hit(npc, shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
-    local dealt = _scale_dealt(shit)
+    local dealt = _apply_dealt_scale(shit)
     if dealt and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s npc_hit victim=%d dealt=%.3f power=%.3f", LOG, npc:id(), dealt, shit.power)
     end
@@ -139,7 +139,7 @@ local function _on_actor_before_hit(shit, _bone_id, _flags)
     if not cfg.mutator_alpha_vs_player then return end
     if next(_alpha_ids) == nil then return end
     local base = shit.power
-    local dealt = _scale_dealt(shit)
+    local dealt = _apply_dealt_scale(shit)
     if dealt and ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s actor_hit dealt=%.3f base=%.3f -> power=%.3f (+%.1f%%)",
             LOG, dealt, base, shit.power, (dealt - 1) * 100)
@@ -208,7 +208,7 @@ end
 -- already swept recycled ids at on_game_load) and on option change (sliders and toggles
 -- recompute; panic re-applies on the next hit, and a no-longer-qualifying id gets its engine
 -- threshold restored below).
-local function _rebuild()
+local function _build_state()
     local was_panic = _panic_applied
     _alpha_ids = {}
     _hit_power_dealt = {}
@@ -250,7 +250,7 @@ function on_game_start()
     RegisterScriptCallback(CALLBACK.ACTOR_ON_BEFORE_HIT, _on_actor_before_hit)
     RegisterScriptCallback(CALLBACK.MONSTER_ON_LOOT_INIT, _on_monster_loot_init)
     RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
-    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _rebuild)
-    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _rebuild)
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _build_state)
+    RegisterScriptCallback(CALLBACK.ON_OPTION_CHANGE, _build_state)
     ap_core_debug.info("%s Initialized", LOG)
 end

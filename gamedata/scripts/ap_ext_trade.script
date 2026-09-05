@@ -53,7 +53,7 @@ end
 
 -- Return a fresh cost-asc-sorted copy of sections (does not mutate the input list, which
 -- may be cached by xinventory and shared with other callers).
-local function _sorted_by_cost(sections)
+local function _sort_by_cost(sections)
     local sorted = {}
     for i = 1, #sections do sorted[i] = sections[i] end
     table_sort(sorted, function(a, b)
@@ -74,7 +74,7 @@ local function _is_degraded_ammo(sec)
     return sec:sub(-4) == "_bad" or sec:sub(-8) == "_verybad"
 end
 
-local function _buy_ammo_tier(npc, seller, weapon_sec, tier_num, target_rounds, bought)
+local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, bought)
     if not weapon_sec or target_rounds <= 0 then return 0 end
     local tier_map = xinventory.get_ammo_tier_map(weapon_sec, 2)
 
@@ -83,7 +83,7 @@ local function _buy_ammo_tier(npc, seller, weapon_sec, tier_num, target_rounds, 
         if tier == tier_num and not _is_degraded_ammo(sec) then tier_sections[#tier_sections + 1] = sec end
     end
     if #tier_sections == 0 then return 0 end
-    tier_sections = _sorted_by_cost(tier_sections)
+    tier_sections = _sort_by_cost(tier_sections)
 
     local rounds_added = 0
     for _, sec in ipairs(tier_sections) do
@@ -107,7 +107,7 @@ end
 -- everything else buys one item at a time and counts in items. This keeps the unit aligned
 -- with xinventory.collect_policy_counts (_unit), so a per-section ammo rule like ammo_5.45x39_ap = 60, 60
 -- fills to 60 rounds, not 60 boxes.
-local function _buy_one_section(npc, seller, sec, current, target, bought)
+local function _run_section_buy(npc, seller, sec, current, target, bought)
     local box = xinventory.get_box_size(sec)
     local step = box or 1
     local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
@@ -126,15 +126,15 @@ end
 -- or create_item failure, so an expensive section never blocks NPCs that can still afford
 -- a cheaper one. A section that has its own policy row (e.g. grenade_f1) is skipped here: it is
 -- bought by its own entry, matching how xinventory.collect_policy_counts keys it under the section name.
-local function _buy_consumable_category(ctx, category, current, target)
+local function _run_consumable_buy(ctx, category, current, target)
     local sections = xinventory.get_category_sections(category)
     if #sections == 0 then return current end
-    local sorted = _sorted_by_cost(sections)
+    local sorted = _sort_by_cost(sections)
     local rules = ctx.rules
     for i = 1, #sorted do
         local sec = sorted[i]
         if not (rules and rules[sec]) then
-            current = _buy_one_section(ctx.npc, ctx.seller, sec, current, target, ctx.bought)
+            current = _run_section_buy(ctx.npc, ctx.seller, sec, current, target, ctx.bought)
         end
         if current >= target then return current end
     end
@@ -158,9 +158,9 @@ end
 
 -- Execute one BUY policy entry against the NPC's current counts. ctx carries the buy context
 -- { npc, seller, cat_opts, counts, bought, rules }. The entry key is one of three kinds: an
--- ammo-slot category (per-slot tier map via _buy_ammo_tier); a category with members
--- (cheapest-first over the category set via _buy_consumable_category); or an item section
--- (get_category_sections empty -> buy that exact section via _buy_one_section).
+-- ammo-slot category (per-slot tier map via _run_ammo_buy); a category with members
+-- (cheapest-first over the category set via _run_consumable_buy); or an item section
+-- (get_category_sections empty -> buy that exact section via _run_section_buy).
 -- Updates ctx.counts[key] in place (counts are keyed the same way by xinventory.collect_policy_counts).
 local function _run_buy_entry(entry, ctx)
     local rule_min = entry.rule.min
@@ -172,11 +172,11 @@ local function _run_buy_entry(entry, ctx)
     if _is_ammo_slot_category(key) then
         local weapon_sec, tier_num = _resolve_ammo_buy_context(key, ctx.cat_opts)
         if not (weapon_sec and tier_num) then return end
-        counts[key] = current + _buy_ammo_tier(ctx.npc, ctx.seller, weapon_sec, tier_num, rule_min - current, ctx.bought)
+        counts[key] = current + _run_ammo_buy(ctx.npc, ctx.seller, weapon_sec, tier_num, rule_min - current, ctx.bought)
     elseif #xinventory.get_category_sections(key) > 0 then
-        counts[key] = _buy_consumable_category(ctx, key, current, rule_min)
+        counts[key] = _run_consumable_buy(ctx, key, current, rule_min)
     else
-        counts[key] = _buy_one_section(ctx.npc, ctx.seller, key, current, rule_min, ctx.bought)
+        counts[key] = _run_section_buy(ctx.npc, ctx.seller, key, current, rule_min, ctx.bought)
     end
 end
 
@@ -193,7 +193,7 @@ end
 --- @param npc game_object Trading NPC (gains money from sales, spends money on buys)
 --- @param seller game_object Trader paying for the NPC's ammo/consumable buys
 --- @return table { sold = { sec, ... }, bought = { sec, ... } }
-function trade(npc, seller)
+function execute_trade(npc, seller)
     local sold, bought = {}, {}
     if not npc or not seller then return { sold = sold, bought = bought } end
 

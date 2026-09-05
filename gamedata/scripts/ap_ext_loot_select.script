@@ -42,7 +42,7 @@ local _looted = {}
 --- @param category string Item category from xinventory.get_policy_key
 --- @param item game_object Inventory item
 --- @return number Count this item contributes to its policy key
-local function _looted_unit(category, item)
+local function _get_looted_unit(category, item)
     if category == "ammo_not_equipped"
         or string_sub(category, 1, 11) == "ammo_slot_2"
         or string_sub(category, 1, 11) == "ammo_slot_3" then
@@ -52,7 +52,7 @@ local function _looted_unit(category, item)
 end
 
 --- Cheapest-first comparator for the per-key release order (kept items are the top N by cost).
-local function _by_cost_asc(lhs, rhs)
+local function _is_cheaper(lhs, rhs)
     return lhs.cost < rhs.cost
 end
 
@@ -74,7 +74,7 @@ end
 --- @param cat_opts table From xinventory.get_category_opts
 --- @param rules table Policy rules map
 --- @return table { [key] = { cat, items = { { item, sec, cost }, ... } } }
-local function _bucket_looted(npc_id, ids, cat_opts, rules)
+local function _collect_looted(npc_id, ids, cat_opts, rules)
     local want = {}
     for i = 1, #ids do want[ids[i]] = true end
     local buckets = {}
@@ -101,20 +101,20 @@ end
 --- @cost O(K log K) sort + 0-K release | K = looted members in this key
 --- @param npc_id number Looter NPC id (trace only)
 --- @param key string Policy key (trace only)
---- @param bucket table { cat, items } from _bucket_looted
+--- @param bucket table { cat, items } from _collect_looted
 --- @param max number Policy cap for this key
 --- @param count number Whole-inventory count for this key (from classify)
 --- @return number Members released
-local function _trim_key(npc_id, key, bucket, max, count)
+local function _release_excess(npc_id, key, bucket, max, count)
     if count <= max then return 0 end
     local items = bucket.items
-    table_sort(items, _by_cost_asc)
+    table_sort(items, _is_cheaper)
     local released = 0
     for i = 1, #items do
         if count <= max then break end
         local entry = items[i]
         xinventory.release_item(entry.item)
-        count = count - _looted_unit(bucket.cat, entry.item)
+        count = count - _get_looted_unit(bucket.cat, entry.item)
         released = released + 1
         if ap_core_debug.is_enabled() then
             ap_core_debug.debug("%s release npc=%d key=%s sec=%s cost=%d count=%d/%d",
@@ -132,7 +132,7 @@ end
 --- @cost O(items + K log K) | classify (1 iterate) + bucket (1 iterate) + per-key sort + 0-N release
 --- @param npc_id number Looter NPC id
 --- @return boolean true (one-shot event complete)
-local function _trim_npc_deferred(npc_id)
+local function _run_deferred_trim(npc_id)
     local ids = _looted[npc_id]
     _looted[npc_id] = nil
     if not ids or not cfg.loot_select_enabled or not LOOT_POLICY then return true end
@@ -147,11 +147,11 @@ local function _trim_npc_deferred(npc_id)
     -- Whole-inventory counts per policy key (ammo in rounds); the cap is measured against the full
     -- inventory, release acts only on the looted set (n483 decision 2).
     local counts = xinventory.collect_policy_counts(npc, cat_opts, rules)
-    local buckets = _bucket_looted(npc_id, ids, cat_opts, rules)
+    local buckets = _collect_looted(npc_id, ids, cat_opts, rules)
 
     local released = 0
     for key, bucket in pairs(buckets) do
-        released = released + _trim_key(npc_id, key, bucket, rules[key].max, counts[key] or 0)
+        released = released + _release_excess(npc_id, key, bucket, rules[key].max, counts[key] or 0)
     end
     tmr:stop()
     if dbg then
@@ -180,7 +180,7 @@ local function _on_loot(npc, _corpse, item, lootable)
         _looted[npc_id] = ids
     end
     ids[#ids + 1] = item:id()
-    CreateTimeEvent(TIMER_EV, npc_id, 0, _trim_npc_deferred, npc_id)
+    CreateTimeEvent(TIMER_EV, npc_id, 0, _run_deferred_trim, npc_id)
 end
 
 function on_game_start()

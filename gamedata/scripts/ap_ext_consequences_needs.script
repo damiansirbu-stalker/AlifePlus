@@ -25,7 +25,7 @@ local LOG_INIT = ap_core_debug.format_bracket(CAUSE_CATEGORY.NEEDS)
 local cfg = ap_core_mcm.cfg
 
 --- Trade arrival action: trade visitor inventory with any service NPC at the destination smart.
---- Delegates to ap_ext_trade.trade; trade uses the per-rank LTX policy for categories and the
+--- Delegates to ap_ext_trade.execute_trade; trade uses the per-rank LTX policy for categories and the
 --- MCM trade_profit_max cap (economy > trade). One inline trade timer + line.
 local function _on_arrive_action_trade(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
@@ -37,14 +37,14 @@ local function _on_arrive_action_trade(tid, visitor_go, args)
         return
     end
     local tmr = xprofiler.new_if(dbg):start()
-    local result = ap_ext_trade.trade(visitor_go, trader_go)
+    local result = ap_ext_trade.execute_trade(visitor_go, trader_go)
     tmr:stop()
     if dbg then ap_core_debug.debug("%s [tid=%d] trade sold=%s bought=%s [%.2fms]", args.log_prefix, tid,
         table_concat(result.sold, ","), table_concat(result.bought, ","), tmr:get_ms()) end
 end
 
 --- Barter arrival action: swap surplus for deficit with a stalker peer at the destination smart.
---- Counterpart of _on_arrive_action_trade -- delegates to ap_ext_barter.barter, which moves items both
+--- Counterpart of _on_arrive_action_trade -- delegates to ap_ext_barter.execute_barter, which moves items both
 --- ways with no money via the per-rank ap_barter_policy.ltx. The peer pick excludes the arriving
 --- squad's own members (args.squad_id) and gates on the arriving squad's community, so a squad only
 --- barters with a same-faction stalker. No peer online -> NONE (mirrors NO_TRADER).
@@ -58,7 +58,7 @@ local function _on_arrive_action_barter(tid, visitor_go, args)
         return
     end
     local tmr = xprofiler.new_if(dbg):start()
-    local result = ap_ext_barter.barter(visitor_go, peer_go)
+    local result = ap_ext_barter.execute_barter(visitor_go, peer_go)
     tmr:stop()
     if dbg then ap_core_debug.debug("%s [tid=%d] barter given=%s received=%s [%.2fms]", args.log_prefix, tid,
         table_concat(result.given, ","), table_concat(result.received, ","), tmr:get_ms()) end

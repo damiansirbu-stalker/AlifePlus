@@ -51,7 +51,7 @@ end
 -- the walk once the budget is spent. Both stalkers classify against the same shared `rules` (one
 -- uniform barter block), so the receiver key resolves section-override-else-category the same way.
 -- Per-NPC opts are computed once in barter() and threaded in (equipped slots never change mid-call).
-local function _transfer_surplus(giver, giver_opts, receiver, receiver_opts, budget, out)
+local function _run_surplus_transfer(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
     local rules = BARTER_POLICY.rules
     local giver_counts = xinventory.collect_policy_counts(giver, giver_opts, rules)
@@ -79,7 +79,7 @@ end
 -- only a genuine upgrade over everything it holds moves as recv_base, and the giver's own equipped as
 -- give_base), outfit and helmet the equipped one of that kind. An empty slot reads 0, so any spare
 -- clears it. opts is threaded from barter() (get_category_opts computed once per stalker).
-local function _equipped_baseline(npc, opts)
+local function _get_equipped_baseline(npc, opts)
     local eq_pistol = opts.equipped_pistol_sec and (xinventory.get_cost(opts.equipped_pistol_sec) or 0) or 0
     local eq_rifle  = opts.equipped_rifle_sec  and (xinventory.get_cost(opts.equipped_rifle_sec)  or 0) or 0
     local outfit = xinventory.get_equipped_outfit(npc)
@@ -98,7 +98,7 @@ end
 -- it also stops a top gun ping-ponging between the two squads across the return pass. A "weapon" spare
 -- with no ammo_class (knife / binocular / bolt -- WP_-class but not a firearm) is skipped: it is never
 -- a gun upgrade, and without this an unarmed peer (recv_base.weapon 0) would take a spare knife.
-local function _best_spares(giver, giver_opts, give_base)
+local function _find_best_spares(giver, giver_opts, give_base)
     local best = {}
     xinventory.iterate_inventory(giver:id(), function(_, item)
         if not item then return end
@@ -118,10 +118,10 @@ end
 -- it beats what the receiver has equipped, by xinventory.get_cost. The best spare per kind is picked
 -- in a single walk (no mid-iterate transfer), then moved if it clears the receiver's baseline and the
 -- budget allows.
-local function _transfer_upgrades(giver, giver_opts, receiver, receiver_opts, budget, out)
+local function _run_upgrade_transfer(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
-    local recv_base = _equipped_baseline(receiver, receiver_opts)
-    local best = _best_spares(giver, giver_opts, _equipped_baseline(giver, giver_opts))
+    local recv_base = _get_equipped_baseline(receiver, receiver_opts)
+    local best = _find_best_spares(giver, giver_opts, _get_equipped_baseline(giver, giver_opts))
 
     for cat, cand in pairs(best) do
         if budget.remaining <= 0 then break end
@@ -142,7 +142,7 @@ end
 --- @param visitor game_object Arriving squad's commander
 --- @param peer game_object Stalker peer at the destination smart
 --- @return table { given = { sec, ... }, received = { sec, ... } } (visitor's perspective)
-function barter(visitor, peer)
+function execute_barter(visitor, peer)
     local given, received = {}, {}
     if not visitor or not peer then return { given = given, received = received } end
     if not BARTER_POLICY then return { given = given, received = received } end
@@ -153,10 +153,10 @@ function barter(visitor, peer)
     local visitor_opts = xinventory.get_category_opts(visitor)
     local peer_opts = xinventory.get_category_opts(peer)
 
-    _transfer_surplus(visitor, visitor_opts, peer, peer_opts, budget, given)
-    _transfer_upgrades(visitor, visitor_opts, peer, peer_opts, budget, given)
-    _transfer_surplus(peer, peer_opts, visitor, visitor_opts, budget, received)
-    _transfer_upgrades(peer, peer_opts, visitor, visitor_opts, budget, received)
+    _run_surplus_transfer(visitor, visitor_opts, peer, peer_opts, budget, given)
+    _run_upgrade_transfer(visitor, visitor_opts, peer, peer_opts, budget, given)
+    _run_surplus_transfer(peer, peer_opts, visitor, visitor_opts, budget, received)
+    _run_upgrade_transfer(peer, peer_opts, visitor, visitor_opts, budget, received)
 
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s visitor=%d peer=%d given=%d[%s] received=%d[%s]",

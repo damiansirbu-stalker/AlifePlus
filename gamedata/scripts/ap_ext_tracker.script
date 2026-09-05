@@ -85,7 +85,7 @@ local function _register_kill(killer_id, victim_id)
 end
 
 --- Projected kill count inclusive of a pending death (order-independent of _register_kill)
-function projected_kill_count(killer_id, victim_id)
+function get_projected_kill_count(killer_id, victim_id)
     if not killer_id or killer_id == xconst.ACTOR_ENTITY_ID then return 0 end
     local count = _ap_killers[killer_id] or 0
     if killer_id == victim_id then return count end

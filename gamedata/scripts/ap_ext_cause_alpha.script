@@ -29,7 +29,7 @@ local function _on_death(squad, se_victim, se_killer)
     if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
 
     local victim_id = ap_core_util.get_entity_id(se_victim)
-    local kills = ap_ext_tracker.projected_kill_count(killer_id, victim_id)
+    local kills = ap_ext_tracker.get_projected_kill_count(killer_id, victim_id)
     local level = ap_ext_tracker.compute_level(kills)
     if level < 1 then
         return { code = RESULT.FAILED_RULES, reason = REASON.LOW_KILLS,

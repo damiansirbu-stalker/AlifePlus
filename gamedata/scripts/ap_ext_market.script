@@ -3,7 +3,7 @@
 --- config [supplies] alone, wiped and respawned every restock by buy_supplies (trade_manager.script:154);
 --- what NPCs sell him (vanilla axr_trade_manager transfer_item) is deleted by that same restock and
 --- never reaches the player's buy panel. This module records what a faction's stalkers trade (an
---- xevent hook on ap_ext_trade.trade, observe-only) and reshapes that faction's trader stock right
+--- xevent hook on ap_ext_trade.execute_trade, observe-only) and reshapes that faction's trader stock right
 --- after the restock, so NPC trading finally decides part of what the player buys. It changes no
 --- vanilla trade code and adds no trade UI; it only adds/removes stock in the post-restock window.
 ---
@@ -13,7 +13,7 @@
 --- the trader recently sold to that faction's stalkers is removed from his freshly respawned stock
 --- at the same restock, capped per section at a percent of what he holds.
 ---
---- Observe, do not modify. ap_ext_trade.trade already returns { sold, bought } and the trade
+--- Observe, do not modify. ap_ext_trade.execute_trade already returns { sold, bought } and the trade
 --- arrival knows the seller; the market reads that output via an xevent hook (ap_ext_trade is
 --- unchanged) and records both directions per faction in trader perspective: NPC sold = trader
 --- bought (shelf gains), NPC bought = trader sold (shelf loses). NPC stalkers use only the trade
@@ -209,11 +209,11 @@ local function _fifo_add(store, faction, section, label)
     end
 end
 
---- xevent wrapper over ap_ext_trade.trade: run the original, then record the result in trader
+--- xevent wrapper over ap_ext_trade.execute_trade: run the original, then record the result in trader
 --- perspective, keyed by the visiting NPC's faction: what the NPC sold enters _trader_bought, what
 --- the NPC bought enters _trader_sold. Pure observation -- the return value is passed through
 --- untouched.
---- @param orig function The original ap_ext_trade.trade
+--- @param orig function The original ap_ext_trade.execute_trade
 --- @param npc game_object The visiting NPC who traded with the trader
 --- @param seller game_object The trader (unused here)
 --- @return table The original { sold, bought }
@@ -783,7 +783,7 @@ local function _on_first_update()
     _subscribed = true
     _check_market_goods()
     local _ = ap_ext_trade
-    xevent.register_hook("ap_ext_trade", "trade", _observe_trade)
+    xevent.register_hook("ap_ext_trade", "execute_trade", _observe_trade)
     RegisterScriptCallback(CALLBACK.ON_GET_ITEM_COST, _on_get_item_cost)
     _init_restock()
     CreateTimeEvent(RELEASE_EV, RELEASE_EV, RELEASE_PERIOD_MS / 1000, _release_expired)
