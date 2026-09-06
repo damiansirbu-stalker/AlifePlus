@@ -673,16 +673,8 @@ local _build_path = function(key)
 end
 cfg, get_config, load_config = xmcm.create_config("ap", defaults, _build_path)
 
--- functor_ui receives the UI_MCM instance as trailing arg (ui_mcm.script:1435).
--- functor would receive nothing. MCM 1.7.2fix leaves the file-local GUI nil on fresh opens
--- (only Open_to sets it, and Reset_last_opt skips Open_to when last_path is nil), so
--- ui_mcm.get_gui() returns nil. functor_ui sidesteps that bug.
--- MCM keeps file-local opt_temp (pending widget edits) at ui_mcm.script:175. Any widget
--- the user touched before clicking the profile button is still there, and On_Accept at
--- ui_mcm.script:2393 writes opt_temp AFTER our config writes, partially un-applying the
--- profile. On_Discard flushes opt_temp and closes the dialog; same path the Cancel button
--- takes. gui.owner:SetMsg is the same top-of-screen call MCM uses at ui_mcm.script:2528
--- for its built-in "changes done" message; works in main menu and pause menu both.
+-- Apply a profile: write overrides, save, reload, fire MCM_OPTION_RESTORE_DEFAULT so consumer caches refresh, then show a message.
+-- Uses functor_ui (gui arg) and closes via On_Cancel to dodge the ui_mcm scroll_opt:Clear use-after-free (see doc/library/modding/mcm.md).
 local function _apply_profile(gui, overrides, msg)
     local config = axr_main.config
     for k, v in pairs(defaults) do
@@ -695,20 +687,11 @@ local function _apply_profile(gui, overrides, msg)
     end
     config:save()
     load_config()
-    -- Without this, consumer-local caches stay stale until the next on_option_change.
     SendScriptCallback(ap_core_const.CALLBACK.MCM_OPTION_RESTORE_DEFAULT)
     if gui then
         if gui.owner and gui.owner.SetMsg then
             gui.owner:SetMsg(msg, 5)
         end
-        -- Close via On_Cancel, not On_Discard. On_Discard calls Reset_opt -> scroll_opt:Clear
-        -- at ui_mcm.script:949, which destroys the btn_reset button while its click handler
-        -- is still on the stack; C++ dispatcher returns into the freed control and SEH-fires
-        -- on some exe builds (e.g. modified vanilla 1.5.3). On_Cancel only calls HideDialog +
-        -- Unregister_UI -- scroll_opt children stay alive long enough for the handler to
-        -- unwind. Trade-off: opt_temp is not cleared (vanilla Cancel-without-prompt parity).
-        -- If the user touched widgets before clicking reset, those edits remain pending and
-        -- will be re-applied on the next On_Accept.
         if gui.On_Cancel then
             gui:On_Cancel()
         end
@@ -774,7 +757,6 @@ function on_mcm_load()
                     _build_track("cause_max_per_causer", 1, 20, 1),
                     _check("allow_external_ownership"),
 
-                    -- Platform footer (self-contained builder in _ap_deps, not xlibs)
                     { id = "div_footer", type = "line" },
                     { id = "platform", type = "desc", text = "ui_mcm_xmcm_footer",
                         ui_hook_functor = { _ap_deps.platform_functor() }, clr = {255, 212, 201, 168} },                },
