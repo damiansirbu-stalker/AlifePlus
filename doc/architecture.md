@@ -625,6 +625,8 @@ Save / load. The merged collection persists to `m_data.ap_core_broker.ap_scripte
 
 Broker-internal `is_offmap_dispatched(squad_id)` returns true when the squad's entry has `offmap = true`; the cause-side guard in `ap_ext_causes_needs.script` reads this to block off-map causes from re-publishing while the session is active.
 
+Off-map and peer cause rows (`ap_ext_causes_needs.script` CAUSES). The needs generator carries an off-map variant beside several on-map causes (supply_trader / supply_trader_offmap, barter / barter_offmap, job_explore / job_explore_offmap, social_campfire / social_offmap). Each off-map row widens alignment to `alignment_offmap` and pairs `INV_AGGRESSION` with the drive's own trait, so peaceful factions (Ecologists, Clear Sky, Loners, Freedom) travel to a neighbor map while aggressive factions stay home. Off-map filters are prop-based (`is_base`, `has_campfire`, `_is_unclaimed`) so they resolve cross-level and offline; `has_animated_stalker_jobs` is dropped off-map because `stalker_jobs` is nil for off-actor-level smarts (`smart_terrain.script:462`). Targets are kept distinct so the off-map rows never collide: trader goes to a base, barter to an occupied non-base field camp, social to a campfire. The action never runs off-map (the commander is offline); arrival at the destination stands the drive's DTO down exactly as the on-map cause would.
+
 ### Protection (ap_core_broker.is_protected)
 
 Delegates to xsquad.is_protected with five guard categories (`ap_core_broker._protection_opts`):
