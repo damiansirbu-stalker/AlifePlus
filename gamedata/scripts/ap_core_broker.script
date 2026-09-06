@@ -101,9 +101,7 @@ local _PROTECTION_FIELDS = {
 local _protection_opts = nil
 
 --- Build a fresh opts table merging caller_opts with AP's protection policy.
---- Used by ap_core_util.find_squads (per-call) and any caller needing the AP
---- protection contract on top of their own opts. Returned table is a fresh copy;
---- caller_opts is never mutated.
+--- Used by ap_core_util.find_squads and any caller needing the AP protection contract; the returned table is a fresh copy, caller_opts is never mutated.
 --- @safety SAFE - pure Lua table allocation
 --- @cost O(n) caller_opts fields + 5 protection fields | 0 luabind
 --- @param caller_opts table|nil
@@ -115,10 +113,8 @@ function build_protection_opts(caller_opts)
     return out
 end
 
--- exclude_filter for the preempt-fallback pass. Rejects external owners and squads
--- with scripted_target set but not tracked by AP (externally scripted by other mods).
--- AP-scripted-and-interruptable pass through; non-interruptable AP-scripted are kept
--- out of the iteration via opts.exclude_ids built in build_preempt_opts.
+-- exclude_filter for the preempt-fallback pass: rejects external owners and squads with scripted_target set but not tracked by AP.
+-- AP-scripted-and-interruptable pass through; non-interruptable AP-scripted are excluded via opts.exclude_ids in build_preempt_opts.
 local function _filter_preempt(squad)
     local owner = get_owner(squad)
     if owner then return owner end
@@ -128,11 +124,8 @@ local function _filter_preempt(squad)
     return nil
 end
 
---- Build opts for the preempt-fallback find. Used by ap_core_util.find_squads
---- when caller passes opts.allow_preempt and the standard pass returned no candidates.
---- The pass walks the small AP-scripted pool (opts.source = _ap_scripted_squads) and
---- accepts interruptable entries; non-interruptable AP scripts and externally scripted
---- squads are rejected.
+--- Build opts for the preempt-fallback find, used by ap_core_util.find_squads when opts.allow_preempt is set and the standard pass found nothing.
+--- Walks the small AP-scripted pool (opts.source) and accepts interruptable entries; non-interruptable AP scripts and externally scripted squads are rejected.
 --- @safety SAFE - pure Lua table allocation, defensive iteration
 --- @cost O(n) AP-scripted squads (small pool, typically dozens) | 0 luabind
 --- @param caller_opts table|nil
@@ -150,12 +143,8 @@ function build_preempt_opts(caller_opts)
     return out
 end
 
---- Check all squad protection guards via xsquad.is_protected
---- Delegates to xsquad.is_protected with ownership, scripted, permanent, active_role, task_target checks.
---- Non-squad early-return: engine recycles freed server-entity ids, so a saved squad_id
---- may resolve to a different engine class (script_zone etc) after the original was
---- released. Treat as protected so the cascade skips; the load-state sweep evicts the
---- stale tracking entry.
+--- Check all squad protection guards via xsquad.is_protected (ownership, scripted, permanent, active_role, task_target).
+--- Non-squad early-return: a recycled id may resolve to a different class, so treat as protected and let the load-state sweep evict the stale entry.
 --- @safety SAFE - delegates to xsquad.is_protected, nil-guarded, class-guarded
 --- @cost O(1) cached | 0 luabind (cache hit) or 4-5 luabind medium (miss: alife_object, clsid, community)
 --- @param squad se_squad Squad server object
@@ -171,9 +160,7 @@ function is_protected(squad)
 end
 
 --- Check if a squad currently has an active off-map session.
---- An off-map session spans the full round trip (outbound -> dwell -> returning) and
---- survives re-dispatch by other causes during dwell. Off-map causes refuse to publish
---- while a session is active; the lifecycle ends on home arrival or despawn.
+--- Off-map causes refuse to publish while a session is active; it survives re-dispatch during dwell and ends on arrival or despawn.
 --- @safety SAFE - pure Lua hash lookup
 --- @cost O(1) | 0 luabind
 --- @param squad_id number Squad id
@@ -183,11 +170,8 @@ function is_offmap_dispatched(squad_id)
     return data ~= nil and data.offmap == true
 end
 
---- True while AP is actively directing this squad: a live scripted dispatch (scripted_target set)
---- or a squad/actor chase (is_chase). A released off-map dwell remnant (tracked only for the despawn
---- net, no target and no chase) returns false. The PDA map-marker lifecycle reads this instead of the
---- raw engine scripted_target field, which squad-target chases never set (they drive the
---- get_script_target method hook, not the field).
+--- True while AP is actively directing this squad: a live scripted dispatch (scripted_target) or a squad/actor chase (is_chase).
+--- A released off-map dwell remnant returns false; the PDA map-marker lifecycle reads this, not the raw scripted_target (squad chases never set it).
 --- @safety SAFE - pure Lua hash lookup
 --- @cost O(1) | 0 luabind
 --- @param squad_id number Squad id
@@ -198,9 +182,8 @@ function is_routing(squad_id)
 end
 
 
---- Release squad from AP scripted control. Accepts squad_id (number) for "entity already gone"
---- cleanup path, or squad userdata for "entity still live" release path. Number skips the
---- xsquad.release_squad call since there's nothing to release against.
+--- Release squad from AP scripted control; accepts a squad_id (entity already gone) or squad userdata (entity still live).
+--- The number path skips xsquad.release_squad since there is nothing to release against.
 local function _unregister_squad(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
@@ -218,10 +201,8 @@ local function _unregister_squad(squad_or_id)
     return true
 end
 
--- Release an off-map squad that could not settle (no job at the destination, or lost one
--- mid-hold), keeping only the offmap session so the despawn safety net reclaims it once it
--- goes offline. Clears the AP script; the squad reverts to vanilla AI in the meantime.
--- Non-offmap entries fall through to _unregister_squad.
+-- Release an off-map squad that could not settle, keeping only the offmap session so the despawn safety net reclaims it once offline.
+-- Clears the AP script (the squad reverts to vanilla AI); non-offmap entries fall through to _unregister_squad.
 local function _release_to_dwell(squad_or_id)
     local tp = type(squad_or_id)
     if tp ~= "number" and tp ~= "userdata" then return false end
@@ -266,17 +247,16 @@ end
 -- The entry carries offmap + dispatched_at; sessions survive non-offmap re-dispatches during
 -- the hold (register_squad preserves those two fields when an existing entry has offmap=true).
 
--- Populate off-map session fields on a fresh scripted entry. Called from register_squad
--- when opts.offmap is true.
+-- Populate off-map session fields on a fresh scripted entry.
+-- Called from register_squad when opts.offmap is true.
 local function _init_offmap_session(data, squad_id, now)
     data.offmap        = true
     data.dispatched_at = now
     ap_core_debug.debug("[SQUAD.OFFMAP] register: squad=%d", squad_id)
 end
 
--- Despawn safety. Releases the engine entity when the session age exceeds the budget
--- AND the squad is offline. Online squads may be in transit or under player observation;
--- let them complete or fail visibly. Returns true on despawn so the caller drops the entry.
+-- Despawn safety: release the engine entity when the session age exceeds the budget AND the squad is offline.
+-- Online squads may be in transit or observed, so let them complete; returns true on despawn so the caller drops the entry.
 local function _check_offmap_despawn(squad_id, squad, data, now)
     local age = now - (data.dispatched_at or now)
     if age <= cfg.offmap_despawn_hours * 3600 then return false end
@@ -305,16 +285,12 @@ local function _check_offmap_despawn(squad_id, squad, data, now)
         return true
     end
     ap_core_debug.debug("[SQUAD.OFFMAP] despawn: squad=%d age=%dh", squad_id, age / 3600)
-    -- Whole-squad delete via the board path: releases each member before destroying the group, so
-    -- members are not orphaned. A bare alife_release_id on the group only detaches them (engine group
-    -- destructor never releases members).
     xsquad.remove_squad(squad)
     return true
 end
 
--- Build a session-fields snapshot from an existing entry, suitable for carrying through
--- a non-offmap re-dispatch. Returns nil when the existing entry has no live session
--- (no offmap flag, or the new dispatch is itself off-map and will reinitialise the session).
+-- Build a session-fields snapshot from an existing entry, for carrying through a non-offmap re-dispatch.
+-- Returns nil when the entry has no live session (no offmap flag, or the new dispatch is itself off-map).
 local function _get_preserved_session(existing, opts)
     if not existing or not existing.offmap or opts.offmap then return nil end
     return {
@@ -323,8 +299,8 @@ local function _get_preserved_session(existing, opts)
     }
 end
 
--- Per-scan off-map state update: despawn safety net + diagnostics. Returns true when the
--- caller should drop the entry (squad despawned).
+-- Per-scan off-map state update: despawn safety net + diagnostics.
+-- Returns true when the caller should drop the entry (squad despawned).
 local function _update_offmap_entry(squad_id, squad, data, now)
     if _check_offmap_despawn(squad_id, squad, data, now) then return true end
     if ap_core_debug.is_enabled() then
@@ -336,9 +312,8 @@ local function _update_offmap_entry(squad_id, squad, data, now)
 end
 
 
--- Merge per-call session state into the new scripted_squad data entry. Off-map dispatches
--- get a fresh session; non-offmap re-dispatches inherit preserved session fields (so a
--- return-home dispatch still fires when a local cause picks up the squad during dwell).
+-- Merge per-call session state into the new scripted_squad entry.
+-- Off-map dispatches get a fresh session; a non-offmap re-dispatch inherits preserved session fields during dwell.
 -- @cost O(1) typical | O(preserved) on re-dispatch (small constant)
 local function _apply_session(data, squad_id, opts, preserved, now)
     if opts.offmap then
@@ -348,14 +323,11 @@ local function _apply_session(data, squad_id, opts, preserved, now)
     end
 end
 
---- Script squad to move to smart terrain, register for arrival detection and gulag
---- Sets scripted_target via xsquad.set_target_smart, tracks in _ap_scripted_squads with arrival handler.
---- When opts.offmap is true, also initialises an off-map session (return-home + despawn timers).
---- An existing off-map session is preserved across non-offmap re-dispatches (local cause
---- picks up squad during dwell): the session fields carry into the new entry so the
---- return-home dispatch still fires.
+--- Script a squad to move to a smart terrain, register for arrival detection and the gulag hold.
+--- Sets scripted_target via xsquad.set_target_smart; opts.offmap also starts an off-map session, preserved across a non-offmap re-dispatch during dwell.
 --- @safety SAFE - nil-guarded, releases existing script before re-scripting
 --- @cost O(1) | 1 luabind (smart:name()), 0 on reject
+--- @src anomaly/sim_squad_scripted.script:288-290: clear the source roster (assign nil) before specific_update bumps squad.smart_id
 --- @param squad se_squad Squad server object
 --- @param smart se_smart Smart terrain target
 --- @param opts table|nil { rush, on_arrive, on_arrive_args, pre_release_gulag, offmap, ttl }
@@ -383,9 +355,6 @@ function register_squad(squad, smart, opts)
     if not xsquad.set_target_smart(squad, smart, opts.rush) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.MOVE_FAILED, id = squad.id, dst = name }
     end
-    -- Clear source from SIMBOARD roster before engine specific_update bumps squad.smart_id
-    -- to the new target on next tick (sim_squad_scripted.script:288-290). Reading smart_id
-    -- after that bump would lose the true source. The nil-target form fires squad_on_leave_smart.
     xsmart.assign_squad_to_smart(squad, nil)
     local now = xtime.get_game_sec()
     local data = {
@@ -408,10 +377,8 @@ function register_squad(squad, smart, opts)
     return { code = RESULT.SUCCESS, id = squad.id, dst = name, dst_id = smart.id }
 end
 
---- Script squad to pursue player directly (no arrival detection)
---- Runs the compute_chase leash gate first and refuses a start the leash would immediately
---- pause/release (surge, actor-in-base, relation already friendly), matching register_squad_target;
---- otherwise sets scripted_target="actor" via xsquad.set_target_actor (player movement prevents arrival checks)
+--- Script a squad to pursue the player directly (no arrival detection).
+--- Runs the compute_chase leash first and refuses a start it would immediately pause/release, else sets scripted_target="actor" via xsquad.set_target_actor.
 --- @safety SAFE - nil-guarded; gates before releasing, so a refused start leaves any existing chase intact
 --- @cost O(1) | ~3 luabind medium on dispatch (compute_chase: actor smart, surge, optional relation)
 --- @param squad se_squad Squad server object
@@ -429,7 +396,6 @@ function register_actor_target(squad, opts)
         check_relation = opts and opts.check_relation or nil,
         interruptable = not (opts and opts.interruptable == false),
     }
-    -- Dispatch gate: refuse a chase the leash would immediately pause or release (matches register_squad_target).
     local verdict, reason = ap_core_util.compute_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
         ap_core_debug.debug("[SQUAD] register_actor_target: squad=%d refused verdict=%s reason=%s",
@@ -449,15 +415,8 @@ function register_actor_target(squad, opts)
     return { code = RESULT.SUCCESS, id = squad.id, dst = "actor", dst_id = 0 }
 end
 
---- Script squad to pursue another squad directly (continuous homing via ap_core_chase hooks).
---- No arrival detection; the target squad moves. Sets current_action=0 so the engine
---- specific_update stays in its pursue branch -- am_i_reached on a live squad target is false
---- (target npc_count()==0 only on death), so the chaser keeps assigned_target_id until the
---- target dies. The ap_core_chase get_script_target hook returns target_id (driving
---- specific_update + the online reach-task fallback); the get_current_task hook moves the
---- offline group toward the target live vertices. This dispatch only records the entry.
---- The periodic scan runs the compute_chase leash on this entry (target-death / opt-in relation /
---- story / off-map release; base + surge pause; shared TTL); the dispatch gate below refuses a doomed start.
+--- Script a squad to pursue another squad directly (continuous homing via ap_core_chase hooks, no arrival detection).
+--- Sets current_action=0 so specific_update stays in its pursue branch; this dispatch only records the entry, the periodic scan runs the compute_chase leash.
 --- @safety SAFE - nil-guarded, releases existing script before re-scripting
 --- @cost O(1) | 2 luabind trivial (current_action, __lock field writes)
 --- @src anomaly/sim_squad_scripted.script(276-331 specific_update, 1362 am_i_reached), ap_core_chase.script
@@ -477,7 +436,6 @@ function register_squad_target(squad, target_id, opts)
         check_relation = opts and opts.check_relation or nil,
         interruptable = not (opts and opts.interruptable == false),
     }
-    -- Dispatch gate: refuse a chase the leash would immediately pause or release.
     local verdict, reason = ap_core_util.compute_chase(squad, entry)
     if verdict ~= VERDICT.KEEP then
         ap_core_debug.debug("[SQUAD] register_squad_target: squad=%d refused verdict=%s reason=%s",
@@ -494,17 +452,15 @@ function register_squad_target(squad, target_id, opts)
     return { code = RESULT.SUCCESS, id = squad.id, dst_id = target_id }
 end
 
---- Get AP scripted squad table (read-only reference, do not modify).
---- Returned entries may carry off-map session fields (offmap, dispatched_at) alongside the
---- standard scripted-dispatch fields.
+--- Get the AP scripted-squad table (read-only reference, do not modify).
+--- Entries may carry off-map session fields (offmap, dispatched_at) alongside the standard scripted-dispatch fields.
 --- @cost O(1) | 0 luabind
 function get_scripted_squads()
     return _ap_scripted_squads
 end
 
---- Check if any AP-scripted squad is already targeting the given smart (optionally excluding one id)
---- Iterates _ap_scripted_squads, short-circuits on first match. Catches in-flight + still-scripted
---- post-arrival squads that wouldn't yet appear in SIMBOARD.smarts[id].squads.
+--- Check if any AP-scripted squad is already targeting the given smart (optionally excluding one id).
+--- Short-circuits on the first match; catches in-flight and still-scripted post-arrival squads not yet in SIMBOARD.smarts[id].squads.
 --- @safety SAFE - pure Lua iteration over module-local table
 --- @cost O(n) scripted squads, short-circuits | 0 luabind (pure Lua compares)
 --- @param smart_id number Destination smart server entity ID
@@ -530,7 +486,7 @@ function release_squad(squad_id)
 end
 
 
---- Register an arrival handler by key (called from consumer on_game_start)
+--- Register an arrival handler by key (called from consumer on_game_start).
 --- @cost O(1) | 0 luabind
 function register_arrival_handler(key, fn)
     _arrival_handlers[key] = fn
@@ -546,11 +502,8 @@ function unregister_arrival_handler(key)
 end
 
 
--- True when every squad member holds an anchored job type at the smart: it has a job and the job
--- is not the generic_point cover stub (xr_cover.script:42-62, random scatter). Job-type only -- the
--- campfire_point random-cover fallback keeps job type 1, so _has_campfire_stray covers that by position.
--- When the smart is offline or off the actor's level its jobs are unreadable; treat as anchored
--- (unevaluable -> do not release). Used at the _apply_arrival gate and the _update_gulag re-check.
+-- True when every squad member holds an anchored job (not the generic_point cover stub, xr_cover.script:42-62).
+-- Offline or off-level smarts are unreadable, so treat as anchored (do not release); the campfire_point fallback is covered by _has_campfire_stray.
 -- @src anomaly/smart_terrain.script(771) the bound .job; gulag_general.script(282) generic_point
 local function has_anchored_jobs(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return true end
@@ -572,9 +525,8 @@ local function _is_member_off_campfire(smart, member_id)
     return se ~= nil and not xsmart.is_near_campfire(smart, se.position, CAMPFIRE_SEAT_RADIUS)
 end
 
--- True when any member on a campfire_point job ended up away from every fire -- the scatter
--- fallback. Position-based, so it only reads true after members have walked to their spots; called
--- on the _update_gulag re-check, not at arrival (members are still in transit at arrival).
+-- True when any member on a campfire_point job ended up away from every fire (the scatter fallback).
+-- Position-based, so it reads true only after members walk to their spots; called on the _update_gulag re-check, not at arrival.
 local function _has_campfire_stray(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return false end
     for member_id in xsquad.iterate_member_ids(squad) do
@@ -586,11 +538,8 @@ local function _has_campfire_stray(smart, squad)
     return false
 end
 
--- Validate arrival and commit the gulag entry. Pair with the dispatch-side clear in
--- register_squad: dispatch fires SIMBOARD:assign_squad_to_smart(squad, nil)
--- to remove the source roster entry (before engine specific_update bumps squad.smart_id);
--- commit fires SIMBOARD:assign_squad_to_smart(squad, smart.id) to add the destination entry.
--- Together they keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
+-- Validate arrival and commit the gulag entry, adding the destination roster entry via SIMBOARD:assign_squad_to_smart(squad, smart.id).
+-- Pairs with register_squad's source clear (assign nil) to keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
 local function _apply_arrival(squad_id, squad, smart, data, now)
     if not has_anchored_jobs(smart, squad) then
         ap_core_debug.debug("[SQUAD] release_unplaced: squad=%d target=%s", squad_id, data.scripted_target)
@@ -603,10 +552,8 @@ local function _apply_arrival(squad_id, squad, smart, data, now)
     return true
 end
 
--- Run the on_arrive handler if registered. Returns true if the caller should proceed
--- to commit (no handler, missing handler, or handler completed without rescripting).
--- Returns false when the handler rescripted the squad (an on_arrive handler that rescripts,
--- as the area/needs consequences do); the new entry owns its own arrival lifecycle.
+-- Run the on_arrive handler if registered; returns true when the caller should proceed to commit.
+-- Returns false when the handler rescripted the squad (as area/needs consequences do), so the new entry owns its own arrival lifecycle.
 local function _run_arrival_handler(squad_id, squad, data)
     local key = data.on_arrive
     if not key then return true end
@@ -632,13 +579,8 @@ local function _get_job_info(job, prefix, plen)
     return label, "other"
 end
 
--- Dump a squad's per-member engine jobs as ONE line (DEBUG): a count breakdown
--- (generic = the random cover@ scatter stub job_type_id 0; campfire = id 1; other = anchored
--- path/smartcover/designer; none = unassigned) followed by compact id=job pairs with the
--- "logic@<smart>_" prefix stripped. generic>0 is the corner/road camper (xr_cover.script:42-62).
--- npc_info is populated only when the smart is online and on the actor's level; logs
--- "no_snapshot" otherwise. A member on a campfire job may still be on the scheme's random-cover
--- fallback once the ~6 fire vertices fill (xr_campfire_point.script:104-108) -- not visible here.
+-- Dump a squad's per-member engine jobs as one DEBUG line: a generic/campfire/other/none count breakdown plus id=job pairs.
+-- npc_info is readable only for an online, on-level smart (else "no_snapshot"); generic>0 is the corner/road camper (xr_cover.script:42-62).
 -- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
 local function _log_member_jobs(squad, smart)
     if not ap_core_world_trace.is_enabled() then return end
@@ -662,9 +604,8 @@ local function _log_member_jobs(squad, smart)
         table_concat(parts, ", "))
 end
 
--- Detect physical arrival; on arrival, run the offmap session step, run the on_arrive
--- handler if any, then commit the gulag entry (which also registers the squad on the
--- destination smart's SIMBOARD roster). squad ref threaded from _update_scripted_squad.
+-- Detect physical arrival; on arrival run the on_arrive handler, then commit the gulag entry (adding the destination SIMBOARD roster entry).
+-- squad ref threaded from _update_scripted_squad.
 local function _run_arrival(squad_id, squad, data, now)
     if not data.target_smart_id then return end
     if data.arrived then return end
@@ -688,10 +629,8 @@ local function _run_arrival(squad_id, squad, data, now)
     end
 end
 
--- Update the gulag state for one scan. Two paths: (1) release_at reached -> settle the squad
--- as a resident via _unregister_squad (off-map squads settle at the destination, no return);
--- (2) mid-hold re-check -> release if a member lost its job, sits on the generic_point stub
--- (has_anchored_jobs), or strayed from the fire (_has_campfire_stray).
+-- Update the gulag state for one scan: at release_at, settle the squad as a resident via _unregister_squad.
+-- Mid-hold re-check releases if a member lost its job, sits on the generic_point stub, or strayed from the fire (_has_campfire_stray).
 local function _update_gulag(squad_id, squad, data, now)
     if not data.arrived then return end
     if now >= data.release_at then
@@ -714,15 +653,14 @@ local CHASE_MIN_PAUSE_SEC = 30
 -- Give up (release) if the target stays sheltered this long.
 local CHASE_MAX_PAUSE_SEC = 600
 
--- A chase entry: actor-target ("actor") or squad-target (target_squad_id). Runs the compute_chase
--- leash instead of the smart-dispatch arrival/gulag flow.
+-- A chase entry: actor-target ("actor") or squad-target (target_squad_id).
+-- Runs the compute_chase leash instead of the smart-dispatch arrival/gulag flow.
 local function _is_chase(data)
     return data.is_chase == true
 end
 
 -- Stop driving the engine target so vanilla behaviour (surge shelter, autonomous sim) takes over.
--- Squad-target chases stop via the ap_core_chase hook (returns nil while data.paused); the actor
--- target lives on squad.scripted_target and must be released here.
+-- Squad-target chases stop via the ap_core_chase hook (nil while data.paused); the actor target lives on squad.scripted_target and is released here.
 local function _stop_chase(squad, data, reason, now)
     if data.paused then return end
     data.paused = true
@@ -738,8 +676,6 @@ local function _start_chase(squad, data)
     data.paused = nil
     data.paused_at = nil
     data.pause_reason = nil
-    -- Squad chase homes via the ap_core_chase hooks (no target slot), so it sets the move fields
-    -- itself; actor chase routes through xsquad.set_target_actor, which sets the same fields.
     if data.target_squad_id then
         squad.__lock = nil
         squad.current_action = 0
@@ -749,9 +685,8 @@ local function _start_chase(squad, data)
     ap_core_debug.debug("[SQUAD] chase_resume: squad=%d", squad.id)
 end
 
--- Unified chase leash: ask compute_chase, act on the verdict. RELEASE drops the script; PAUSE
--- holds (max-pause cap -> release); KEEP resumes a paused chase (after a min hold) and reasserts
--- the actor target (squad targets are driven by the ap_core_chase hooks).
+-- Unified chase leash: ask compute_chase, act on the verdict.
+-- RELEASE drops the script, PAUSE holds (max-pause cap -> release), KEEP resumes after a min hold and reasserts the actor target.
 local function _update_chase(squad_id, squad, data, now)
     local verdict, reason = ap_core_util.compute_chase(squad, data)
     if verdict == VERDICT.RELEASE then
@@ -777,8 +712,8 @@ local function _update_chase(squad_id, squad, data, now)
     end
 end
 
---- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag. Off-map sessions add
---- the despawn safety-net check via _update_offmap_entry.
+--- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag.
+--- Off-map sessions add the despawn safety-net check via _update_offmap_entry.
 local function _update_scripted_squad(squad_id)
     local data = _ap_scripted_squads[squad_id]
     if not data then return end
@@ -795,8 +730,6 @@ local function _update_scripted_squad(squad_id)
         _ap_scripted_squads[squad_id] = nil
         return
     end
-    -- TTL applies to every non-offmap scripted entry (chase and smart alike); checked before the
-    -- chase/smart split so chases share the one ledger TTL. Off-map sessions own their own budget.
     if not data.offmap then
         local ttl = data.ttl or SCRIPTED_SQUAD_TTL
         if (now - (data.tracked_at or 0)) > ttl then
@@ -806,7 +739,6 @@ local function _update_scripted_squad(squad_id)
             return
         end
     end
-    -- Chase entries (actor- or squad-target) run the compute_chase leash, not the smart flow.
     if _is_chase(data) then
         _update_chase(squad_id, squad, data, now)
         return
@@ -820,8 +752,8 @@ local function _update_scripted_squad(squad_id)
     _update_gulag(squad_id, squad, data, now)
 end
 
--- Resolve a tracked squad and dump its member jobs (DEBUG). Split out so _log_tracked_entry
--- stays under the complexity cap.
+-- Resolve a tracked squad and dump its member jobs (DEBUG).
+-- Split out so _log_tracked_entry stays under the complexity cap.
 local function _log_squad_jobs(squad_id, data)
     if not (data.arrived and data.target_smart_id) then return end
     local squad = xobject.get_se(squad_id)
@@ -837,8 +769,6 @@ local function _log_tracked_entry(squad_id, data, now)
             now - (data.tracked_at or now),
             tostring(data.offmap or false), tostring(data.arrived or false),
             tostring(data.interruptable or false))
-        -- Arrived squads (incl. save-restored) only pass through this world-trace dump, never
-        -- _run_arrival again, so their member jobs are snapshotted here beside the tracked line.
         _log_squad_jobs(squad_id, data)
         return
     end
@@ -888,10 +818,7 @@ local function _on_save_state(m_data)
 end
 
 -- Sweep tracking dicts: drop entries whose server entity is gone or is not a squad.
--- Engine recycles freed server-entity ids; a saved squad id may resolve to a different
--- engine class (script_zone, item) after the original squad was released. Without this,
--- the next save would re-emit the stale ids permanently and the scan would touch the
--- recycled object on every tick.
+-- A recycled id may resolve to a different class; without this the next save re-emits stale ids and the scan touches the recycled object each tick.
 local function _iterate_recycled_ids(dict)
     local count = 0
     for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
@@ -906,17 +833,13 @@ local function _iterate_recycled_ids(dict)
     return count
 end
 
--- load_state fires BEFORE engine restores server entities (alife_storage_manager.cpp:131-141).
--- alife_object(id) returns nil for every saved id at this point, so only do m_data table
--- restoration here. Defer alife-querying work (the sweep) to on_game_load.
+-- load_state fires BEFORE the engine restores server entities (alife_storage_manager.cpp:131-141), so alife_object(id) is nil here.
+-- Do only m_data table restoration here; defer alife-querying work (the sweep) to on_game_load.
 local function _on_load_state(m_data)
     local saved = m_data.ap_core_broker
     if type(saved) ~= "table" then saved = {} end
     local ss = saved.ap_scripted_squads
     _ap_scripted_squads = (type(ss) == "table") and ss or {}
-    -- Zero release_at on arrived entries deliberately: the gulag hold is not worth resuming
-    -- across a reload (the on_arrive action already ran at arrival), so the first post-load
-    -- scan releases the squad to vanilla AI instead of pinning it for the hold remainder.
     for _, data in pairs(_ap_scripted_squads) do
         if type(data) == "table" and data.arrived then data.release_at = 0 end
     end
@@ -934,8 +857,8 @@ local function _on_game_load()
     end
 end
 
--- SERVER_ENTITY_ON_UNREGISTER fires for every server entity. The hash deletes are
--- safe no-ops when the id isn't in our maps (only squads ever get keyed in).
+-- SERVER_ENTITY_ON_UNREGISTER fires for every server entity.
+-- The hash deletes are safe no-ops when the id isn't in our maps (only squads ever get keyed in).
 local function _on_entity_unregister(se_obj)
     if not se_obj then return end
     local id = se_obj.id
