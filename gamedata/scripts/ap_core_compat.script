@@ -45,9 +45,7 @@ end
 
 --- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries so growth rebuilds under the current one-service-per-outpost rule.
 --- Empties the service sets and drops service holds; squads go at on_game_load (script-loading.md:425-455), the safe mutation point after objects().load.
---- Mutates both tables IN PLACE: ap_ext_smart_mutator captures them by reference at its own
---- load_state and dispatch order is nondeterministic (axr_main.script:272), so a parent-key nil
---- could be missed if the mutator's load_state ran first.
+--- @src axr_main.script:272 load_state order is nondeterministic; the tables are mutated in place (held by ref), runs at whichever fires first.
 local function _v185_to_v186_clear_outpost_services(m_data)
     local saved = m_data.ap_ext_smart_mutator
     local conquest = (type(saved) == "table") and saved.conquered_smarts or nil

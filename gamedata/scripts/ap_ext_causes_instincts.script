@@ -194,7 +194,6 @@ end
 
 -- Per-cause attempt for one CAUSES entry under an overdue drive: filter to the entry's own drive, drop a period-mismatched drive.
 -- Hands the enable gate, timing, and outcome log to ap_ext_util.try_cause; period_mismatch drives are walked only at DEBUG.
--- opts: { species, overdue, entry, drive }
 local function _try_drive_cause(squad, level_id, opts, budget)
     if opts.entry.drive ~= opts.drive then return nil end
     if opts.overdue.period_mismatch then
