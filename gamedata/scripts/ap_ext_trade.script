@@ -33,9 +33,8 @@ local cfg = ap_core_mcm.cfg
 --   { rookie = { entries, rules }, veteran = { ... } }
 local TRADE_POLICY = nil
 
--- Load trade policy via xinventory.load_policy (shared LTX shape across trade / stash /
--- inventory-balance). Keeps {entries, rules} per tier; the profit cap is no longer per-tier
--- LTX -- it is the MCM trade_profit_max override applied in Phase 4.
+-- Load trade policy via xinventory.load_policy (the shared LTX shape across trade, stash, and inventory).
+-- Keeps {entries, rules} per tier; the profit cap is the MCM trade_profit_max override applied in Phase 4, not per-tier LTX.
 local function _load_trade_policy()
     local blocks = xinventory.load_policy(POLICY_PATH,
         { "ap_trade_policy_rookie", "ap_trade_policy_veteran" })
@@ -51,8 +50,8 @@ local function _load_trade_policy()
     }
 end
 
--- Return a fresh cost-asc-sorted copy of sections (does not mutate the input list, which
--- may be cached by xinventory and shared with other callers).
+-- Return a fresh cost-asc-sorted copy of sections.
+-- Does not mutate the input list, which may be cached by xinventory and shared with other callers.
 local function _sort_by_cost(sections)
     local sorted = {}
     for i = 1, #sections do sorted[i] = sections[i] end
@@ -62,18 +61,14 @@ local function _sort_by_cost(sections)
     return sorted
 end
 
--- Buy ammo for the target tier. Walks tier sections cheapest-first; on `cash < cost` or
--- create_item failure, breaks inner loop so the outer for can try the next section. Cheaper
--- alternative usually fails the same way (cost is monotonic across sorted sections), but
--- create_item failures on the cheapest are recoverable by falling through.
--- Vanilla weapon ammo_class lists the degraded _bad / _verybad rounds so the weapon can chamber
--- jammed ammo the player scavenges (w_pm.ltx, w_ak74.ltx). They are also the cheapest sections, so
--- cheapest-first otherwise stocks every NPC with jammed trash. An NPC restocking at a trader never
--- buys jammed ammo, so these variants are dropped from the buy candidates.
+-- True for degraded ammo (_bad / _verybad): vanilla ammo_class lists these jammed rounds (w_pm.ltx, w_ak74.ltx) and they are the cheapest.
+-- Cheapest-first would otherwise stock every NPC with jammed trash, so they are dropped from the buy candidates.
 local function _is_degraded_ammo(sec)
     return sec:sub(-4) == "_bad" or sec:sub(-8) == "_verybad"
 end
 
+-- Buy ammo for the target tier, cheapest-first; on cash < cost or create_item failure the inner loop breaks so the outer can try the next section.
+-- A cheaper section usually fails the same way (cost is monotonic), but a create_item failure on the cheapest is recoverable by falling through.
 local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, bought)
     if not weapon_sec or target_rounds <= 0 then return 0 end
     local tier_map = xinventory.get_ammo_tier_map(weapon_sec, 2)
@@ -101,12 +96,8 @@ local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, b
     return rounds_added
 end
 
--- Buy copies of one section until count reaches target OR cash runs out OR create_item
--- fails. Breaks (not errors) on any of those so the caller can try the next-cheapest section.
--- Ammo sections (box_size present) buy whole boxes and count in rounds (target is rounds);
--- everything else buys one item at a time and counts in items. This keeps the unit aligned
--- with xinventory.collect_policy_counts (_unit), so a per-section ammo rule like ammo_5.45x39_ap = 60, 60
--- fills to 60 rounds, not 60 boxes.
+-- Buy copies of one section until count reaches target, cash runs out, or create_item fails (breaks, not errors, so the caller tries the next section).
+-- Ammo sections buy whole boxes counted in rounds, everything else one item counted in items, matching xinventory.collect_policy_counts (_unit).
 local function _run_section_buy(npc, seller, sec, current, target, bought)
     local box = xinventory.get_box_size(sec)
     local step = box or 1
@@ -121,11 +112,8 @@ local function _run_section_buy(npc, seller, sec, current, target, bought)
     return current
 end
 
--- Buy from a consumable category cheapest-first until count >= target OR no affordable
--- section remains. Falls through to the next-cheapest section on per-section unaffordable
--- or create_item failure, so an expensive section never blocks NPCs that can still afford
--- a cheaper one. A section that has its own policy row (e.g. grenade_f1) is skipped here: it is
--- bought by its own entry, matching how xinventory.collect_policy_counts keys it under the section name.
+-- Buy from a consumable category cheapest-first until count >= target or no affordable section remains.
+-- A section with its own policy row (e.g. grenade_f1) is skipped here; its own entry buys it, matching collect_policy_counts keying.
 local function _run_consumable_buy(ctx, category, current, target)
     local sections = xinventory.get_category_sections(category)
     if #sections == 0 then return current end
@@ -145,9 +133,8 @@ local function _is_ammo_slot_category(cat)
     return string_sub(cat, 1, 11) == "ammo_slot_2" or string_sub(cat, 1, 11) == "ammo_slot_3"
 end
 
--- For the ammo buy path: resolve the equipped weapon section and tier number from category.
--- Parses the trailing _t<N> via string_match so categories like ammo_slot_2_t10 resolve
--- correctly (a previous last-char slice broke for n_tiers > 9).
+-- For the ammo buy path: resolve the equipped weapon section and tier number from the category.
+-- Parses the trailing _t<N> via string_match, so ammo_slot_2_t10 resolves correctly (a last-char slice broke for n_tiers > 9).
 local function _resolve_ammo_buy_context(category, cat_opts)
     local prefix = string_sub(category, 1, 11)
     local tier_num = tonumber(string_match(category, "_t(%d+)$"))
@@ -156,12 +143,8 @@ local function _resolve_ammo_buy_context(category, cat_opts)
     return nil, nil
 end
 
--- Execute one BUY policy entry against the NPC's current counts. ctx carries the buy context
--- { npc, seller, cat_opts, counts, bought, rules }. The entry key is one of three kinds: an
--- ammo-slot category (per-slot tier map via _run_ammo_buy); a category with members
--- (cheapest-first over the category set via _run_consumable_buy); or an item section
--- (get_category_sections empty -> buy that exact section via _run_section_buy).
--- Updates ctx.counts[key] in place (counts are keyed the same way by xinventory.collect_policy_counts).
+-- Execute one BUY policy entry against the NPC's current counts; ctx = { npc, seller, cat_opts, counts, bought, rules }.
+-- The key is an ammo-slot (via _run_ammo_buy), a category with members (_run_consumable_buy), or an item section (_run_section_buy).
 local function _run_buy_entry(entry, ctx)
     local rule_min = entry.rule.min
     if not (rule_min and rule_min > 0) then return end
@@ -180,14 +163,8 @@ local function _run_buy_entry(entry, ctx)
     end
 end
 
---- Run a sell + buy trade between NPC and trader, per the NPC's rank-tier policy.
---- Phase 1: scan inventory, aggregate counts per category. Phase 2: SELL pass — iterate
---- inventory, release anything whose category count > max, credit NPC (the item is not handed
---- to the trader; the market echo rebuilds the player shelf from the sold-section list).
---- Phase 3: walk policy entries in declaration order (= BUY priority) and fill any whose
---- count < min using post-sell counts + cash; ammo via tier-aware per-slot section pick,
---- consumables via cheapest-first walk over the category set.
---- Phase 4: profit cap — transfer NPC cash gained beyond MCM trade_profit_max back to seller.
+--- Run a sell + buy trade between an NPC and a trader, per the NPC's rank-tier policy.
+--- SELL releases anything over category max and credits the NPC, BUY fills anything under min from post-sell counts + cash, capped by MCM trade_profit_max.
 --- @safety SAFE - nil-guarded npc/seller; iterate_inventory tolerant of nil items
 --- @cost O(n inventory) | 2 iterate walks + buy loop per policy entry with cash check
 --- @param npc game_object Trading NPC (gains money from sales, spends money on buys)
@@ -197,7 +174,6 @@ function execute_trade(npc, seller)
     local sold, bought = {}, {}
     if not npc or not seller then return { sold = sold, bought = bought } end
 
-    -- Resolve per-rank policy
     local tier_name = (npc:character_rank() >= ap_core_const.RANK_VETERAN) and "veteran" or "rookie"
     local policy = TRADE_POLICY and TRADE_POLICY[tier_name]
     if not policy then return { sold = sold, bought = bought } end
@@ -205,29 +181,18 @@ function execute_trade(npc, seller)
     local cat_opts = xinventory.get_category_opts(npc)
     local cash_before = xcreature.get_money(npc)
 
-    -- Phase 1: count per policy key via xinventory.collect_policy_counts (ammo in rounds, others in items).
-    -- An item keys under its section if the policy names that section, else its category.
     local counts = xinventory.collect_policy_counts(npc, cat_opts, policy.rules)
 
-    -- Phase 2: SELL pass via xinventory.iterate_surplus (anything above its max).
-    -- Runs before BUY so the cash gained from sales is available to fund the BUY pass,
-    -- and so counts[key] is decremented before BUY checks `current < min`.
     xinventory.iterate_surplus(npc, cat_opts, {
         rules = policy.rules,
         counts = counts,
         on_surplus = function(item, _cat, sec, _unit)
-            -- Release the item; do NOT hand it to the trader. Handing it over changes nothing the
-            -- player sees: a trader's player-facing stock is his config, respawned each restock, so a
-            -- transferred item is deleted at the next restock anyway (it would only sit buyable until
-            -- then). The one player-facing path is the ap_ext_market echo, rebuilt from this sold list.
-            -- transfer_item is reserved for NPC-to-NPC barter, never a trader sale.
             xinventory.release_item(item)
             xcreature.give_money(npc, floor((xinventory.get_cost(sec) or DEFAULT_COST) * SELL_MULT))
             sold[#sold + 1] = sec
         end,
     })
 
-    -- Phase 3: BUY pass (priority = declaration order in LTX). Reads post-sell counts + cash.
     local buy_ctx = {
         npc = npc, seller = seller, cat_opts = cat_opts,
         counts = counts, bought = bought, rules = policy.rules,
@@ -236,8 +201,6 @@ function execute_trade(npc, seller)
         _run_buy_entry(entry, buy_ctx)
     end
 
-    -- Phase 4: profit cap (net gain). MCM trade_profit_max overrides the old per-tier LTX cap
-    -- for all ranks; 0 = NPCs net zero profit. (economy > trade)
     local cap = cfg.trade_profit_max
     local delta = xcreature.get_money(npc) - cash_before
     if delta > cap then
@@ -253,13 +216,10 @@ function execute_trade(npc, seller)
     return { sold = sold, bought = bought }
 end
 
--- Dump the trade partner's stock to the world log when trade opens, via the shared xlibs util
--- (aggregated, one line). This is the trade feature's OWN hook, decoupled from the market and
--- outpost-service dumps, so any trader you open reports its shelf. No-op when world trace is off.
+-- Dump the trade partner's stock to the world log when trade opens (aggregated, one line).
+-- The trade feature's own hook, so any trader you open reports its shelf; no-op when world trace is off.
 local function _on_trade_started()
     if not ap_core_world_trace.is_enabled() then return end
-    -- The partner is the actor's talk target. xactor.get_talking_npc wraps the engine primitive
-    -- db.actor:get_talking_npc() (the authoritative GetTalkPartner); no raw engine call here.
     local npc = xactor.get_talking_npc()
     if npc then xinventory.log_inventory(npc, "trade", ap_core_world_trace.debug) end
 end
