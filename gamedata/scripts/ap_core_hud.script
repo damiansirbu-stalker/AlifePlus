@@ -1,5 +1,4 @@
---- ap_core_hud: Pipeline statistics overlay (UIStatsHUD).
---- Counters collect when statistics overlay is on OR log level is DEBUG. HUD displays when overlay is on.
+--- ap_core_hud: pipeline statistics overlay (UIStatsHUD); counters collect when the overlay is on or DEBUG, the HUD shows when the overlay is on.
 local pairs, string_format, tostring, math_floor, clock, RegisterScriptCallback = pairs, string.format, tostring, math.floor, os.clock, RegisterScriptCallback
 local table_concat = table.concat
 
@@ -12,13 +11,7 @@ local _debug_enabled = ap_core_debug.is_enabled
 
 local DUMP_INTERVAL_SEC = 10
 
---- Radiant pipeline counters (stable reference, zeroed on reset)
---- Sweep fields (sweep_changes, sweep_keepalives) split received ap_squad_on_change fires
---- by kind (classified in producer _on_radiant: changed array vs nil keepalive).
---- Gate fields (deny_budget, protected) hold BLOCK counts. events is input count
---- (ap_squad_on_change fires received). Cause/csq filter fields hold BLOCK counts.
---- causes, pub are pipeline-stage totals. No radiant ratio counter: the level mix is
---- enforced at production inside the ap_core_callbacks sweep, not rejected in the pipeline.
+--- Radiant pipeline counters (stable reference, zeroed on reset); gate/filter fields hold BLOCK counts, causes/pub are stage totals.
 r = { sweep_changes = 0, sweep_keepalives = 0,
     events = 0, deny_budget = 0, protected = 0,
     causes = 0, pub = 0, consequences = 0,
@@ -36,13 +29,13 @@ local _was_enabled = false
 local _was_counters = false
 local _hud = nil
 
---- Check if statistics overlay is active
+--- Check if the statistics overlay is active.
 --- @cost O(1) | 0 luabind
 function is_enabled()
     return cfg.statistics_position ~= "off"
 end
 
---- Check if counter collection is active (overlay on OR debug on)
+--- Check if counter collection is active (overlay on or debug on).
 --- @cost O(1) | 0 luabind
 function is_collecting()
     return cfg.statistics_position ~= "off" or _debug_enabled()
@@ -51,7 +44,7 @@ end
 -- Forward declaration: the snapshot ring lives next to _dump below; _reset clears it.
 local _reset_history
 
--- Zero all counter fields without reallocating tables
+-- Zero all counter fields without reallocating tables.
 local function _reset()
     for k in pairs(r) do r[k] = 0 end
     for k in pairs(x) do x[k] = 0 end
@@ -59,8 +52,8 @@ local function _reset()
     if _reset_history then _reset_history() end
 end
 
---- Classify a predicate (cause-side) non-publishing result into the appropriate counter
---- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED reason -> cause_budget, else -> cause_rules
+--- Classify a predicate (cause-side) non-publishing result into the appropriate counter.
+--- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED -> cause_budget, else -> cause_rules.
 --- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
@@ -76,8 +69,8 @@ function update_cause_stats(result, is_radiant)
     end
 end
 
---- Classify a consequence handler result into the appropriate counter
---- Routes by code: SUCCESS -> consequences, FAILED_SCAN -> csq_scan, FAILED_ACTION -> csq_action, else -> csq_rules
+--- Classify a consequence handler result into the appropriate counter.
+--- Routes by code: SUCCESS -> consequences, FAILED_SCAN -> csq_scan, FAILED_ACTION -> csq_action, else -> csq_rules.
 --- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
 --- @cost O(1) | 0 luabind
 --- @param result table { code, reason }
@@ -96,8 +89,8 @@ function update_csq_stats(result, is_radiant)
     end
 end
 
---- Increment per-consequence token-bucket block counter
---- Called when consumer's per-consequence token bucket exhausts; the handler never ran
+--- Increment the per-consequence token-bucket block counter.
+--- Called when the consumer's per-consequence token bucket exhausts; the handler never ran.
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param is_radiant boolean
@@ -106,16 +99,16 @@ function update_bucket_stat(is_radiant)
     counters.csq_bucket = counters.csq_bucket + 1
 end
 
---- Increment global radiant cap block counter
---- Called when consumer's global radiant cap exhausts; radiant-only by construction
+--- Increment the global radiant cap block counter.
+--- Called when the consumer's global radiant cap exhausts; radiant-only by construction.
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 function update_cap_stat()
     r.csq_cap = r.csq_cap + 1
 end
 
---- Increment publish counter (called from producer on cause publish)
---- Counts predicate-side successes (the cause emitted), as opposed to causes which counts every predicate run
+--- Increment the publish counter (called from the producer on cause publish).
+--- Counts predicate-side successes (the cause emitted), unlike causes which counts every predicate run.
 --- @safety SAFE - one counter increment on a module table
 --- @cost O(1) | 0 luabind
 --- @param cause_type string CAUSE_TYPE.RADIANT or CAUSE_TYPE.REACTIVE
@@ -127,18 +120,12 @@ function update_publish_stat(cause_type)
     end
 end
 
--- csq tried = consequences classified (excludes rate-limited which never reach update_csq_stats)
+-- csq tried = consequences classified (excludes rate-limited, which never reach update_csq_stats).
 local function _get_csq_tried(counters)
     return counters.consequences + counters.csq_rules + counters.csq_scan + counters.csq_action
 end
 
--- Dump lines are composed from one ordered field list per pipeline: each entry is
--- { label, field } and "|" renders as a literal section separator. TOTAL and /MIN lines
--- share the list, so adding or removing a counter is a one-line change and the label/value
--- pairing cannot desync (the old hand-maintained positional format strings failed only at
--- dump time, only with statistics enabled). field "_get_csq_tried" resolves via _get_csq_tried().
--- Sections: sensor | gates | cause stage | publish stage | classify stage | exec.
--- Within sections, position disambiguates collisions (rules/scan appear in cause and classify).
+-- Dump-line field lists per pipeline: each entry { label, field }, "|" is a section separator; TOTAL and /MIN share the list so label/value cannot desync.
 local _R_FIELDS = {
     { "changed", "sweep_changes" }, { "turn", "sweep_keepalives" }, "|",
     { "events", "events" }, { "window", "deny_budget" }, { "protected", "protected" }, "|",
@@ -186,10 +173,7 @@ local function _log_dump(minutes)
     ap_core_debug.info("%s", _format_line("[STATS] /MIN REACTIVE: ", _X_FIELDS, x, minutes))
 end
 
--- Snapshot ring for sliding-window rates: 7 slots x 10s dumps = the newest snapshot at
--- least 60s old. Rates and percentages on the overlay read counter DELTAS against the
--- oldest snapshot, so they show the last minute, not the session average (a session
--- average needs ~5 minutes to converge and never reflects "now").
+-- Snapshot ring for sliding-window rates (7 slots x 10s = 60s span): the overlay reads counter DELTAS vs the oldest snapshot, so it shows the last minute.
 local HIST_SLOTS = 7
 local _hist = {}
 local _hist_pos = 0
@@ -214,8 +198,8 @@ local function _get_oldest_snapshot()
     return wrap or _hist[1]
 end
 
--- Windowed delta of one field in one pipeline column ("r"/"x"), with the window length
--- in minutes. Falls back to the whole session when the ring has no snapshot yet.
+-- Windowed delta of one field in one pipeline column ("r"/"x"), with the window length in minutes.
+-- Falls back to the whole session when the ring has no snapshot yet.
 local function _get_win_delta(col, field, session_minutes)
     local live = col == "r" and r or x
     local live_value = field == "_get_csq_tried" and _get_csq_tried(live) or (live[field] or 0)
@@ -237,9 +221,8 @@ local function _log_stats()
     _push_snapshot()
 end
 
+-- Dump timer: self-removes (return true) when collection is off, else reschedules.
 local function _on_dump_timer()
-    -- return true self-removes the time event: an expired event whose callback returns nil is
-    -- re-invoked every actor update (_g.script ProcessEventQueue). _start_collecting re-creates it.
     if not is_collecting() then return true end
     _log_stats()
     ResetTimeEvent("ap_stats", "dump", DUMP_INTERVAL_SEC)
@@ -252,24 +235,14 @@ local function _is_hud_visible()
     return true
 end
 
--- 2s visibility poll: GUI_on_show/GUI_on_hide callbacks do not fire for PDA transitions,
--- so the stats overlay must poll to hide itself when the PDA is open.
+-- 2s visibility poll: GUI_on_show/GUI_on_hide callbacks do not fire for PDA transitions.
+-- The stats overlay must poll to hide itself when the PDA is open.
 local function _on_visibility_timer()
     if _hud then _hud:Show(_is_hud_visible()) end
     ResetTimeEvent("ap_stats", "vis", 2)
 end
 
--- HUD layout: { type, label, field, field_x, denom, rate, pct }
--- type: "section" (cream header line, no values), "input" (cream), "output" (green),
---       "filter" (counts what a step rejected; loss = true paints it red)
--- field: radiant counter name, or false = N/A for radiant (reactive-only row)
--- field_x: nil = same as field, false = N/A for reactive, string = different field name
--- rate: extra column shows a sliding-window per-minute rate of this column ("r"/"x")
--- pct: extra column shows a sliding-window percentage of denom; "r"/"x" read one column,
---      "rx" sums both (rows shared by the two pipelines)
--- loss: red accent. Only intake/output being refused counts as loss (DENIED rows,
---       limiter); RULES/SCAN rejections are the simulation deciding "not now" and stay
---       neutral cream, so red on screen always means something to look at.
+-- _ROWS layout schema: { type, label, field, field_x, denom, rate, pct, loss }; type paints the row, loss adds red on a refusal.
 local _ROWS = {
     { type = "section", label = "INCOMING" },
     { type = "input",  label = "events",      field = "events", rate = "r" },
@@ -327,9 +300,6 @@ function UIStatsHUD:__init() super()
     local xml = CScriptXmlInit()
     xml:ParseFile("ui_ap_stats.xml")
 
-    -- Three-color ledger: aged cream (the mod's banner color) is the machine -- structure
-    -- and neutral flow; muted green is what the world gained (OUTCOME values); muted red is
-    -- what the machine refused (DENIED values and any nonzero denial percentage).
     local clr_cream = GetARGB(230, 212, 201, 168)
     local clr_green = GetARGB(240, 160, 220, 160)
     local clr_red   = GetARGB(230, 210, 110, 100)
@@ -341,8 +311,6 @@ function UIStatsHUD:__init() super()
     local hdr_y = ROW_H + 2
     self:_build_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
     self:_build_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
-    -- The counts are since-load totals; the right column is a different clock (sliding
-    -- 60s window), so it says so.
     self:_build_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
 
     self._entries = {}
@@ -390,8 +358,8 @@ local function _get_value(entry, counters, is_x)
     return counters[field] or 0
 end
 
--- Windowed numerator/denominator pair for a percentage row. Source "r"/"x" reads one
--- pipeline column; "rx" sums both (rows the two pipelines share).
+-- Windowed numerator/denominator pair for a percentage row.
+-- Source "r"/"x" reads one pipeline column; "rx" sums both (rows the two pipelines share).
 local function _compute_pct_deltas(entry, session_minutes)
     local field = entry.field or entry.field_x
     if entry.pct == "rx" then
@@ -404,8 +372,8 @@ local function _compute_pct_deltas(entry, session_minutes)
     return _get_win_delta(entry.pct, field, session_minutes), _get_win_delta(entry.pct, entry.denom, session_minutes)
 end
 
--- Extra column: sliding-window per-minute rate (rate rows) or sliding-window percentage
--- of the row's denominator (pct rows). Empty when there is nothing to report.
+-- Extra column: sliding-window per-minute rate (rate rows) or percentage of the row's denominator (pct rows).
+-- Empty when there is nothing to report.
 local function _build_extra_text(entry, session_minutes)
     if entry.rate then
         local delta, minutes = _get_win_delta(entry.rate, entry.field, session_minutes)
@@ -427,8 +395,8 @@ function UIStatsHUD:update_display(minutes, elapsed_sec)
     end
 end
 
--- Refresh one row's cells. A nonzero LOSS percentage is the go-look signal: red only
--- when it means something.
+-- Refresh one row's cells.
+-- A nonzero LOSS percentage is the go-look signal: red only when it means something.
 function UIStatsHUD:_update_row(entry, minutes)
     entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
     entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
@@ -478,13 +446,11 @@ end
 local function _on_option_change()
     local now_enabled = is_enabled()
     local now_collecting = is_collecting()
-    -- Collection transitions
     if now_collecting and not _was_counters then
         _start_collecting()
     elseif not now_collecting and _was_counters then
         _stop_collecting()
     end
-    -- HUD transitions
     if now_enabled and not _was_enabled then
         _show_hud()
     elseif not now_enabled and _was_enabled then
