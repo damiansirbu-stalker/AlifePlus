@@ -1,6 +1,4 @@
---- ap_ext_causes_instincts: Hull-scored mutant instinct generator. INSTINCTS table holds 5 drives;
---- CAUSES table holds 7 specific causes (slumber splits 3 ways by shelter type). Picker emits
---- one specific cause per call.
+--- ap_ext_causes_instincts: Hull-scored mutant instinct generator; 5 drives, 7 specific causes (slumber splits 3 ways), picker emits one per call.
 
 local table_sort, pairs, math_random = table.sort, pairs, math.random
 local xobject, xsmart, xtime, xlevel, xcreature = xobject, xsmart, xtime, xlevel, xcreature
@@ -36,8 +34,7 @@ local _alignment_surge = xtable.merge(_alignment_mutant_aberrant, _alignment_mut
 -- pack: feral + predator (cowardly + aberrant excluded)
 local _alignment_pack = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
 
---- 5 drives. Per-drive Hull weight + threshold cfg key + period gating.
---- Enable check is per-cause (cause_<cause_name>_enabled), gated by the shared ap_ext_util.try_cause; no drive-level enable.
+--- 5 drives (Hull weight + threshold key + period gating); enable is per-cause (cause_<name>_enabled) via ap_ext_util.try_cause, no drive-level enable.
 local INSTINCTS = {
     { instinct = "scatter", field = "last_scatter_at", weight = 4.0,
       threshold_key = "cause_scatter_threshold",
@@ -52,8 +49,7 @@ local INSTINCTS = {
       threshold_key = "cause_pack_threshold" },
 }
 
---- 7 specific causes. Slumber splits 3 ways by shelter preference.
---- Each cause carries: cause const, name, parent drive, alignment subset, personality, filter.
+--- 7 specific causes (slumber splits 3 ways by shelter); each carries cause const, name, parent drive, alignment subset, personality, filter.
 local CAUSES
 
 -- In-place Fisher-Yates shuffle over CAUSES.

@@ -1,9 +1,4 @@
---- ap_core_broker: Squad scripting lifecycle, ownership registry, protection, arrival,
---- off-map lifecycle. One _ap_scripted_squads table covers both regular scripted dispatches
---- and off-map sessions; off-map sessions add offmap + dispatched_at on top of the shared
---- scripted dispatch fields and run through the same periodic scan (UPDATE_SCRIPTED_SQUADS_SEC).
---- An off-map squad travels to its target, holds the gulag briefly, then settles there as a
---- vanilla resident; the despawn safety net reclaims one that never settled.
+--- ap_core_broker: squad scripting lifecycle, ownership registry, protection, arrival, off-map; one _ap_scripted_squads table on a periodic scan.
 local pairs, next, tostring, type = pairs, next, tostring, type
 local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
 local xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler = xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler
@@ -26,8 +21,7 @@ local cfg = ap_core_mcm.cfg
 local _ap_scripted_squads = {}
 local _arrival_handlers = {}
 
--- Module-level reusable scratch table for _iterate_recycled_ids; cleared on each call to
--- avoid per-call allocation. Demonized pattern (mod-evaluation.md S-tier convention).
+-- Reusable scratch table for _iterate_recycled_ids, cleared each call to avoid per-call allocation (Demonized pattern).
 local _to_drop = {}
 
 local _owners = {}
@@ -87,9 +81,7 @@ function get_owner(squad)
 end
 
 
--- Static protection-policy fields shared by is_protected and build_protection_opts.
--- exclude_filter (get_owner function ref) is assigned separately because it cannot
--- live in a module-top const table referenced before get_owner is defined.
+-- Static protection-policy fields shared by is_protected and build_protection_opts; exclude_filter (get_owner) is assigned separately (forward ref).
 local _PROTECTION_FIELDS = {
     exclude_filter_reason = REASON.IS_OWNED,
     exclude_scripted      = true,
@@ -239,13 +231,7 @@ local function _log_proximity(source, squad, smart, data)
         tostring(squad.scripted_target))
 end
 
--- Off-map lifecycle
--- An off-map session has no return leg: the squad travels to its target smart, holds the
--- gulag for pre_release_gulag, then _unregister_squad settles it there as a vanilla resident.
--- A squad that cannot get a job (or loses one mid-hold) is released via _release_to_dwell,
--- keeping only offmap + dispatched_at so the despawn safety net reclaims it once offline.
--- The entry carries offmap + dispatched_at; sessions survive non-offmap re-dispatches during
--- the hold (register_squad preserves those two fields when an existing entry has offmap=true).
+-- Off-map lifecycle: no return leg; squad travels to target, holds the gulag, then settles as a vanilla resident (or _release_to_dwell). See architecture.md.
 
 -- Populate off-map session fields on a fresh scripted entry.
 -- Called from register_squad when opts.offmap is true.
@@ -514,9 +500,7 @@ local function has_anchored_jobs(smart, squad)
     return true
 end
 
--- Campfire seats sit within 8m of the fire (xr_campfire_point seat ring tops out at radius 8).
--- 8m is the seat-ring edge: a campfire-job member past it is on the find_random_cover fallback,
--- not a seat, with no false positive on a legit sitter.
+-- Campfire seat radius: xr_campfire_point seat ring tops out at 8m; past it a campfire member is on the find_random_cover fallback, not a seat.
 local CAMPFIRE_SEAT_RADIUS = 8
 
 -- True when a member's server position is beyond the seat radius from every bound fire.

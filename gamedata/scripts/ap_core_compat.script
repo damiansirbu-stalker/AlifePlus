@@ -162,9 +162,7 @@ local function _flush_removals()
     end
 end
 
--- Service ROLE from a sim_default profile section ("sim_default_stalker_trader" -> "trader"),
--- nil for every other section. The NPC-level identity of an outpost service: the profile persists
--- on the server entity for life, squad or no squad.
+-- Service ROLE from a sim_default profile section (sim_default_stalker_trader -> trader), nil otherwise; profile persists on the server entity for life.
 local _SERVICE_ROLES = { trader = true, barman = true, mechanic = true, medic = true }
 local function _get_service_role(sec)
     local role = sec and sec:match("^sim_default_%a+_(%a+)$")

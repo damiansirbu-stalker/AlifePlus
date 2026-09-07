@@ -1,9 +1,4 @@
---- ap_ext_causes_area: AREA generator. Three radiant 1:1 causes — area_conquer (human empty smart),
---- area_swarm (mutant empty smart), area_infest (mutant lair/surge). RULES and SCAN live here
---- per radiant invariants 4 + 5 + 10. Mutants try INFEST and SWARM in randomized order so
---- neither has a structural first-pick advantage. Humans only check CONQUER. Both mutant causes
---- gate on ap_ext_smart_mutator.INFEST_SPECIES (bosses and trash mobs never take territory), and
---- every target filter skips taken smarts via is_taken (takeovers end by decay, not by retake).
+--- ap_ext_causes_area: AREA generator, three radiant causes (conquer/swarm/infest); RULES+SCAN here, mutants gate on INFEST_SPECIES.
 
 local math_random, pairs = math.random, pairs
 local xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable = xobject, xsquad, xsmart, xtime, xlevel, xcreature, xtable
@@ -105,12 +100,7 @@ local function _resolve_infest_filter(species, player_id)
     return nil
 end
 
--- Level census (the saturation gate, user rulings 2026-08-01)
--- Per-level squad census by community, from the ap_core_cache per-level bucket: total squads,
--- per-community counts, mutant total. Rebuilt lazily after CENSUS_TTL_SEC real seconds (os.clock
--- rate-limit guard); presence changes at squad-travel speed, so 10-minute staleness is invisible
--- to an expansion gate. nil before the bucket exists (early load) -- the share check PASSES on a
--- nil census: no data must not block anyone.
+-- Level census (saturation gate): per-level squad counts by community from ap_core_cache, rebuilt after CENSUS_TTL_SEC (os.clock); nil census passes.
 local CENSUS_TTL_SEC = 600
 local _census = {}
 
@@ -261,8 +251,7 @@ local function _compute_infest(squad, species, now, level_id, budget)
     if not ap_ext_smart_mutator.can_infest_on_level(level_id) then return { code = RESULT.FAILED_RULES, reason = REASON.MAX_INFEST_PER_LEVEL } end
     local base_filter = _resolve_infest_filter(species, squad.player_id)
     if not base_filter then return { code = RESULT.FAILED_RULES, reason = REASON.WRONG_ALIGNMENT } end
-    -- is_taken with no identity: ANY live mutation blocks (infest never refreshes, so its own
-    -- entries block too -- supersedes the old is_infested check).
+    -- is_taken with no identity: ANY live mutation blocks (infest never refreshes, so its own entries block too).
     local filter = function(smart)
         if ap_ext_smart_mutator.is_taken(smart.id) then return false end
         return base_filter(smart)

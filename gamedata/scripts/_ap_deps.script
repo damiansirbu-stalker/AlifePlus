@@ -51,8 +51,7 @@ function platform_status()
     return line .. " (fully compatible)", "full"
 end
 
--- MCM ui_hook_functor for the footer row: writes platform_status into the desc widget, colored by
--- verdict. Colors build lazily (GetARGB is absent under the static validator).
+-- MCM ui_hook_functor for the footer row: writes platform_status into the desc widget, verdict-colored; colors build lazily (GetARGB absent in the validator).
 local _footer_clr = nil
 function platform_functor()
     return function(_anchor, handlers)

@@ -2,9 +2,7 @@
 local RegisterScriptCallback = RegisterScriptCallback
 
 defaults = {
-    -- Event Pipeline. alife_rate + alife_ratio feed the ap_core_callbacks squad sweep intake
-    -- (total ap_squad_on_change fires per minute, and their current-level vs background
-    -- mix); the radiant gates downstream are budget peek -> protection only.
+    -- Event Pipeline: alife_rate/alife_ratio feed the ap_core_callbacks squad sweep (fires/min, level/background mix); radiant gates = budget peek.
     alife_ratio = 8,
     alife_rate = 5,
     allow_external_ownership = true,
@@ -306,8 +304,7 @@ defaults = {
     consequence_job_explore_offmap_enabled = true,
     consequence_job_explore_offmap_rush = false,
 
-    -- Area conquest (exclusive spawn / sole ownership, human factions). Outpost plan sliders:
-    -- services/guards rolled once per conquest; respawn_minutes paces refills (game-minutes).
+    -- Area conquest (exclusive spawn, human factions); outpost sliders: services/guards rolled once, respawn_minutes paces refills (game-minutes).
     mutator_area_conquest_mutate_smart = true,
     mutator_area_conquest_spawn_num = 2,
     mutator_area_conquest_decay_hours = 120,
@@ -332,8 +329,7 @@ defaults = {
     mutator_area_infest_decay_hours = 48,
     mutator_area_infest_respawn_minutes = 120,
 
-    -- Creature mutator: Alpha (ap_ext_object_mutator; combat identity of the earned alpha status).
-    -- max_pct = TOTAL percent at alpha level 10; per-level effect scales linearly.
+    -- Creature mutator: Alpha (ap_ext_object_mutator); max_pct = total percent at alpha level 10, per-level effect scales linearly.
     mutator_alpha_hit_power_dealt_enabled = true,
     mutator_alpha_hit_power_dealt_max_pct = 15,
     mutator_alpha_hit_power_taken_enabled = true,
@@ -375,23 +371,14 @@ defaults = {
 
 }
 
--- Stateless profile: disables the mechanics that mutate trader stocks, area spawn tables,
--- and stash contents. Squads still dispatch and travel; only the payload at the destination
--- is skipped. supply_trader and supply_trader_offmap have arrive_action toggles (gated in
--- ap_ext_consequences_needs.script via _make_on_arrive). stash_loot and stash_fill have no
--- arrive_action split, so the whole consequence flag is off (dispatch and item move bundle
--- at ap_ext_consequences_stash.script:99,213). hunger_campfire, rest_campfire, heal_shelter,
--- job_outpost, social_campfire, social_base have no arrive_action toggle in the current
--- ruleset, so this profile does not gate them.
+-- Stateless profile: disables the mechanics that mutate trader stocks, area spawn tables, and stash contents; squads still travel, only the payload is skipped.
 local stateless_overrides = {
     -- Arrive-action toggles (trade + barter; gated in ap_ext_consequences_needs.script:_make_on_arrive)
     consequence_supply_trader_arrive_action_enabled = false,
     consequence_supply_trader_offmap_arrive_action_enabled = false,
     consequence_barter_arrive_action_enabled = false,
     consequence_barter_offmap_arrive_action_enabled = false,
-    -- Area mutator spawn toggles (the actual spawn-table mutation step). grow_services is
-    -- double-gated behind conquest's mutate_smart, but stays explicitly off so re-enabling
-    -- Inject spawns alone does not silently bring outpost services back.
+    -- Area mutator spawn toggles; grow_services stays explicitly off so re-enabling spawns alone does not bring outpost services back.
     mutator_area_conquest_mutate_smart = false,
     mutator_area_conquest_grow_services = false,
     mutator_area_swarm_mutate_smart = false,
@@ -407,8 +394,7 @@ local stateless_overrides = {
     loot_select_enabled = false,
     -- Faction market (trader stock injection + sell-out removal; one flag gates both directions)
     market_enabled = false,
-    -- Alpha creature modifications (damage dealt/taken scaling, panic immunity, corpse trophy
-    -- injection, body mark). Promotion tracking stays; only the payload on the mutant is skipped.
+    -- Alpha creature modifications (damage scaling, panic immunity, corpse trophy, body mark); promotion tracking stays, only the mutant payload is skipped.
     mutator_alpha_hit_power_dealt_enabled = false,
     mutator_alpha_vs_player = false,
     mutator_alpha_hit_power_taken_enabled = false,
