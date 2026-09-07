@@ -494,7 +494,7 @@ end
 local function has_anchored_jobs(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return true end
     for member_id in xsquad.iterate_member_ids(squad) do
-        local job = xsmart.get_job_for_npc(smart, member_id)
+        local job = xsmart.get_npc_job(smart, member_id)
         if not job or job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return false end
     end
     return true
@@ -514,7 +514,7 @@ end
 local function _has_campfire_stray(smart, squad)
     if not (smart.online and smart.is_on_actor_level) then return false end
     for member_id in xsquad.iterate_member_ids(squad) do
-        local job = xsmart.get_job_for_npc(smart, member_id)
+        local job = xsmart.get_npc_job(smart, member_id)
         if job and job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT and _is_member_off_campfire(smart, member_id) then
             return true
         end
@@ -579,7 +579,7 @@ local function _log_member_jobs(squad, smart)
     local parts = {}
     local counts = { generic = 0, campfire = 0, other = 0, none = 0 }
     for member_id in xsquad.iterate_member_ids(squad) do
-        local label, kind = _get_job_info(xsmart.get_job_for_npc(smart, member_id), prefix, plen)
+        local label, kind = _get_job_info(xsmart.get_npc_job(smart, member_id), prefix, plen)
         counts[kind] = counts[kind] + 1
         parts[#parts + 1] = member_id .. "=" .. label
     end

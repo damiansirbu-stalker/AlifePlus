@@ -184,14 +184,14 @@ end
 
 -- Move a squad between level buckets when sim_squad_scripted:update() detects a level cross.
 -- Falls back to a bucket scan when from_level_name resolution misses (e.g. first level after load).
--- @cost O(1) typical | 2 luabind (xlevel.get_level_id_by_name) + 1-2 hash ops; O(levels) on fallback scan
+-- @cost O(1) typical | 2 luabind (xlevel.resolve_level_id) + 1-2 hash ops; O(levels) on fallback scan
 local function _on_squad_level_change(squad, from_level_name, to_level_name)
     if not _squads_by_level or not squad then return end
     local id = squad.id
     if not id then return end
-    local to_level_id = xlevel.get_level_id_by_name(to_level_name)
+    local to_level_id = xlevel.resolve_level_id(to_level_name)
     if not to_level_id then return end
-    local from_level_id = from_level_name and xlevel.get_level_id_by_name(from_level_name)
+    local from_level_id = from_level_name and xlevel.resolve_level_id(from_level_name)
     if from_level_id and _squads_by_level[from_level_id] then
         _squads_by_level[from_level_id][id] = nil
     else

@@ -156,7 +156,7 @@ local function _on_market_trade(orig, npc, seller)
     if not (npc and result) then return result end
     local sold, bought = result.sold or {}, result.bought or {}
     if #sold == 0 and #bought == 0 then return result end
-    local squad = xsquad.get_squad_by_member(npc:id())
+    local squad = xsquad.get_member_squad(npc:id())
     local faction = squad and xsquad.get_community(squad)
     if not _is_market_faction(faction) then return result end
     if ap_core_debug.is_enabled() then

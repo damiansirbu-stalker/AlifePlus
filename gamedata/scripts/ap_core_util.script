@@ -167,15 +167,15 @@ end
 
 --- Dynamic-walk dispatch tables for the role resolvers (smart.npc_info roster, online-only).
 local _DYN_GET = {
-    trader   = function(s) return xsmart.get_trader_at_smart(s)   end,
-    medic    = function(s) return xsmart.get_medic_at_smart(s)    end,
-    mechanic = function(s) return xsmart.get_mechanic_at_smart(s) end,
+    trader   = function(s) return xsmart.get_smart_trader(s)   end,
+    medic    = function(s) return xsmart.get_smart_medic(s)    end,
+    mechanic = function(s) return xsmart.get_smart_mechanic(s) end,
 }
 
 local _DYN_HAS = {
-    trader   = function(s) return xsmart.has_trader_at_smart(s)   end,
-    medic    = function(s) return xsmart.has_medic_at_smart(s)    end,
-    mechanic = function(s) return xsmart.has_mechanic_at_smart(s) end,
+    trader   = function(s) return xsmart.has_smart_trader(s)   end,
+    medic    = function(s) return xsmart.has_smart_medic(s)    end,
+    mechanic = function(s) return xsmart.has_smart_mechanic(s) end,
 }
 
 --- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth); nil for offline smarts.
@@ -245,7 +245,7 @@ end
 function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
     if not smart or not smart.npc_info then return nil end
     for npc_id in pairs(smart.npc_info) do
-        local squad = xsquad.get_squad_by_member(npc_id)
+        local squad = xsquad.get_member_squad(npc_id)
         local npc = not (squad and squad.id == exclude_squad_id) and xobject.get_go(npc_id)
         if npc and npc:alive() and xcreature.is_stalker(npc) and not xcreature.is_unscriptable(npc)
             and (not community or xcreature.get_community(npc) == community) then
@@ -303,7 +303,7 @@ local function _is_target_off_map(squad, entry)
     if not chaser_level then return false end
     local target_level
     if _is_actor_chase(entry) then
-        target_level = xlevel.get_actor_level_id()
+        target_level = xlevel.get_actor_level()
     else
         target_level = xlevel.get_level_id(_get_chase_target_se(entry))
     end

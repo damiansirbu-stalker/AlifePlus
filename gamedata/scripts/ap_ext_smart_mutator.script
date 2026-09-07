@@ -155,7 +155,7 @@ end
 local MUTATIONS = {
     conquest = {
         name = MUT_CONQUEST, key = CONQUEST_KEY, id_word = "faction", refresh = true, grows_services = true,
-        apply = xsmart_spawn.set_exclusive_spawn_tiered, clear = xsmart_spawn.clear_exclusive_spawn,
+        apply = xsmart_spawn.set_exclusive_tiered, clear = xsmart_spawn.clear_exclusive_spawn,
         mutate_cfg = "mutator_area_conquest_mutate_smart",
         decay_cfg = "mutator_area_conquest_decay_hours",
         num_cfg = "mutator_area_conquest_spawn_num",
@@ -405,12 +405,12 @@ end
 local function _apply_service_entries(smart, data)
     if not data.services then return end
     for role in pairs(data.services) do
-        xsmart_spawn.set_exclusive_spawn_section(smart, _get_service_key(role), _get_service_section(data.faction, role), 1)
+        xsmart_spawn.set_exclusive_section(smart, _get_service_key(role), _get_service_section(data.faction, role), 1)
     end
     if (data.guards or 0) > 0 then
-        local pool = xsmart_spawn.get_tiered_faction_squads(smart, data.faction)
+        local pool = xsmart_spawn.get_tiered_squads(smart, data.faction)
         if pool then
-            xsmart_spawn.set_exclusive_spawn_section(smart, GUARD_KEY, pool, data.guards)
+            xsmart_spawn.set_exclusive_section(smart, GUARD_KEY, pool, data.guards)
         end
     end
 end

@@ -114,7 +114,7 @@ end
 local function _show_yield_tip(npc, prefix, pool_n, name)
     if not npc or math_random() >= YIELD_TIP_CHANCE then return end
     local actor = db.actor
-    if not actor or xcreature.is_enemy_to_actor(npc) then return end
+    if not actor or xcreature.is_actor_enemy(npc) then return end
     local now = os.clock()
     if now < _show_yield_tip_next then return end
     if not _is_in_range(npc:position(), actor:position(), YIELD_EARSHOT) then return end

@@ -35,7 +35,7 @@ local function _on_death(squad, npc, killer)
     _cooldown.mark(key, now)
 
     local killer_id = ap_core_util.get_entity_id(killer)
-    local killer_squad = killer_id and xsquad.get_squad_by_member(killer_id)
+    local killer_squad = killer_id and xsquad.get_member_squad(killer_id)
     if killer_squad then
         local protected, reason, detail, pname = ap_core_broker.is_protected(killer_squad)
         if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end

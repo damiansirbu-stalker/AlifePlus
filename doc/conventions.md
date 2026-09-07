@@ -227,7 +227,7 @@ All events MUST include `level_id` from where the event occurred.
 - Use `event_data.level_id` for all location-based operations
 - Pass `level_id` to `ap_core_record.add_record(squad, cause, consequence, { level_id = ... })` so the activity record captures it
 
-Never use `get_actor_level_id()` as fallback. The player may be on a different level.
+Never use `get_actor_level()` as fallback. The player may be on a different level.
 
 ---
 

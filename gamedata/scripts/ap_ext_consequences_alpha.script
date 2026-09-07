@@ -25,7 +25,7 @@ local function _run_promote(event_data)
     local updated = ap_ext_tracker.update_alpha(killer_id, { kills = kills })
     if updated then
         ap_ext_object_mutator.set_alpha_effects(killer_id, level)
-        local killer_squad = xsquad.get_squad_by_member(killer_id)
+        local killer_squad = xsquad.get_member_squad(killer_id)
         if killer_squad then
             local se = xobject.get_se(killer_id)
             local smart = se and ap_core_util.find_smart(se.position, { level_id = level_id })

@@ -89,7 +89,7 @@ local function _format_location(smart_id)
     if not smart_id then return "" end
     local smart = xobject_se(smart_id)
     if not smart then return "" end
-    local name = xlevel.get_smart_display_name(smart) or ""
+    local name = xlevel.get_smart_name(smart) or ""
     name = string_gsub(name, "%. ", ", ")
     return name
 end
@@ -154,7 +154,7 @@ local function _collect_eligible()
     local recs = ap_core_record.get_records()
     local now_gh = math_floor(xtime.get_game_sec() / 3600)
     local max_age = cfg.news_max_age_game_hours
-    local cur_level = xlevel.get_actor_level_id()
+    local cur_level = xlevel.get_actor_level()
     for i = 1, #recs do
         local entry = recs[i]
         if entry.cons_id and not entry.reported
@@ -297,7 +297,7 @@ function publish_chatter(pool_prefix, slots, opts)
         if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
         return false
     end
-    if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level_id() then
+    if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level() then
         if dbg then ap_core_debug.debug("%s skip %s: off-level (subject=%s)", CHATTER_LOG, pool_prefix, tostring(opts.level_id)) end
         return false
     end

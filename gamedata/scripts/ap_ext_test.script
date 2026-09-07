@@ -260,7 +260,7 @@ local function _online_stalker_squads()
     if not ids then return nil, err end
     local seen, squads = {}, {}
     for i = 1, #ids do
-        local squad = xsquad.get_squad_by_member(ids[i])
+        local squad = xsquad.get_member_squad(ids[i])
         if squad and not seen[squad.id] then
             seen[squad.id] = true
             squads[#squads + 1] = squad
@@ -331,7 +331,7 @@ local _pop_fields = nil
 -- Field smarts (not a base, no hub trader; ap_ext_util.is_field_smart) AP takeovers may claim, built once from the SIMBOARD registry.
 local function _build_field_smarts()
     local out = {}
-    local by_name = xsmart.get_smarts_by_names()
+    local by_name = xsmart.get_named_smarts()
     if not by_name then return out end
     for _, smart in pairs(by_name) do
         if ap_ext_util.is_field_smart(smart) then out[#out + 1] = smart end

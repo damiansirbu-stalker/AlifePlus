@@ -125,14 +125,14 @@ end
 
 --- Roll a tactical-soundness check against random; true when the candidate passes.
 --- Score starts at 1.0, less WEIGHT_LAST_OF_FACTION (source left unguarded) and WEIGHT_SMART_TARGETED (dst already targeted); radiant only.
---- @safety SAFE - xsmart.has_squad_of_faction + ap_core_broker.is_smart_targeted (both nil-guarded)
+--- @safety SAFE - xsmart.has_faction_squad + ap_core_broker.is_smart_targeted (both nil-guarded)
 --- @cost typically <5 luabind total (xsmart short-circuits; is_smart_targeted is pure Lua)
 --- @param squad se_squad Candidate squad
 --- @param smart smart_terrain Destination smart resolved by find_smart
 --- @return boolean passed
 function is_tactically_eligible(squad, smart)
     local last_of_faction = squad.smart_id ~= nil
-        and not xsmart.has_squad_of_faction(squad.smart_id, squad.player_id, squad.id)
+        and not xsmart.has_faction_squad(squad.smart_id, squad.player_id, squad.id)
     local smart_targeted = ap_core_broker.is_smart_targeted(smart.id, squad.id)
     local score = 1.0
     if last_of_faction then score = score - TACTICS_WEIGHT_LAST_OF_FACTION end
@@ -151,7 +151,7 @@ end
 --- Last-smart floor: true when a community stationed here holds no other smart on that level (taking this one erases its presence).
 --- Target-side guard for consequences whose targets can be occupied (infest); conquer/swarm targets are empty by filter.
 --- @safety SAFE - false on nil smart or unresolved level_id
---- @cost O(min(n,5)) stationed squads x xsmart.get_faction_smart_count (pure Lua on cache hit)
+--- @cost O(min(n,5)) stationed squads x xsmart.get_faction_count (pure Lua on cache hit)
 --- @param smart smart_terrain Candidate target
 --- @return boolean
 function is_last_faction_smart(smart)
@@ -159,7 +159,7 @@ function is_last_faction_smart(smart)
     local level_id = xlevel.get_level_id(smart)
     if not level_id then return false end
     for se in xsmart.iterate_stationed_squads(smart.id) do
-        if xsmart.get_faction_smart_count(se.player_id, level_id) <= 1 then return true end
+        if xsmart.get_faction_count(se.player_id, level_id) <= 1 then return true end
     end
     return false
 end

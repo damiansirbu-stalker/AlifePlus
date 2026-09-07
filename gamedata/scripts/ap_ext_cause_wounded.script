@@ -36,7 +36,7 @@ local function _on_npc_medkit_use(npc, _medkit, kind)
     end
     if not npc or not npc:alive() then return { code = RESULT.FAILED_RULES, reason = REASON.NIL_OR_DEAD } end
 
-    local squad = xsquad.get_squad_by_member(npc:id())
+    local squad = xsquad.get_member_squad(npc:id())
     if squad then
         local protected, reason, detail, pname = ap_core_broker.is_protected(squad)
         if protected then return { code = RESULT.FAILED_RULES, reason = reason, detail = detail, name = pname } end
@@ -95,7 +95,7 @@ local function _on_actor_item_use(_item, section)
         is_player = true,
         health = actor.health,
         position = actor:position(),
-        level_id = xlevel.get_actor_level_id(),
+        level_id = xlevel.get_actor_level(),
         item_used = section,
     }
 end

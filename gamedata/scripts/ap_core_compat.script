@@ -173,7 +173,7 @@ end
 -- An NPC whose group_id resolves to a live squad is left to the squad sweep.
 local function _collect_orphan_service(se, orphans)
     if not _get_service_role(se.section_name and se:section_name()) then return end
-    local squad = xsquad.get_squad_by_member(se.id)
+    local squad = xsquad.get_member_squad(se.id)
     if squad and xsquad.is_squad(squad) then return end
     orphans[#orphans + 1] = se.id
 end

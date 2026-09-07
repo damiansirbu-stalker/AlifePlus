@@ -54,7 +54,7 @@ end
 -- A cheaper section usually fails the same way (cost is monotonic), but a create_item failure on the cheapest is recoverable by falling through.
 local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, bought)
     if not weapon_sec or target_rounds <= 0 then return 0 end
-    local tier_map = xinventory.get_ammo_tier_map(weapon_sec, 2)
+    local tier_map = xinventory.get_ammo_tiers(weapon_sec, 2)
 
     local tier_sections = {}
     for sec, tier in pairs(tier_map) do
