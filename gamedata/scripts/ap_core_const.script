@@ -5,33 +5,22 @@ CAUSE_WINDOW_SEC = 60
 CONSEQUENCE_WINDOW_SEC = 60
 GLOBAL_CONSEQUENCE_WINDOW_SEC = 60
 
---- Offmap balance window (game seconds). Caps cumulative offmap dispatches per source map.
---- Mirrors framework pattern: pipeline windows are const, only caps are MCM-exposed.
+--- Offmap balance window (game seconds); caps cumulative offmap dispatches per source map. Window const, only caps MCM-exposed.
 OFFMAP_WINDOW_SEC = 48 * 3600
 
---- Per-causer reaction window (game seconds). Caps how many reactive causes one source entity
---- (killer / patient / taker, actor or NPC) may trigger before the window expires. Fixed window,
---- MCM-exposed cap (cause_max_per_causer). Stops a single causer (the actor on a hostile map like
---- Radar) from saturating every reactive cause attributed to its id.
+--- Per-causer reaction window (game seconds); fixed window, MCM cap cause_max_per_causer. Stops one causer saturating every reactive cause on its id.
 CAUSER_WINDOW_SEC = 1 * 3600
 
---- Rank thresholds (per anomaly/configs/creatures/game_relations.ltx:7).
---- Compare with `>=` against engine character_rank() to gate veteran+ behaviors.
+--- Veteran rank threshold; compare >= against engine character_rank(). @src anomaly/configs/creatures/game_relations.ltx:7
 RANK_VETERAN = 12000
 
---- Trade-context fallback cost when a section omits the `cost` field. Matches vanilla
---- axr_trade_manager.script(236,303,550). xr_corpse_detection uses 0 in loot-detection
---- context; this constant is the trade default only.
+--- Trade-context fallback cost when a section omits the `cost` field; trade default only. @src axr_trade_manager.script(236,303,550)
 DEFAULT_TRADE_COST = 30
 
 --- Reactive event distributor interval (seconds, hardcoded -- per callback type)
 REACTIVE_EVENT_INTERVAL_SEC = 1
 
---- Reactive pacer burst capacity (tokens, hardcoded -- per callback type). Engine death events
---- are correlated (a grenade or anomaly kills a squad in one frame); capacity must cover a full
---- squad wipe so edge-triggered causes (squadkill last-member death, alphakill) see their trigger
---- and cluster causes (massacre, basekill) count every death. The refill rate above still bounds
---- the sustained average at 1/sec.
+--- Reactive pacer burst capacity (tokens, per callback type); sized to cover a full squad wipe in one frame so edge and cluster causes all see their deaths.
 REACTIVE_EVENT_BURST = 5
 
 --- Scripted squad TTL (game seconds, 2 hours)
@@ -139,16 +128,10 @@ CALLBACK = {
     DOTMARKS_ON_BEFORE_SECONDARY_ACTION = "dotmarks_on_before_secondary_action",
 }
 
---- Cause type classification (radiant = ambient A-Life, reactive = world event response)
---- Pipeline-mechanism axis: how the producer schedules predicate evaluation.
+--- Cause type: radiant = ambient A-Life, reactive = world-event response. Pipeline-mechanism axis (how the producer schedules predicate evaluation).
 CAUSE_TYPE = { RADIANT = "radiant", REACTIVE = "reactive" }
 
---- Cause category classification (behavioral axis, parallel to CAUSE_TYPE).
---- What kind of squad behavior the cause represents. Drives the per-category rate-limit
---- counter key and MCM organization. Each cause declares its category at register time and
---- self-gates against its `cause_max_<category>` MCM cap via ap_core_limiter.
---- Future parallel axes (attack/flee, expansive/contracting) get their own enums — never
---- overload CAUSE_CATEGORY. ap_api forces foreign causes to pick from this set.
+--- Cause category (behavioral axis, parallel to CAUSE_TYPE); drives the per-category rate-limit key and MCM cap cause_max_<category> via ap_core_limiter.
 CAUSE_CATEGORY = {
     REACTIONS     = "category:reactions",
     NEEDS         = "category:needs",
@@ -156,17 +139,12 @@ CAUSE_CATEGORY = {
     OPPORTUNITIES = "category:opportunities",
 }
 
---- Radiant cause callbacks (all radiant causes register on these).
---- AP_SQUAD_ON_CHANGE is a synthetic callback declared in ap_core_callbacks.script, fired
---- when a squad's observable state changed or its round-robin keepalive came due; the sweep
---- installs itself at on_game_start. It supersedes polling the vanilla squad_on_update
---- firehose (6624/min, 99.94% discarded by the old gate chain).
+--- Radiant cause callbacks; AP_SQUAD_ON_CHANGE is the synthetic callback in ap_core_callbacks that supersedes polling the vanilla squad_on_update firehose.
 RADIANT_CALLBACKS = {
     CALLBACK.AP_SQUAD_ON_CHANGE,
 }
 
---- Reactive callback families (one logical event has multiple engine paths).
---- Cause registers the same predicate against every callback in its family.
+--- Reactive callback families (one logical event, multiple engine paths); a cause registers the same predicate against every callback in the family.
 HARVEST_CALLBACKS = {
     CALLBACK.ACTOR_ON_ITEM_TAKE,
     CALLBACK.NPC_ON_ITEM_TAKE,
@@ -176,17 +154,12 @@ WOUNDED_CALLBACKS = {
     CALLBACK.ACTOR_ON_ITEM_USE,
 }
 
---- Pipeline caps (internal tuning, not MCM).
---- REACTIVE_MAX_CONSEQUENCES_PER_CAUSE: consumer ceiling on consequences fired per reactive cause publish.
---- RADIANT_MAX_SCANS_PER_GENERATOR: ceiling on SCAN reaches inside a single radiant generator
----   invocation (one _on_smart call). RULES rejections stay free; only causes that pass RULES and
----   enter their world SCAN (find_smart / find_squads) consume a slot. Resets every _on_smart call.
+--- REACTIVE_MAX_CONSEQUENCES_PER_CAUSE: consumer ceiling on consequences per reactive cause publish (internal tuning, not MCM).
 REACTIVE_MAX_CONSEQUENCES_PER_CAUSE = 2
+--- RADIANT_MAX_SCANS_PER_GENERATOR: SCAN-reach ceiling per radiant generator invocation (one _on_smart); resets each call, RULES-passing causes only.
 RADIANT_MAX_SCANS_PER_GENERATOR = 1
 
---- Result codes: consequence handler return values (template method phases)
---- Handlers return SUCCESS, FAILED_RULES, FAILED_SCAN, FAILED_ACTION.
---- DISABLED is consumer-only (condition pre-gate, never returned by handlers).
+--- Result codes: consequence handler return values (template-method phases). DISABLED is consumer-only (condition pre-gate), never returned by a handler.
 RESULT = {
     SUCCESS = "success",
     FAILED_RULES = "failed_rules",
@@ -212,13 +185,11 @@ TRACE = {
 RADIUS_CLOSE_MAX = 50
 RADIUS_DISTANT_MAX = 500
 
---- Range tiers (meters). Grounded in GSC PersonalEyeRange (EFC design docs) and
---- empirical level geometry measurements (doc/library/modding/level-geometry.md).
---- EyeRange: line-of-sight, local awareness. Opportunities (stash, area).
---- RadioRange: PDA radio for stalkers. Reactions, needs.
---- ScentRange: scent tracking for mutants. Instincts, mutant-only reactions.
+--- EyeRange (meters): line-of-sight, local awareness; opportunities. GSC PersonalEyeRange + doc/library/modding/level-geometry.md.
 RANGE_EYE = 200
+--- RadioRange (meters): PDA radio for stalkers; reactions, needs.
 RANGE_RADIO = 500
+--- ScentRange (meters): scent tracking for mutants; instincts, mutant-only reactions.
 RANGE_SCENT = 500
 
 --- Game-hours to seconds conversion (xtime.get_game_sec uses seconds; MCM thresholds use hours).
@@ -231,11 +202,7 @@ HARVEST_COOLDOWN_SEC = 7200
 MARKER_ACTIVE = "blue_location"
 MARKER_LINGER_SEC = 60
 
---- Cause event names. Specific causes are what predicates publish and consequences subscribe to.
---- Reactive (one cause per callback): ALPHA, ALPHAKILL, MASSACRE, SQUADKILL, BASEKILL, WOUNDED, HARVEST.
---- Radiant (one umbrella file -> N specific causes via predicate-side picker): NEEDS family, INSTINCTS family,
---- STASH family, AREA family. Each radiant umbrella publishes only its specific per-action
---- causes; the umbrella name itself is never published or subscribed to as an event.
+--- Cause events: what predicates publish and consequences subscribe to. Radiant umbrellas publish only specific per-action causes, never the umbrella name.
 CAUSE = {
     ALPHA = "cause:alpha",
     ALPHAKILL = "cause:alphakill",
@@ -352,8 +319,7 @@ REASON = {
     SURGE             = "surge",
 }
 
---- compute_chase verdicts: KEEP = continue, PAUSE = hold (resume when the condition clears),
---- RELEASE = drop the script and return the squad to autonomous sim.
+--- compute_chase verdicts: KEEP = continue, PAUSE = hold (resume when the condition clears), RELEASE = drop the script, squad returns to autonomous sim.
 VERDICT = {
     KEEP    = "keep",
     PAUSE   = "pause",
@@ -408,10 +374,7 @@ CONSEQUENCE = {
     SCATTER = "consequence:scatter",
 }
 
---- Action identifiers (player-facing label, localization id).
---- Consequence handlers pass action = ACTION.X to ap_core_record.add_record; the activity
---- record stores it as action_key, and HUD/news/external translate via game.translate_string.
---- Localized strings live in gamedata/configs/text/<lang>/ui_st_ap_macros.xml.
+--- Action identifiers (player-facing label / localization id); stored as action_key on the record, translated via game.translate_string (ui_st_ap_macros.xml).
 ACTION = {
     ALPHA_PROMOTE        = "action:alpha_promote",
     ALPHAKILL_TARGETED   = "action:alphakill_targeted",

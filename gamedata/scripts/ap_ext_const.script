@@ -1,10 +1,6 @@
---- ap_ext_const: Alignment categories, personality traits, item lists
---- Alignment = hard filter (can/cannot do a consequence). Personality = chance (how likely).
---- src: GSC AI design Ai.doc:65-76 (тип характера), monstry.doc:4 (creature groups)
---- Faction values from pure Anomaly squad_descr_*.ltx
+--- ap_ext_const: Alignment categories (hard filter), personality traits (chance), item lists. @src GSC Ai.doc:65-76, monstry.doc
 
---- Human alignment categories (GSC moral axis: Principled/Self-serving/Unprincipled)
---- Principled = follows rules, organized, hierarchical
+--- Human alignment (GSC moral axis). Principled = follows rules, organized, hierarchical.
 alignment_principled = {
     ["dolg"] = true,
     ["army"] = true,
@@ -36,13 +32,10 @@ alignment_outlaw = {
     ["greh"] = true,
 }
 
---- All human factions. Derived: principled + selfserving + outlaw. Zombied is excluded
---- (per architecture.md). Unprincipled is a subset of selfserving so it adds nothing.
+--- All human factions (principled + selfserving + outlaw); zombied excluded, unprincipled subsumed by selfserving.
 alignment_human = xtable.merge(alignment_principled, alignment_selfserving, alignment_outlaw)
 
---- Zone dwellers who live off the land. AP editorial subset of selfserving (drops "killer").
---- Kept explicit on purpose: this is a curated set, not a derived union. Adding a faction
---- to selfserving should NOT auto-grow naturalist.
+--- Zone dwellers off the land; curated subset of selfserving (drops killer), kept explicit so growing selfserving never auto-grows naturalist.
 alignment_naturalist = {
     ["stalker"] = true,
     ["csky"] = true,
@@ -50,9 +43,7 @@ alignment_naturalist = {
     ["ecolog"] = true,
 }
 
---- Off-map travelers. Factions not pinned to a fixed garrison; can dispatch cross-map
---- for trade, exploration, or social visits. Excludes army (garrisoned at Cordon /
---- Agroprom), monolith (defends the center), zombied (no agency).
+--- Off-map travelers (not pinned to a garrison; dispatch cross-map for trade/exploration/social). Excludes army, monolith, zombied.
 alignment_offmap = {
     ["dolg"] = true,
     ["stalker"] = true,
@@ -74,41 +65,34 @@ alignment_mutant = {
     ["monster_special"] = true,
 }
 
---- Species alignment sets (keyed by xcreature.get_mutant_species string, NOT engine faction)
---- Behavioral axis, same pattern as stalker alignments (principled/selfserving/outlaw).
---- src: GSC monstry.doc creature descriptions, xray-monolith state managers
+--- Species alignment sets (keyed by xcreature.get_mutant_species, not engine faction); behavioral axis. @src GSC monstry.doc, xray-monolith state managers
 
---- Cowardly = timid, flees danger, bottom of food chain
---- src: monstry.doc "podlaya, khitraya i truslivaya. Mnogikh boitsya" (flesh), "rastitel'noye sushchestvovaniye" (zombie)
+--- Cowardly = timid, flees danger, bottom of food chain. @src monstry.doc (flesh "truslivaya", zombie "rastitel'noye")
 alignment_mutant_cowardly = {
     ["flesh"] = true, ["zombie"] = true,
     ["tushkano"] = true, ["rat"] = true, ["karlik"] = true,
 }
 
---- Feral = pack/herd, reactive aggression, avenge packmates, brute apex
---- src: monstry.doc "staynoye zhivotnoye" (boar), "agressivny, protivnika okruzhayut" (dogs), "povadki buyvola" (gigant)
+--- Feral = pack/herd, reactive aggression, avenge packmates, brute apex. @src monstry.doc (boar "staynoye", dogs "okruzhayut", gigant)
 alignment_mutant_feral = {
     ["dog"] = true, ["pseudodog"] = true,
     ["boar"] = true, ["snork"] = true, ["cat"] = true,
     ["gigant"] = true,
 }
 
---- Predator = solitary hunters, ambush, pursue wounded
---- src: monstry.doc "est vse chto dvizhetsya" (bloodsucker), "pryachetsya, obkhodit so spiny" (chimera)
+--- Predator = solitary hunters, ambush, pursue wounded. @src monstry.doc (bloodsucker, chimera "obkhodit so spiny")
 alignment_mutant_predator = {
     ["lurker"] = true, ["bloodsucker"] = true, ["psysucker"] = true,
     ["chimera"] = true, ["fracture"] = true,
 }
 
---- Aberrant = psychic, lair-bound, supernatural
---- src: monstry.doc "telepaticheskoye vozdeystviye" (controller), "zhivet tol'ko v mrachnykh podzemyel'yakh" (burer)
+--- Aberrant = psychic, lair-bound, supernatural. @src monstry.doc (controller "telepaticheskoye", burer "podzemyel'yakh")
 alignment_mutant_aberrant = {
     ["controller"] = true, ["burer"] = true,
     ["poltergeist"] = true, ["psy_dog"] = true,
 }
 
---- Activity alignment axis (independent of behavioral axis, gates day/night cycle)
---- src: monstry.doc "noch'yu vykhodit na otkrytyye mesta, okhotit'sya" (bloodsucker), engine monster_predatory_night/monster_zombied_night factions
+--- Activity alignment axis (independent of behavioral, gates day/night). @src monstry.doc (bloodsucker "noch'yu"), engine monster_*_night factions
 
 --- Nocturnal = active at night (20:00-05:00), dormant during day
 alignment_mutant_night = {
@@ -117,9 +101,7 @@ alignment_mutant_night = {
     ["zombie"] = true, ["fracture"] = true,
 }
 
---- Food chain tiers. Species -> tier number (0=cowardly, 1=feral, 2=predator, 3=aberrant).
---- Tier n scatters from tier n+1..3. Tier 3 scatters from nothing.
---- src: GSC monstry.doc creature groups, fear descriptions per species
+--- Food chain tiers: species -> tier (0=cowardly, 1=feral, 2=predator, 3=aberrant); tier n scatters from n+1..3. @src GSC monstry.doc
 FOOD_CHAIN_TIER = {
     flesh = 0, zombie = 0, tushkano = 0, rat = 0, karlik = 0,
     dog = 1, pseudodog = 1, boar = 1, snork = 1, cat = 1, gigant = 1,
@@ -127,8 +109,7 @@ FOOD_CHAIN_TIER = {
     controller = 3, burer = 3, poltergeist = 3, psy_dog = 3,
 }
 
---- Higher-tier species sets. SCATTER_FROM[tier] = species this tier scatters from.
---- Built in on_game_start via xtable.merge.
+--- Higher-tier species sets; SCATTER_FROM[tier] = species this tier scatters from, built in on_game_start via xtable.merge.
 SCATTER_FROM = {}
 
 --- Diurnal = active during day (05:00-20:00), dormant at night (default for all non-nocturnal)
@@ -140,15 +121,11 @@ alignment_mutant_day = {
     ["burer"] = true, ["controller"] = true, ["poltergeist"] = true,
 }
 
--- Grenade sections for promotion grants
--- src: configs/items/weapons/m_f1.ltx, m_rgd5.ltx, m_gd5.ltx (base Anomaly)
+-- Grenade sections for promotion grants. @src configs/items/weapons/m_f1.ltx, m_rgd5.ltx, m_gd5.ltx
 grenades = { "grenade_f1", "grenade_rgd5", "grenade_gd-05" }
 
 
---- Personality field constants (GSC AI design: PersonalAggressiveness, PersonalGreed,
---- PersonalIntelligence/EnemyRetreatProbability, PersonalEyeRange, PersonalRelation,
---- principled/unprincipled moral axis, CMonsterHome territory system)
---- INV_ prefix = inverted trait (1 - value). Low trait = high chance for that behavior.
+--- Personality field constants (GSC PersonalAggressiveness/Greed/EyeRange/Relation, CMonsterHome territory). INV_ prefix = inverted trait (1 - value).
 PERSONALITY = {
     AGGRESSION      = "aggression",
     GREED           = "greed",
@@ -163,18 +140,11 @@ PERSONALITY = {
     INV_GREED       = "inv_greed",
 }
 
---- Global clamp applied to every personality roll. Floors low-trait factions at 10% chance,
---- caps high-trait factions at 70% chance. Universal across all causes and consequences.
+--- Global clamp on every personality roll; floors low-trait at 10%, caps high-trait at 70%. Universal across all causes and consequences.
 PERSONALITY_FLOOR = 0.10
 PERSONALITY_CEILING = 0.70
 
---- Per-faction personality table. Keys are engine player_id strings.
---- Values 0.0-1.0 = direct probability of action gated by that trait.
---- Used as: chance = average(relevant traits), roll 0-1. No weight multiplier.
---- INV_ traits resolved as (1 - base_value) before averaging.
---- Survival 0.40-0.60 (universal biological drive, not a faction differentiator).
---- Tiered values (0.10 steps): ensures clean math, no floating point noise.
---- src: GSC Ai.doc:65-76 (character types), monstry.doc (creature groups), manifesto.md
+--- Per-faction personality (keys = engine player_id); value 0-1 = trait probability, chance = average(traits), INV_ = 1-base. @src GSC Ai.doc:65-76
 PERSONALITY["stalker"]              = { aggression=0.40, greed=0.60, survival=0.50, perception=0.60, territory=0.20, relation=0.50, discipline=0.30 }
 PERSONALITY["dolg"]                 = { aggression=0.70, greed=0.10, survival=0.50, perception=0.50, territory=0.80, relation=0.70, discipline=0.90 }
 PERSONALITY["freedom"]              = { aggression=0.30, greed=0.40, survival=0.50, perception=0.50, territory=0.80, relation=0.60, discipline=0.20 }
@@ -188,10 +158,7 @@ PERSONALITY["monolith"]             = { aggression=0.90, greed=0.10, survival=0.
 PERSONALITY["greh"]                 = { aggression=0.80, greed=0.60, survival=0.40, perception=0.50, territory=0.40, relation=0.40, discipline=0.30 }
 PERSONALITY["isg"]                  = { aggression=0.40, greed=0.20, survival=0.60, perception=0.70, territory=0.60, relation=0.60, discipline=0.80 }
 PERSONALITY["zombied"]              = { aggression=0.60, greed=0.10, survival=0.40, perception=0.10, territory=0.10, relation=0.10, discipline=0.10 }
---- Per-species personality (keyed by xcreature.get_mutant_species string)
---- 5 traits: aggression, survival, territory, perception, relation
---- relation = pack loyalty, social grouping. Pack animals high, solitary apex low.
---- survival 0.40-0.60 (universal biological drive). src: monstry.doc per species.
+--- Per-species personality (key = xcreature.get_mutant_species); 5 traits: aggression, survival, territory, perception, relation. @src monstry.doc per species
 PERSONALITY["dog"]         = { aggression=0.60, survival=0.50, territory=0.30, perception=0.50, relation=0.90 }
 PERSONALITY["pseudodog"]   = { aggression=0.70, survival=0.50, territory=0.40, perception=0.70, relation=0.30 }
 PERSONALITY["psy_dog"]     = { aggression=0.70, survival=0.50, territory=0.40, perception=0.90, relation=0.20 }
@@ -213,10 +180,7 @@ PERSONALITY["tushkano"]    = { aggression=0.20, survival=0.60, territory=0.10, p
 PERSONALITY["rat"]         = { aggression=0.20, survival=0.60, territory=0.10, perception=0.30, relation=0.60 }
 PERSONALITY["karlik"]      = { aggression=0.20, survival=0.60, territory=0.10, perception=0.30, relation=0.70 }
 
---- Alpha trophy loot per species: one hide (when the species has one) plus alpha-level-1 draws
---- from parts. Keyed by the DEAD alpha's species -- independent of the territorial INFEST_SPECIES
---- allowlist, so every promotable species pays out. Consumed by ap_ext_object_mutator at
---- monster_on_loot_init. src: vanilla mutant part / hide sections (configs/items/items_mutant_*).
+--- Alpha trophy loot per species (hide if any + alpha-level-1 parts), keyed by dead alpha species; consumed by ap_ext_object_mutator at monster_on_loot_init.
 ALPHA_LOOT = {
     bloodsucker = { hide = "hide_bloodsucker", parts = { "mutant_part_heart_bloodsucker", "mutant_part_krovosos_jaw" } },
     boar        = { hide = "hide_boar",        parts = { "mutant_part_tusk_boar", "mutant_part_boar_chop" } },
@@ -248,9 +212,7 @@ INSTINCT_FIELDS = {
     "last_scatter_at", "last_feed_at", "last_slumber_at", "last_roam_at", "last_pack_at",
 }
 
---- Squad opportunity DTO field names (Charnov MVT timestamps for non-deprivation opportunities)
---- Stash/area patches have handling time; threshold encodes recovery between visits.
---- Single shared DTO across human/mutant squads — squad_id is unique, fields are nil-default for unused.
+--- Squad opportunity DTO fields (Charnov MVT timestamps); threshold encodes recovery between visits. Single shared DTO, nil-default for unused fields.
 OPPORTUNITY_FIELDS = {
     "last_stash_loot_at", "last_stash_ambush_at", "last_stash_fill_at",
     "last_area_conquer_at", "last_area_swarm_at", "last_area_infest_at",
