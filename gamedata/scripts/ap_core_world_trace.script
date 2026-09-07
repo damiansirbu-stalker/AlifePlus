@@ -1,13 +1,4 @@
---- ap_core_world_trace: the world log. Periodic STATE dumps (smarts, the controlled-squad roster
---- and its dispatch records, all squads and online NPCs/mutants on the actor level, and a smart
---- occupancy histogram) write to alifeplus_world.log, kept apart from the decision trace in
---- alifeplus.log. One Development MCM toggle (world_trace_enabled); nothing runs while off, so it is
---- zero cost by default. Mirrors AlifeTactics at_world_trace: the decision trace answers "what did AP
---- decide and do", the world log answers "what state is the A-Life simulation in".
----
---- Cadence follows ap_core_broker: a 60s timer KICKS one dump; the heavy per-entity resolution runs
---- frame-spread through xslice (snapshot ids in the kick at 0 luabind, resolve+format one small step
---- per frame), so no single tick breaches the 2ms budget under chaos-soak object counts.
+--- ap_core_world_trace: the world log (alifeplus_world.log); periodic 60s state dump frame-spread via xslice, Development MCM toggle. See architecture.md.
 local pairs, tostring, table_sort, table_concat = pairs, tostring, table.sort, table.concat
 local string_format, RegisterScriptCallback = string.format, RegisterScriptCallback
 local xlog, xlevel, xsmart, xsquad = xlog, xlevel, xsmart, xsquad
@@ -17,16 +8,14 @@ local CALLBACK = ap_core_const.CALLBACK
 local DIAG_INTERVAL_SEC = 60
 local DIAG_TIMER_EV = "ap_world_diag"
 local DIAG_TIMER_ID = "dump"
--- Drain: one xslice pass per dump. step sized for the heaviest item (a controlled squad resolves
--- commander name + community + level + record); measured via the [CORE.DIAG] summary ms, tune here.
+-- Drain: one xslice pass per dump, step sized for the heaviest item (controlled squad resolve); tune via the [CORE.DIAG] summary ms.
 local DRAIN_QUEUE = "ap_world_diag_drain"
 local DRAIN_STEP = 10
 
 local log = xlog.get_logger("AP.WORLD", { outfile = "alifeplus_world.log", level = "DEBUG" })
 local _enabled = false
 
--- Cross-frame drain state, rebuilt each kick: actor level filter, the broker roster snapshot, the
--- smart occupancy tally, per-category counts and the accumulated resolve time.
+-- Cross-frame drain state, rebuilt each kick: level filter, broker roster snapshot, smart occupancy tally, per-category counts, accumulated resolve time.
 local _acc = nil
 local _scripted = nil
 

@@ -1,27 +1,4 @@
---- ap_ext_barter: AlifePlus NPC-to-NPC barter orchestration. LTX-driven uniform policy.
----
---- Counterpart of ap_ext_trade. Trade moves money against a service NPC; barter moves items only,
---- both ways, between two stalkers -- no money, no create/release, just xinventory.transfer_item
---- (the one primitive trade reserves for exactly this path). Same category system as trade: keys are
---- resolved by xinventory.get_category / get_category_opts (equipped-weapon ammo tiers, medical,
---- grenades, ...); nothing here reads engine configs.
----
---- Two mechanisms, both cost-driven the same way trade / market are:
----   1. Count bands (ap_barter_policy.ltx, one uniform block like stash / loot). An item of a category
----      moves A -> B when A holds it above A's `max` (surplus) AND B holds it below B's `min`
----      (deficit). Reuses xinventory.iterate_surplus, exactly like trade's SELL pass, but the action
----      is a transfer to the peer instead of a sale.
----   2. Gear upgrade (weapon / outfit / helmet, absent from the count bands). A spare (unequipped)
----      item moves A -> B only when its xinventory.get_cost beats the cost of B's equipped item of
----      that kind -- the same get_cost comparison trade (_sorted_by_cost) and market (get_rank_chance)
----      use. Weapons are weighed against the receiver's most valuable equipped gun, so only a genuine
----      upgrade over everything it carries changes hands; the receiver keeps its old gun. The "weapon"
----      spare is restricted to firearms (non-empty ammo_class) so a spare knife / binocular / bolt --
----      all WP_-class, all category "weapon" -- never counts as a gun upgrade for an unarmed peer.
----
---- Total items moved per barter is capped by MCM barter_max_items (economy > barter). barter(visitor,
---- peer) runs both directions and returns { given, received } section lists (visitor's perspective),
---- the same shape as ap_ext_trade's { sold, bought }, for the arrival record / news.
+--- ap_ext_barter: NPC-to-NPC barter, swap surplus for a peer's deficit and hand over a gear upgrade by cost, same-faction, no money. See architecture.md.
 
 local pairs, table_concat, math_max = pairs, table.concat, math.max
 local xinventory, ap_core_debug = xinventory, ap_core_debug
@@ -30,8 +7,7 @@ local POLICY_PATH = "alifeplus\\ap_barter_policy.ltx"
 local LOG = "[EXT.BARTER]"
 local cfg = ap_core_mcm.cfg
 
--- Populated by _load_barter_policy at on_game_start. Shape: { rules }. One uniform block, no rank
--- tiers (same as ap_stash_policy / ap_loot_policy); both stalkers classify against the same bands.
+-- Populated by _load_barter_policy at on_game_start; { rules }, one uniform block, both stalkers classify against the same bands.
 local BARTER_POLICY = nil
 
 -- Load barter policy via the shared xinventory.load_policy kernel (same LTX shape as stash / loot).

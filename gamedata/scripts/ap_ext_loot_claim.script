@@ -1,21 +1,4 @@
---- ap_ext_loot_claim: corpse loot ownership. Three flows share one owner ledger; each has its own
---- radius + TTL and its own MCM toggle (no master switch -- recording is gated on any flow being
---- enabled, _is_recording_enabled):
----   reserve_own (loot_reserve_own)     -- reserve the actor's kills from NPC looters.
----   block_npc (loot_block_npc)         -- veto the actor opening a living NPC's claimed kill.
----   npc_vs_npc (loot_block_npc_vs_npc) -- reserve an NPC squad's kill from OTHER NPC looters.
---- NPC kills are owned by the killer's SQUAD (any living member holds the claim); lone killers and the
---- actor fall back to individual ownership. The rule is DISTANCE, plus a wall check wherever the PLAYER
---- is involved:
----   Player-facing (reserve_own, block_npc) -- reserved only while the owning side is within radius AND
----     has a clear line to the body (xcombat.has_wall_between, static geometry only, so a corpse pile
----     never false-blocks and facing is irrelevant). block_npc's clear-line member is also the warn
----     speaker, so block and line share one test. reserve_own uses the actor->body line.
----   npc_vs_npc -- DISTANCE only (owner squad within radius), silent: invisible to the player, so a wall
----     check would only cost rays on the AI seam for nothing anyone sees.
---- reserve_own and npc_vs_npc share one exclusion arbiter at xr_corpse_detection.near_actor (the per-corpse
---- call in a looter's scan); npc_vs_npc's looker comes from a find_valid_target wrapper. block_npc is a
---- keypress/menu veto on the actor's own input.
+--- ap_ext_loot_claim: corpse loot ownership; kill belongs to the killer, held by distance + clear-line where the player is involved. See architecture.md.
 
 local type, tostring, rawget, RegisterScriptCallback = type, tostring, rawget, RegisterScriptCallback
 local string_format, math_random = string.format, math.random
@@ -29,30 +12,17 @@ local cfg = ap_core_mcm.cfg
 
 local LOG = "[EXT.LOOT]"
 
--- Owner ledger retention cap (game seconds). The ledger entry physically survives up to this long;
--- each half then honours it only within its OWN configured TTL (compared at read against the stored
--- death timestamp). Set to the largest TTL a half can be configured to, so a row is never swept
--- while a half might still honour it. game_sec (not os.clock) so the window tracks in-game time and
--- pauses with the game; the death timestamp persists across save/load, so a claim's age is continuous.
+-- Owner ledger retention cap (game_sec, not os.clock; persists across save/load); largest TTL any half can honour, so a row is never swept early.
 local OWNER_TTL_MAX_SEC = 6 * HOURS_TO_SECONDS
 
--- Tip re-warn throttle (WALL seconds, os.clock). The keypress veto (block-npc) stops the loot menu from
--- opening, so GUI_ON_HIDE no longer fires to reset a warned-set on menu close. A short per-corpse TTL
--- gives once-per-approach warning while swallowing USE-key mashing. Wall clock, NOT xtime.get_game_sec
--- (unlike _owner): this throttles a real-time keypress burst, and game time is compressed (several
--- game-sec per real-sec), so a game-sec window would collapse to a fraction of a real second. The
--- table is ephemeral (never exported in _on_save_state), so os.clock's VM-restart reset is harmless.
+-- Tip re-warn throttle (os.clock wall seconds, not game_sec: real-time keypress burst); ephemeral, per-corpse once-per-approach, swallows USE mashing.
 local TIP_TTL_SEC = 5
 
--- Claim warn tip: a random line from the st_ap_loot_claim_warn_NNN pool (matches the news template
--- convention, ap_ext_news.script:_load_pool). _warn_n is the pool size, counted once at load.
+-- Claim warn tip: random line from the st_ap_loot_claim_warn_NNN pool (news-template convention); _warn_n = pool size, counted once at load.
 local WARN_PREFIX = "st_ap_loot_claim_warn"
 local MAX_WARN_VARIANTS = 16
 
--- Respect (yield) lines: an NPC audibly passing up a claimed kill, which the player OVERHEARS -- so unlike
--- the block warn (always, on the player's own USE) these are RARE. reserve_own = an NPC leaving your kill;
--- npc_vs_npc = an NPC passing up another squad's kill. Gated by a low roll, a shared cooldown, and the
--- actor being within earshot of the yielding NPC (else a disembodied line from an NPC you cannot place).
+-- Respect (yield) lines: an NPC audibly passing up a claimed kill, overheard by the player; rare, gated by low roll + shared cooldown + earshot.
 local RESERVE_YIELD_PREFIX = "st_ap_loot_reserve_yield"
 local NPCVNPC_YIELD_PREFIX = "st_ap_loot_npcvnpc_yield"
 local MAX_YIELD_VARIANTS = 16
@@ -68,14 +38,11 @@ local _owner = nil
 local _tip_ttl = nil
 -- actor id, captured at first update (avoids depending on AC_ID load-time global)
 local _ac_id = nil
--- owner map stashed at load_state, imported at first_update. _owner:import calls the game clock
--- (xtime.get_game_sec -> level.get_start_time), which AVs in the load_state phase (Level() not loaded
--- yet); the first update tick is the earliest point Level() is guaranteed live. See xtime.get_game_sec.
+-- owner map stashed at load_state, imported at first_update; _owner:import calls game_sec which AVs before Level() loads. @src xtime.get_game_sec
 local _saved_owner = nil
 -- number of st_ap_loot_claim_warn_NNN variants present, counted at on_game_start
 local _warn_n = 0
--- the NPC currently inside evaluator_corpse:find_valid_target, published by _publish_looker so the
--- near_actor arbiter can answer "owned by a squad other than yours" (near_actor gets only the corpse)
+-- NPC currently inside evaluator_corpse:find_valid_target, published by _publish_looker so near_actor can answer "owned by another squad".
 local _current_looker = nil
 -- guards the find_valid_target reassignment against the on_game_start re-run on each save load
 local _fvt_hooked = false

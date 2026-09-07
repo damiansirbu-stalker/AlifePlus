@@ -1,20 +1,4 @@
---- ap_ext_trade: AlifePlus NPC trade orchestration. LTX-driven per-rank policy.
----
---- NPC-facing only. This changes what an NPC carries and his money; it never touches the trader's
---- player-facing stock, which in vanilla is config-driven ([trader] buy_supplies, wiped and
---- respawned every restock) and unrelated to what NPCs sell him. The one bridge that makes NPC
---- trades shape the player's shelf is ap_ext_market, which only observes this function's
---- { sold, bought } return value.
----
---- Policy loaded from `configs/alifeplus/ap_trade_policy.ltx`. Two tiers split by
---- RANK_VETERAN (12000). Each tier block lists every reachable category with {min, max}.
---- Entry declaration order in the LTX = BUY priority (top fills first; stops when cash
---- exhausted). SELL phase iterates inventory, drops anything above category max.
---- Net cash gain per trade is capped by MCM trade_profit_max (economy > trade), applied to
---- every rank; 0 = no profit. Supersedes the old per-tier LTX profit_max (removed).
----
---- Pre-filter ("untouchable" + "equipped") short-circuits before policy lookup so quest
---- items and equipped gear are never touched regardless of policy contents.
+--- ap_ext_trade: NPC supply-trader orchestration, sell surplus then buy up to per-rank policy bands, net-profit capped. See architecture.md Supply Trader.
 
 local floor, pairs, ipairs, tonumber = math.floor, pairs, ipairs, tonumber
 local string_match, string_sub = string.match, string.sub
@@ -29,8 +13,7 @@ local POLICY_PATH = "alifeplus\\ap_trade_policy.ltx"
 local LOG = "[EXT.TRADE]"
 local cfg = ap_core_mcm.cfg
 
--- Populated by _load_trade_policy at on_game_start. Shape:
---   { rookie = { entries, rules }, veteran = { ... } }
+-- Populated by _load_trade_policy at on_game_start; { rookie = { entries, rules }, veteran = { ... } }.
 local TRADE_POLICY = nil
 
 -- Load trade policy via xinventory.load_policy (the shared LTX shape across trade, stash, and inventory).

@@ -1,28 +1,4 @@
---- ap_ext_test: console test harness. Actions seed real world state so pipeline scenarios
---- happen through the real gates (trade sell/buy, stash loot, corpse loot trim, loot claim,
---- faction market, wounded medkit use). Never AP internals: no DTO writes, no record seeding,
---- no AP callbacks fired, no MCM flips. Radiant Hull/MVT thresholds are game-clock driven; use
---- time() to advance the clock and mature them.
----
---- Console:
----   run_string ap_ext_test.drive()    start/stop the driver; leave it on and it seeds the world for you
----   run_string ap_ext_test.status()   per-action run counts
----   run_string ap_ext_test.rank(n)    set the player's rank (no arg = expert, opens the market bands)
----   run_string ap_ext_test.time(h)    advance the game clock h hours (no arg = 24, forces trader restocks)
----
---- The driver fires every action once on start, then keeps re-seeding on each action's
---- interval: a map-wide territory population and NPC item kits and cash every 5 min, stash fills
---- and a hostile-squad spawn every 10, an artefact drop near the actor every 15. The territory
---- population keeps squads alive at field smarts on OTHER levels so AP's conquest / swarm / infest
---- and off-map routing play out away from the actor; run time() to mature their game-hour gates.
---- Nothing else to call.
----
---- The hostile spawn is what makes the reactive flows happen: a squad hostile to a random
---- online stalker squad (enemy faction or aggressive mutants, alternating) is created at
---- that squad's smart via SIMBOARD:create_squad. Real combat follows: deaths feed massacre /
---- squadkill / basekill clusters, mutant kills promote alphas (then alphakill on their
---- death), the injured burn the seeded medkits (wounded), and the corpses feed loot claim
---- and the corpse loot trim. Capped at SPAWN_MAX_ALIVE spawned squads alive at once.
+--- ap_ext_test: console test driver; seeds real world state (item kits, cash, stash fills, hostile spawns), never AP internals. See architecture.md.
 
 local pairs, string_format, os_clock, table_concat = pairs, string.format, os.clock, table.concat
 local xobject, xlevel, xslice, xdata, xmath = xobject, xlevel, xslice, xdata, xmath
@@ -44,11 +20,7 @@ local SPAWN_MAX_ALIVE = 4
 -- Aggressive, common species for the mutant half of the hostile spawn (safe generic sections).
 local HOSTILE_SPECIES = { "dog", "pseudodog", "snork", "boar" }
 
--- Per-category kit covering every trade category, so the sell phase exercises all of them and the
--- gear-sell path in particular. counts sit above the ap_trade_policy max (medkit 3, bandage 5;
--- weapon/outfit/helmet/device/artefact are max 0 = sell-all), so each seeded category yields
--- sell-phase surplus and the leftovers feed stash fill and the corpse loot trim. "ammo" is not a
--- builder key: the ammo category is "ammo_not_equipped" (get_category_sections("ammo") is empty).
+-- Per-category kit above ap_trade_policy max so every category yields sell surplus; leftovers feed stash fill + loot trim. Ammo key is ammo_not_equipped.
 local KIT = {
     { category = "medkit",            picks = 2, count = 3 },
     { category = "bandage",           picks = 1, count = 7 },
@@ -67,18 +39,14 @@ local KIT = {
     { category = "crafting",          picks = 2, count = 2 },
 }
 
--- Weapons have no enumerable category bucket (get_category_sections("weapon") returns empty by
--- design), so gear selling is seeded from an explicit spread. Sections absent on a given install
--- fail create_item silently; the ones present spawn.
+-- Weapons have no enumerable category bucket, so gear selling is seeded from an explicit spread; sections absent on an install fail create_item silently.
 local WEAPONS = {
     "wpn_pm", "wpn_fort", "wpn_pb", "wpn_ak74", "wpn_ak74u",
     "wpn_mp5", "wpn_abakan", "wpn_svd", "wpn_toz34", "wpn_bm16",
 }
 local WEAPONS_PER_NPC = 2
 
--- Armour plates resolve to an otherwise-sold category, so the plate-keep carve-outs (ap_trade /
--- ap_barter / ap_stash / ap_loot, keep-1 each) are only exercised when NPCs actually carry plates.
--- Seed the five vanilla plate sections so the trade / barter / stash / loot walks hit those rows.
+-- Armour plates resolve to an otherwise-sold category; seed the five vanilla plate sections so the keep-1 carve-outs (trade/barter/stash/loot) are exercised.
 local PLATES = { "af_kevlar", "af_plates", "af_kevlar_up", "af_plates_up", "fieldcraft_plate_attch" }
 
 local ARTEFACTS = {
@@ -205,8 +173,7 @@ local function _give_money()
     ap_core_debug.debug("[TEST] give_money OK npcs=%d amount=%d", given, MONEY_PER_NPC)
 end
 
--- Default rank() jump: expert (30000) opens the veteran/expert market bands so the injected echo
--- shows high-value goods (artefacts, devices). Engine clamps character rank to [0, 56000].
+-- Default rank() jump: expert (30000) opens the veteran/expert market bands so the echo shows high-value goods; engine clamps rank to [0, 56000].
 local RANK_DEFAULT = 30000
 
 --- Set the player's character rank; run_string ap_ext_test.rank(25000).
@@ -346,36 +313,22 @@ local function _spawn_hostiles()
         squad.id, section, target.id, target.player_id, smart_name)
 end
 
--- Territory population (actor's level only)
--- Keep a small spread of surviving squads alive at field smarts ON THE ACTOR'S LEVEL, so AP's radiant
--- area causes play out where the actor can walk up and watch: humans CONQUER empty field smarts, feral /
--- predator / aberrant mutants SWARM and INFEST them, the human squads route to traders. Squads are
--- created at smarts via the vanilla board path (xsquad.create_squad); nothing is forced -- the game runs
--- them. Run ap_ext_test.time(24) a few times to mature the per-squad conquer / swarm / infest thresholds
--- (game-hour gated). Trace: [MUTATOR.SMART], [SQUAD.OFFMAP], [CORE.RECORD].
---
--- LIMITS (2026-08-15): the old build seeded across EVERY level except the actor's, invisibly, with no
--- ceiling, so a long-running drive() exhausted the 65534 alife id pool ("Not enough IDs" CTD). Now:
--- current level only, small POP_TARGET, and _seed_population bails once alife hits POP_ALIFE_CEILING.
+-- Territory population, actor's level only: keep squads alive at field smarts so radiant area causes play out; current-level + ceiling avoid the id-pool CTD.
 local POP_TARGET        = 8
 local POP_MAX_PER_PASS  = 4
 local POP_ALIFE_CEILING = 50000
 
--- Conquer-capable mutant species (feral / predator / aberrant): the kinds that take territory. Alphas
--- (infest's gate) are never forced; they emerge from kills over the soak and the alpha squads then
--- infest on their own.
+-- Conquer-capable mutant species (feral/predator/aberrant) that take territory; alphas emerge from kills, never forced.
 local POP_MUTANT_SPECIES = { "dog", "pseudodog", "boar", "flesh", "snork" }
 
--- Roaming human factions for the seeded population: loners, clear sky, bandits - peaceful-ish factions
--- that ROUTE to traders (unlike arena combatants), so the supply-trader / barter flows get candidates.
+-- Roaming human factions for the seeded population; peaceful-ish factions that route to traders, so supply-trader/barter flows get candidates.
 local POP_HUMAN_FACTIONS = { "stalker", "csky", "bandit" }
 
 -- _pop_squads: tracked spawned squad ids. _pop_fields: cached map-wide field-smart list, built once.
 local _pop_squads = {}
 local _pop_fields = nil
 
--- Every smart that is not a base and hosts no hub trader (ap_ext_util.is_field_smart), the smarts AP's takeovers may claim.
--- Built once from the map-wide SIMBOARD registry.
+-- Field smarts (not a base, no hub trader; ap_ext_util.is_field_smart) AP takeovers may claim, built once from the SIMBOARD registry.
 local function _build_field_smarts()
     local out = {}
     local by_name = xsmart.get_smarts_by_names()
@@ -386,8 +339,7 @@ local function _build_field_smarts()
     return out
 end
 
--- A random field smart ON the actor's level, so the seeded population spawns where the actor can walk up and watch.
--- Trade at a trader, alert / combat near a fight, never on maps he cannot see; nil if none.
+-- A random field smart on the actor's level, so seeded population spawns where the actor can watch; nil if none.
 local function _select_field_smart(actor_level)
     local fields = _pop_fields
     if #fields == 0 then return nil end
@@ -398,8 +350,7 @@ local function _select_field_smart(actor_level)
     return nil
 end
 
--- A section to seed: a roaming human faction (loner / clear sky / bandit) 70% of the time, else a mutant species squad (swarm / infest).
--- Human factions route to traders so trade/barter get candidates; AP's personality + census-share gate still decides who takes territory.
+-- A section to seed: a roaming human faction 70% of the time, else a mutant species squad; humans route to traders, AP's gates still decide territory.
 local function _pop_section()
     if math_random() < 0.7 then
         local faction = POP_HUMAN_FACTIONS[math_random(1, #POP_HUMAN_FACTIONS)]

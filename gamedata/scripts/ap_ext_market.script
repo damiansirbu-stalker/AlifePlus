@@ -1,48 +1,4 @@
---- ap_ext_market: faction market. THE BRIDGE vanilla does not have between NPC trading and the
---- player's trader shelf. In vanilla the two are disjoint: a trader's player-facing stock is his
---- config [supplies] alone, wiped and respawned every restock by buy_supplies (trade_manager.script:154);
---- what NPCs sell him (vanilla axr_trade_manager transfer_item) is deleted by that same restock and
---- never reaches the player's buy panel. This module records what a faction's stalkers trade (an
---- xevent hook on ap_ext_trade.execute_trade, observe-only) and reshapes that faction's trader stock right
---- after the restock, so NPC trading finally decides part of what the player buys. It changes no
---- vanilla trade code and adds no trade UI; it only adds/removes stock in the post-restock window.
----
---- A faction's hub traders briefly stock a bounded echo of what
---- that faction's stalkers have recently sold, injected at the trader's restock, rank-gated to the
---- player, sold at a premium, and removed after a short window. The sell-out is the mirror: what
---- the trader recently sold to that faction's stalkers is removed from his freshly respawned stock
---- at the same restock, capped per section at a percent of what he holds.
----
---- Observe, do not modify. ap_ext_trade.execute_trade already returns { sold, bought } and the trade
---- arrival knows the seller; the market reads that output via an xevent hook (ap_ext_trade is
---- unchanged) and records both directions per faction in trader perspective: NPC sold = trader
---- bought (shelf gains), NPC bought = trader sold (shelf loses). NPC stalkers use only the trade
---- flow; the player uses only the market. Both market directions run the identical eligibility
---- chain (whitelist + role fit + player-rank roll + distribution claim), each against its own
---- whitelist block: [ap_market_trader_buy] for injection, [ap_market_trader_sell] (ammo + medical
---- staples, nothing else) for the sell-out. At restock the sell-out runs first and claims what it
---- removed, so injection never re-adds a sold-out section inside the goods window.
----
---- FIFO shape. Per faction, a bounded dedup FIFO of section names (most-recent at the end), capped
---- at fifo_max. The section is all that is kept; injection re-derives cost, category, and rank from
---- it. A plain table, saved and loaded verbatim, so it needs no clock and is safe at load_state.
----
---- Echo, not conservation. Every trader restock destroys the trader's whole ruck then respawns the
---- config list (purchase_list.cpp:20 -> InventoryOwner.cpp:596), so anything sold to a trader is
---- purged each cycle. Injection re-materialises a bounded echo; no double-count.
----
---- Different stock per trader. A section injected or sold out at one trader is claimed for the goods
---- window, so a sibling faction trader restocking inside that window acts on different sections
---- (_claimed).
----
---- One restock path: a hook over trade_manager.update, which every restock advances resupply_time
---- through on every install (vanilla writes it directly; destockifier-style trader_autoinject variants
---- monkeypatch the same function, so their restock is visible through the wrapper chain too).
----
---- Premium pricing is applied by the engine's on_get_item_cost script callback (utils_item.script:995)
---- for tagged goods only: full base cost x premium, the condition discount bypassed.
----
---- Policy: configs/alifeplus/ap_market_policy.ltx. Online only (script_trader hub traders).
+--- ap_ext_market: faction market, the player-facing echo of NPC trading at a faction's hub traders (injection + sell-out). See architecture.md Faction market.
 
 local RegisterScriptCallback = RegisterScriptCallback
 local math_random, math_floor = math.random, math.floor
@@ -65,47 +21,27 @@ local RELEASE_PERIOD_MS = 60000
 local VIEW_LOG_INTERVAL_SEC = 3
 local SAVE_KEY = "ap_ext_market"
 local DEFAULT_FIFO_MAX = 20
--- Chatter fires only for a restock whose most valuable injected item clears this base cost, so a
--- nearby stalker mentions rifles and artefacts, not bread. Base cost (pre-premium), in rubles.
+-- Chatter fires only when the most valuable injected item clears this base cost (pre-premium rubles), so stalkers mention rifles, not bread.
 local CHATTER_MIN_COST = 5000
 
 -- Factions that never seed the market (no real allegiance / cannot trade goods)
 local _SKIP_FACTION = { trader = true, monster = true, zombied = true, [""] = true }
--- Role -> categories that role may stock. A general trader stocks everything whitelisted; a pure
--- medic stocks consumables; a pure mechanic stocks gear / parts.
+-- Role -> categories that role may stock: general trader all whitelisted, medic consumables, mechanic gear/parts.
 local _MEDICAL = { medkit = true, bandage = true, antirad = true, stim = true, pill = true, food = true, drink = true }
 local _GEAR = { weapon = true, helmet = true, device = true, crafting = true, grenade = true }
 
--- { trader_buy, trader_sell, specials } from POLICY_PATH; trader_buy[key] = { min, max } per
--- category or item section (injection whitelist); trader_sell[key] = same shape (sell-out
--- whitelist: ammo + medical).
+-- { trader_buy, trader_sell, specials } from POLICY_PATH; trader_buy = injection whitelist, trader_sell = sell-out (ammo+medical), key = {min,max}.
 local MARKET_POLICY = nil
 -- { floor = { [section|category] = tier }, bands = { [tier] = { {cost,chance} asc }, default } }
 local RANK_RULESET = nil
 
--- Trader-bought FIFO: faction -> ordered dedup FIFO of sections the faction's traders took in from
--- stalkers (NPC sold), oldest first, newest last. Bounded to fifo_max per faction. Section is all
--- we keep. Plain table: saved / loaded verbatim, no clock, so it is safe at load_state (game_sec
--- AVs there). Feeds injection.
+-- Trader-bought FIFO: faction -> dedup FIFO of sections traders took from stalkers (NPC sold), fifo_max bound; plain table, load-safe. Feeds injection.
 local _trader_bought = {}
--- Trader-sold mirror: faction -> ordered dedup FIFO of sections the faction's traders handed out
--- to stalkers (NPC bought). Same shape, same fifo_max bound, saved beside _trader_bought. Entries
--- persist until FIFO-evicted by newer buys; a sold-out section is claimed in _claimed for the
--- goods window, exactly like an injected one. Feeds the sell-out.
+-- Trader-sold mirror: faction -> dedup FIFO of sections traders handed to stalkers (NPC bought), same shape; a sold-out section is claimed. Feeds sell-out.
 local _trader_sold = {}
--- Distribution claim (ttl_table, goods window, ephemeral): a section injected or sold out at one
--- trader is claimed so sibling faction traders act on different items and injection never re-adds
--- what the sell-out removed inside the window. Reset on load; harmless.
+-- Distribution claim (ttl_table, ephemeral): a section injected or sold out is claimed so siblings act on different items. Reset on load, harmless.
 local _claimed = nil
--- item_id -> { trader_id, inject_time(game_sec), section } for tagged market goods. Persisted across
--- save/load: the items are real alife objects that survive the save, and this tag table is saved
--- alongside _trader_bought, so the premium price and the timed release survive a reload (a player reloads
--- inside the goods window routinely). Validated at first update: any entry whose item the engine
--- purged on an offline restock between save and load is dropped; a recycled id that slips through is
--- still caught at pricing time by the parent==trader guard in _on_get_item_cost, and at release time
--- by the parent==trader + section guard in _release_good (so a bought good is never released from the
--- buyer). section is absent on tags restored from a pre-fix save; the release guard treats a missing
--- section as "cannot confirm identity" and leaves the good to the engine purge.
+-- item_id -> { trader_id, inject_time, section } for tagged goods, persisted across save/load; parent==trader guard at pricing/release. See architecture.md.
 local _market_goods = {}
 -- Reused collector for expired ids, so _release_expired never mutates _market_goods mid-iteration.
 local _release_buf = {}
