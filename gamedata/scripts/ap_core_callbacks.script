@@ -4,7 +4,6 @@ local RegisterScriptCallback, SendScriptCallback, AddScriptCallback =
     RegisterScriptCallback, SendScriptCallback, AddScriptCallback
 -- CreateTimeEvent/ResetTimeEvent called as globals, never cached (demonized_time_events replaces them at load).
 local xevent, xlevel, xobject, xsquad, xprofiler = xevent, xlevel, xobject, xsquad, xprofiler
-local ap_core_debug = ap_core_debug
 
 local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
@@ -245,7 +244,8 @@ local function _run_credit(now, stat_on)
     local attempts, fired = _try_lane(lane_key, now, FIRE_ATTEMPTS_MAX, stat_on)
     if not fired then
         lane_key = lane_key == "cur" and "bg" or "cur"
-        attempts, fired = _try_lane(lane_key, now, attempts, stat_on)
+        local _
+        _, fired = _try_lane(lane_key, now, attempts, stat_on)
     end
     if not fired then
         if stat_on then _squad_stat.dropped = _squad_stat.dropped + 1 end

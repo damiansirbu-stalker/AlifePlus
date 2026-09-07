@@ -573,11 +573,8 @@ local function _format_service_diag(member_id)
 end
 
 local function _log_service_entry(squad_id, entry)
-    local member_id
     local squad = _resolve_held(squad_id, entry)
-    if squad then
-        for id in xsquad.iterate_member_ids(squad) do member_id = id break end
-    end
+    local member_id = squad and xsquad.iterate_member_ids(squad)()
     local cur = squad and xobject.get_se(squad.smart_id)
     ap_core_world_trace.debug("[MUTATOR.SMART] service: smart=%d(%s) role=%s squad=%d stocked=%s pin=%s cur_smart=%s base=%s %s",
         entry.smart_id, entry.smart_name, entry.role, squad_id,

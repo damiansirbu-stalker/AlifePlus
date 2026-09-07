@@ -81,8 +81,7 @@ local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and 
 -- Physical-presence truth via xsmart.iterate_stationed_squads (cross-level and offline safe), not smart.faction or LTX-declared factions.
 local function _is_unclaimed(smart)
     if not smart then return false end
-    for _ in xsmart.iterate_stationed_squads(smart.id) do return false end
-    return true
+    return xsmart.iterate_stationed_squads(smart.id)() == nil
 end
 
 -- Resolve total BFS hops for the off-map adjacency search; pre-story stalkers stay home (hops = 0 -> no neighbors -> off-map never publishes).

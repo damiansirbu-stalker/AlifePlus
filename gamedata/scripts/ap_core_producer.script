@@ -1,5 +1,5 @@
 --- ap_core_producer: Dispatches cause predicates; radiant chain (budget/protection/eval) and reactive chain (pacer/ratio/eval).
-local pairs, type, unpack = pairs, type, unpack
+local pairs, unpack, math_random = pairs, unpack, math.random
 local RegisterScriptCallback = RegisterScriptCallback
 local xprofiler, xtrace = xprofiler, xtrace
 local ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter = ap_core_debug, ap_core_broker, ap_core_util, ap_core_limiter
@@ -152,7 +152,6 @@ end
 
 --- Cascade buffer for radiant entries; write-through by register(), shuffled in place per tick.
 local _cascade_buf = {}
-local math_random = math.random
 
 --- Replace the entry in _cascade_buf whose handler ref matches. Used by register() on re-register.
 local function _set_cascade_entry(handler, entry)
@@ -263,8 +262,6 @@ local function _create_reactive_dispatcher(callback)
     return function(...) _on_reactive(callback, ...) end
 end
 
-local _dispatchers = {}
-
 --- Late-bind subscribe: attach engine callback for a single (callback, cause_type) pair.
 --- Called from register() after actor_on_first_update. No-op if already subscribed.
 local function _subscribe_late(callback, cause_type)
@@ -273,7 +270,6 @@ local function _subscribe_late(callback, cause_type)
         RegisterScriptCallback(callback, _on_radiant)
     else
         local dispatcher = _create_reactive_dispatcher(callback)
-        _dispatchers[callback] = dispatcher
         RegisterScriptCallback(callback, dispatcher)
     end
     _subscribed[callback] = true
@@ -293,7 +289,6 @@ local function _init_subscriptions()
         if _subscribed[callback] then goto continue end
         if _radiant_callbacks[callback] then goto continue end
         local dispatcher = _create_reactive_dispatcher(callback)
-        _dispatchers[callback] = dispatcher
         RegisterScriptCallback(callback, dispatcher)
         _subscribed[callback] = true
         ap_core_debug.debug("[PRODUCER.REACTIVE] subscribed to callback=%s", callback)
@@ -364,7 +359,6 @@ end
 --- on_game_start: reset state + register deferred init.
 --- The ap_squad_on_change sweep installs itself in ap_core_callbacks and reads the rate/ratio live, so the producer only subscribes.
 function on_game_start()
-    _dispatchers = {}
     _subscribed = {}
     _first_update_done = false
     _reactive_ct.on = 0
