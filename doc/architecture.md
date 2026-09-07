@@ -395,7 +395,13 @@ NPC behavior is produced by a four-layer engine chain. AP routes squads to desti
 
 ### Write surface
 
-A single engine field: `squad.scripted_target` via `xsquad.acquire_squad` / `release_squad` / `reassert_target`. AP does not write to `npc_info`, `npc_by_job_section`, `job_info_by_job_type_id`, `db.storage[id].active_section` / `active_scheme` / `pstor`, `motivation_action_manager`, or any smart's `stalker_jobs` / `monster_jobs` tables. AP does not call `xr_logic.activate_by_section` or any scheme's `set_scheme` directly. AP does not push exclusive jobs.
+Two write paths, both squad-level or smart-level, never per-NPC job.
+
+Dispatch path (the cause/consequence core: `ap_core_broker` + the cause and consequence files). Writes exactly one engine field, `squad.scripted_target`, via `xsquad.acquire_squad` / `release_squad` / `reassert_target`. Routing a squad is the whole effect; the engine's gulag then decides each member's job unchanged.
+
+Mutator path (`ap_ext_smart_mutator`, the conquest / swarm / infest / outpost system). A heavier, declared write path: it sets `smart.faction` and `faction_controlled`, injects `respawn_params` rows (exclusive spawn), spawns persistent service NPCs and guard squads, applies trader visuals, and moves money via `give_money`. Its state persists in `m_data` and is re-applied by the 60s scan on load; decay leaves guards behind as ordinary residents. See Smart Mutator for the full lifecycle.
+
+What NEITHER path writes is per-NPC job binding. AP does not write `npc_info`, `npc_by_job_section`, `job_info_by_job_type_id`, `db.storage[id].active_section` / `active_scheme` / `pstor`, `motivation_action_manager`, or any smart's `stalker_jobs` / `monster_jobs` tables. AP does not call `xr_logic.activate_by_section` or any scheme's `set_scheme`. AP does not push exclusive jobs. This is the layer the gulag owns and AP reads but never writes; a system that needs to write it (in-camp re-posture) is a new, third write path and must argue the cleanup, the race against the gulag's own reassignment, and the reload re-apply on its own.
 
 ### Read surface
 
