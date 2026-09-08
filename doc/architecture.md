@@ -408,7 +408,7 @@ What NEITHER path writes is per-NPC job binding. AP does not write `npc_info`, `
 | Source | xlibs wrapper | Reader |
 |--------|---------------|--------|
 | `smart.stalker_jobs` / `monster_jobs` | `xsmart.has_animated_jobs` | scan-time predicate per cause: reject stub-only smarts (job_type_id in {0, 1}) |
-| `smart.npc_info[id].job` | `xsmart.has_jobs_for` | arrival + mid-hold predicate: detect engine binding failure |
+| `smart.npc_info[id].job` | `xsmart.get_npc_job` | arrival + mid-hold predicate: detect engine binding failure via has_anchored_jobs |
 | `smart.props` | `xsmart.accepts_faction` | scan-time faction gate (engine target_precondition Tier 1; covers stalker + mutant) |
 | `smart.faction` | direct field read | at-base detection (basekill / massacre / squadkill / wounded: `xsmart.is_base(smart) and smart.faction == squad.player_id`); engine sticky setter (smart_terrain.script:1209-1236) |
 | `SIMBOARD.smarts[id].squads` | `xsmart.iter_stationed_squads` / `has_faction_squad` / `has_enemy_squad` / `is_smart_empty` | physical-presence + hostility checks via is_stationed filter (current_action=1). Cap 5 safety belt. Cross-level safe. Drops sim-intent in-transit squads |
@@ -421,11 +421,11 @@ Engine `select_npc_job` (smart_terrain.script:626-798) can fail to assign a job 
 1. Full allocation. Every `stalker_jobs` entry is held by `npc_by_job_section` or rejected by `job_avail_to_npc`. `setup_logic` unregisters + re-registers the NPC; engine default idle pose loops.
 2. Precondition flip during the post-arrival hold. surge start/end (jobs 2/8/14/19), day↔night for sleeper (3), zombie state, `has_items_to_sell` for trader (15), `has_tech_items` for mechanic (16).
 
-AP detects both via `xsmart.has_jobs_for` and releases the squad cleanly. Mechanism in Squad Lifecycle → Scripted-squad scan steps 4 (arrival) and 6 (mid-hold). Released squads return to SIMBOARD autonomous targeting via `xsquad.release_squad` clearing `scripted_target`.
+AP detects both via `has_anchored_jobs` (reading `xsmart.get_npc_job`) and releases the squad cleanly. Mechanism in Squad Lifecycle → Scripted-squad scan steps 4 (arrival) and 6 (mid-hold). Released squads return to SIMBOARD autonomous targeting via `xsquad.release_squad` clearing `scripted_target`.
 
 ### SIMBOARD bookkeeping
 
-AP-routed transitions update `SIMBOARD:assign_squad_to_smart` at two hooks: dispatch (`register_squad`, clearing the source roster with `nil` target before engine `sim_squad_scripted:specific_update` bumps `squad.smart_id` to the new target) and commit (`_commit_arrival`, adding the destination roster entry after `xsmart.has_jobs_for` accepts). `SIMBOARD.smarts[id].squads` therefore reflects actual squad placement for AP-routed squads. `has_faction_squad`, garrison floor, and faction-quota predicates all read truth. On despawn the engine's own `sim_squad_scripted:remove_squad` clears the roster (`SIMBOARD:assign_squad_to_smart(self, nil)`). Vanilla's own scripted re-homes (via the roster-blind `assign_smart`) are corrected globally by `ap_core_anomaly_fixes` (see Vanilla fixes).
+AP-routed transitions update `SIMBOARD:assign_squad_to_smart` at two hooks: dispatch (`register_squad`, clearing the source roster with `nil` target before engine `sim_squad_scripted:specific_update` bumps `squad.smart_id` to the new target) and commit (`_commit_arrival`, adding the destination roster entry after `has_anchored_jobs` accepts). `SIMBOARD.smarts[id].squads` therefore reflects actual squad placement for AP-routed squads. `has_faction_squad`, garrison floor, and faction-quota predicates all read truth. On despawn the engine's own `sim_squad_scripted:remove_squad` clears the roster (`SIMBOARD:assign_squad_to_smart(self, nil)`). Vanilla's own scripted re-homes (via the roster-blind `assign_smart`) are corrected globally by `ap_core_anomaly_fixes` (see Vanilla fixes).
 
 ### Vanilla fixes
 
@@ -561,9 +561,9 @@ _update_scripted_squads runs every 20s via CreateTimeEvent. For each tracked squ
 1. Entity check. xobject.se(squad_id). Gone -> remove from tracking. Catches squads that died or despawned between scans.
 2. Reassert. xsquad.reassert_target(squad, data.scripted_target). Restores scripted_target if another mod overwrote it; clears __lock. Vintar-class mods set these fields every tick on their own squads; AP reasserts every 20s on its squads.
 3. TTL. 7200 game-seconds. Expired -> unscript. Prevents permanently pinned squads.
-4. Arrival. xsmart.is_arrived(squad, smart). On arrival, dispatch the registered on_arrive function; then check engine job assignment via xsmart.has_jobs_for. If smart is online + on actor's level and any member has no job, unscript (release_no_jobs). If smart is offline or off-level, AP cannot observe job state and enters the wait state by default. This is the runtime-allocation half of the dispatch-viability check. The cause-side filter is the scan-time half: xsmart.has_animated_jobs excludes stub-only smarts at find_smart time so the dispatch never happens on structurally barren on-level targets; xsmart.has_jobs_for releases the squad if real slots ended up taken between dispatch and arrival.
+4. Arrival. xsmart.is_arrived(squad, smart). On arrival, dispatch the registered on_arrive function; then check engine job assignment via has_anchored_jobs (reading xsmart.get_npc_job). If smart is online + on actor's level and any member holds no anchored job (nil or a generic_point stub), unscript (release_no_jobs). If smart is offline or off-level, AP cannot observe job state and enters the wait state by default. This is the runtime-allocation half of the dispatch-viability check. The cause-side filter is the scan-time half: xsmart.has_animated_jobs excludes stub-only smarts at find_smart time so the dispatch never happens on structurally barren on-level targets; has_anchored_jobs releases the squad if real slots ended up taken between dispatch and arrival.
 5. Wait. release_at = game_sec() + pre_release_gulag (default 300s). When game time exceeds release_at, unscript. Game time advances during sleep / time-skip and survives save/load.
-6. Mid-hold re-check. While the squad is in its pre_release_gulag wait, _update_pre_release_gulag re-runs xsmart.has_jobs_for every 20s (same is_on_actor_level gate as step 4). The engine may re-run select_npc_job during the wait on a precondition flip (surge transition, day/night flip for sleepers, zombie state, trader has_items_to_sell). If no eligible replacement job exists, npc_info[id].job becomes nil and the setup_logic freeze loop reactivates; the re-check unscripts early with release_no_jobs_mid_hold so the squad does not stand idle at a smart that no longer accepts it. For off-level smarts the gate short-circuits and the wait runs to expiry.
+6. Mid-hold re-check. While the squad is in its pre_release_gulag wait, _update_pre_release_gulag re-runs has_anchored_jobs every 20s (same is_on_actor_level gate as step 4). The engine may re-run select_npc_job during the wait on a precondition flip (surge transition, day/night flip for sleepers, zombie state, trader has_items_to_sell). If no eligible replacement job exists, npc_info[id].job becomes nil and the setup_logic freeze loop reactivates; the re-check unscripts early with release_no_jobs_mid_hold so the squad does not stand idle at a smart that no longer accepts it. For off-level smarts the gate short-circuits and the wait runs to expiry.
 
 ### Activity record
 
@@ -613,7 +613,7 @@ AlifePlus stacks safety layers on top of the engine capability:
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `register_squad` + `_commit_arrival` |
 | Settle terminal | after the gulag hold, `_unregister_squad` drops the AP entry and leaves the squad at the destination under vanilla AI | `ap_core_broker` `_update_gulag` |
 | Despawn safety net | offmap entries skip the generic `SCRIPTED_SQUAD_TTL`; `_check_offmap_despawn` reclaims a squad that never settled at `cfg.offmap_despawn_hours` (offline only, respects owner / permanent / active-role / task-target) | `ap_core_broker` `_check_offmap_despawn` |
-| Arrival check | shared `_commit_arrival` (`has_anchored_jobs` wrapping `xsmart.has_jobs_for`); short-circuits for off-actor-level smarts so the gulag hold runs to expiry | `ap_core_broker` `_commit_arrival` |
+| Arrival check | shared `_commit_arrival` (`has_anchored_jobs`, reading `xsmart.get_npc_job` and rejecting generic_point stubs); short-circuits for off-actor-level smarts so the gulag hold runs to expiry | `ap_core_broker` `_commit_arrival` |
 
 Registration. `_init_offmap_session(data, squad_id, now)` sets `offmap = true` and `dispatched_at = now` on a fresh `register_squad` entry. No home level is captured -- the squad's origin is not tracked because it never returns to it.
 
@@ -1168,7 +1168,7 @@ The rule set split into universal, radiant, and reactive. Terms (cause types, fi
 8. Every cause registration declares a CAUSE_CATEGORY (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Category drives rate-limit grouping; it is never published.
 9. Domain gates (alignment, species, personality) live in ext, never in core. Location depends on cause type - see radiant and reactive rules.
 10. Runtime smart terrain mutations are rebuilt from LTX on load. Two-phase restore re-applies them after entities exist.
-11. scripted_target overrides SIMBOARD's target_precondition. AP consequences enforce faction safety inline; runtime job availability is checked at arrival and re-checked during the gulag hold via xsmart.has_jobs_for.
+11. scripted_target overrides SIMBOARD's target_precondition. AP consequences enforce faction safety inline; runtime job availability is checked at arrival and re-checked during the gulag hold via has_anchored_jobs.
 12. Many cause attempts fail by design - RULES (especially personality) make outcomes likely or unlikely. Variance comes from cascade ordering, not from clamping personality.
 13. One generator per family. Bundle when causes share input or scoring (Hull cascade over drives, state-classifier over a peek). Use separate generator files when causes have independent triggers or scans (every reactive cause has its own file).
 14. Cause publish contract: a generator must not publish if no consequence can act on the event. Causes serving a subset of alignments must filter at the cause level.
