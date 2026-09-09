@@ -11,6 +11,73 @@ local _debug_enabled = ap_core_debug.is_enabled
 
 local DUMP_INTERVAL_SEC = 10
 
+-- Snapshot ring for sliding-window rates (7 slots x 10s = 60s span): the overlay reads counter DELTAS vs the oldest snapshot, so it shows the last minute.
+local HIST_SLOTS = 7
+
+-- Dump-line field lists per pipeline: each entry { label, field }, "|" is a section separator; TOTAL and /MIN share the list so label/value cannot desync.
+local _R_FIELDS = {
+    { "changed", "sweep_changes" }, { "turn", "sweep_keepalives" }, "|",
+    { "events", "events" }, { "window", "deny_budget" }, { "protected", "protected" }, "|",
+    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
+    { "published", "pub" }, { "cap", "csq_cap" }, { "limiter", "csq_bucket" }, "|",
+    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "executed", "consequences" },
+}
+local _X_FIELDS = {
+    { "events", "events" }, { "throttle", "pacer" }, { "balance", "ratio" }, "|",
+    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
+    { "published", "pub" }, { "limiter", "csq_bucket" }, "|",
+    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
+    { "executed", "consequences" },
+}
+
+-- _ROWS layout schema: { type, label, field, field_x, denom, rate, pct, loss }; type paints the row, loss adds red on a refusal.
+local _ROWS = {
+    { type = "section", label = "INCOMING" },
+    { type = "input",  label = "events",      field = "events", rate = "r" },
+    { type = "input",  label = "  changed",   field = "sweep_changes",    field_x = false, denom = "events", pct = "r" },
+    { type = "input",  label = "  turn",      field = "sweep_keepalives", field_x = false, denom = "events", pct = "r" },
+    { type = "section", label = "DENIED" },
+    { type = "filter", label = "window",      field = "deny_budget", field_x = false,      denom = "events", pct = "r", loss = true },
+    { type = "filter", label = "protected",   field = "protected",   field_x = false,      denom = "events", pct = "r", loss = true },
+    { type = "filter", label = "throttle",    field = false,         field_x = "pacer",    denom = "events", pct = "x", loss = true },
+    { type = "filter", label = "balance",     field = false,         field_x = "ratio",    denom = "events", pct = "x", loss = true },
+    { type = "section", label = "EVALUATED" },
+    { type = "input",  label = "causes",      field = "causes", rate = "r" },
+    { type = "filter", label = "rules",       field = "cause_rules",  denom = "causes", pct = "rx" },
+    { type = "filter", label = "scan",        field = "cause_scan",   denom = "causes", pct = "rx" },
+    { type = "filter", label = "scan budget", field = "cause_budget", denom = "causes", pct = "rx" },
+    { type = "section", label = "OUTCOME" },
+    { type = "output", label = "published",   field = "pub", rate = "r" },
+    { type = "filter", label = "limiter",     field = "csq_bucket", denom = "pub", pct = "rx", loss = true },
+    { type = "output", label = "handlers",    field = "_get_csq_tried", rate = "r" },
+    { type = "filter", label = "rules",       field = "csq_rules",  denom = "_get_csq_tried", pct = "rx" },
+    { type = "filter", label = "scan",        field = "csq_scan",   denom = "_get_csq_tried", pct = "rx" },
+    { type = "filter", label = "action",      field = "csq_action", denom = "_get_csq_tried", pct = "rx" },
+    { type = "output", label = "executed",    field = "consequences", rate = "r" },
+}
+
+local ROW_H = 14
+local LABEL_W = 74
+local VAL_W = 52
+local EXTRA_W = 46
+local TOTAL_W = LABEL_W + VAL_W * 2 + EXTRA_W
+-- Layout: row 0 = elapsed, row 1 = column header (radiant/reactive), rows 2.. = data
+local NUM_HEADER_ROWS = 2
+local PANEL_H = (#_ROWS + NUM_HEADER_ROWS) * ROW_H + 4
+
+-- Position presets: { x, y }
+local MARGIN = 15
+local CENTER_Y = (768 - PANEL_H) / 2
+local _POSITIONS = {
+    top_left      = { MARGIN, MARGIN },
+    top_right     = { 1024 - TOTAL_W - MARGIN, MARGIN },
+    center_left   = { MARGIN, CENTER_Y },
+    center_right  = { 1024 - TOTAL_W - MARGIN, CENTER_Y },
+    bottom_left   = { MARGIN, 768 - PANEL_H - MARGIN },
+    bottom_right  = { 1024 - TOTAL_W - MARGIN, 768 - PANEL_H - MARGIN },
+}
+
 --- Radiant pipeline counters (stable reference, zeroed on reset); gate/filter fields hold BLOCK counts, causes/pub are stage totals.
 r = { sweep_changes = 0, sweep_keepalives = 0,
     events = 0, deny_budget = 0, protected = 0,
@@ -29,20 +96,11 @@ local _was_enabled = false
 local _was_counters = false
 local _hud = nil
 
---- Check if the statistics overlay is active.
---- @cost O(1) | 0 luabind
-function is_enabled()
-    return cfg.statistics_position ~= "off"
-end
-
---- Check if counter collection is active (overlay on or debug on).
---- @cost O(1) | 0 luabind
-function is_collecting()
-    return cfg.statistics_position ~= "off" or _debug_enabled()
-end
-
 -- Forward declaration: the snapshot ring lives next to _dump below; _reset clears it.
 local _reset_history
+
+local _hist = {}
+local _hist_pos = 0
 
 -- Zero all counter fields without reallocating tables.
 local function _reset()
@@ -52,95 +110,10 @@ local function _reset()
     if _reset_history then _reset_history() end
 end
 
---- Classify a predicate (cause-side) non-publishing result into the appropriate counter.
---- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED -> cause_budget, else -> cause_rules.
---- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
---- @cost O(1) | 0 luabind
---- @param result table { code, reason }
---- @param is_radiant boolean
-function update_cause_stats(result, is_radiant)
-    local counters = is_radiant and r or x
-    if result.code == RESULT.FAILED_SCAN then
-        counters.cause_scan = counters.cause_scan + 1
-    elseif result.reason == REASON.BUDGET_EXHAUSTED then
-        counters.cause_budget = counters.cause_budget + 1
-    else
-        counters.cause_rules = counters.cause_rules + 1
-    end
-end
-
---- Classify a consequence handler result into the appropriate counter.
---- Routes by code: SUCCESS -> consequences, FAILED_SCAN -> csq_scan, FAILED_ACTION -> csq_action, else -> csq_rules.
---- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
---- @cost O(1) | 0 luabind
---- @param result table { code, reason }
---- @param is_radiant boolean
-function update_csq_stats(result, is_radiant)
-    local counters = is_radiant and r or x
-    local code = result.code
-    if code == RESULT.SUCCESS then
-        counters.consequences = counters.consequences + 1
-    elseif code == RESULT.FAILED_SCAN then
-        counters.csq_scan = counters.csq_scan + 1
-    elseif code == RESULT.FAILED_ACTION then
-        counters.csq_action = counters.csq_action + 1
-    else
-        counters.csq_rules = counters.csq_rules + 1
-    end
-end
-
---- Increment the per-consequence token-bucket block counter.
---- Called when the consumer's per-consequence token bucket exhausts; the handler never ran.
---- @safety SAFE - one counter increment on a module table
---- @cost O(1) | 0 luabind
---- @param is_radiant boolean
-function update_bucket_stat(is_radiant)
-    local counters = is_radiant and r or x
-    counters.csq_bucket = counters.csq_bucket + 1
-end
-
---- Increment the global radiant cap block counter.
---- Called when the consumer's global radiant cap exhausts; radiant-only by construction.
---- @safety SAFE - one counter increment on a module table
---- @cost O(1) | 0 luabind
-function update_cap_stat()
-    r.csq_cap = r.csq_cap + 1
-end
-
---- Increment the publish counter (called from the producer on cause publish).
---- Counts predicate-side successes (the cause emitted), unlike causes which counts every predicate run.
---- @safety SAFE - one counter increment on a module table
---- @cost O(1) | 0 luabind
---- @param cause_type string CAUSE_TYPE.RADIANT or CAUSE_TYPE.REACTIVE
-function update_publish_stat(cause_type)
-    if cause_type == CAUSE_TYPE.RADIANT then
-        r.pub = r.pub + 1
-    else
-        x.pub = x.pub + 1
-    end
-end
-
 -- csq tried = consequences classified (excludes rate-limited, which never reach update_csq_stats).
 local function _get_csq_tried(counters)
     return counters.consequences + counters.csq_rules + counters.csq_scan + counters.csq_action
 end
-
--- Dump-line field lists per pipeline: each entry { label, field }, "|" is a section separator; TOTAL and /MIN share the list so label/value cannot desync.
-local _R_FIELDS = {
-    { "changed", "sweep_changes" }, { "turn", "sweep_keepalives" }, "|",
-    { "events", "events" }, { "window", "deny_budget" }, { "protected", "protected" }, "|",
-    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
-    { "published", "pub" }, { "cap", "csq_cap" }, { "limiter", "csq_bucket" }, "|",
-    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
-    { "executed", "consequences" },
-}
-local _X_FIELDS = {
-    { "events", "events" }, { "throttle", "pacer" }, { "balance", "ratio" }, "|",
-    { "causes", "causes" }, { "rules", "cause_rules" }, { "scan", "cause_scan" }, { "scan_budget", "cause_budget" }, "|",
-    { "published", "pub" }, { "limiter", "csq_bucket" }, "|",
-    { "handlers", "_get_csq_tried" }, { "rules", "csq_rules" }, { "scan", "csq_scan" }, { "action", "csq_action" }, "|",
-    { "executed", "consequences" },
-}
 
 local function _resolve_field(counters, field)
     if field == "_get_csq_tried" then return _get_csq_tried(counters) end
@@ -172,11 +145,6 @@ local function _log_dump(minutes)
     ap_core_debug.info("%s", _format_line("[STATS] /MIN RADIANT: ", _R_FIELDS, r, minutes))
     ap_core_debug.info("%s", _format_line("[STATS] /MIN REACTIVE: ", _X_FIELDS, x, minutes))
 end
-
--- Snapshot ring for sliding-window rates (7 slots x 10s = 60s span): the overlay reads counter DELTAS vs the oldest snapshot, so it shows the last minute.
-local HIST_SLOTS = 7
-local _hist = {}
-local _hist_pos = 0
 
 _reset_history = function()
     for slot = 1, HIST_SLOTS do _hist[slot] = nil end
@@ -242,114 +210,6 @@ local function _on_visibility_timer()
     ResetTimeEvent("ap_stats", "vis", 2)
 end
 
--- _ROWS layout schema: { type, label, field, field_x, denom, rate, pct, loss }; type paints the row, loss adds red on a refusal.
-local _ROWS = {
-    { type = "section", label = "INCOMING" },
-    { type = "input",  label = "events",      field = "events", rate = "r" },
-    { type = "input",  label = "  changed",   field = "sweep_changes",    field_x = false, denom = "events", pct = "r" },
-    { type = "input",  label = "  turn",      field = "sweep_keepalives", field_x = false, denom = "events", pct = "r" },
-    { type = "section", label = "DENIED" },
-    { type = "filter", label = "window",      field = "deny_budget", field_x = false,      denom = "events", pct = "r", loss = true },
-    { type = "filter", label = "protected",   field = "protected",   field_x = false,      denom = "events", pct = "r", loss = true },
-    { type = "filter", label = "throttle",    field = false,         field_x = "pacer",    denom = "events", pct = "x", loss = true },
-    { type = "filter", label = "balance",     field = false,         field_x = "ratio",    denom = "events", pct = "x", loss = true },
-    { type = "section", label = "EVALUATED" },
-    { type = "input",  label = "causes",      field = "causes", rate = "r" },
-    { type = "filter", label = "rules",       field = "cause_rules",  denom = "causes", pct = "rx" },
-    { type = "filter", label = "scan",        field = "cause_scan",   denom = "causes", pct = "rx" },
-    { type = "filter", label = "scan budget", field = "cause_budget", denom = "causes", pct = "rx" },
-    { type = "section", label = "OUTCOME" },
-    { type = "output", label = "published",   field = "pub", rate = "r" },
-    { type = "filter", label = "limiter",     field = "csq_bucket", denom = "pub", pct = "rx", loss = true },
-    { type = "output", label = "handlers",    field = "_get_csq_tried", rate = "r" },
-    { type = "filter", label = "rules",       field = "csq_rules",  denom = "_get_csq_tried", pct = "rx" },
-    { type = "filter", label = "scan",        field = "csq_scan",   denom = "_get_csq_tried", pct = "rx" },
-    { type = "filter", label = "action",      field = "csq_action", denom = "_get_csq_tried", pct = "rx" },
-    { type = "output", label = "executed",    field = "consequences", rate = "r" },
-}
-
-local ROW_H = 14
-local LABEL_W = 74
-local VAL_W = 52
-local EXTRA_W = 46
-local TOTAL_W = LABEL_W + VAL_W * 2 + EXTRA_W
--- Layout: row 0 = elapsed, row 1 = column header (radiant/reactive), rows 2.. = data
-local NUM_HEADER_ROWS = 2
-local PANEL_H = (#_ROWS + NUM_HEADER_ROWS) * ROW_H + 4
-
--- Position presets: { x, y }
-local MARGIN = 15
-local CENTER_Y = (768 - PANEL_H) / 2
-local _POSITIONS = {
-    top_left      = { MARGIN, MARGIN },
-    top_right     = { 1024 - TOTAL_W - MARGIN, MARGIN },
-    center_left   = { MARGIN, CENTER_Y },
-    center_right  = { 1024 - TOTAL_W - MARGIN, CENTER_Y },
-    bottom_left   = { MARGIN, 768 - PANEL_H - MARGIN },
-    bottom_right  = { 1024 - TOTAL_W - MARGIN, 768 - PANEL_H - MARGIN },
-}
-
-class "UIStatsHUD" (CUIScriptWnd)
-
-function UIStatsHUD:__init() super()
-    self:SetAutoDelete(true)
-    local pos = _POSITIONS[cfg.statistics_position] or _POSITIONS.center_right
-    self:SetWndPos(vector2():set(pos[1], pos[2]))
-    self:SetWndSize(vector2():set(TOTAL_W, PANEL_H))
-
-    local xml = CScriptXmlInit()
-    xml:ParseFile("ui_ap_stats.xml")
-
-    local clr_cream = GetARGB(230, 212, 201, 168)
-    local clr_green = GetARGB(240, 160, 220, 160)
-    local clr_red   = GetARGB(230, 210, 110, 100)
-    self._clr_cream = clr_cream
-    self._clr_red = clr_red
-
-    self._elapsed = self:_build_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_cream)
-
-    local hdr_y = ROW_H + 2
-    self:_build_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
-    self:_build_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
-    self:_build_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
-
-    self._entries = {}
-    for row_idx = 1, #_ROWS do
-        local row = _ROWS[row_idx]
-        local row_y = (row_idx + 1) * ROW_H + 2
-        self:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
-    end
-end
-
--- Build one overlay row: a section header line, or label + two value cells + extra cell.
-function UIStatsHUD:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
-    if row.type == "section" then
-        self:_build_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
-        return
-    end
-    local value_clr = clr_cream
-    if row.type == "output" then value_clr = clr_green
-    elseif row.loss then value_clr = clr_red end
-    self:_build_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
-    local val_r = self:_build_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)
-    local val_x = self:_build_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", value_clr)
-    local extra = self:_build_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_cream)
-    self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
-        field = row.field, field_x = row.field_x, row_type = row.type,
-        denom = row.denom, rate = row.rate, pct = row.pct, loss = row.loss }
-end
-
-function UIStatsHUD:__finalize() end
-
-function UIStatsHUD:_build_text(xml, px, py, pw, text, color)
-    local st = xml:InitStatic("line", self)
-    st:SetWndPos(vector2():set(px, py))
-    st:SetWndSize(vector2():set(pw, ROW_H))
-    st:TextControl():SetText(text)
-    st:TextControl():SetTextColor(color)
-    return st
-end
-
 local function _get_value(entry, counters, is_x)
     if is_x and entry.field_x == false then return "-" end
     if not is_x and entry.field == false then return "-" end
@@ -383,29 +243,6 @@ local function _build_extra_text(entry, session_minutes)
     local blocked, denom = _compute_pct_deltas(entry, session_minutes)
     if denom <= 0 or blocked <= 0 then return "" end
     return string_format("%d%%", blocked * 100 / denom)
-end
-
-function UIStatsHUD:update_display(minutes, elapsed_sec)
-    local hours = math_floor(elapsed_sec / 3600)
-    local mins = math_floor((elapsed_sec % 3600) / 60)
-    local secs = math_floor(elapsed_sec % 60)
-    self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", hours, mins, secs))
-    for i = 1, #self._entries do
-        self:_update_row(self._entries[i], minutes)
-    end
-end
-
--- Refresh one row's cells.
--- A nonzero LOSS percentage is the go-look signal: red only when it means something.
-function UIStatsHUD:_update_row(entry, minutes)
-    entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
-    entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
-    local extra = _build_extra_text(entry, minutes)
-    local extra_ctl = entry.extra:TextControl()
-    extra_ctl:SetText(extra)
-    if entry.loss then
-        extra_ctl:SetTextColor(extra ~= "" and self._clr_red or self._clr_cream)
-    end
 end
 
 local function _start_collecting()
@@ -482,6 +319,170 @@ local function _on_first_update()
     _was_enabled = is_enabled()
     if _was_counters then _start_collecting() end
     if _was_enabled then _show_hud() end
+end
+
+--- Check if the statistics overlay is active.
+--- @cost O(1) | 0 luabind
+function is_enabled()
+    return cfg.statistics_position ~= "off"
+end
+
+--- Check if counter collection is active (overlay on or debug on).
+--- @cost O(1) | 0 luabind
+function is_collecting()
+    return cfg.statistics_position ~= "off" or _debug_enabled()
+end
+
+--- Classify a predicate (cause-side) non-publishing result into the appropriate counter.
+--- Routes by code/reason: FAILED_SCAN -> cause_scan, BUDGET_EXHAUSTED -> cause_budget, else -> cause_rules.
+--- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
+--- @cost O(1) | 0 luabind
+--- @param result table { code, reason }
+--- @param is_radiant boolean
+function update_cause_stats(result, is_radiant)
+    local counters = is_radiant and r or x
+    if result.code == RESULT.FAILED_SCAN then
+        counters.cause_scan = counters.cause_scan + 1
+    elseif result.reason == REASON.BUDGET_EXHAUSTED then
+        counters.cause_budget = counters.cause_budget + 1
+    else
+        counters.cause_rules = counters.cause_rules + 1
+    end
+end
+
+--- Classify a consequence handler result into the appropriate counter.
+--- Routes by code: SUCCESS -> consequences, FAILED_SCAN -> csq_scan, FAILED_ACTION -> csq_action, else -> csq_rules.
+--- @safety SAFE - reads two fields off a table and bumps a counter, no luabind
+--- @cost O(1) | 0 luabind
+--- @param result table { code, reason }
+--- @param is_radiant boolean
+function update_csq_stats(result, is_radiant)
+    local counters = is_radiant and r or x
+    local code = result.code
+    if code == RESULT.SUCCESS then
+        counters.consequences = counters.consequences + 1
+    elseif code == RESULT.FAILED_SCAN then
+        counters.csq_scan = counters.csq_scan + 1
+    elseif code == RESULT.FAILED_ACTION then
+        counters.csq_action = counters.csq_action + 1
+    else
+        counters.csq_rules = counters.csq_rules + 1
+    end
+end
+
+--- Increment the per-consequence token-bucket block counter.
+--- Called when the consumer's per-consequence token bucket exhausts; the handler never ran.
+--- @safety SAFE - one counter increment on a module table
+--- @cost O(1) | 0 luabind
+--- @param is_radiant boolean
+function update_bucket_stat(is_radiant)
+    local counters = is_radiant and r or x
+    counters.csq_bucket = counters.csq_bucket + 1
+end
+
+--- Increment the global radiant cap block counter.
+--- Called when the consumer's global radiant cap exhausts; radiant-only by construction.
+--- @safety SAFE - one counter increment on a module table
+--- @cost O(1) | 0 luabind
+function update_cap_stat()
+    r.csq_cap = r.csq_cap + 1
+end
+
+--- Increment the publish counter (called from the producer on cause publish).
+--- Counts predicate-side successes (the cause emitted), unlike causes which counts every predicate run.
+--- @safety SAFE - one counter increment on a module table
+--- @cost O(1) | 0 luabind
+--- @param cause_type string CAUSE_TYPE.RADIANT or CAUSE_TYPE.REACTIVE
+function update_publish_stat(cause_type)
+    if cause_type == CAUSE_TYPE.RADIANT then
+        r.pub = r.pub + 1
+    else
+        x.pub = x.pub + 1
+    end
+end
+
+class "UIStatsHUD" (CUIScriptWnd)
+
+function UIStatsHUD:__init() super()
+    self:SetAutoDelete(true)
+    local pos = _POSITIONS[cfg.statistics_position] or _POSITIONS.center_right
+    self:SetWndPos(vector2():set(pos[1], pos[2]))
+    self:SetWndSize(vector2():set(TOTAL_W, PANEL_H))
+
+    local xml = CScriptXmlInit()
+    xml:ParseFile("ui_ap_stats.xml")
+
+    local clr_cream = GetARGB(230, 212, 201, 168)
+    local clr_green = GetARGB(240, 160, 220, 160)
+    local clr_red   = GetARGB(230, 210, 110, 100)
+    self._clr_cream = clr_cream
+    self._clr_red = clr_red
+
+    self._elapsed = self:_build_text(xml, 0, 2, TOTAL_W, "Elapsed: 00:00:00", clr_cream)
+
+    local hdr_y = ROW_H + 2
+    self:_build_text(xml, LABEL_W, hdr_y, VAL_W, "radiant", clr_cream)
+    self:_build_text(xml, LABEL_W + VAL_W, hdr_y, VAL_W, "reactive", clr_cream)
+    self:_build_text(xml, LABEL_W + VAL_W * 2, hdr_y, EXTRA_W, "last 60s", clr_cream)
+
+    self._entries = {}
+    for row_idx = 1, #_ROWS do
+        local row = _ROWS[row_idx]
+        local row_y = (row_idx + 1) * ROW_H + 2
+        self:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
+    end
+end
+
+-- Build one overlay row: a section header line, or label + two value cells + extra cell.
+function UIStatsHUD:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
+    if row.type == "section" then
+        self:_build_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
+        return
+    end
+    local value_clr = clr_cream
+    if row.type == "output" then value_clr = clr_green
+    elseif row.loss then value_clr = clr_red end
+    self:_build_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
+    local val_r = self:_build_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)
+    local val_x = self:_build_text(xml, LABEL_W + VAL_W, row_y, VAL_W, "0", value_clr)
+    local extra = self:_build_text(xml, LABEL_W + VAL_W * 2, row_y, EXTRA_W, "", clr_cream)
+    self._entries[#self._entries + 1] = { val_r = val_r, val_x = val_x, extra = extra,
+        field = row.field, field_x = row.field_x, row_type = row.type,
+        denom = row.denom, rate = row.rate, pct = row.pct, loss = row.loss }
+end
+
+function UIStatsHUD:__finalize() end
+
+function UIStatsHUD:_build_text(xml, px, py, pw, text, color)
+    local st = xml:InitStatic("line", self)
+    st:SetWndPos(vector2():set(px, py))
+    st:SetWndSize(vector2():set(pw, ROW_H))
+    st:TextControl():SetText(text)
+    st:TextControl():SetTextColor(color)
+    return st
+end
+
+function UIStatsHUD:update_display(minutes, elapsed_sec)
+    local hours = math_floor(elapsed_sec / 3600)
+    local mins = math_floor((elapsed_sec % 3600) / 60)
+    local secs = math_floor(elapsed_sec % 60)
+    self._elapsed:TextControl():SetText(string_format("Elapsed: %02d:%02d:%02d", hours, mins, secs))
+    for i = 1, #self._entries do
+        self:_update_row(self._entries[i], minutes)
+    end
+end
+
+-- Refresh one row's cells.
+-- A nonzero LOSS percentage is the go-look signal: red only when it means something.
+function UIStatsHUD:_update_row(entry, minutes)
+    entry.val_r:TextControl():SetText(tostring(_get_value(entry, r, false)))
+    entry.val_x:TextControl():SetText(tostring(_get_value(entry, x, true)))
+    local extra = _build_extra_text(entry, minutes)
+    local extra_ctl = entry.extra:TextControl()
+    extra_ctl:SetText(extra)
+    if entry.loss then
+        extra_ctl:SetTextColor(extra ~= "" and self._clr_red or self._clr_cream)
+    end
 end
 
 function on_game_start()
