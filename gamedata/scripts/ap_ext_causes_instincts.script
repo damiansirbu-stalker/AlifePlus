@@ -27,6 +27,7 @@ local _alignment_mutant_predator = ap_ext_const.alignment_mutant_predator
 local _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
 local _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
 local _scatter_from = ap_ext_const.SCATTER_FROM
+local _is_field_smart = ap_ext_util.is_field_smart
 
 -- alignment subsets for slumber answers (predator covered by both lair + surge)
 local _alignment_lair = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
@@ -60,8 +61,6 @@ local function _shuffle_causes()
         if j ~= i then CAUSES[i], CAUSES[j] = CAUSES[j], CAUSES[i] end
     end
 end
-
-local _is_field_smart = ap_ext_util.is_field_smart
 
 local function _create_territory_filter(player_id)
     return function(smart)

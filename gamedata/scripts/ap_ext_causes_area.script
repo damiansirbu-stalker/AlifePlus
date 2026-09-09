@@ -48,6 +48,10 @@ local _personality_infest  = { PERSONALITY.TERRITORY, PERSONALITY.SURVIVAL }
 local _is_field_smart = ap_ext_util.is_field_smart
 local _is_last_faction_smart = ap_ext_util.is_last_faction_smart
 
+-- Level census (saturation gate): per-level squad counts by community from ap_core_cache, rebuilt after CENSUS_TTL_SEC (os.clock); nil census passes.
+local CENSUS_TTL_SEC = 600
+local _census = {}
+
 -- Human-only, no can_accept_faction: engine job assignment self-rejects a mismatched stalker community on arrival (release_no_jobs).
 -- is_taken skips smarts under a live mutation, except this faction's own conquest (which refreshes); takeovers end by decay.
 local function _build_conquer_filter(player_id)
@@ -99,10 +103,6 @@ local function _resolve_infest_filter(species, player_id)
     if _alignment_mutant_aberrant[species] then return _create_surge_filter(player_id) end
     return nil
 end
-
--- Level census (saturation gate): per-level squad counts by community from ap_core_cache, rebuilt after CENSUS_TTL_SEC (os.clock); nil census passes.
-local CENSUS_TTL_SEC = 600
-local _census = {}
 
 -- @cost O(squads on level) | 1 luabind medium (alife_object) per squad, once per level per TTL
 local function _build_census(level_id)
