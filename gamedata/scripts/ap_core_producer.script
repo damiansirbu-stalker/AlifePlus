@@ -87,7 +87,7 @@ local function _check_reactive_pacer(callback_type)
 end
 
 
-local function _find_handler_index_by_handler(entries, handler)
+local function _find_handler_index(entries, handler)
     for i = 1, #entries do
         if entries[i].handler == handler then return i end
     end
@@ -206,7 +206,7 @@ local function _on_radiant(squad, changed)
             sr.sweep_keepalives = sr.sweep_keepalives + 1
         end
     end
-    if not ap_core_limiter.check_global_consequence_rate_limit() then
+    if not ap_core_limiter.check_global_rate_limit() then
         ap_core_debug.debug("[PRODUCER.RADIANT] BUDGET_DENIED sq=%s", squad.id)
         if sc then sr.deny_budget = sr.deny_budget + 1 end
         return
@@ -335,7 +335,7 @@ function register(config, handler)
         _handlers[callback] = {}
     end
     local entries = _handlers[callback]
-    local existing_idx = _find_handler_index_by_handler(entries, handler)
+    local existing_idx = _find_handler_index(entries, handler)
     local entry = { handler = handler, cause_type = cause_type, category = category, name = name, log_prefix = ap_core_debug.format_bracket(name) }
     entries[existing_idx or #entries + 1] = entry
     if cause_type == CAUSE_TYPE.RADIANT then

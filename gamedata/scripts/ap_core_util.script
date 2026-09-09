@@ -271,7 +271,7 @@ end
 --- @cost O(n) entries | 0 luabind (pure Lua table walk)
 --- @param smart smart_terrain
 --- @return game_object|nil
-function get_service_npc_at_smart(smart)
+function get_smart_service_npc(smart)
     if not smart then return nil end
     for i = 1, #SERVICE_ROLES do
         local npc = _get_role_at_smart(smart, SERVICE_ROLES[i])
@@ -284,7 +284,7 @@ end
 --- @cost O(n) entries | 0 luabind (pure Lua table walk)
 --- @param smart smart_terrain
 --- @return boolean
-function has_service_npc_at_smart(smart)
+function has_smart_service_npc(smart)
     if not smart then return false end
     for i = 1, #SERVICE_ROLES do
         if _has_role_at_smart(smart, SERVICE_ROLES[i]) then return true end
@@ -297,7 +297,7 @@ end
 --- @cost O(1) | 0 luabind
 --- @param smart smart_terrain
 --- @return boolean
-function has_peer_squad_at_smart(smart)
+function has_smart_peer_squad(smart)
     if not smart then return false end
     return not xsmart.is_smart_empty(smart.id)
 end
@@ -309,7 +309,7 @@ end
 --- @param exclude_squad_id number|nil Arriving squad id whose members are skipped
 --- @param community string|nil Arriving squad community; nil skips the faction gate (any non-enemy peer)
 --- @return game_object|nil Online same-faction stalker peer, or nil if none present
-function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
+function get_smart_peer_stalker(smart, exclude_squad_id, community)
     if not smart or not smart.npc_info then return nil end
     for npc_id in pairs(smart.npc_info) do
         local squad = xsquad.get_member_squad(npc_id)

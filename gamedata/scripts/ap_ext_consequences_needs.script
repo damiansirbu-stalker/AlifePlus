@@ -24,7 +24,7 @@ local function _on_arrive_action_trade(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
-    local trader_go = ap_core_util.get_service_npc_at_smart(smart_se)
+    local trader_go = ap_core_util.get_smart_service_npc(smart_se)
     if not trader_go then
         ap_core_debug.debug("%s arrive trade: no service NPC online at smart=%d", args.log_prefix, args.dst_smart_id)
         return
@@ -42,7 +42,7 @@ local function _on_arrive_action_barter(tid, visitor_go, args)
     local dbg = ap_core_debug.is_enabled()
     local smart_se = args.dst_smart_id and xobject.get_se(args.dst_smart_id)
     if not smart_se then return end
-    local peer_go = ap_core_util.get_peer_stalker_at_smart(smart_se, args.squad_id, xcreature.get_community(visitor_go))
+    local peer_go = ap_core_util.get_smart_peer_stalker(smart_se, args.squad_id, xcreature.get_community(visitor_go))
     if not peer_go then
         ap_core_debug.debug("%s arrive barter: no stalker peer online at smart=%d", args.log_prefix, args.dst_smart_id)
         return

@@ -110,7 +110,7 @@ end
 
 --- Check global consequence rate limit (true = allowed, false = max events reached in window).
 --- @cost O(1) | 0 luabind
-function check_global_consequence_rate_limit()
+function check_global_rate_limit()
     local counter = _get_global_consequence_counter()
     return counter:get_count(_GLOBAL_CONSEQUENCE_RATE_KEY) < cfg.global_consequence_max_events
 end
