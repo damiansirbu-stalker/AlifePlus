@@ -80,7 +80,7 @@ local function _create_surge_filter(player_id)
     end
 end
 
-local function _create_territory_or_lair_filter(player_id)
+local function _create_roam_filter(player_id)
     return function(smart)
         return (xsmart.is_territory(smart) or xsmart.is_lair(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
     end
@@ -312,7 +312,7 @@ function on_game_start()
           personality = { PERSONALITY.SURVIVAL } },
         { cause = CAUSE.ROAM, name = "roam", drive = "roam",
           alignment = xtable.merge(_alignment_mutant_cowardly, _alignment_mutant_feral, _alignment_mutant_predator),
-          make_filter = function(sq) return _create_territory_or_lair_filter(sq.player_id) end,
+          make_filter = function(sq) return _create_roam_filter(sq.player_id) end,
           find_opts = function(sq) return { max_distance = RANGE_SCENT, exclude_id = sq.smart_id } end,
           personality = { PERSONALITY.PERCEPTION, PERSONALITY.TERRITORY } },
         { cause = CAUSE.PACK, name = "pack", drive = "pack",
