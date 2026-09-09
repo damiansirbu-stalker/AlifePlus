@@ -84,6 +84,75 @@ local function _register_kill(killer_id, victim_id)
     return new
 end
 
+--- Move alpha to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC).
+local function _unregister_alpha(id)
+    if not id then return false end
+    local data = _ap_alphas[id]
+    if not data then return false end
+    _ap_alpha_dead:set(id, data)
+    _ap_alphas[id] = nil
+    ap_core_debug.debug("[TRACKER] _unregister_alpha: id=%d level=%d (dead)", id, data.level or 0)
+    return true
+end
+
+--- Unregister entity from all tracking (on death or unregister).
+local function _unregister_entity(id)
+    if not id then return end
+    local had_kills = _ap_killers[id] ~= nil
+    local had_alpha = _unregister_alpha(id)
+    _ap_killers[id] = nil
+    if had_kills or had_alpha then
+        ap_core_debug.debug("[TRACKER] _unregister_entity: id=%d kills=%s alpha=%s",
+            id, tostring(had_kills), tostring(had_alpha))
+    end
+end
+
+local function _on_squad_npc_death(squad, npc, killer)
+    local dbg = ap_core_debug.is_enabled()
+    local tmr = xprofiler.new_if(dbg):start()
+    local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
+    local killer_id = ap_core_util.get_entity_id(killer)
+    if killer_id and xcreature.is_npc(killer_id) then
+        _register_kill(killer_id, victim_id)
+    end
+    if victim_id then
+        _unregister_entity(victim_id)
+    end
+    tmr:stop()
+    if dbg then ap_core_debug.debug("[TRACKER] death killer=%s victim=%s [%.2fms]",
+        tostring(killer_id), tostring(victim_id), tmr:get_ms()) end
+end
+
+-- Clear kill/alpha state when an entity despawns without a death event.
+-- Server ids recycle with no grace (id_generator.h), so a leaked entry would hand its count to a new entity.
+local function _on_entity_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    _ap_killers[id] = nil
+    _ap_alphas[id] = nil
+end
+
+-- Drop saved ids that no longer resolve to a stalker or mutant.
+-- Catches leaks past server_entity_on_unregister and ids recycled onto a different entity kind.
+local function _iterate_recycled_ids(map)
+    local dropped = 0
+    for id in pairs(map) do
+        if not xcreature.is_npc(id) then
+            map[id] = nil
+            dropped = dropped + 1
+        end
+    end
+    return dropped
+end
+
+local function _on_game_load()
+    local dropped_killers = _iterate_recycled_ids(_ap_killers)
+    local dropped_alphas = _iterate_recycled_ids(_ap_alphas)
+    if dropped_killers > 0 or dropped_alphas > 0 then
+        ap_core_debug.info("[TRACKER] load_sweep: dropped killers=%d alphas=%d", dropped_killers, dropped_alphas)
+    end
+end
+
 --- Projected kill count inclusive of a pending death (order-independent of _register_kill).
 function get_projected_kill_count(killer_id, victim_id)
     if not killer_id or killer_id == xconst.ACTOR_ENTITY_ID then return 0 end
@@ -133,32 +202,9 @@ function update_alpha(id, data)
     return _ap_alphas[id]
 end
 
---- Move alpha to dead table (data persists for cause queries, auto-expires after DEAD_GRACE_SEC).
-local function _unregister_alpha(id)
-    if not id then return false end
-    local data = _ap_alphas[id]
-    if not data then return false end
-    _ap_alpha_dead:set(id, data)
-    _ap_alphas[id] = nil
-    ap_core_debug.debug("[TRACKER] _unregister_alpha: id=%d level=%d (dead)", id, data.level or 0)
-    return true
-end
-
 --- Get all alive alphas as {id = data}.
 function get_alphas()
     return xtable.clone(_ap_alphas)
-end
-
---- Unregister entity from all tracking (on death or unregister).
-local function _unregister_entity(id)
-    if not id then return end
-    local had_kills = _ap_killers[id] ~= nil
-    local had_alpha = _unregister_alpha(id)
-    _ap_killers[id] = nil
-    if had_kills or had_alpha then
-        ap_core_debug.debug("[TRACKER] _unregister_entity: id=%d kills=%s alpha=%s",
-            id, tostring(had_kills), tostring(had_alpha))
-    end
 end
 
 function get_stalker_needs(squad_id)
@@ -184,7 +230,6 @@ function reset_stalker_need(squad_id, key, now)
     dto[key] = now
     return true
 end
-
 
 function get_mutant_instincts(squad_id)
     if not squad_id then return nil end
@@ -241,52 +286,6 @@ function reset_squad_opportunity(squad_id, key, now)
     if not dto then return false end
     dto[key] = now
     return true
-end
-
-local function _on_squad_npc_death(squad, npc, killer)
-    local dbg = ap_core_debug.is_enabled()
-    local tmr = xprofiler.new_if(dbg):start()
-    local victim_id = npc and (type(npc.id) == "function" and npc:id() or npc.id)
-    local killer_id = ap_core_util.get_entity_id(killer)
-    if killer_id and xcreature.is_npc(killer_id) then
-        _register_kill(killer_id, victim_id)
-    end
-    if victim_id then
-        _unregister_entity(victim_id)
-    end
-    tmr:stop()
-    if dbg then ap_core_debug.debug("[TRACKER] death killer=%s victim=%s [%.2fms]",
-        tostring(killer_id), tostring(victim_id), tmr:get_ms()) end
-end
-
--- Clear kill/alpha state when an entity despawns without a death event.
--- Server ids recycle with no grace (id_generator.h), so a leaked entry would hand its count to a new entity.
-local function _on_entity_unregister(se_obj)
-    if not se_obj then return end
-    local id = se_obj.id
-    _ap_killers[id] = nil
-    _ap_alphas[id] = nil
-end
-
--- Drop saved ids that no longer resolve to a stalker or mutant.
--- Catches leaks past server_entity_on_unregister and ids recycled onto a different entity kind.
-local function _iterate_recycled_ids(map)
-    local dropped = 0
-    for id in pairs(map) do
-        if not xcreature.is_npc(id) then
-            map[id] = nil
-            dropped = dropped + 1
-        end
-    end
-    return dropped
-end
-
-local function _on_game_load()
-    local dropped_killers = _iterate_recycled_ids(_ap_killers)
-    local dropped_alphas = _iterate_recycled_ids(_ap_alphas)
-    if dropped_killers > 0 or dropped_alphas > 0 then
-        ap_core_debug.info("[TRACKER] load_sweep: dropped killers=%d alphas=%d", dropped_killers, dropped_alphas)
-    end
 end
 
 function on_game_start()
