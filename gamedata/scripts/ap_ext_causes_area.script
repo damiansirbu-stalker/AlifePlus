@@ -76,21 +76,21 @@ local function _create_swarm_filter(player_id, species)
     end
 end
 
-local function _create_lair_filter(player_id)
+local function _create_feral_filter(player_id)
     return function(smart)
         return xsmart.is_lair(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
-local function _create_surge_filter(player_id)
+local function _create_aberrant_filter(player_id)
     return function(smart)
         return xsmart.has_surge_shelter(smart) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
     end
 end
 
-local function _create_lair_or_surge_filter(player_id)
+local function _create_predator_filter(player_id)
     return function(smart)
         return (xsmart.is_lair(smart) or xsmart.has_surge_shelter(smart)) and _is_field_smart(smart) and xsmart.can_accept_faction(smart, player_id)
             and not _is_last_faction_smart(smart)
@@ -98,9 +98,9 @@ local function _create_lair_or_surge_filter(player_id)
 end
 
 local function _resolve_infest_filter(species, player_id)
-    if _alignment_mutant_feral[species]    then return _create_lair_filter(player_id) end
-    if _alignment_mutant_predator[species] then return _create_lair_or_surge_filter(player_id) end
-    if _alignment_mutant_aberrant[species] then return _create_surge_filter(player_id) end
+    if _alignment_mutant_feral[species]    then return _create_feral_filter(player_id) end
+    if _alignment_mutant_predator[species] then return _create_predator_filter(player_id) end
+    if _alignment_mutant_aberrant[species] then return _create_aberrant_filter(player_id) end
     return nil
 end
 
