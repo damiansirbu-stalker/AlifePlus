@@ -12,21 +12,21 @@ local DEMONIZED_MIN_VERSION = 20250908
 local DEMONIZED_URL = "https://github.com/themrdemonized/xray-monolith"
 local AOENGINE_URL  = "https://github.com/Mirrowel/AOEngine-Assets"
 
---- @return string Version string
-function get_version()
-    return _VERSION
-end
-
 -- Build this release is tested against, raised every release (stalker-compatibility.md).
 local TARGET_DEMONIZED = 20260809
+
+-- AOE is judged as an engine frozen at this build (stalker-compatibility.md).
+local AOE_BASELINE_BUILD = 20250908
 
 -- xray-monolith build (YYYYMMDD) as the themrdemonized tag style, no zero padding (20260722 -> "2026.7.22").
 local function _build_tag(build)
     return math_floor(build / 10000) .. "." .. (math_floor(build / 100) % 100) .. "." .. (build % 100)
 end
 
--- AOE is judged as an engine frozen at this build (stalker-compatibility.md).
-local AOE_BASELINE_BUILD = 20250908
+--- @return string Version string
+function get_version()
+    return _VERSION
+end
 
 -- Platform status line and verdict for the boot log and the MCM footer.
 function platform_status()

@@ -8,6 +8,115 @@ local ap_core_debug, ap_core_broker, ap_core_cache = ap_core_debug, ap_core_brok
 local VERDICT = ap_core_const.VERDICT
 local REASON = ap_core_const.REASON
 
+local SERVICE_ROLES = { "trader", "medic", "mechanic" }
+
+--- Dynamic-walk dispatch tables for the role resolvers (smart.npc_info roster, online-only).
+local _DYN_GET = {
+    trader   = function(s) return xsmart.get_smart_trader(s)   end,
+    medic    = function(s) return xsmart.get_smart_medic(s)    end,
+    mechanic = function(s) return xsmart.get_smart_mechanic(s) end,
+}
+
+local _DYN_HAS = {
+    trader   = function(s) return xsmart.has_smart_trader(s)   end,
+    medic    = function(s) return xsmart.has_smart_medic(s)    end,
+    mechanic = function(s) return xsmart.has_smart_mechanic(s) end,
+}
+
+local function _format_factions(factions)
+    if not factions then return "any" end
+    if type(factions) == "string" then return factions end
+    local keys = {}
+    for k in pairs(factions) do keys[#keys + 1] = tostring(k) end
+    return #keys > 0 and table_concat(keys, ",") or "empty"
+end
+
+--- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth); nil for offline smarts.
+--- Arrival trade always runs online, so the online answer is what matters.
+--- @param smart smart_terrain
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return game_object|nil Online live NPC of this role at this smart, or nil
+local function _get_role_at_smart(smart, role)
+    if not smart then return nil end
+    return _DYN_GET[role] and _DYN_GET[role](smart)
+end
+
+--- Boolean predicate. Dynamic walk (online truth); false for offline smarts.
+--- @param smart smart_terrain
+--- @param role string "trader" | "medic" | "mechanic"
+--- @return boolean
+local function _has_role_at_smart(smart, role)
+    if not smart then return false end
+    return _DYN_HAS[role] and _DYN_HAS[role](smart) or false
+end
+
+-- CHASE LEASH: compute_chase decides KEEP/PAUSE/RELEASE from small offline-safe predicates.
+
+local function _is_actor_chase(entry)
+    return entry.target_squad_id == nil
+end
+
+local function _get_chase_target_se(entry)
+    return entry.target_squad_id and xobject.get_se(entry.target_squad_id)
+end
+
+-- RELEASE: target squad gone or wiped (N/A for the actor -- always present).
+local function _is_target_lost(entry)
+    if _is_actor_chase(entry) then return false end
+    local target = _get_chase_target_se(entry)
+    if not target then return true end
+    return target:npc_count() <= 0
+end
+
+-- RELEASE: chaser faction is no longer an enemy of the target faction.
+-- Only opted-in chases (entry.check_relation, set by faction-vs-faction consequences) check this; mutant chases never do.
+local function _is_no_longer_enemy(squad, entry)
+    if not entry.check_relation then return false end
+    local chaser_faction = squad.player_id
+    if not chaser_faction then return false end
+    local target_faction
+    if _is_actor_chase(entry) then
+        target_faction = get_actor_true_community()
+    else
+        local target = _get_chase_target_se(entry)
+        target_faction = target and target.player_id
+    end
+    if not target_faction then return false end
+    return not game_relations.is_factions_enemies(chaser_faction, target_faction)
+end
+
+-- RELEASE: target is a story-protected NPC/squad (never chase quest-critical; N/A for actor).
+local function _is_target_story_protected(entry)
+    if _is_actor_chase(entry) then return false end
+    return xobject.is_story(_get_chase_target_se(entry))
+end
+
+-- RELEASE: chaser and target are on different maps; chases never leave their map, so a transitioning target is left behind.
+-- Stateless: compares the two live levels, no stored scope/home.
+local function _is_target_off_map(squad, entry)
+    local chaser_level = xlevel.get_level_id(squad)
+    if not chaser_level then return false end
+    local target_level
+    if _is_actor_chase(entry) then
+        target_level = xlevel.get_actor_level()
+    else
+        target_level = xlevel.get_level_id(_get_chase_target_se(entry))
+    end
+    return target_level ~= nil and target_level ~= chaser_level
+end
+
+-- PAUSE: target reached a base (safe haven). Actor -> actor's nearest smart; squad -> its smart.
+local function _is_target_in_base(entry)
+    local smart
+    if _is_actor_chase(entry) then
+        smart = xsmart.get_actor_smart()
+    else
+        local target = _get_chase_target_se(entry)
+        smart = target and target.smart_id and xobject.get_se(target.smart_id)
+    end
+    return smart ~= nil and xsmart.is_base(smart)
+end
+
 --- Subscribe to an event with logging.
 --- @cost O(1) | 0 luabind
 function subscribe_event(event_name, callback, subscriber_name)
@@ -51,14 +160,6 @@ function get_entity_id(obj)
     local id = type(obj.id) == "function" and obj:id() or obj.id
     if not id or id == xconst.INVALID_ENTITY_ID then return nil end
     return id
-end
-
-local function _format_factions(factions)
-    if not factions then return "any" end
-    if type(factions) == "string" then return factions end
-    local keys = {}
-    for k in pairs(factions) do keys[#keys + 1] = tostring(k) end
-    return #keys > 0 and table_concat(keys, ",") or "empty"
 end
 
 --- Find squads, excluding AP-scripted squads before luabind; opts is not mutated.
@@ -165,40 +266,6 @@ function find_first_smart(opts)
     return xsmart.find_first_smart(local_opts)
 end
 
---- Dynamic-walk dispatch tables for the role resolvers (smart.npc_info roster, online-only).
-local _DYN_GET = {
-    trader   = function(s) return xsmart.get_smart_trader(s)   end,
-    medic    = function(s) return xsmart.get_smart_medic(s)    end,
-    mechanic = function(s) return xsmart.get_smart_mechanic(s) end,
-}
-
-local _DYN_HAS = {
-    trader   = function(s) return xsmart.has_smart_trader(s)   end,
-    medic    = function(s) return xsmart.has_smart_medic(s)    end,
-    mechanic = function(s) return xsmart.has_smart_mechanic(s) end,
-}
-
---- Resolve a service NPC at a smart by role via the dynamic walk (smart.npc_info, online truth); nil for offline smarts.
---- Arrival trade always runs online, so the online answer is what matters.
---- @param smart smart_terrain
---- @param role string "trader" | "medic" | "mechanic"
---- @return game_object|nil Online live NPC of this role at this smart, or nil
-local function _get_role_at_smart(smart, role)
-    if not smart then return nil end
-    return _DYN_GET[role] and _DYN_GET[role](smart)
-end
-
---- Boolean predicate. Dynamic walk (online truth); false for offline smarts.
---- @param smart smart_terrain
---- @param role string "trader" | "medic" | "mechanic"
---- @return boolean
-local function _has_role_at_smart(smart, role)
-    if not smart then return false end
-    return _DYN_HAS[role] and _DYN_HAS[role](smart) or false
-end
-
-local SERVICE_ROLES = { "trader", "medic", "mechanic" }
-
 --- Any service NPC (trader / medic / mechanic) at smart.
 --- Tries roles in priority order so trader wins when multiple are present.
 --- @cost O(n) entries | 0 luabind (pure Lua table walk)
@@ -253,73 +320,6 @@ function get_peer_stalker_at_smart(smart, exclude_squad_id, community)
         end
     end
     return nil
-end
-
--- CHASE LEASH: compute_chase decides KEEP/PAUSE/RELEASE from small offline-safe predicates.
-
-local function _is_actor_chase(entry)
-    return entry.target_squad_id == nil
-end
-
-local function _get_chase_target_se(entry)
-    return entry.target_squad_id and xobject.get_se(entry.target_squad_id)
-end
-
--- RELEASE: target squad gone or wiped (N/A for the actor -- always present).
-local function _is_target_lost(entry)
-    if _is_actor_chase(entry) then return false end
-    local target = _get_chase_target_se(entry)
-    if not target then return true end
-    return target:npc_count() <= 0
-end
-
--- RELEASE: chaser faction is no longer an enemy of the target faction.
--- Only opted-in chases (entry.check_relation, set by faction-vs-faction consequences) check this; mutant chases never do.
-local function _is_no_longer_enemy(squad, entry)
-    if not entry.check_relation then return false end
-    local chaser_faction = squad.player_id
-    if not chaser_faction then return false end
-    local target_faction
-    if _is_actor_chase(entry) then
-        target_faction = get_actor_true_community()
-    else
-        local target = _get_chase_target_se(entry)
-        target_faction = target and target.player_id
-    end
-    if not target_faction then return false end
-    return not game_relations.is_factions_enemies(chaser_faction, target_faction)
-end
-
--- RELEASE: target is a story-protected NPC/squad (never chase quest-critical; N/A for actor).
-local function _is_target_story_protected(entry)
-    if _is_actor_chase(entry) then return false end
-    return xobject.is_story(_get_chase_target_se(entry))
-end
-
--- RELEASE: chaser and target are on different maps; chases never leave their map, so a transitioning target is left behind.
--- Stateless: compares the two live levels, no stored scope/home.
-local function _is_target_off_map(squad, entry)
-    local chaser_level = xlevel.get_level_id(squad)
-    if not chaser_level then return false end
-    local target_level
-    if _is_actor_chase(entry) then
-        target_level = xlevel.get_actor_level()
-    else
-        target_level = xlevel.get_level_id(_get_chase_target_se(entry))
-    end
-    return target_level ~= nil and target_level ~= chaser_level
-end
-
--- PAUSE: target reached a base (safe haven). Actor -> actor's nearest smart; squad -> its smart.
-local function _is_target_in_base(entry)
-    local smart
-    if _is_actor_chase(entry) then
-        smart = xsmart.get_actor_smart()
-    else
-        local target = _get_chase_target_se(entry)
-        smart = target and target.smart_id and xobject.get_se(target.smart_id)
-    end
-    return smart ~= nil and xsmart.is_base(smart)
 end
 
 --- Decide whether to keep a chase scripted: RELEASE checks first, then soft PAUSE checks.

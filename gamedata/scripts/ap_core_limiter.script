@@ -5,6 +5,15 @@ local xtime, xttltable = xtime, xttltable
 
 local cfg = ap_core_mcm.cfg
 local CALLBACK = ap_core_const.CALLBACK
+local _GLOBAL_CONSEQUENCE_RATE_KEY = "global_consequence"
+
+local _cause_counter = nil
+local _consequence_limiter = nil
+local _global_consequence_counter = nil
+--- Offmap balance counter (game-sec, persisted): caps offmap dispatches per source level, keyed by level_id only.
+local _offmap_counter = nil
+--- Per-causer reaction counter (game-sec, ephemeral): caps reactive causes per source entity, keyed by causer id only.
+local _causer_counter = nil
 
 local function _get_cause_rate_key(key)
     return "lock:" .. key
@@ -13,9 +22,6 @@ end
 local function _get_consequence_rate_key(name)
     return "lock:" .. name
 end
-
-local _cause_counter = nil
-local _consequence_limiter = nil
 
 local function _get_cause_counter()
     if not _cause_counter then
@@ -31,6 +37,38 @@ local function _get_consequence_limiter()
         _consequence_limiter = xttltable.create_token_bucket({ capacity = 1, rate = max / window })
     end
     return _consequence_limiter
+end
+
+local function _get_global_consequence_counter()
+    if not _global_consequence_counter then
+        _global_consequence_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.GLOBAL_CONSEQUENCE_WINDOW_SEC })
+    end
+    return _global_consequence_counter
+end
+
+local function _get_offmap_rate_key(level_id)
+    return "offmap:" .. tostring(level_id)
+end
+
+local function _get_causer_rate_key(causer_id)
+    return "causer:" .. tostring(causer_id)
+end
+
+local function _on_save_state(m_data)
+    m_data.ap_core_limiter = { offmap_counter = _offmap_counter:get_snapshot() }
+end
+
+local function _on_load_state(m_data)
+    local saved = m_data.ap_core_limiter
+    if type(saved) ~= "table" then return end
+    if type(saved.offmap_counter) == "table" then
+        _offmap_counter:load(saved.offmap_counter)
+    end
+end
+
+local function _on_option_change()
+    if not _consequence_limiter then return end
+    _consequence_limiter:set_rate(cfg.consequence_max_events / ap_core_const.CONSEQUENCE_WINDOW_SEC)
 end
 
 --- Check a per-key cause rate limit (true = allowed, false = blocked).
@@ -70,16 +108,6 @@ function update_consequence_counter(name)
     limiter:get_token(_get_consequence_rate_key(name))
 end
 
-local _GLOBAL_CONSEQUENCE_RATE_KEY = "global_consequence"
-local _global_consequence_counter = nil
-
-local function _get_global_consequence_counter()
-    if not _global_consequence_counter then
-        _global_consequence_counter = xttltable.create_ttl_counter({ ttl = ap_core_const.GLOBAL_CONSEQUENCE_WINDOW_SEC })
-    end
-    return _global_consequence_counter
-end
-
 --- Check global consequence rate limit (true = allowed, false = max events reached in window).
 --- @cost O(1) | 0 luabind
 function check_global_consequence_rate_limit()
@@ -111,13 +139,6 @@ function create_cooldown(expire_ms)
     }
 end
 
---- Offmap balance counter (game-sec, persisted): caps offmap dispatches per source level, keyed by level_id only.
-local _offmap_counter = nil
-
-local function _get_offmap_rate_key(level_id)
-    return "offmap:" .. tostring(level_id)
-end
-
 --- Check offmap balance limit for a source level (true = allowed, false = blocked).
 --- @cost O(1) | 0 luabind
 --- @param level_id number Source map id
@@ -136,13 +157,6 @@ end
 --- @param level_id number Source map id
 function update_offmap_counter(level_id)
     _offmap_counter:add(_get_offmap_rate_key(level_id))
-end
-
---- Per-causer reaction counter (game-sec, ephemeral): caps reactive causes per source entity, keyed by causer id only.
-local _causer_counter = nil
-
-local function _get_causer_rate_key(causer_id)
-    return "causer:" .. tostring(causer_id)
 end
 
 --- Check the per-causer reaction limit (true = allowed, false = blocked).
@@ -166,23 +180,6 @@ end
 function update_causer_counter(causer_id)
     if not causer_id then return end
     _causer_counter:add(_get_causer_rate_key(causer_id))
-end
-
-local function _on_save_state(m_data)
-    m_data.ap_core_limiter = { offmap_counter = _offmap_counter:get_snapshot() }
-end
-
-local function _on_load_state(m_data)
-    local saved = m_data.ap_core_limiter
-    if type(saved) ~= "table" then return end
-    if type(saved.offmap_counter) == "table" then
-        _offmap_counter:load(saved.offmap_counter)
-    end
-end
-
-local function _on_option_change()
-    if not _consequence_limiter then return end
-    _consequence_limiter:set_rate(cfg.consequence_max_events / ap_core_const.CONSEQUENCE_WINDOW_SEC)
 end
 
 function on_game_start()

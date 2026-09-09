@@ -15,6 +15,11 @@ local function _is_valid_category(category)
     return _CATEGORIES[category] == true
 end
 
+local function _clone_entry(entry)
+    if not entry then return nil end
+    return xtable.clone(entry)
+end
+
 --- Register a squad ownership filter. Owned squads are excluded from AP routing.
 --- Replaces existing filter on name match.
 --- @param name string Owner name (e.g. "warfare")
@@ -33,11 +38,6 @@ function unregister_owner(name) return ap_core_broker.unregister_owner(name) end
 --- @param squad userdata Squad server object
 --- @return string|nil Owner name, or nil if unowned
 function get_owner(squad) return ap_core_broker.get_owner(squad) end
-
-local function _clone_entry(entry)
-    if not entry then return nil end
-    return xtable.clone(entry)
-end
 
 --- Shallow-copied snapshot of the AP-scripted squads table (keyed by squad id); the outer table and each entry are fresh per call.
 --- Prefer get_scripted_squad(id) for one lookup; fields listed in architecture.md.
