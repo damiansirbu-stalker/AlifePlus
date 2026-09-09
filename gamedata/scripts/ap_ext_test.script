@@ -93,14 +93,14 @@ local function _stalkers_on_level()
     local actor_id = actor:id()
     local ids = {}
     for npc_id in pairs(db.storage) do
-        if npc_id == actor_id then goto skip end
+        if npc_id == actor_id then goto continue end
         local obj = xobject.get_go(npc_id)
-        if not obj or not IsStalker(obj) or not obj:alive() then goto skip end
+        if not obj or not IsStalker(obj) or not obj:alive() then goto continue end
         local se = xobject.get_se(npc_id)
-        if not se or xlevel.get_level_id(se) ~= actor_level then goto skip end
-        if xdata.unscriptable_npcs[se:section_name()] then goto skip end
+        if not se or xlevel.get_level_id(se) ~= actor_level then goto continue end
+        if xdata.unscriptable_npcs[se:section_name()] then goto continue end
         ids[#ids + 1] = npc_id
-        ::skip::
+        ::continue::
     end
     return ids
 end
