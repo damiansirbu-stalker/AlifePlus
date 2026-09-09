@@ -10,6 +10,8 @@ local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 
 local LOG = "[EXT.MARKET]"
+-- xinventory category: loose ammo not loaded in a weapon.
+local CAT_AMMO_NOT_EQUIPPED = "ammo_not_equipped"
 local POLICY_PATH = "alifeplus\\ap_market_policy.ltx"
 local TRADER_BUY_SECTION = "ap_market_trader_buy"
 local TRADER_SELL_SECTION = "ap_market_trader_sell"
@@ -282,7 +284,7 @@ end
 --- Any condition variant of the same round counts together, but 9x18 fmj and 9x18 ap stay separate.
 local function _get_sellout_class(sec, rules)
     local category = xinventory.get_section_category(sec)
-    if category == "ammo_not_equipped" then return _get_bullet_type(sec) end
+    if category == CAT_AMMO_NOT_EQUIPPED then return _get_bullet_type(sec) end
     local key = _get_rule(sec, category, rules)
     return key
 end

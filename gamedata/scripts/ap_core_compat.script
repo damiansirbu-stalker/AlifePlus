@@ -3,6 +3,7 @@ local pairs, type, tostring, RegisterScriptCallback = pairs, type, tostring, Reg
 local xobject, xsquad, xchange = xobject, xsquad, xchange
 local ap_core_debug, ap_core_broker = ap_core_debug, ap_core_broker
 local CALLBACK = ap_core_const.CALLBACK
+local ROLE_GUARD = "guard"
 
 local _to_remove = {}
 local _pending_release = {}
@@ -35,7 +36,7 @@ end
 local function _clear_service_holds(holds)
     for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, entry in pairs(holds) do
-        if type(entry) == "table" and entry.role and entry.role ~= "guard" then
+        if type(entry) == "table" and entry.role and entry.role ~= ROLE_GUARD then
             _push_removal(squad_id, entry.section)
             _to_remove[#_to_remove + 1] = squad_id
         end
@@ -71,7 +72,7 @@ end
 local function _release_saved_guard_holds(holds)
     for k = 1, #_to_remove do _to_remove[k] = nil end
     for squad_id, entry in pairs(holds) do
-        if type(entry) == "table" and entry.role == "guard" then
+        if type(entry) == "table" and entry.role == ROLE_GUARD then
             _push_release(squad_id)
             _to_remove[#_to_remove + 1] = squad_id
         end

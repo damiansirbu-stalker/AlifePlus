@@ -6,6 +6,8 @@ local CAUSE = ap_core_const.CAUSE
 local CAUSE_TYPE = ap_core_const.CAUSE_TYPE
 local CAUSE_CATEGORY = ap_core_const.CAUSE_CATEGORY
 local CATEGORY = CAUSE_CATEGORY.REACTIONS
+-- Item kind (ltx "kind" field) that marks a medkit, the heal-item test.
+local KIND_MEDICAL = "i_medical"
 local CAP_KEY = "cause_max_reactions"
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
@@ -21,7 +23,7 @@ local function _is_heal_section(section)
     if not section then return false end
     local is_heal = _heal_cache[section]
     if is_heal == nil then
-        is_heal = ini_sys:r_string_ex(section, "kind") == "i_medical"
+        is_heal = ini_sys:r_string_ex(section, "kind") == KIND_MEDICAL
             and ((ini_sys:r_float_ex(section, "boost_health_restore") or 0) > 0
                 or (ini_sys:r_float_ex(section, "boost_bleeding_restore") or 0) > 0)
         _heal_cache[section] = is_heal

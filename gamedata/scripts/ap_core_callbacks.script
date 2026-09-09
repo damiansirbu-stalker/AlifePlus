@@ -17,6 +17,8 @@ AddScriptCallback(CALLBACK.AP_NPC_MEDKIT_USE)
 
 --- ap_squad_on_change: a staggered detection walk queues changes; a credit-driven fire engine emits cfg.alife_rate/min across cur/bg lanes.
 
+-- Fire-lane keys: the actor's current level and the offline background.
+local LANE_CUR, LANE_BG = "cur", "bg"
 local SWEEP_TICK_SEC = 1
 local SWEEP_BATCH = 20
 local SWEEP_REFRACTORY_SEC = 60
@@ -70,7 +72,7 @@ end
 -- No-op on the common path (lane unchanged): one field compare.
 -- @cost O(1) | 0 luabind
 local function _add_to_lane(id, snap, is_cur)
-    local lane_key = is_cur and "cur" or "bg"
+    local lane_key = is_cur and LANE_CUR or LANE_BG
     if snap.lane == lane_key then return end
     if snap.lane then _remove_from_lane(id, snap.lane) end
     local list = _squad_lane[lane_key]
@@ -240,10 +242,10 @@ end
 -- The Bresenham counter advances here, on the lane that actually fired.
 -- @cost O(attempts) | <= FIRE_ATTEMPTS_MAX resolves worst case, 1 typical
 local function _run_credit(now, stat_on)
-    local lane_key = _select_lane() and "cur" or "bg"
+    local lane_key = _select_lane() and LANE_CUR or LANE_BG
     local attempts, fired = _try_lane(lane_key, now, FIRE_ATTEMPTS_MAX, stat_on)
     if not fired then
-        lane_key = lane_key == "cur" and "bg" or "cur"
+        lane_key = lane_key == LANE_CUR and LANE_BG or LANE_CUR
         local _
         _, fired = _try_lane(lane_key, now, attempts, stat_on)
     end
@@ -252,9 +254,9 @@ local function _run_credit(now, stat_on)
         return false
     end
     local ct = _squad_lane_ct
-    if lane_key == "cur" then ct.cur = ct.cur + 1 else ct.bg = ct.bg + 1 end
+    if lane_key == LANE_CUR then ct.cur = ct.cur + 1 else ct.bg = ct.bg + 1 end
     if stat_on then
-        if lane_key == "cur" then _squad_stat.fires_cur = _squad_stat.fires_cur + 1
+        if lane_key == LANE_CUR then _squad_stat.fires_cur = _squad_stat.fires_cur + 1
         else _squad_stat.fires_bg = _squad_stat.fires_bg + 1 end
     end
     return true

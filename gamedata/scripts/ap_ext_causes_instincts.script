@@ -28,6 +28,8 @@ local _alignment_mutant_aberrant = ap_ext_const.alignment_mutant_aberrant
 local _food_chain_tier = ap_ext_const.FOOD_CHAIN_TIER
 local _scatter_from = ap_ext_const.SCATTER_FROM
 local _is_field_smart = ap_ext_util.is_field_smart
+-- The scatter instinct name, matched in the scan gate and the tier-cap lookup.
+local INSTINCT_SCATTER = "scatter"
 
 -- alignment subsets for slumber answers (predator covered by both lair + surge)
 local _alignment_lair = xtable.merge(_alignment_mutant_feral, _alignment_mutant_predator)
@@ -161,7 +163,7 @@ local function _compute_cause(squad, level_id, overdue, species, entry, budget)
     end
     budget.remaining = budget.remaining - 1
     local smart
-    if entry.scan == "scatter" then
+    if entry.scan == INSTINCT_SCATTER then
         smart = _find_scatter_smart(squad, level_id, species)
     else
         local filter = entry.make_filter(squad)
@@ -223,7 +225,7 @@ local function _find_overdue_drives(dto, now, species)
             out[#out + 1] = { instinct = inst, drive = 0, period_mismatch = true }
             goto continue
         end
-        if inst.max_tier_key == "scatter" then
+        if inst.max_tier_key == INSTINCT_SCATTER then
             local tier = _food_chain_tier[species]
             if not tier or tier > 2 then goto continue end
         end

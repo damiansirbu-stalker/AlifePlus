@@ -6,6 +6,8 @@ local xinventory, ap_core_debug = xinventory, ap_core_debug
 local POLICY_PATH = "alifeplus\\ap_barter_policy.ltx"
 local LOG = "[EXT.BARTER]"
 local cfg = ap_core_mcm.cfg
+-- xinventory category: a firearm (ammo-bearing), skipped when it takes no ammo.
+local CAT_WEAPON = "weapon"
 
 -- Populated by _load_barter_policy at on_game_start; { rules }, one uniform block, both stalkers classify against the same bands.
 local BARTER_POLICY = nil
@@ -66,7 +68,7 @@ local function _find_best_spares(giver, giver_opts, give_base)
         local cat = xinventory.get_category(item, giver_opts)
         if cat ~= "weapon" and cat ~= "outfit" and cat ~= "helmet" then return end
         local sec = item:section()
-        if cat == "weapon" and #xinventory.get_ammo_sections(sec) == 0 then return end
+        if cat == CAT_WEAPON and #xinventory.get_ammo_sections(sec) == 0 then return end
         local cost = xinventory.get_cost(sec) or 0
         if cost > give_base[cat] then return end
         local cur = best[cat]

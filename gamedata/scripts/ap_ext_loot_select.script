@@ -7,6 +7,8 @@ local CALLBACK = ap_core_const.CALLBACK
 local cfg = ap_core_mcm.cfg
 
 local LOG = "[EXT.LOOTSEL]"
+-- xinventory category: loose ammo not loaded in a weapon.
+local CAT_AMMO_NOT_EQUIPPED = "ammo_not_equipped"
 local POLICY_PATH = "alifeplus\\ap_loot_policy.ltx"
 local POLICY_SECTION = "ap_loot_policy"
 -- CreateTimeEvent group id; the (group, npc_id) pair is idempotent (_g.script:345), so one corpse's per-item callbacks collapse into one deferred trim.
@@ -27,7 +29,7 @@ local _looted = {}
 --- @param item game_object Inventory item
 --- @return number Count this item contributes to its policy key
 local function _get_looted_unit(category, item)
-    if category == "ammo_not_equipped"
+    if category == CAT_AMMO_NOT_EQUIPPED
         or string_sub(category, 1, 11) == "ammo_slot_2"
         or string_sub(category, 1, 11) == "ammo_slot_3" then
         return item:ammo_get_count() or 0

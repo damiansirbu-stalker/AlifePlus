@@ -48,6 +48,12 @@ local ROLE_CFG = {
 }
 local SERVICE_ROLES = { "trader", "barman", "mechanic", "medic" }
 local _ROLE_SET = { trader = true, barman = true, mechanic = true, medic = true }
+-- Role identities used in role-specific branches (the trader gets a per-faction config; the guard never trades).
+local ROLE_TRADER, ROLE_GUARD = "trader", "guard"
+-- xinventory carve-out categories: worn/protected items a shop pass leaves alone.
+local CAT_EQUIPPED, CAT_UNTOUCHABLE = "equipped", "untouchable"
+-- _resolve_entry outcome: a same-identity re-hit refreshed the timestamp.
+local STATUS_REFRESHED = "refreshed"
 local SERVICE_KEY_PREFIX = "ap_service_"
 -- Guard detail respawn row key: pinned faction combat squads, no trade or icon, only the pin.
 local GUARD_KEY = "ap_guard"
@@ -132,7 +138,7 @@ local function _get_service_key(role) return SERVICE_KEY_PREFIX .. role end
 local function _get_service_section(faction, role) return SERVICE_KEY_PREFIX .. faction .. "_" .. role end
 -- trade config path for (faction, role); trader is per-faction, others generic. nil if no config.
 local function _get_role_cfg_path(faction, role)
-    local name = (role == "trader") and TRADER_CFG[faction] or ROLE_CFG[role]
+    local name = (role == ROLE_TRADER) and TRADER_CFG[faction] or ROLE_CFG[role]
     return name and (TRADE_PATH .. name .. ".ltx") or nil
 end
 -- role from a service respawn key ("ap_service_trader" -> "trader"); nil if not a service key.
@@ -173,7 +179,7 @@ local function _apply_mutation(mut, smart_id, identity, level_id)
     local tbl = _state[mut.name]
     local now = xtime.get_game_sec()
     local handled = _resolve_entry(mut, tbl[smart_id], smart_id, identity, now)
-    if handled then return handled == "refreshed" end
+    if handled then return handled == STATUS_REFRESHED end
     if mut.allow and not mut.allow[identity] then
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s rejected (not in allowlist)", mut.name, smart_id, mut.id_word, identity)
         return false
@@ -1016,7 +1022,7 @@ local function _filter_stock(npc, npc_id, role)
     xinventory.iterate_inventory(npc_id, function(_, item)
         seen = seen + 1
         local cat = xinventory.get_category(item, opts)
-        if cat == "equipped" or cat == "untouchable" then return end
+        if cat == CAT_EQUIPPED or cat == CAT_UNTOUCHABLE then return end
         local sec = item:section()
         local section_rule = rules[sec]
         local rule = section_rule or rules[_get_shelf_key(cat)]
@@ -1064,7 +1070,7 @@ local function _update_trade(npc, force_refresh)
     if not entry or not cfg then return _org_update_trade(npc, force_refresh) end
     local id = npc:id()
     local stamp = trade_manager.get_trade_profile(id, "resupply_time")
-    if entry.role == "trader" and _try_preempt_below_hub(npc, id, force_refresh) then
+    if entry.role == ROLE_TRADER and _try_preempt_below_hub(npc, id, force_refresh) then
         force_refresh = nil
     end
     _org_update_trade(npc, force_refresh)
@@ -1133,7 +1139,7 @@ end
 local function _on_squad_npc_death(squad, se_npc, _)
     if not squad or not se_npc then return end
     local entry = _held_squads[squad.id]
-    if not entry or entry.role == "guard" then return end
+    if not entry or entry.role == ROLE_GUARD then return end
     local victim = xobject.get_go(se_npc.id)
     if not victim then
         ap_core_debug.debug("[MUTATOR.SMART] service_loot_null: smart=%d role=%s npc=%d offline (skipped)",

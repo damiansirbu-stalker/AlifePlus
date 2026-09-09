@@ -165,7 +165,7 @@ local function _find_squad_claimer(squad_id, corpse_pos, radius)
     local squad = xobject.get_se(squad_id)
     if not xsquad.is_squad(squad) then return nil end
     if axr_companions.companion_squads[squad_id] then return nil end
-    if game_relations.get_squad_relation_to_actor_by_id(squad_id) == "enemy" then return nil end
+    if game_relations.get_squad_relation_to_actor_by_id(squad_id) == xconst.RELATION.ENEMY then return nil end
     return _find_first_clear_member(squad, corpse_pos, radius)
 end
 
@@ -176,7 +176,7 @@ local function _find_lone_claimer(killer_id, corpse_pos, radius)
     local owner = xobject.get_go(killer_id)
     if not owner or not owner:alive() then return nil end
     local comm = xcreature.get_community(owner)
-    if comm == "zombied" then return nil end
+    if comm == xconst.COMMUNITY.ZOMBIED then return nil end
     if comm and game_relations.is_factions_enemies(get_actor_true_community(), comm) then return nil end
     local opos = owner:position()
     if not _is_in_range(opos, corpse_pos, radius) then return nil end
@@ -297,7 +297,7 @@ local function _on_death(victim, killer)
     end
     if not xcreature.is_stalker(killer) then return end
     if killer:has_info("npcx_is_companion") then return end
-    if xcreature.get_community(killer) == "zombied" then return end
+    if xcreature.get_community(killer) == xconst.COMMUNITY.ZOMBIED then return end
     local squad = get_object_squad(killer)
     local squad_id = squad and squad.id or nil
     if squad_id and axr_companions.companion_squads[squad_id] then return end

@@ -11,6 +11,11 @@ local _debug_enabled = ap_core_debug.is_enabled
 
 local DUMP_INTERVAL_SEC = 10
 
+-- Sentinel field key: the derived handlers-tried total (not a stored counter, computed on read).
+local DERIVED_KEY = "_get_csq_tried"
+-- _ROWS paint types read in _add_row.
+local ROW_SECTION, ROW_OUTPUT = "section", "output"
+
 -- Snapshot ring for sliding-window rates (7 slots x 10s = 60s span): the overlay reads counter DELTAS vs the oldest snapshot, so it shows the last minute.
 local HIST_SLOTS = 7
 
@@ -116,7 +121,7 @@ local function _get_csq_tried(counters)
 end
 
 local function _resolve_field(counters, field)
-    if field == "_get_csq_tried" then return _get_csq_tried(counters) end
+    if field == DERIVED_KEY then return _get_csq_tried(counters) end
     return counters[field] or 0
 end
 
@@ -170,7 +175,7 @@ end
 -- Falls back to the whole session when the ring has no snapshot yet.
 local function _get_win_delta(col, field, session_minutes)
     local live = col == "r" and r or x
-    local live_value = field == "_get_csq_tried" and _get_csq_tried(live) or (live[field] or 0)
+    local live_value = field == DERIVED_KEY and _get_csq_tried(live) or (live[field] or 0)
     local snapshot = _get_oldest_snapshot()
     if not snapshot then return live_value, session_minutes end
     local snapshot_col = col == "r" and snapshot.r or snapshot.x
@@ -214,7 +219,7 @@ local function _get_value(entry, counters, is_x)
     if is_x and entry.field_x == false then return "-" end
     if not is_x and entry.field == false then return "-" end
     local field = (is_x and entry.field_x) or entry.field
-    if field == "_get_csq_tried" then return _get_csq_tried(counters) end
+    if field == DERIVED_KEY then return _get_csq_tried(counters) end
     return counters[field] or 0
 end
 
@@ -435,12 +440,12 @@ end
 
 -- Build one overlay row: a section header line, or label + two value cells + extra cell.
 function UIStatsHUD:_add_row(xml, row, row_y, clr_cream, clr_green, clr_red)
-    if row.type == "section" then
+    if row.type == ROW_SECTION then
         self:_build_text(xml, 0, row_y, TOTAL_W, row.label, clr_cream)
         return
     end
     local value_clr = clr_cream
-    if row.type == "output" then value_clr = clr_green
+    if row.type == ROW_OUTPUT then value_clr = clr_green
     elseif row.loss then value_clr = clr_red end
     self:_build_text(xml, 0, row_y, LABEL_W, row.label, clr_cream)
     local val_r = self:_build_text(xml, LABEL_W, row_y, VAL_W, "0", value_clr)

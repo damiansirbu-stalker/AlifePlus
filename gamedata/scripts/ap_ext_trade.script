@@ -10,6 +10,8 @@ local SELL_MULT = 0.5
 local BUY_MULT  = 1.0
 local DEFAULT_COST = ap_core_const.DEFAULT_TRADE_COST
 local POLICY_PATH = "alifeplus\\ap_trade_policy.ltx"
+-- Ammo slot categories: slot 2 is the equipped pistol's ammo, slot 3 the rifle's.
+local SLOT_PISTOL_AMMO, SLOT_RIFLE_AMMO = "ammo_slot_2", "ammo_slot_3"
 local LOG = "[EXT.TRADE]"
 local cfg = ap_core_mcm.cfg
 
@@ -121,8 +123,8 @@ end
 local function _resolve_ammo_buy_context(category, cat_opts)
     local prefix = string_sub(category, 1, 11)
     local tier_num = tonumber(string_match(category, "_t(%d+)$"))
-    if prefix == "ammo_slot_2" then return cat_opts.equipped_pistol_sec, tier_num end
-    if prefix == "ammo_slot_3" then return cat_opts.equipped_rifle_sec,  tier_num end
+    if prefix == SLOT_PISTOL_AMMO then return cat_opts.equipped_pistol_sec, tier_num end
+    if prefix == SLOT_RIFLE_AMMO then return cat_opts.equipped_rifle_sec,  tier_num end
     return nil, nil
 end
 

@@ -7,6 +7,8 @@ local CALLBACK = ap_core_const.CALLBACK
 
 local DIAG_INTERVAL_SEC = 60
 local DIAG_TIMER_EV = "ap_world_diag"
+-- Pipeline lane key in the per-tick trace dump.
+local CSQ_KEY = "csq"
 local DIAG_TIMER_ID = "dump"
 -- Drain: one xslice pass per dump, step sized for the heaviest item (controlled squad resolve); tune via the [CORE.DIAG] summary ms.
 local DRAIN_QUEUE = "ap_world_diag_drain"
@@ -114,7 +116,7 @@ end
 local function _run_diag_item(item)
     local tmr = xprofiler.new_if(true):start()
     local k = item.k
-    if k == "csq" then
+    if k == CSQ_KEY then
         _log_csq(item.id)
     elseif k == "sq" then
         _log_sq(item.id)
