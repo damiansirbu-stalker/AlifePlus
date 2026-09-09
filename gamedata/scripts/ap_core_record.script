@@ -32,6 +32,69 @@ local function _get_side_keys(squad)
     return squad.player_id, xsquad.get_commander_name(squad), nil
 end
 
+local function _is_match(entry, opts)
+    for k, v in pairs(opts) do
+        if entry[k] ~= v then return false end
+    end
+    return true
+end
+
+local function _on_record_evict(entry)
+    if entry.assigned and _record_assigned[entry.squad_id] == entry then
+        _record_assigned[entry.squad_id] = nil
+    end
+end
+
+local function _create_record_fifo()
+    return xttltable.create_fifo_cache({ capacity = RECORD_CAPACITY, on_evict = _on_record_evict })
+end
+
+-- Walk fifo into a plain array preserving insertion order. xttltable has no to_table primitive.
+local function _build_record_array()
+    local arr = {}
+    _ap_record:iterate(function(entry) arr[#arr + 1] = entry end)
+    return arr
+end
+
+local function _load_records(arr)
+    _ap_record = _create_record_fifo()
+    _record_assigned = {}
+    if type(arr) ~= "table" then return end
+    for i = 1, #arr do
+        local entry = arr[i]
+        if type(entry) ~= "table" or not entry.cons_id or not entry.squad_id then goto continue end
+        _ap_record:set(entry.cons_id, entry)
+        if entry.assigned then _record_assigned[entry.squad_id] = entry end
+        if entry.cons_id > _record_seq then _record_seq = entry.cons_id end
+        ::continue::
+    end
+end
+
+local function _on_save_state(m_data)
+    m_data.ap_core_record = {
+        entries = _build_record_array(),
+        seq     = _record_seq,
+    }
+    if ap_core_debug.is_enabled() then
+        ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:get_size())
+    end
+end
+
+local function _on_load_state(m_data)
+    local saved = m_data.ap_core_record
+    if type(saved) ~= "table" then saved = {} end
+    _record_seq = saved.seq or 0
+    _load_records(saved.entries)
+    if ap_core_debug.is_enabled() then
+        ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:get_size())
+    end
+end
+
+local function _on_server_entity_on_unregister(se_obj)
+    if not se_obj or not se_obj.id then return end
+    clear_record(se_obj.id)
+end
+
 --- Append one activity record for a squad dispatch, capturing display keys so consumers render after despawn.
 --- Marks the previous assigned entry for the squad unassigned and indexes this one.
 --- @safety SAFE - nil-guarded; engine reads only on live squads
@@ -116,13 +179,6 @@ function set_reported(cons_id)
     if entry then entry.reported = true end
 end
 
-local function _is_match(entry, opts)
-    for k, v in pairs(opts) do
-        if entry[k] ~= v then return false end
-    end
-    return true
-end
-
 --- Get all records matching opts (AND logic on field equality).
 --- assigned=true reads the live index (O(active squads)); else full FIFO scan (O(capacity)).
 --- @cost O(n) records | 0 luabind (FIFO scan, pure Lua)
@@ -168,62 +224,6 @@ function get_record(opts)
         end)
     end
     return best
-end
-
-local function _on_record_evict(entry)
-    if entry.assigned and _record_assigned[entry.squad_id] == entry then
-        _record_assigned[entry.squad_id] = nil
-    end
-end
-
-local function _create_record_fifo()
-    return xttltable.create_fifo_cache({ capacity = RECORD_CAPACITY, on_evict = _on_record_evict })
-end
-
--- Walk fifo into a plain array preserving insertion order. xttltable has no to_table primitive.
-local function _build_record_array()
-    local arr = {}
-    _ap_record:iterate(function(entry) arr[#arr + 1] = entry end)
-    return arr
-end
-
-local function _load_records(arr)
-    _ap_record = _create_record_fifo()
-    _record_assigned = {}
-    if type(arr) ~= "table" then return end
-    for i = 1, #arr do
-        local entry = arr[i]
-        if type(entry) ~= "table" or not entry.cons_id or not entry.squad_id then goto continue end
-        _ap_record:set(entry.cons_id, entry)
-        if entry.assigned then _record_assigned[entry.squad_id] = entry end
-        if entry.cons_id > _record_seq then _record_seq = entry.cons_id end
-        ::continue::
-    end
-end
-
-local function _on_save_state(m_data)
-    m_data.ap_core_record = {
-        entries = _build_record_array(),
-        seq     = _record_seq,
-    }
-    if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("[CORE.RECORD] save: record=%d", _ap_record:get_size())
-    end
-end
-
-local function _on_load_state(m_data)
-    local saved = m_data.ap_core_record
-    if type(saved) ~= "table" then saved = {} end
-    _record_seq = saved.seq or 0
-    _load_records(saved.entries)
-    if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("[CORE.RECORD] load: record=%d", _ap_record:get_size())
-    end
-end
-
-local function _on_server_entity_on_unregister(se_obj)
-    if not se_obj or not se_obj.id then return end
-    clear_record(se_obj.id)
 end
 
 function on_game_start()
