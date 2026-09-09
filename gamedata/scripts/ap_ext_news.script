@@ -17,7 +17,7 @@ local cfg = ap_core_mcm.cfg
 local COMPOSER_TIMER_EV = "ap_ext_news"
 local COMPOSE_TICK = "run_news_tick"
 local NEWS_LOG = "[EXT.NEWS]"
-
+local CHATTER_LOG = "[EXT.CHATTER]"
 
 local MAX_TEMPLATE_VARIANTS = 20
 
@@ -26,6 +26,12 @@ local SCOPE_OWN, SCOPE_ALLIES, SCOPE_WORLD = "own", "allies", "world"
 local _templates_by_consequence = {}
 local _locale = nil
 local _pending_dispatch = nil
+
+local _chatter_pools = {}
+local _chatter_locale = nil
+
+-- Chatter throttle (real-sec os.clock): at most one line per cfg.chatter_interval_sec, so simultaneous producers don't all speak; ephemeral, resets on load.
+local _chatter_next = 0
 
 -- Load a numbered template pool, walking prefix_001..N until a miss or empty.
 local function _load_pool(prefix)
@@ -260,14 +266,6 @@ local function _run_engine_dispatch(picked, msg)
         use_queued and "queued" or "fallback", picked.name, tostring(picked.channel), engine_timer:get_ms()) end
 end
 
--- CHATTER: immediate one-off lines a producer pushes, reusing the news machinery (publish_chatter); templates in ui_st_ap_chatter.xml.
-
-local _chatter_pools = {}
-local _chatter_locale = nil
-
--- Chatter throttle (real-sec os.clock): at most one line per cfg.chatter_interval_sec, so simultaneous producers don't all speak; ephemeral, resets on load.
-local _chatter_next = 0
-
 -- Locale-cached template pool for a chatter prefix (rebuilt on language switch, like the news pools).
 local function _get_chatter_pool(prefix)
     local loc = _get_locale()
@@ -281,62 +279,6 @@ local function _get_chatter_pool(prefix)
         _chatter_pools[prefix] = pool
     end
     return pool
-end
-
---- Push one chatter line for the pool prefix, filled from slots; returns true if a line was spoken.
---- Gated (local, non-hostile, throttled), picks an online stalker voice, dispatches immediately to the actor, not via the radio channel queue.
---- @param pool_prefix string Template id prefix, e.g. "st_ap_chatter_<type>"
---- @param slots table Slot values keyed by placeholder name (#item#, #location#, ...)
---- @param opts table|nil { level_id (must equal the player's current level, chatter is local), faction (must not be at war with the player) }
---- @return boolean spoken
-local CHATTER_LOG = "[EXT.CHATTER]"
-
-function publish_chatter(pool_prefix, slots, opts)
-    local dbg = ap_core_debug.is_enabled()
-    if not cfg.chatter_enabled or not slots then
-        if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
-        return false
-    end
-    if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level() then
-        if dbg then ap_core_debug.debug("%s skip %s: off-level (subject=%s)", CHATTER_LOG, pool_prefix, tostring(opts.level_id)) end
-        return false
-    end
-    if opts and opts.faction then
-        local actor_comm = get_actor_true_community()
-        if actor_comm and game_relations.is_factions_enemies(actor_comm, opts.faction) then
-            if dbg then ap_core_debug.debug("%s skip %s: enemy faction %s vs %s", CHATTER_LOG, pool_prefix, opts.faction, actor_comm) end
-            return false
-        end
-    end
-    local now = os.clock()
-    if now < _chatter_next then
-        if dbg then ap_core_debug.debug("%s skip %s: throttled (%.1fs left)", CHATTER_LOG, pool_prefix, _chatter_next - now) end
-        return false
-    end
-    local pool = _get_chatter_pool(pool_prefix)
-    if #pool == 0 then
-        if dbg then ap_core_debug.debug("%s skip %s: empty pool (XML not loaded?)", CHATTER_LOG, pool_prefix) end
-        return false
-    end
-    local filtered = _filter_variants(pool, slots)
-    if #filtered == 0 then
-        if dbg then ap_core_debug.debug("%s skip %s: all %d variants filtered (missing slot)", CHATTER_LOG, pool_prefix, #pool) end
-        return false
-    end
-    local msg = _format_output(_format_template(filtered[math_random(#filtered)], slots))
-    if not msg then
-        if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
-        return false
-    end
-    local picked = _select_speaker(get_actor_true_community(), cfg.news_scope, nil)
-    if not picked then
-        if dbg then ap_core_debug.debug("%s skip %s: no speaker (scope=%s, nobody to say it)", CHATTER_LOG, pool_prefix, tostring(cfg.news_scope)) end
-        return false
-    end
-    xpda.publish_news(picked.name, msg, picked.icon)
-    _chatter_next = now + cfg.chatter_interval_sec
-    if dbg then ap_core_debug.debug("%s sent %s by %s: %s", CHATTER_LOG, pool_prefix, picked.name, msg) end
-    return true
 end
 
 -- Pick the per-consequence template pool for the focal entry.
@@ -385,6 +327,72 @@ local function _build_news_tick()
     return { code = TRACE.SENT, sender = picked.name }
 end
 
+local function _get_next_delay()
+    local lo, hi = cfg.news_interval_min_sec, cfg.news_interval_max_sec
+    if lo > hi then lo, hi = hi, lo end
+    return math_random(lo, hi)
+end
+
+local function _on_compose_timer()
+    ResetTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _get_next_delay())
+    run_news_tick()
+    return false
+end
+
+--- Push one chatter line for the pool prefix, filled from slots; returns true if a line was spoken.
+--- Gated (local, non-hostile, throttled), picks an online stalker voice, dispatches immediately to the actor, not via the radio channel queue.
+--- @param pool_prefix string Template id prefix, e.g. "st_ap_chatter_<type>"
+--- @param slots table Slot values keyed by placeholder name (#item#, #location#, ...)
+--- @param opts table|nil { level_id (must equal the player's current level, chatter is local), faction (must not be at war with the player) }
+--- @return boolean spoken
+function publish_chatter(pool_prefix, slots, opts)
+    local dbg = ap_core_debug.is_enabled()
+    if not cfg.chatter_enabled or not slots then
+        if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
+        return false
+    end
+    if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level() then
+        if dbg then ap_core_debug.debug("%s skip %s: off-level (subject=%s)", CHATTER_LOG, pool_prefix, tostring(opts.level_id)) end
+        return false
+    end
+    if opts and opts.faction then
+        local actor_comm = get_actor_true_community()
+        if actor_comm and game_relations.is_factions_enemies(actor_comm, opts.faction) then
+            if dbg then ap_core_debug.debug("%s skip %s: enemy faction %s vs %s", CHATTER_LOG, pool_prefix, opts.faction, actor_comm) end
+            return false
+        end
+    end
+    local now = os.clock()
+    if now < _chatter_next then
+        if dbg then ap_core_debug.debug("%s skip %s: throttled (%.1fs left)", CHATTER_LOG, pool_prefix, _chatter_next - now) end
+        return false
+    end
+    local pool = _get_chatter_pool(pool_prefix)
+    if #pool == 0 then
+        if dbg then ap_core_debug.debug("%s skip %s: empty pool (XML not loaded?)", CHATTER_LOG, pool_prefix) end
+        return false
+    end
+    local filtered = _filter_variants(pool, slots)
+    if #filtered == 0 then
+        if dbg then ap_core_debug.debug("%s skip %s: all %d variants filtered (missing slot)", CHATTER_LOG, pool_prefix, #pool) end
+        return false
+    end
+    local msg = _format_output(_format_template(filtered[math_random(#filtered)], slots))
+    if not msg then
+        if dbg then ap_core_debug.debug("%s skip %s: empty rendered msg", CHATTER_LOG, pool_prefix) end
+        return false
+    end
+    local picked = _select_speaker(get_actor_true_community(), cfg.news_scope, nil)
+    if not picked then
+        if dbg then ap_core_debug.debug("%s skip %s: no speaker (scope=%s, nobody to say it)", CHATTER_LOG, pool_prefix, tostring(cfg.news_scope)) end
+        return false
+    end
+    xpda.publish_news(picked.name, msg, picked.icon)
+    _chatter_next = now + cfg.chatter_interval_sec
+    if dbg then ap_core_debug.debug("%s sent %s by %s: %s", CHATTER_LOG, pool_prefix, picked.name, msg) end
+    return true
+end
+
 --- run_news_tick: news pipeline tick; AP-side compose is timed as one span.
 --- Engine dispatch runs after the timer stops, so vanilla cost is logged on its own line, not attributed to the AP compose span.
 function run_news_tick()
@@ -402,18 +410,6 @@ function run_news_tick()
         _run_engine_dispatch(pending.picked, pending.msg)
     end
     return result
-end
-
-local function _get_next_delay()
-    local lo, hi = cfg.news_interval_min_sec, cfg.news_interval_max_sec
-    if lo > hi then lo, hi = hi, lo end
-    return math_random(lo, hi)
-end
-
-local function _on_compose_timer()
-    ResetTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, _get_next_delay())
-    run_news_tick()
-    return false
 end
 
 function on_game_start()
