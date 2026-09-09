@@ -61,22 +61,6 @@ local SERVICE_ICON = {
     medic    = { icon = "ui_pda2_medic_location",    hint = "st_ui_pda_legend_medic" },
 }
 
--- respawn_params key for a service role ("ap_service_trader"); one key per role so decay is per-role.
-local function _get_service_key(role) return SERVICE_KEY_PREFIX .. role end
--- squad_descr section a service role spawns for a faction ("ap_service_duty_trader").
-local function _get_service_section(faction, role) return SERVICE_KEY_PREFIX .. faction .. "_" .. role end
--- trade config path for (faction, role); trader is per-faction, others generic. nil if no config.
-local function _get_role_cfg_path(faction, role)
-    local name = (role == "trader") and TRADER_CFG[faction] or ROLE_CFG[role]
-    return name and (TRADE_PATH .. name .. ".ltx") or nil
-end
--- role from a service respawn key ("ap_service_trader" -> "trader"); nil if not a service key.
-local function _parse_role(prop)
-    if type(prop) ~= "string" then return nil end
-    local role = prop:match("^ap_service_(%a+)$")
-    return (role and _ROLE_SET[role]) and role or nil
-end
-
 -- Live per-type mutation state; conquest entries carry the outpost plan (.services, .guards).
 local _state = { conquest = {}, swarm = {}, infest = {} }
 local _pending = {}
@@ -87,47 +71,6 @@ local _held_pending = nil
 local _hold_drop_collector = {}
 -- Per-smart ephemeral game-sec clock for the mutator's own respawn cadence (never saved).
 local _respawn_stamp = {}
-
---- True if a smart holds a live mutation entry other than (mut_name, identity): another type or identity.
---- The takeover exclusion gate; nil mut_name treats every live entry as other.
---- @param smart_id number
---- @param mut_name string|nil MUT_CONQUEST / MUT_SWARM / MUT_INFEST
---- @param identity string|nil Faction or species holding the claim
---- @return boolean
-function is_taken(smart_id, mut_name, identity)
-    if not smart_id then return false end
-    for name, tbl in pairs(_state) do
-        local entry = tbl[smart_id]
-        if entry and (name ~= mut_name or entry.faction ~= identity) then return true end
-    end
-    return false
-end
-
---- Count live conquest entries a faction holds on a level: the conquest cause's hold-ceiling meter.
---- @param faction string Stalker community
---- @param level_id number
---- @return number
-function get_conquest_count(faction, level_id)
-    if not faction or not level_id then return 0 end
-    local count = 0
-    for _, data in pairs(_state.conquest) do
-        if data.faction == faction and data.level_id == level_id then count = count + 1 end
-    end
-    return count
-end
-
---- Count live swarm entries on a level, all species.
---- Mutants hold territory as a class, so the hold ceiling meters the class, not one species.
---- @param level_id number
---- @return number
-function get_swarm_count(level_id)
-    if not level_id then return 0 end
-    local count = 0
-    for _, data in pairs(_state.swarm) do
-        if data.level_id == level_id then count = count + 1 end
-    end
-    return count
-end
 
 --- True when the per-level infest cap allows another infestation.
 --- @param level_id number
@@ -178,6 +121,22 @@ local MUTATIONS = {
 -- respawn_point_prop_section -> descriptor, for the deferred spawn trace.
 local _mut_by_key = {}
 for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
+
+-- respawn_params key for a service role ("ap_service_trader"); one key per role so decay is per-role.
+local function _get_service_key(role) return SERVICE_KEY_PREFIX .. role end
+-- squad_descr section a service role spawns for a faction ("ap_service_duty_trader").
+local function _get_service_section(faction, role) return SERVICE_KEY_PREFIX .. faction .. "_" .. role end
+-- trade config path for (faction, role); trader is per-faction, others generic. nil if no config.
+local function _get_role_cfg_path(faction, role)
+    local name = (role == "trader") and TRADER_CFG[faction] or ROLE_CFG[role]
+    return name and (TRADE_PATH .. name .. ".ltx") or nil
+end
+-- role from a service respawn key ("ap_service_trader" -> "trader"); nil if not a service key.
+local function _parse_role(prop)
+    if type(prop) ~= "string" then return nil end
+    local role = prop:match("^ap_service_(%a+)$")
+    return (role and _ROLE_SET[role]) and role or nil
+end
 
 -- Settle a hit against existing state: refresh a same-identity re-hit; reject a non-refresh re-hit or taken smart.
 -- Returns "refreshed"/"rejected", or nil when _apply_mutation does a fresh apply.
@@ -232,36 +191,6 @@ local function _apply_mutation(mut, smart_id, identity, level_id)
         ap_core_debug.debug("[MUTATOR.SMART] %s: smart=%d %s=%s level=%d base=%s", mut.name, smart_id, mut.id_word, identity, level_id, tostring(xsmart.is_base(smart)))
     end
     return true
-end
-
---- Conquer a smart with an exclusive faction spawn injection (sole ownership).
---- Refreshes a same-faction re-hit; re-conquers (overwrites) a different faction.
---- @param smart_id number
---- @param faction string Stalker community
---- @param level_id number
---- @return boolean
-function apply_conquest(smart_id, faction, level_id)
-    return _apply_mutation(MUTATIONS.conquest, smart_id, faction, level_id)
-end
-
---- Swarm a smart with an exclusive mutant-species spawn injection (sole ownership).
---- Refreshes a same-species re-hit; re-swarms (overwrites) a different species.
---- @param smart_id number
---- @param species string Mutant species
---- @param level_id number
---- @return boolean
-function apply_swarm(smart_id, species, level_id)
-    return _apply_mutation(MUTATIONS.swarm, smart_id, species, level_id)
-end
-
---- Infest a smart with an exclusive spawn injection.
---- Rejects a second infest on the same smart and obeys the per-level cap.
---- @param smart_id number
---- @param faction string Mutant species / faction
---- @param level_id number
---- @return boolean
-function apply_infest(smart_id, faction, level_id)
-    return _apply_mutation(MUTATIONS.infest, smart_id, faction, level_id)
 end
 
 -- Count squads currently stationed at a smart (SIMBOARD occupancy). Trace/diagnostic use only.
@@ -1223,6 +1152,77 @@ local function _resolve_logic_ini(original, npc, filename)
     ap_core_debug.warn("[MUTATOR.SMART] unresolved logic ini '%s' on npc=%s, loading empty logic",
         tostring(filename), npc:name())
     return ini_file("default_custom_data.ltx"), "default_custom_data.ltx"
+end
+
+--- True if a smart holds a live mutation entry other than (mut_name, identity): another type or identity.
+--- The takeover exclusion gate; nil mut_name treats every live entry as other.
+--- @param smart_id number
+--- @param mut_name string|nil MUT_CONQUEST / MUT_SWARM / MUT_INFEST
+--- @param identity string|nil Faction or species holding the claim
+--- @return boolean
+function is_taken(smart_id, mut_name, identity)
+    if not smart_id then return false end
+    for name, tbl in pairs(_state) do
+        local entry = tbl[smart_id]
+        if entry and (name ~= mut_name or entry.faction ~= identity) then return true end
+    end
+    return false
+end
+
+--- Count live conquest entries a faction holds on a level: the conquest cause's hold-ceiling meter.
+--- @param faction string Stalker community
+--- @param level_id number
+--- @return number
+function get_conquest_count(faction, level_id)
+    if not faction or not level_id then return 0 end
+    local count = 0
+    for _, data in pairs(_state.conquest) do
+        if data.faction == faction and data.level_id == level_id then count = count + 1 end
+    end
+    return count
+end
+
+--- Count live swarm entries on a level, all species.
+--- Mutants hold territory as a class, so the hold ceiling meters the class, not one species.
+--- @param level_id number
+--- @return number
+function get_swarm_count(level_id)
+    if not level_id then return 0 end
+    local count = 0
+    for _, data in pairs(_state.swarm) do
+        if data.level_id == level_id then count = count + 1 end
+    end
+    return count
+end
+
+--- Conquer a smart with an exclusive faction spawn injection (sole ownership).
+--- Refreshes a same-faction re-hit; re-conquers (overwrites) a different faction.
+--- @param smart_id number
+--- @param faction string Stalker community
+--- @param level_id number
+--- @return boolean
+function apply_conquest(smart_id, faction, level_id)
+    return _apply_mutation(MUTATIONS.conquest, smart_id, faction, level_id)
+end
+
+--- Swarm a smart with an exclusive mutant-species spawn injection (sole ownership).
+--- Refreshes a same-species re-hit; re-swarms (overwrites) a different species.
+--- @param smart_id number
+--- @param species string Mutant species
+--- @param level_id number
+--- @return boolean
+function apply_swarm(smart_id, species, level_id)
+    return _apply_mutation(MUTATIONS.swarm, smart_id, species, level_id)
+end
+
+--- Infest a smart with an exclusive spawn injection.
+--- Rejects a second infest on the same smart and obeys the per-level cap.
+--- @param smart_id number
+--- @param faction string Mutant species / faction
+--- @param level_id number
+--- @return boolean
+function apply_infest(smart_id, faction, level_id)
+    return _apply_mutation(MUTATIONS.infest, smart_id, faction, level_id)
 end
 
 function on_game_start()
