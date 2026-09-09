@@ -18,69 +18,6 @@ local UPDATE_SCRIPTED_SQUADS = "update_scripted_squads"
 
 local cfg = ap_core_mcm.cfg
 
-local _ap_scripted_squads = {}
-local _arrival_handlers = {}
-
--- Reusable scratch table for _iterate_recycled_ids, cleared each call to avoid per-call allocation (Demonized pattern).
-local _to_drop = {}
-
-local _owners = {}
-
---- Register a squad ownership filter. On name match, replaces existing filter.
---- Squads matching the filter are treated as owned by the registering mod.
---- @safety SAFE - pure Lua array scan + append/replace
---- @cost O(n) owners (typically 2-3) | 0 luabind
---- @param name string Owner name (e.g. "warfare", "bao", "guards")
---- @param filter_fn function(squad) -> boolean True if this mod owns the squad
---- @return boolean true on success, false if args invalid
-function register_owner(name, filter_fn)
-    if type(name) ~= "string" or name == "" or type(filter_fn) ~= "function" then
-        ap_core_debug.err("[SQUAD] register_owner: invalid args (name=%s, filter type=%s)", tostring(name), type(filter_fn))
-        return false
-    end
-    for i = 1, #_owners do
-        if _owners[i].name == name then
-            _owners[i].filter = filter_fn
-            ap_core_debug.info("[SQUAD] register_owner: %s (replaced)", name)
-            return true
-        end
-    end
-    _owners[#_owners + 1] = { name = name, filter = filter_fn }
-    ap_core_debug.info("[SQUAD] register_owner: %s", name)
-    return true
-end
-
---- Remove a squad ownership filter by name. No-op if not registered.
---- @safety SAFE - pure Lua array scan + table.remove
---- @cost O(n) owners (typically 2-3) | 0 luabind
---- @param name string Owner name
---- @return boolean true if removed, false if not found
-function unregister_owner(name)
-    for i = #_owners, 1, -1 do
-        if _owners[i].name == name then
-            table_remove(_owners, i)
-            ap_core_debug.info("[SQUAD] unregister_owner: %s", name)
-            return true
-        end
-    end
-    return false
-end
-
---- Query squad ownership. Returns owner name or nil.
---- Respects allow_external_ownership MCM toggle.
---- @safety SAFE - pure Lua, filter functions are registered by callers
---- @cost O(n) owners (typically 2-3) | 0 luabind (filters read Lua fields)
---- @param squad userdata Squad server object
---- @return string|nil Owner name or nil if unowned
-function get_owner(squad)
-    if not cfg.allow_external_ownership then return nil end
-    for i = 1, #_owners do
-        if _owners[i].filter(squad) then return _owners[i].name end
-    end
-    return nil
-end
-
-
 -- Static protection-policy fields shared by is_protected and build_protection_opts; exclude_filter (get_owner) is assigned separately (forward ref).
 local _PROTECTION_FIELDS = {
     exclude_filter_reason = REASON.IS_OWNED,
@@ -90,20 +27,23 @@ local _PROTECTION_FIELDS = {
     exclude_task_target   = true,
 }
 
-local _protection_opts = nil
+-- Campfire seat radius: xr_campfire_point seat ring tops out at 8m; past it a campfire member is on the find_random_cover fallback, not a seat.
+local CAMPFIRE_SEAT_RADIUS = 8
 
---- Build a fresh opts table merging caller_opts with AP's protection policy.
---- Used by ap_core_util.find_squads and any caller needing the AP protection contract; the returned table is a fresh copy, caller_opts is never mutated.
---- @safety SAFE - pure Lua table allocation
---- @cost O(n) caller_opts fields + 5 protection fields | 0 luabind
---- @param caller_opts table|nil
---- @return table merged opts (fresh table)
-function build_protection_opts(caller_opts)
-    local out = caller_opts and xtable.clone(caller_opts) or {}
-    for k, v in pairs(_PROTECTION_FIELDS) do out[k] = v end
-    out.exclude_filter = get_owner
-    return out
-end
+-- Min hold once paused; damps in/out-of-base oscillation.
+local CHASE_MIN_PAUSE_SEC = 30
+-- Give up (release) if the target stays sheltered this long.
+local CHASE_MAX_PAUSE_SEC = 600
+
+local _ap_scripted_squads = {}
+local _arrival_handlers = {}
+
+-- Reusable scratch table for _iterate_recycled_ids, cleared each call to avoid per-call allocation (Demonized pattern).
+local _to_drop = {}
+
+local _owners = {}
+
+local _protection_opts = nil
 
 -- exclude_filter for the preempt-fallback pass: rejects external owners and squads with scripted_target set but not tracked by AP.
 -- AP-scripted-and-interruptable pass through; non-interruptable AP-scripted are excluded via opts.exclude_ids in build_preempt_opts.
@@ -115,64 +55,6 @@ local function _filter_preempt(squad)
     end
     return nil
 end
-
---- Build opts for the preempt-fallback find, used by ap_core_util.find_squads when opts.allow_preempt is set and the standard pass found nothing.
---- Walks the small AP-scripted pool (opts.source) and accepts interruptable entries; non-interruptable AP scripts and externally scripted squads are rejected.
---- @safety SAFE - pure Lua table allocation, defensive iteration
---- @cost O(n) AP-scripted squads (small pool, typically dozens) | 0 luabind
---- @param caller_opts table|nil
---- @return table merged opts (fresh table)
-function build_preempt_opts(caller_opts)
-    local out = build_protection_opts(caller_opts)
-    out.exclude_scripted = false
-    out.exclude_filter = _filter_preempt
-    out.source = _ap_scripted_squads
-    local non_interruptable = {}
-    for id, data in pairs(_ap_scripted_squads) do
-        if not data.interruptable then non_interruptable[id] = true end
-    end
-    out.exclude_ids = non_interruptable
-    return out
-end
-
---- Check all squad protection guards via xsquad.is_protected (ownership, scripted, permanent, active_role, task_target).
---- Non-squad early-return: a recycled id may resolve to a different class, so treat as protected and let the load-state sweep evict the stale entry.
---- @safety SAFE - delegates to xsquad.is_protected, nil-guarded, class-guarded
---- @cost O(1) cached | 0 luabind (cache hit) or 4-5 luabind medium (miss: alife_object, clsid, community)
---- @param squad se_squad Squad server object
---- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
-function is_protected(squad)
-    if not squad then return false, nil, nil, nil end
-    if not xsquad.is_squad(squad) then return true, REASON.NOT_A_SQUAD, nil, nil end
-    if not _protection_opts then
-        _protection_opts = xtable.clone(_PROTECTION_FIELDS)
-        _protection_opts.exclude_filter = get_owner
-    end
-    return xsquad.is_protected(squad, _protection_opts)
-end
-
---- Check if a squad currently has an active off-map session.
---- Off-map causes refuse to publish while a session is active; it survives re-dispatch during dwell and ends on arrival or despawn.
---- @safety SAFE - pure Lua hash lookup
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad id
---- @return boolean true if the squad has an active off-map session
-function is_offmap_dispatched(squad_id)
-    local data = _ap_scripted_squads[squad_id]
-    return data ~= nil and data.offmap == true
-end
-
---- True while AP is actively directing this squad: a live scripted dispatch (scripted_target) or a squad/actor chase (is_chase).
---- A released off-map dwell remnant returns false; the PDA map-marker lifecycle reads this, not the raw scripted_target (squad chases never set it).
---- @safety SAFE - pure Lua hash lookup
---- @cost O(1) | 0 luabind
---- @param squad_id number Squad id
---- @return boolean true if AP is actively routing or chasing this squad
-function is_routing(squad_id)
-    local data = _ap_scripted_squads[squad_id]
-    return data ~= nil and (data.scripted_target ~= nil or data.is_chase == true)
-end
-
 
 --- Release squad from AP scripted control; accepts a squad_id (entity already gone) or squad userdata (entity still live).
 --- The number path skips xsquad.release_squad since there is nothing to release against.
@@ -297,7 +179,6 @@ local function _update_offmap_entry(squad_id, squad, data, now)
     return false
 end
 
-
 -- Merge per-call session state into the new scripted_squad entry.
 -- Off-map dispatches get a fresh session; a non-offmap re-dispatch inherits preserved session fields during dwell.
 -- @cost O(1) typical | O(preserved) on re-dispatch (small constant)
@@ -307,6 +188,490 @@ local function _apply_session(data, squad_id, opts, preserved, now)
     elseif preserved then
         for k, v in pairs(preserved) do data[k] = v end
     end
+end
+
+-- True when every squad member holds an anchored job (not the generic_point cover stub, xr_cover.script:42-62).
+-- Offline or off-level smarts are unreadable, so treat as anchored (do not release); the campfire_point fallback is covered by _has_campfire_stray.
+-- @src anomaly/smart_terrain.script(771) the bound .job; gulag_general.script(282) generic_point
+local function has_anchored_jobs(smart, squad)
+    if not (smart.online and smart.is_on_actor_level) then return true end
+    for member_id in xsquad.iterate_member_ids(squad) do
+        local job = xsmart.get_npc_job(smart, member_id)
+        if not job or job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return false end
+    end
+    return true
+end
+
+-- True when a member's server position is beyond the seat radius from every bound fire.
+local function _is_member_off_campfire(smart, member_id)
+    local se = xobject.get_se(member_id)
+    return se ~= nil and not xsmart.is_near_campfire(smart, se.position, CAMPFIRE_SEAT_RADIUS)
+end
+
+-- True when any member on a campfire_point job ended up away from every fire (the scatter fallback).
+-- Position-based, so it reads true only after members walk to their spots; called on the _update_gulag re-check, not at arrival.
+local function _has_campfire_stray(smart, squad)
+    if not (smart.online and smart.is_on_actor_level) then return false end
+    for member_id in xsquad.iterate_member_ids(squad) do
+        local job = xsmart.get_npc_job(smart, member_id)
+        if job and job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT and _is_member_off_campfire(smart, member_id) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Validate arrival and commit the gulag entry, adding the destination roster entry via SIMBOARD:assign_squad_to_smart(squad, smart.id).
+-- Pairs with register_squad's source clear (assign nil) to keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
+local function _apply_arrival(squad_id, squad, smart, data, now)
+    if not has_anchored_jobs(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_unplaced: squad=%d target=%s", squad_id, data.scripted_target)
+        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
+        return false
+    end
+    data.arrived = true
+    data.release_at = now + data.pre_release_gulag
+    xsmart.assign_squad_to_smart(squad, smart.id)
+    return true
+end
+
+-- Run the on_arrive handler if registered; returns true when the caller should proceed to commit.
+-- Returns false when the handler rescripted the squad (as area/needs consequences do), so the new entry owns its own arrival lifecycle.
+local function _run_arrival_handler(squad_id, squad, data)
+    local key = data.on_arrive
+    if not key then return true end
+    local handler = _arrival_handlers[key]
+    if not handler then
+        ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
+        return true
+    end
+    ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s",
+        squad_id, key, data.scripted_target)
+    handler(squad, data.on_arrive_args)
+    return _ap_scripted_squads[squad_id] == data
+end
+
+-- Classify one member's job for the dump: (label, kind), kind = generic/campfire/other/none.
+-- label strips the passed "logic@<smart>_" prefix for brevity.
+local function _get_job_info(job, prefix, plen)
+    if not job or not job.section then return "none", "none" end
+    local section = job.section
+    local label = (section:sub(1, plen) == prefix) and section:sub(plen + 1) or (section:gsub("^logic@", ""))
+    if job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return label, "generic" end
+    if job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT then return label, "campfire" end
+    return label, "other"
+end
+
+-- Dump a squad's per-member engine jobs as one DEBUG line: a generic/campfire/other/none count breakdown plus id=job pairs.
+-- npc_info is readable only for an online, on-level smart (else "no_snapshot"); generic>0 is the corner/road camper (xr_cover.script:42-62).
+-- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
+local function _log_member_jobs(squad, smart)
+    if not ap_core_world_trace.is_enabled() then return end
+    local sname = tostring(smart:name())
+    if not (smart.online and smart.is_on_actor_level) then
+        ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
+            squad.id, sname)
+        return
+    end
+    local prefix = "logic@" .. sname .. "_"
+    local plen = #prefix
+    local parts = {}
+    local counts = { generic = 0, campfire = 0, other = 0, none = 0 }
+    for member_id in xsquad.iterate_member_ids(squad) do
+        local label, kind = _get_job_info(xsmart.get_npc_job(smart, member_id), prefix, plen)
+        counts[kind] = counts[kind] + 1
+        parts[#parts + 1] = member_id .. "=" .. label
+    end
+    ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
+        squad.id, sname, #parts, counts.generic, counts.campfire, counts.other, counts.none,
+        table_concat(parts, ", "))
+end
+
+-- Detect physical arrival; on arrival run the on_arrive handler, then commit the gulag entry (adding the destination SIMBOARD roster entry).
+-- squad ref threaded from _update_scripted_squad.
+local function _run_arrival(squad_id, squad, data, now)
+    if not data.target_smart_id then return end
+    if data.arrived then return end
+    if not squad or not squad.commander_id then
+        ap_core_debug.debug("[SQUAD] entity_lost: squad=%d target=%s", squad_id, data.scripted_target)
+        _unregister_squad(squad_id)
+        return
+    end
+    local smart = xobject.get_se(data.target_smart_id)
+    if not smart then
+        ap_core_debug.debug("[SQUAD] smart_lost: squad=%d smart=%d target=%s", squad_id, data.target_smart_id, data.scripted_target)
+        _unregister_squad(squad)
+        return
+    end
+    if not xsmart.is_arrived(squad, smart) then return end
+    _log_proximity("arrived", squad, smart, data)
+    if not _run_arrival_handler(squad_id, squad, data) then return end
+    if _apply_arrival(squad_id, squad, smart, data, now) then
+        ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
+            squad_id, data.scripted_target, data.pre_release_gulag)
+    end
+end
+
+-- Update the gulag state for one scan: at release_at, settle the squad as a resident via _unregister_squad.
+-- Mid-hold re-check releases if a member lost its job, sits on the generic_point stub, or strayed from the fire (_has_campfire_stray).
+local function _update_gulag(squad_id, squad, data, now)
+    if not data.arrived then return end
+    if now >= data.release_at then
+        ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
+            squad_id, tostring(data.scripted_target))
+        _unregister_squad(squad)
+        return
+    end
+    if not data.target_smart_id then return end
+    local smart = xobject.get_se(data.target_smart_id)
+    if not smart then return end
+    if not has_anchored_jobs(smart, squad) or _has_campfire_stray(smart, squad) then
+        ap_core_debug.debug("[SQUAD] release_unplaced_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
+        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
+    end
+end
+
+-- A chase entry: actor-target ("actor") or squad-target (target_squad_id).
+-- Runs the compute_chase leash instead of the smart-dispatch arrival/gulag flow.
+local function _is_chase(data)
+    return data.is_chase == true
+end
+
+-- Stop driving the engine target so vanilla behaviour (surge shelter, autonomous sim) takes over.
+-- Squad-target chases stop via the ap_core_chase hook (nil while data.paused); the actor target lives on squad.scripted_target and is released here.
+local function _stop_chase(squad, data, reason, now)
+    if data.paused then return end
+    data.paused = true
+    data.paused_at = now
+    data.pause_reason = reason
+    if not data.target_squad_id then
+        xsquad.release_squad(squad)
+    end
+    ap_core_debug.debug("[SQUAD] chase_pause: squad=%d reason=%s", squad.id, tostring(reason))
+end
+
+local function _start_chase(squad, data)
+    data.paused = nil
+    data.paused_at = nil
+    data.pause_reason = nil
+    if data.target_squad_id then
+        squad.__lock = nil
+        squad.current_action = 0
+    else
+        xsquad.set_target_actor(squad, true)
+    end
+    ap_core_debug.debug("[SQUAD] chase_resume: squad=%d", squad.id)
+end
+
+-- Unified chase leash: ask compute_chase, act on the verdict.
+-- RELEASE drops the script, PAUSE holds (max-pause cap -> release), KEEP resumes after a min hold and reasserts the actor target.
+local function _update_chase(squad_id, squad, data, now)
+    local verdict, reason = ap_core_util.compute_chase(squad, data)
+    if verdict == VERDICT.RELEASE then
+        ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=%s", squad_id, tostring(reason))
+        _unregister_squad(squad)
+        return
+    end
+    if verdict == VERDICT.PAUSE then
+        if data.paused and (now - (data.paused_at or now)) > CHASE_MAX_PAUSE_SEC then
+            ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=pause_cap", squad_id)
+            _unregister_squad(squad)
+            return
+        end
+        _stop_chase(squad, data, reason, now)
+        return
+    end
+    if data.paused then
+        if (now - (data.paused_at or now)) < CHASE_MIN_PAUSE_SEC then return end
+        _start_chase(squad, data)
+    end
+    if not data.target_squad_id then
+        xsquad.set_target(squad, "actor")
+    end
+end
+
+--- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag.
+--- Off-map sessions add the despawn safety-net check via _update_offmap_entry.
+local function _update_scripted_squad(squad_id)
+    local data = _ap_scripted_squads[squad_id]
+    if not data then return end
+    local squad = xobject.get_se(squad_id)
+    if not xsquad.is_squad(squad) then
+        ap_core_debug.debug("[SQUAD] scan_drop: squad=%d target=%s reason=%s",
+            squad_id, tostring(data.scripted_target),
+            not squad and "entity_gone" or "not_a_squad")
+        _ap_scripted_squads[squad_id] = nil
+        return
+    end
+    local now = xtime.get_game_sec()
+    if data.offmap and _update_offmap_entry(squad_id, squad, data, now) then
+        _ap_scripted_squads[squad_id] = nil
+        return
+    end
+    if not data.offmap then
+        local ttl = data.ttl or SCRIPTED_SQUAD_TTL
+        if (now - (data.tracked_at or 0)) > ttl then
+            ap_core_debug.debug("[SQUAD] ttl_expired: squad=%d target=%s age=%ds ttl=%ds",
+                squad_id, tostring(data.scripted_target), now - (data.tracked_at or 0), ttl)
+            _unregister_squad(squad)
+            return
+        end
+    end
+    if _is_chase(data) then
+        _update_chase(squad_id, squad, data, now)
+        return
+    end
+    if not data.scripted_target then return end
+    local prev_target = squad.scripted_target
+    if xsquad.set_target(squad, data.scripted_target) then
+        ap_core_debug.debug("[SQUAD] reassert: squad=%d target=%s was=%s", squad_id, data.scripted_target, tostring(prev_target))
+    end
+    _run_arrival(squad_id, squad, data, now)
+    _update_gulag(squad_id, squad, data, now)
+end
+
+-- Resolve a tracked squad and dump its member jobs (DEBUG).
+-- Split out so _log_tracked_entry stays under the complexity cap.
+local function _log_squad_jobs(squad_id, data)
+    if not (data.arrived and data.target_smart_id) then return end
+    local squad = xobject.get_se(squad_id)
+    local smart = xobject.get_se(data.target_smart_id)
+    if squad and smart then _log_member_jobs(squad, smart) end
+end
+
+-- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
+local function _log_tracked_entry(squad_id, data, now)
+    if data.scripted_target then
+        ap_core_world_trace.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
+            squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
+            now - (data.tracked_at or now),
+            tostring(data.offmap or false), tostring(data.arrived or false),
+            tostring(data.interruptable or false))
+        _log_squad_jobs(squad_id, data)
+        return
+    end
+    ap_core_world_trace.debug("[SQUAD] tracked: id=%d offmap_released age=%ds",
+        squad_id, now - (data.dispatched_at or now))
+end
+
+-- Kick an xslice session every UPDATE_SCRIPTED_SQUADS_SEC; one squad per frame caps the per-frame cost at one arrival commit.
+local function _update_scripted_squads()
+    ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
+    if xslice.is_active("broker_scan") then return end
+    if not next(_ap_scripted_squads) then return end
+    local debug_on = ap_core_debug.is_enabled()
+    local world_on = ap_core_world_trace.is_enabled()
+    local now = world_on and xtime.get_game_sec()
+    local queue = {}
+    for squad_id, data in pairs(_ap_scripted_squads) do
+        queue[#queue + 1] = squad_id
+        if world_on then _log_tracked_entry(squad_id, data, now) end
+    end
+    local count = #queue
+    local scan_ms = 0
+
+    xslice.start("broker_scan", queue, {
+        step = 1,
+        func = function(squad_id)
+            local tmr = xprofiler.new_if(debug_on):start()
+            _update_scripted_squad(squad_id)
+            tmr:stop()
+            scan_ms = scan_ms + tmr:get_ms()
+            return true
+        end,
+        on_done = function()
+            if debug_on then ap_core_debug.debug("[SQUAD] scan_cycle: tracked=%d [%.2fms]", count, scan_ms) end
+        end,
+    })
+end
+
+local function _on_save_state(m_data)
+    m_data.ap_core_broker = {
+        ap_scripted_squads = _ap_scripted_squads,
+    }
+    if ap_core_debug.is_enabled() then
+        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.get_count(_ap_scripted_squads))
+    end
+end
+
+-- Sweep tracking dicts: drop entries whose server entity is gone or is not a squad.
+-- A recycled id may resolve to a different class; without this the next save re-emits stale ids and the scan touches the recycled object each tick.
+local function _iterate_recycled_ids(dict)
+    local count = 0
+    for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
+    for id in pairs(dict) do
+        local se = xobject.get_se(id)
+        if not se or not xsquad.is_squad(se) then
+            count = count + 1
+            _to_drop[count] = id
+        end
+    end
+    for i = 1, count do dict[_to_drop[i]] = nil end
+    return count
+end
+
+-- load_state fires BEFORE the engine restores server entities (alife_storage_manager.cpp:131-141), so alife_object(id) is nil here.
+-- Do only m_data table restoration here; defer alife-querying work (the sweep) to on_game_load.
+local function _on_load_state(m_data)
+    local saved = m_data.ap_core_broker
+    if type(saved) ~= "table" then saved = {} end
+    local ss = saved.ap_scripted_squads
+    _ap_scripted_squads = (type(ss) == "table") and ss or {}
+    for _, data in pairs(_ap_scripted_squads) do
+        if type(data) == "table" and data.arrived then data.release_at = 0 end
+    end
+    if ap_core_debug.is_enabled() then
+        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.get_count(_ap_scripted_squads))
+    end
+end
+
+-- on_game_load fires from bind_stalker.net_spawn after server entities are registered.
+-- This is the safe point for alife_object queries against the just-restored save state.
+local function _on_game_load()
+    local dropped_scripted = _iterate_recycled_ids(_ap_scripted_squads)
+    if dropped_scripted > 0 then
+        ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d", dropped_scripted)
+    end
+end
+
+-- SERVER_ENTITY_ON_UNREGISTER fires for every server entity.
+-- The hash deletes are safe no-ops when the id isn't in our maps (only squads ever get keyed in).
+local function _on_entity_unregister(se_obj)
+    if not se_obj then return end
+    local id = se_obj.id
+    local data = _ap_scripted_squads[id]
+    if data then
+        if data.offmap then
+            ap_core_debug.debug("[SQUAD.OFFMAP] cleanup_on_unregister: squad=%d", id)
+        else
+            ap_core_debug.debug("[SQUAD] cleanup_on_unregister: squad=%d target=%s", id, tostring(data.scripted_target))
+        end
+        _ap_scripted_squads[id] = nil
+    end
+end
+
+--- Register a squad ownership filter. On name match, replaces existing filter.
+--- Squads matching the filter are treated as owned by the registering mod.
+--- @safety SAFE - pure Lua array scan + append/replace
+--- @cost O(n) owners (typically 2-3) | 0 luabind
+--- @param name string Owner name (e.g. "warfare", "bao", "guards")
+--- @param filter_fn function(squad) -> boolean True if this mod owns the squad
+--- @return boolean true on success, false if args invalid
+function register_owner(name, filter_fn)
+    if type(name) ~= "string" or name == "" or type(filter_fn) ~= "function" then
+        ap_core_debug.err("[SQUAD] register_owner: invalid args (name=%s, filter type=%s)", tostring(name), type(filter_fn))
+        return false
+    end
+    for i = 1, #_owners do
+        if _owners[i].name == name then
+            _owners[i].filter = filter_fn
+            ap_core_debug.info("[SQUAD] register_owner: %s (replaced)", name)
+            return true
+        end
+    end
+    _owners[#_owners + 1] = { name = name, filter = filter_fn }
+    ap_core_debug.info("[SQUAD] register_owner: %s", name)
+    return true
+end
+
+--- Remove a squad ownership filter by name. No-op if not registered.
+--- @safety SAFE - pure Lua array scan + table.remove
+--- @cost O(n) owners (typically 2-3) | 0 luabind
+--- @param name string Owner name
+--- @return boolean true if removed, false if not found
+function unregister_owner(name)
+    for i = #_owners, 1, -1 do
+        if _owners[i].name == name then
+            table_remove(_owners, i)
+            ap_core_debug.info("[SQUAD] unregister_owner: %s", name)
+            return true
+        end
+    end
+    return false
+end
+
+--- Query squad ownership. Returns owner name or nil.
+--- Respects allow_external_ownership MCM toggle.
+--- @safety SAFE - pure Lua, filter functions are registered by callers
+--- @cost O(n) owners (typically 2-3) | 0 luabind (filters read Lua fields)
+--- @param squad userdata Squad server object
+--- @return string|nil Owner name or nil if unowned
+function get_owner(squad)
+    if not cfg.allow_external_ownership then return nil end
+    for i = 1, #_owners do
+        if _owners[i].filter(squad) then return _owners[i].name end
+    end
+    return nil
+end
+
+--- Build a fresh opts table merging caller_opts with AP's protection policy.
+--- Used by ap_core_util.find_squads and any caller needing the AP protection contract; the returned table is a fresh copy, caller_opts is never mutated.
+--- @safety SAFE - pure Lua table allocation
+--- @cost O(n) caller_opts fields + 5 protection fields | 0 luabind
+--- @param caller_opts table|nil
+--- @return table merged opts (fresh table)
+function build_protection_opts(caller_opts)
+    local out = caller_opts and xtable.clone(caller_opts) or {}
+    for k, v in pairs(_PROTECTION_FIELDS) do out[k] = v end
+    out.exclude_filter = get_owner
+    return out
+end
+
+--- Build opts for the preempt-fallback find, used by ap_core_util.find_squads when opts.allow_preempt is set and the standard pass found nothing.
+--- Walks the small AP-scripted pool (opts.source) and accepts interruptable entries; non-interruptable AP scripts and externally scripted squads are rejected.
+--- @safety SAFE - pure Lua table allocation, defensive iteration
+--- @cost O(n) AP-scripted squads (small pool, typically dozens) | 0 luabind
+--- @param caller_opts table|nil
+--- @return table merged opts (fresh table)
+function build_preempt_opts(caller_opts)
+    local out = build_protection_opts(caller_opts)
+    out.exclude_scripted = false
+    out.exclude_filter = _filter_preempt
+    out.source = _ap_scripted_squads
+    local non_interruptable = {}
+    for id, data in pairs(_ap_scripted_squads) do
+        if not data.interruptable then non_interruptable[id] = true end
+    end
+    out.exclude_ids = non_interruptable
+    return out
+end
+
+--- Check all squad protection guards via xsquad.is_protected (ownership, scripted, permanent, active_role, task_target).
+--- Non-squad early-return: a recycled id may resolve to a different class, so treat as protected and let the load-state sweep evict the stale entry.
+--- @safety SAFE - delegates to xsquad.is_protected, nil-guarded, class-guarded
+--- @cost O(1) cached | 0 luabind (cache hit) or 4-5 luabind medium (miss: alife_object, clsid, community)
+--- @param squad se_squad Squad server object
+--- @return boolean, string|nil, string|nil, string|nil protected, reason, detail, name
+function is_protected(squad)
+    if not squad then return false, nil, nil, nil end
+    if not xsquad.is_squad(squad) then return true, REASON.NOT_A_SQUAD, nil, nil end
+    if not _protection_opts then
+        _protection_opts = xtable.clone(_PROTECTION_FIELDS)
+        _protection_opts.exclude_filter = get_owner
+    end
+    return xsquad.is_protected(squad, _protection_opts)
+end
+
+--- Check if a squad currently has an active off-map session.
+--- Off-map causes refuse to publish while a session is active; it survives re-dispatch during dwell and ends on arrival or despawn.
+--- @safety SAFE - pure Lua hash lookup
+--- @cost O(1) | 0 luabind
+--- @param squad_id number Squad id
+--- @return boolean true if the squad has an active off-map session
+function is_offmap_dispatched(squad_id)
+    local data = _ap_scripted_squads[squad_id]
+    return data ~= nil and data.offmap == true
+end
+
+--- True while AP is actively directing this squad: a live scripted dispatch (scripted_target) or a squad/actor chase (is_chase).
+--- A released off-map dwell remnant returns false; the PDA map-marker lifecycle reads this, not the raw scripted_target (squad chases never set it).
+--- @safety SAFE - pure Lua hash lookup
+--- @cost O(1) | 0 luabind
+--- @param squad_id number Squad id
+--- @return boolean true if AP is actively routing or chasing this squad
+function is_routing(squad_id)
+    local data = _ap_scripted_squads[squad_id]
+    return data ~= nil and (data.scripted_target ~= nil or data.is_chase == true)
 end
 
 --- Script a squad to move to a smart terrain, register for arrival detection and the gulag hold.
@@ -471,7 +836,6 @@ function release_squad(squad_id)
     return _unregister_squad(squad_id)
 end
 
-
 --- Register an arrival handler by key (called from consumer on_game_start).
 --- @cost O(1) | 0 luabind
 function register_arrival_handler(key, fn)
@@ -485,376 +849,6 @@ function unregister_arrival_handler(key)
     if _arrival_handlers[key] == nil then return end
     _arrival_handlers[key] = nil
     ap_core_debug.debug("[SQUAD] unregister_arrival_handler: key=%s", key)
-end
-
-
--- True when every squad member holds an anchored job (not the generic_point cover stub, xr_cover.script:42-62).
--- Offline or off-level smarts are unreadable, so treat as anchored (do not release); the campfire_point fallback is covered by _has_campfire_stray.
--- @src anomaly/smart_terrain.script(771) the bound .job; gulag_general.script(282) generic_point
-local function has_anchored_jobs(smart, squad)
-    if not (smart.online and smart.is_on_actor_level) then return true end
-    for member_id in xsquad.iterate_member_ids(squad) do
-        local job = xsmart.get_npc_job(smart, member_id)
-        if not job or job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return false end
-    end
-    return true
-end
-
--- Campfire seat radius: xr_campfire_point seat ring tops out at 8m; past it a campfire member is on the find_random_cover fallback, not a seat.
-local CAMPFIRE_SEAT_RADIUS = 8
-
--- True when a member's server position is beyond the seat radius from every bound fire.
-local function _is_member_off_campfire(smart, member_id)
-    local se = xobject.get_se(member_id)
-    return se ~= nil and not xsmart.is_near_campfire(smart, se.position, CAMPFIRE_SEAT_RADIUS)
-end
-
--- True when any member on a campfire_point job ended up away from every fire (the scatter fallback).
--- Position-based, so it reads true only after members walk to their spots; called on the _update_gulag re-check, not at arrival.
-local function _has_campfire_stray(smart, squad)
-    if not (smart.online and smart.is_on_actor_level) then return false end
-    for member_id in xsquad.iterate_member_ids(squad) do
-        local job = xsmart.get_npc_job(smart, member_id)
-        if job and job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT and _is_member_off_campfire(smart, member_id) then
-            return true
-        end
-    end
-    return false
-end
-
--- Validate arrival and commit the gulag entry, adding the destination roster entry via SIMBOARD:assign_squad_to_smart(squad, smart.id).
--- Pairs with register_squad's source clear (assign nil) to keep SIMBOARD.smarts[].squads consistent with AP-driven moves.
-local function _apply_arrival(squad_id, squad, smart, data, now)
-    if not has_anchored_jobs(smart, squad) then
-        ap_core_debug.debug("[SQUAD] release_unplaced: squad=%d target=%s", squad_id, data.scripted_target)
-        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
-        return false
-    end
-    data.arrived = true
-    data.release_at = now + data.pre_release_gulag
-    xsmart.assign_squad_to_smart(squad, smart.id)
-    return true
-end
-
--- Run the on_arrive handler if registered; returns true when the caller should proceed to commit.
--- Returns false when the handler rescripted the squad (as area/needs consequences do), so the new entry owns its own arrival lifecycle.
-local function _run_arrival_handler(squad_id, squad, data)
-    local key = data.on_arrive
-    if not key then return true end
-    local handler = _arrival_handlers[key]
-    if not handler then
-        ap_core_debug.err("[SQUAD] on_arrive: no handler for key=%s squad=%d", key, squad_id)
-        return true
-    end
-    ap_core_debug.debug("[SQUAD] on_arrive: squad=%d handler=%s target=%s",
-        squad_id, key, data.scripted_target)
-    handler(squad, data.on_arrive_args)
-    return _ap_scripted_squads[squad_id] == data
-end
-
--- Classify one member's job for the dump: (label, kind), kind = generic/campfire/other/none.
--- label strips the passed "logic@<smart>_" prefix for brevity.
-local function _get_job_info(job, prefix, plen)
-    if not job or not job.section then return "none", "none" end
-    local section = job.section
-    local label = (section:sub(1, plen) == prefix) and section:sub(plen + 1) or (section:gsub("^logic@", ""))
-    if job.job_type_id == xsmart.JOB_TYPE_GENERIC_POINT then return label, "generic" end
-    if job.job_type_id == xsmart.JOB_TYPE_CAMPFIRE_POINT then return label, "campfire" end
-    return label, "other"
-end
-
--- Dump a squad's per-member engine jobs as one DEBUG line: a generic/campfire/other/none count breakdown plus id=job pairs.
--- npc_info is readable only for an online, on-level smart (else "no_snapshot"); generic>0 is the corner/road camper (xr_cover.script:42-62).
--- @src anomaly/smart_terrain.script(626,768) npc_by_job_section single-occupancy
-local function _log_member_jobs(squad, smart)
-    if not ap_core_world_trace.is_enabled() then return end
-    local sname = tostring(smart:name())
-    if not (smart.online and smart.is_on_actor_level) then
-        ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s no_snapshot (smart offline/off-level)",
-            squad.id, sname)
-        return
-    end
-    local prefix = "logic@" .. sname .. "_"
-    local plen = #prefix
-    local parts = {}
-    local counts = { generic = 0, campfire = 0, other = 0, none = 0 }
-    for member_id in xsquad.iterate_member_ids(squad) do
-        local label, kind = _get_job_info(xsmart.get_npc_job(smart, member_id), prefix, plen)
-        counts[kind] = counts[kind] + 1
-        parts[#parts + 1] = member_id .. "=" .. label
-    end
-    ap_core_world_trace.debug("[SQUAD] jobs: squad=%d target=%s n=%d generic=%d campfire=%d other=%d none=%d [%s]",
-        squad.id, sname, #parts, counts.generic, counts.campfire, counts.other, counts.none,
-        table_concat(parts, ", "))
-end
-
--- Detect physical arrival; on arrival run the on_arrive handler, then commit the gulag entry (adding the destination SIMBOARD roster entry).
--- squad ref threaded from _update_scripted_squad.
-local function _run_arrival(squad_id, squad, data, now)
-    if not data.target_smart_id then return end
-    if data.arrived then return end
-    if not squad or not squad.commander_id then
-        ap_core_debug.debug("[SQUAD] entity_lost: squad=%d target=%s", squad_id, data.scripted_target)
-        _unregister_squad(squad_id)
-        return
-    end
-    local smart = xobject.get_se(data.target_smart_id)
-    if not smart then
-        ap_core_debug.debug("[SQUAD] smart_lost: squad=%d smart=%d target=%s", squad_id, data.target_smart_id, data.scripted_target)
-        _unregister_squad(squad)
-        return
-    end
-    if not xsmart.is_arrived(squad, smart) then return end
-    _log_proximity("arrived", squad, smart, data)
-    if not _run_arrival_handler(squad_id, squad, data) then return end
-    if _apply_arrival(squad_id, squad, smart, data, now) then
-        ap_core_debug.debug("[SQUAD] gulag_started: squad=%d target=%s hold=%ds",
-            squad_id, data.scripted_target, data.pre_release_gulag)
-    end
-end
-
--- Update the gulag state for one scan: at release_at, settle the squad as a resident via _unregister_squad.
--- Mid-hold re-check releases if a member lost its job, sits on the generic_point stub, or strayed from the fire (_has_campfire_stray).
-local function _update_gulag(squad_id, squad, data, now)
-    if not data.arrived then return end
-    if now >= data.release_at then
-        ap_core_debug.debug("[SQUAD] gulag_released: squad=%d target=%s",
-            squad_id, tostring(data.scripted_target))
-        _unregister_squad(squad)
-        return
-    end
-    if not data.target_smart_id then return end
-    local smart = xobject.get_se(data.target_smart_id)
-    if not smart then return end
-    if not has_anchored_jobs(smart, squad) or _has_campfire_stray(smart, squad) then
-        ap_core_debug.debug("[SQUAD] release_unplaced_mid_hold: squad=%d target=%s", squad_id, data.scripted_target)
-        if data.offmap then _release_to_dwell(squad) else _unregister_squad(squad) end
-    end
-end
-
--- Min hold once paused; damps in/out-of-base oscillation.
-local CHASE_MIN_PAUSE_SEC = 30
--- Give up (release) if the target stays sheltered this long.
-local CHASE_MAX_PAUSE_SEC = 600
-
--- A chase entry: actor-target ("actor") or squad-target (target_squad_id).
--- Runs the compute_chase leash instead of the smart-dispatch arrival/gulag flow.
-local function _is_chase(data)
-    return data.is_chase == true
-end
-
--- Stop driving the engine target so vanilla behaviour (surge shelter, autonomous sim) takes over.
--- Squad-target chases stop via the ap_core_chase hook (nil while data.paused); the actor target lives on squad.scripted_target and is released here.
-local function _stop_chase(squad, data, reason, now)
-    if data.paused then return end
-    data.paused = true
-    data.paused_at = now
-    data.pause_reason = reason
-    if not data.target_squad_id then
-        xsquad.release_squad(squad)
-    end
-    ap_core_debug.debug("[SQUAD] chase_pause: squad=%d reason=%s", squad.id, tostring(reason))
-end
-
-local function _start_chase(squad, data)
-    data.paused = nil
-    data.paused_at = nil
-    data.pause_reason = nil
-    if data.target_squad_id then
-        squad.__lock = nil
-        squad.current_action = 0
-    else
-        xsquad.set_target_actor(squad, true)
-    end
-    ap_core_debug.debug("[SQUAD] chase_resume: squad=%d", squad.id)
-end
-
--- Unified chase leash: ask compute_chase, act on the verdict.
--- RELEASE drops the script, PAUSE holds (max-pause cap -> release), KEEP resumes after a min hold and reasserts the actor target.
-local function _update_chase(squad_id, squad, data, now)
-    local verdict, reason = ap_core_util.compute_chase(squad, data)
-    if verdict == VERDICT.RELEASE then
-        ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=%s", squad_id, tostring(reason))
-        _unregister_squad(squad)
-        return
-    end
-    if verdict == VERDICT.PAUSE then
-        if data.paused and (now - (data.paused_at or now)) > CHASE_MAX_PAUSE_SEC then
-            ap_core_debug.debug("[SQUAD] chase_release: squad=%d reason=pause_cap", squad_id)
-            _unregister_squad(squad)
-            return
-        end
-        _stop_chase(squad, data, reason, now)
-        return
-    end
-    if data.paused then
-        if (now - (data.paused_at or now)) < CHASE_MIN_PAUSE_SEC then return end
-        _start_chase(squad, data)
-    end
-    if not data.target_squad_id then
-        xsquad.set_target(squad, "actor")
-    end
-end
-
---- Per-squad scan (UPDATE_SCRIPTED_SQUADS_SEC): TTL, reassert, arrival, gulag.
---- Off-map sessions add the despawn safety-net check via _update_offmap_entry.
-local function _update_scripted_squad(squad_id)
-    local data = _ap_scripted_squads[squad_id]
-    if not data then return end
-    local squad = xobject.get_se(squad_id)
-    if not xsquad.is_squad(squad) then
-        ap_core_debug.debug("[SQUAD] scan_drop: squad=%d target=%s reason=%s",
-            squad_id, tostring(data.scripted_target),
-            not squad and "entity_gone" or "not_a_squad")
-        _ap_scripted_squads[squad_id] = nil
-        return
-    end
-    local now = xtime.get_game_sec()
-    if data.offmap and _update_offmap_entry(squad_id, squad, data, now) then
-        _ap_scripted_squads[squad_id] = nil
-        return
-    end
-    if not data.offmap then
-        local ttl = data.ttl or SCRIPTED_SQUAD_TTL
-        if (now - (data.tracked_at or 0)) > ttl then
-            ap_core_debug.debug("[SQUAD] ttl_expired: squad=%d target=%s age=%ds ttl=%ds",
-                squad_id, tostring(data.scripted_target), now - (data.tracked_at or 0), ttl)
-            _unregister_squad(squad)
-            return
-        end
-    end
-    if _is_chase(data) then
-        _update_chase(squad_id, squad, data, now)
-        return
-    end
-    if not data.scripted_target then return end
-    local prev_target = squad.scripted_target
-    if xsquad.set_target(squad, data.scripted_target) then
-        ap_core_debug.debug("[SQUAD] reassert: squad=%d target=%s was=%s", squad_id, data.scripted_target, tostring(prev_target))
-    end
-    _run_arrival(squad_id, squad, data, now)
-    _update_gulag(squad_id, squad, data, now)
-end
-
--- Resolve a tracked squad and dump its member jobs (DEBUG).
--- Split out so _log_tracked_entry stays under the complexity cap.
-local function _log_squad_jobs(squad_id, data)
-    if not (data.arrived and data.target_smart_id) then return end
-    local squad = xobject.get_se(squad_id)
-    local smart = xobject.get_se(data.target_smart_id)
-    if squad and smart then _log_member_jobs(squad, smart) end
-end
-
--- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
-local function _log_tracked_entry(squad_id, data, now)
-    if data.scripted_target then
-        ap_core_world_trace.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
-            squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
-            now - (data.tracked_at or now),
-            tostring(data.offmap or false), tostring(data.arrived or false),
-            tostring(data.interruptable or false))
-        _log_squad_jobs(squad_id, data)
-        return
-    end
-    ap_core_world_trace.debug("[SQUAD] tracked: id=%d offmap_released age=%ds",
-        squad_id, now - (data.dispatched_at or now))
-end
-
--- Kick an xslice session every UPDATE_SCRIPTED_SQUADS_SEC; one squad per frame caps the per-frame cost at one arrival commit.
-local function _update_scripted_squads()
-    ResetTimeEvent(TIMER_EV, UPDATE_SCRIPTED_SQUADS, UPDATE_SCRIPTED_SQUADS_SEC)
-    if xslice.is_active("broker_scan") then return end
-    if not next(_ap_scripted_squads) then return end
-    local debug_on = ap_core_debug.is_enabled()
-    local world_on = ap_core_world_trace.is_enabled()
-    local now = world_on and xtime.get_game_sec()
-    local queue = {}
-    for squad_id, data in pairs(_ap_scripted_squads) do
-        queue[#queue + 1] = squad_id
-        if world_on then _log_tracked_entry(squad_id, data, now) end
-    end
-    local count = #queue
-    local scan_ms = 0
-
-    xslice.start("broker_scan", queue, {
-        step = 1,
-        func = function(squad_id)
-            local tmr = xprofiler.new_if(debug_on):start()
-            _update_scripted_squad(squad_id)
-            tmr:stop()
-            scan_ms = scan_ms + tmr:get_ms()
-            return true
-        end,
-        on_done = function()
-            if debug_on then ap_core_debug.debug("[SQUAD] scan_cycle: tracked=%d [%.2fms]", count, scan_ms) end
-        end,
-    })
-end
-
-
-local function _on_save_state(m_data)
-    m_data.ap_core_broker = {
-        ap_scripted_squads = _ap_scripted_squads,
-    }
-    if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("[SQUAD] save: scripted=%d", xtable.get_count(_ap_scripted_squads))
-    end
-end
-
--- Sweep tracking dicts: drop entries whose server entity is gone or is not a squad.
--- A recycled id may resolve to a different class; without this the next save re-emits stale ids and the scan touches the recycled object each tick.
-local function _iterate_recycled_ids(dict)
-    local count = 0
-    for i = #_to_drop, 1, -1 do _to_drop[i] = nil end
-    for id in pairs(dict) do
-        local se = xobject.get_se(id)
-        if not se or not xsquad.is_squad(se) then
-            count = count + 1
-            _to_drop[count] = id
-        end
-    end
-    for i = 1, count do dict[_to_drop[i]] = nil end
-    return count
-end
-
--- load_state fires BEFORE the engine restores server entities (alife_storage_manager.cpp:131-141), so alife_object(id) is nil here.
--- Do only m_data table restoration here; defer alife-querying work (the sweep) to on_game_load.
-local function _on_load_state(m_data)
-    local saved = m_data.ap_core_broker
-    if type(saved) ~= "table" then saved = {} end
-    local ss = saved.ap_scripted_squads
-    _ap_scripted_squads = (type(ss) == "table") and ss or {}
-    for _, data in pairs(_ap_scripted_squads) do
-        if type(data) == "table" and data.arrived then data.release_at = 0 end
-    end
-    if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("[SQUAD] load: scripted=%d", xtable.get_count(_ap_scripted_squads))
-    end
-end
-
--- on_game_load fires from bind_stalker.net_spawn after server entities are registered.
--- This is the safe point for alife_object queries against the just-restored save state.
-local function _on_game_load()
-    local dropped_scripted = _iterate_recycled_ids(_ap_scripted_squads)
-    if dropped_scripted > 0 then
-        ap_core_debug.info("[SQUAD] load_sweep: dropped scripted=%d", dropped_scripted)
-    end
-end
-
--- SERVER_ENTITY_ON_UNREGISTER fires for every server entity.
--- The hash deletes are safe no-ops when the id isn't in our maps (only squads ever get keyed in).
-local function _on_entity_unregister(se_obj)
-    if not se_obj then return end
-    local id = se_obj.id
-    local data = _ap_scripted_squads[id]
-    if data then
-        if data.offmap then
-            ap_core_debug.debug("[SQUAD.OFFMAP] cleanup_on_unregister: squad=%d", id)
-        else
-            ap_core_debug.debug("[SQUAD] cleanup_on_unregister: squad=%d target=%s", id, tostring(data.scripted_target))
-        end
-        _ap_scripted_squads[id] = nil
-    end
 end
 
 function on_game_start()

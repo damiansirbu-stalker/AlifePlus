@@ -58,6 +58,26 @@ local ARTEFACTS = {
 -- A full day, the span a skip test needs to cross every time band.
 local DEFAULT_SKIP_HOURS = 24
 
+-- Territory population, actor's level only: keep squads alive at field smarts so radiant area causes play out; current-level + ceiling avoid the id-pool CTD.
+local POP_TARGET        = 8
+local POP_MAX_PER_PASS  = 4
+local POP_ALIFE_CEILING = 50000
+
+-- Conquer-capable mutant species (feral/predator/aberrant) that take territory; alphas emerge from kills, never forced.
+local POP_MUTANT_SPECIES = { "dog", "pseudodog", "boar", "flesh", "snork" }
+
+-- Roaming human factions for the seeded population; peaceful-ish factions that route to traders, so supply-trader/barter flows get candidates.
+local POP_HUMAN_FACTIONS = { "stalker", "csky", "bandit" }
+
+-- Spawned hostile squad ids, pruned each run; caps concurrent test-driven combat.
+local _spawned_hostiles = {}
+
+-- _pop_squads: tracked spawned squad ids. _pop_fields: cached map-wide field-smart list, built once.
+local _pop_squads = {}
+local _pop_fields = nil
+
+local _runner = nil
+
 local function _tip(msg)
     local actor = db.actor
     if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
@@ -173,33 +193,6 @@ local function _give_money()
     ap_core_debug.debug("[TEST] give_money OK npcs=%d amount=%d", given, MONEY_PER_NPC)
 end
 
--- Default rank() jump: expert (30000) opens the veteran/expert market bands so the echo shows high-value goods; engine clamps rank to [0, 56000].
-local RANK_DEFAULT = 30000
-
---- Set the player's character rank; run_string ap_ext_test.rank(25000).
---- With no arg it jumps to expert, which opens the top market rank bands so the echo carries high-value goods.
---- @novalidate(code.unused_export, reason:"console command")
-function rank(value)
-    local actor = db.actor
-    if not actor then return _tip("Not in game") end
-    local target = value or RANK_DEFAULT
-    local before = actor:character_rank()
-    actor:set_character_rank(target)
-    local after = actor:character_rank()
-    _tip(string_format("Rank %d -> %d", before, after))
-    ap_core_debug.debug("[TEST] rank target=%d before=%d after=%d", target, before, after)
-end
-
---- Advance the game clock; run_string ap_ext_test.time(48).
---- With no arg it advances 24 h (one restock cycle), so traders resupply, the market injects and sells out, and radiant Hull/MVT windows mature.
---- @novalidate(code.unused_export, reason:"console command")
-function time(hours)
-    local delta_hours = hours or DEFAULT_SKIP_HOURS
-    level.change_game_time(0, delta_hours, 0)
-    _tip(string_format("Advanced %d h", delta_hours))
-    ap_core_debug.debug("[TEST] time advanced hours=%d", delta_hours)
-end
-
 -- Item batches into nearby unfilled stashes (real treasure_manager state; feeds stash_loot).
 local function _fill_stashes()
     local actor = db.actor
@@ -240,9 +233,6 @@ local function _drop_artefact()
     _tip("Dropped " .. sec .. " nearby")
     ap_core_debug.debug("[TEST] drop_artefact OK sec=%s id=%d", sec, se.id)
 end
-
--- Spawned hostile squad ids, pruned each run; caps concurrent test-driven combat.
-local _spawned_hostiles = {}
 
 local function _prune_spawned()
     local alive = {}
@@ -312,21 +302,6 @@ local function _spawn_hostiles()
     ap_core_debug.debug("[TEST] spawn_hostiles OK squad=%d section=%s target=%d faction=%s smart=%s",
         squad.id, section, target.id, target.player_id, smart_name)
 end
-
--- Territory population, actor's level only: keep squads alive at field smarts so radiant area causes play out; current-level + ceiling avoid the id-pool CTD.
-local POP_TARGET        = 8
-local POP_MAX_PER_PASS  = 4
-local POP_ALIFE_CEILING = 50000
-
--- Conquer-capable mutant species (feral/predator/aberrant) that take territory; alphas emerge from kills, never forced.
-local POP_MUTANT_SPECIES = { "dog", "pseudodog", "boar", "flesh", "snork" }
-
--- Roaming human factions for the seeded population; peaceful-ish factions that route to traders, so supply-trader/barter flows get candidates.
-local POP_HUMAN_FACTIONS = { "stalker", "csky", "bandit" }
-
--- _pop_squads: tracked spawned squad ids. _pop_fields: cached map-wide field-smart list, built once.
-local _pop_squads = {}
-local _pop_fields = nil
 
 -- Field smarts (not a base, no hub trader; ap_ext_util.is_field_smart) AP takeovers may claim, built once from the SIMBOARD registry.
 local function _build_field_smarts()
@@ -437,8 +412,6 @@ local ACTIONS = {
     { name = "drop_artefact",  every = 900, action = _drop_artefact },
 }
 
-local _runner = nil
-
 local function _runner_tick()
     if not _runner then return true end
     ResetTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC)
@@ -453,6 +426,33 @@ local function _runner_tick()
         end
     end
     return false
+end
+
+-- Default rank() jump: expert (30000) opens the veteran/expert market bands so the echo shows high-value goods; engine clamps rank to [0, 56000].
+local RANK_DEFAULT = 30000
+
+--- Set the player's character rank; run_string ap_ext_test.rank(25000).
+--- With no arg it jumps to expert, which opens the top market rank bands so the echo carries high-value goods.
+--- @novalidate(code.unused_export, reason:"console command")
+function rank(value)
+    local actor = db.actor
+    if not actor then return _tip("Not in game") end
+    local target = value or RANK_DEFAULT
+    local before = actor:character_rank()
+    actor:set_character_rank(target)
+    local after = actor:character_rank()
+    _tip(string_format("Rank %d -> %d", before, after))
+    ap_core_debug.debug("[TEST] rank target=%d before=%d after=%d", target, before, after)
+end
+
+--- Advance the game clock; run_string ap_ext_test.time(48).
+--- With no arg it advances 24 h (one restock cycle), so traders resupply, the market injects and sells out, and radiant Hull/MVT windows mature.
+--- @novalidate(code.unused_export, reason:"console command")
+function time(hours)
+    local delta_hours = hours or DEFAULT_SKIP_HOURS
+    level.change_game_time(0, delta_hours, 0)
+    _tip(string_format("Advanced %d h", delta_hours))
+    ap_core_debug.debug("[TEST] time advanced hours=%d", delta_hours)
 end
 
 --- Start or stop the driver; while on, it re-seeds live world state on a timer so the real AP pipeline runs with no further input.
