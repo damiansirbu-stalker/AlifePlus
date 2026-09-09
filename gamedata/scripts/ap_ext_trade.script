@@ -146,6 +146,14 @@ local function _run_buy_entry(entry, ctx)
     end
 end
 
+-- Dump the trade partner's stock to the world log when trade opens (aggregated, one line).
+-- The trade feature's own hook, so any trader you open reports its shelf; no-op when world trace is off.
+local function _on_trade_started()
+    if not ap_core_world_trace.is_enabled() then return end
+    local npc = xactor.get_talking_npc()
+    if npc then xinventory.log_inventory(npc, "trade", ap_core_world_trace.debug) end
+end
+
 --- Run a sell + buy trade between an NPC and a trader, per the NPC's rank-tier policy.
 --- SELL releases anything over category max and credits the NPC, BUY fills anything under min from post-sell counts + cash, capped by MCM trade_profit_max.
 --- @safety SAFE - nil-guarded npc/seller; iterate_inventory tolerant of nil items
@@ -197,14 +205,6 @@ function execute_trade(npc, seller)
     end
 
     return { sold = sold, bought = bought }
-end
-
--- Dump the trade partner's stock to the world log when trade opens (aggregated, one line).
--- The trade feature's own hook, so any trader you open reports its shelf; no-op when world trace is off.
-local function _on_trade_started()
-    if not ap_core_world_trace.is_enabled() then return end
-    local npc = xactor.get_talking_npc()
-    if npc then xinventory.log_inventory(npc, "trade", ap_core_world_trace.debug) end
 end
 
 function on_game_start()

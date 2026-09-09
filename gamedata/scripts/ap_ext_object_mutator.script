@@ -58,24 +58,6 @@ local function _stop_mark(npc_id)
     end
 end
 
---- Register the combat effects for a promoted alpha (from the alpha_promote consequence and the rebuild).
---- Multiplier = 1 +/- max_pct/100 * level/ALPHA_MAX_LEVEL; the mark attaches when the alpha is online (net spawn covers the rest).
---- @safety SAFE - pure table writes; nil-guarded args; mark attach is bone-verified
---- @cost O(1) | 0 luabind (plus the one-time mark attach when online)
---- @param npc_id number Alpha entity id
---- @param level number Alpha level (1..ALPHA_MAX_LEVEL)
-function set_alpha_effects(npc_id, level)
-    if not npc_id or not level or level < 1 then return end
-    _alpha_ids[npc_id] = true
-    if cfg.mutator_alpha_hit_power_dealt_enabled then
-        _hit_power_dealt[npc_id] = 1.0 + (cfg.mutator_alpha_hit_power_dealt_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
-    end
-    if cfg.mutator_alpha_hit_power_taken_enabled then
-        _hit_power_taken[npc_id] = 1.0 - (cfg.mutator_alpha_hit_power_taken_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
-    end
-    _try_apply_mark(npc_id)
-end
-
 -- Dealt-scaling shared by all three victim seams: an alpha attacker multiplies the hit.
 -- @cost O(1) | 1 luabind (draftsman:id) only when the hit has an attacker object
 local function _apply_dealt_scale(shit)
@@ -206,6 +188,24 @@ local function _build_state()
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s rebuild: %d alphas, %d marked", LOG, xtable.get_count(_alpha_ids), xtable.get_count(_marks))
     end
+end
+
+--- Register the combat effects for a promoted alpha (from the alpha_promote consequence and the rebuild).
+--- Multiplier = 1 +/- max_pct/100 * level/ALPHA_MAX_LEVEL; the mark attaches when the alpha is online (net spawn covers the rest).
+--- @safety SAFE - pure table writes; nil-guarded args; mark attach is bone-verified
+--- @cost O(1) | 0 luabind (plus the one-time mark attach when online)
+--- @param npc_id number Alpha entity id
+--- @param level number Alpha level (1..ALPHA_MAX_LEVEL)
+function set_alpha_effects(npc_id, level)
+    if not npc_id or not level or level < 1 then return end
+    _alpha_ids[npc_id] = true
+    if cfg.mutator_alpha_hit_power_dealt_enabled then
+        _hit_power_dealt[npc_id] = 1.0 + (cfg.mutator_alpha_hit_power_dealt_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
+    end
+    if cfg.mutator_alpha_hit_power_taken_enabled then
+        _hit_power_taken[npc_id] = 1.0 - (cfg.mutator_alpha_hit_power_taken_max_pct / 100) * (level / ALPHA_MAX_LEVEL)
+    end
+    _try_apply_mark(npc_id)
 end
 
 function on_game_start()
