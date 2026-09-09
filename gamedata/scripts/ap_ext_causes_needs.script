@@ -69,8 +69,6 @@ local function _shuffle_causes()
     end
 end
 
-local function _is_not_base_or_lair(smart) return not xsmart.is_base(smart) and not xsmart.is_lair(smart) end
-
 -- SIMBOARD-based: a smart is unclaimed when no squad of any kind is stationed there.
 -- Physical-presence truth via xsmart.iterate_stationed_squads (cross-level and offline safe), not smart.faction or LTX-declared factions.
 local function _is_unclaimed(smart)
@@ -293,7 +291,7 @@ function on_game_start()
           alignment = _alignment_naturalist, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
         { cause = CAUSE.JOB_OUTPOST,      name = "job_outpost",      need = "job",
-          filter = function(s) return _is_not_base_or_lair(s) and xsmart.has_animated_jobs(s) end,
+          filter = function(s) return not xsmart.is_base(s) and not xsmart.is_lair(s) and xsmart.has_animated_jobs(s) end,
           alignment = _alignment_principled, exclude_enemy = true,
           personality = { PERSONALITY.TERRITORY, PERSONALITY.DISCIPLINE } },
         { cause = CAUSE.JOB_EXPLORE,      name = "job_explore",      need = "job",
