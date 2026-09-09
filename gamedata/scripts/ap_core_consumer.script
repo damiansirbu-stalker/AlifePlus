@@ -14,75 +14,11 @@ local _subscribe_event
 local hud = ap_core_hud
 local hud_collecting = ap_core_hud.is_collecting
 
---- Register a consequence handler for an event. Strict: refuses duplicate names.
---- Caller must call unregister(name) first if replacing.
---- @cost O(1) amortized | 0 luabind (one table insert per registration)
---- @param name string Consequence name (used as trace key, rate limit key, arrival key)
---- @param config table { event, condition, on_arrive } condition: returns false to skip
---- @param handler function(event_data) -> { code = RESULT.X, reason = "..." }
---- @return boolean true on success, false if already registered or args invalid
-function register(name, config, handler)
-    if not name or not config or not handler then
-        ap_core_debug.err("[CONSUMER] register: missing name, config, or handler")
-        return false
-    end
-    if not config.event then
-        ap_core_debug.err("[CONSUMER] register '%s': missing event", name)
-        return false
-    end
-    if _cause_for[name] then
-        ap_core_debug.warn("[CONSUMER] register: name already registered: %s (event=%s); call unregister first", name, _cause_for[name])
-        return false
-    end
-
-    if config.on_arrive then
-        ap_core_broker.register_arrival_handler(name, config.on_arrive)
-    end
-
-    local event = config.event
-    if not _registry[event] then
-        _registry[event] = {}
-    end
-
-    local entries = _registry[event]
-    entries[#entries + 1] = { name = name, condition = config.condition, handler = handler, log_prefix = ap_core_debug.format_bracket(name) }
-    _cause_for[name] = event
-    if _subscribed and #entries == 1 then
-        _subscribe_event(event)
-    end
-    ap_core_debug.info("[CONSUMER] registered: %s event=%s", name, event)
-    return true
-end
-
 local function _remove_named_entry(entries, name)
     if not entries then return end
     for i = #entries, 1, -1 do
         if entries[i].name == name then table_remove(entries, i); return end
     end
-end
-
---- Unregister a consequence handler by name.
---- Removes it from the event registry, clears the cause-of mapping, and unhooks any arrival handler.
---- @cost O(1) | 0 luabind
---- @param name string Consequence name
---- @return boolean true if removed, false if not registered
-function unregister(name)
-    local event = _cause_for[name]
-    if not event then return false end
-    _remove_named_entry(_registry[event], name)
-    _cause_for[name] = nil
-    ap_core_broker.unregister_arrival_handler(name)
-    ap_core_debug.info("[CONSUMER] unregistered: %s event=%s", name, event)
-    return true
-end
-
---- Get the cause event a consequence subscribes to.
---- 1:1 mapping built at register time. Returns nil if consequence not registered.
---- @cost O(1) | 0 luabind
---- @param consequence string Consequence registration name
---- @return string|nil Cause string (e.g. "cause:massacre"), or nil
-function get_cause(consequence)
-    return _cause_for[consequence]
 end
 
 -- @cost O(1) | 0 luabind
@@ -91,7 +27,6 @@ local function _on_success(entry_name, is_radiant, event_data)
     ap_core_limiter.update_consequence_counter(entry_name)
     if event_data then event_data._fired = true end
 end
-
 
 -- Dispatch one consequence. Returns (stop, ran): stop ends the loop, ran means the handler executed.
 local function _run_entry(entry, event_type, event_data, is_radiant, sc)
@@ -150,7 +85,6 @@ local function _run_consequences(event_type, event_data)
     end
 end
 
-
 local function _create_handler(event)
     return function(event_data) _run_consequences(event, event_data) end
 end
@@ -169,6 +103,70 @@ local function _on_first_update()
     if _subscribed then return end
     _subscribe()
     _subscribed = true
+end
+
+--- Register a consequence handler for an event. Strict: refuses duplicate names.
+--- Caller must call unregister(name) first if replacing.
+--- @cost O(1) amortized | 0 luabind (one table insert per registration)
+--- @param name string Consequence name (used as trace key, rate limit key, arrival key)
+--- @param config table { event, condition, on_arrive } condition: returns false to skip
+--- @param handler function(event_data) -> { code = RESULT.X, reason = "..." }
+--- @return boolean true on success, false if already registered or args invalid
+function register(name, config, handler)
+    if not name or not config or not handler then
+        ap_core_debug.err("[CONSUMER] register: missing name, config, or handler")
+        return false
+    end
+    if not config.event then
+        ap_core_debug.err("[CONSUMER] register '%s': missing event", name)
+        return false
+    end
+    if _cause_for[name] then
+        ap_core_debug.warn("[CONSUMER] register: name already registered: %s (event=%s); call unregister first", name, _cause_for[name])
+        return false
+    end
+
+    if config.on_arrive then
+        ap_core_broker.register_arrival_handler(name, config.on_arrive)
+    end
+
+    local event = config.event
+    if not _registry[event] then
+        _registry[event] = {}
+    end
+
+    local entries = _registry[event]
+    entries[#entries + 1] = { name = name, condition = config.condition, handler = handler, log_prefix = ap_core_debug.format_bracket(name) }
+    _cause_for[name] = event
+    if _subscribed and #entries == 1 then
+        _subscribe_event(event)
+    end
+    ap_core_debug.info("[CONSUMER] registered: %s event=%s", name, event)
+    return true
+end
+
+--- Unregister a consequence handler by name.
+--- Removes it from the event registry, clears the cause-of mapping, and unhooks any arrival handler.
+--- @cost O(1) | 0 luabind
+--- @param name string Consequence name
+--- @return boolean true if removed, false if not registered
+function unregister(name)
+    local event = _cause_for[name]
+    if not event then return false end
+    _remove_named_entry(_registry[event], name)
+    _cause_for[name] = nil
+    ap_core_broker.unregister_arrival_handler(name)
+    ap_core_debug.info("[CONSUMER] unregistered: %s event=%s", name, event)
+    return true
+end
+
+--- Get the cause event a consequence subscribes to.
+--- 1:1 mapping built at register time. Returns nil if consequence not registered.
+--- @cost O(1) | 0 luabind
+--- @param consequence string Consequence registration name
+--- @return string|nil Cause string (e.g. "cause:massacre"), or nil
+function get_cause(consequence)
+    return _cause_for[consequence]
 end
 
 function on_game_start()
