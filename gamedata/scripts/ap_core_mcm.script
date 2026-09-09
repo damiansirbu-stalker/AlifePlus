@@ -687,14 +687,6 @@ local function _apply_profile(gui, overrides, msg)
     end
 end
 
-function btn_reset_all(gui)
-    _apply_profile(gui, nil, game.translate_string("st_ap_reset_all_done"))
-end
-
-function btn_reset_stateless(gui)
-    _apply_profile(gui, stateless_overrides, game.translate_string("st_ap_reset_stateless_done"))
-end
-
 local function _build_slide(txt)
     return {
         id = "title", type = "slide", link = "ap_mcm_banner",
@@ -720,6 +712,14 @@ end
 
 local function _build_list(key, content)
     return { id = key, type = "list", val = 0, def = defaults[key], content = content }
+end
+
+function btn_reset_all(gui)
+    _apply_profile(gui, nil, game.translate_string("st_ap_reset_all_done"))
+end
+
+function btn_reset_stateless(gui)
+    _apply_profile(gui, stateless_overrides, game.translate_string("st_ap_reset_stateless_done"))
 end
 
 function on_mcm_load()
