@@ -182,12 +182,12 @@ local function _run_loot_extras(index, member_ids, taken_secs)
     local cursor, taken = 1, 0
     for i = 1, #leftover do
         if taken >= STASH_POLICY.extras_max then break end
-        if xinventory.create_item(leftover[i].sec, member_ids[cursor]) then
-            leftover[i].taken = true
-            cursor = (cursor % #member_ids) + 1
-            taken = taken + 1
-            taken_secs[#taken_secs + 1] = leftover[i].sec
-        end
+        if not xinventory.create_item(leftover[i].sec, member_ids[cursor]) then goto continue end
+        leftover[i].taken = true
+        cursor = (cursor % #member_ids) + 1
+        taken = taken + 1
+        taken_secs[#taken_secs + 1] = leftover[i].sec
+        ::continue::
     end
 end
 

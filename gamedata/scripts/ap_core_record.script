@@ -193,11 +193,11 @@ local function _load_records(arr)
     if type(arr) ~= "table" then return end
     for i = 1, #arr do
         local entry = arr[i]
-        if type(entry) == "table" and entry.cons_id and entry.squad_id then
-            _ap_record:set(entry.cons_id, entry)
-            if entry.assigned then _record_assigned[entry.squad_id] = entry end
-            if entry.cons_id > _record_seq then _record_seq = entry.cons_id end
-        end
+        if type(entry) ~= "table" or not entry.cons_id or not entry.squad_id then goto continue end
+        _ap_record:set(entry.cons_id, entry)
+        if entry.assigned then _record_assigned[entry.squad_id] = entry end
+        if entry.cons_id > _record_seq then _record_seq = entry.cons_id end
+        ::continue::
     end
 end
 

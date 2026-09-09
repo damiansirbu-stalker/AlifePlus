@@ -138,11 +138,11 @@ local function _check_markers()
             local reason = (not entry) and "evicted" or (not se and "dead" or "unscripted")
             ap_core_debug.debug("[CORE.MAP] mark_linger: squad=%d reason=%s", squad_id, reason)
         end
-        if state.remove_at and now >= state.remove_at then
-            xpda.remove_squad_marker(squad_id)
-            _marker_state[squad_id] = nil
-            ap_core_debug.debug("[CORE.MAP] unmark: squad=%d", squad_id)
-        end
+        if not (state.remove_at and now >= state.remove_at) then goto continue end
+        xpda.remove_squad_marker(squad_id)
+        _marker_state[squad_id] = nil
+        ap_core_debug.debug("[CORE.MAP] unmark: squad=%d", squad_id)
+        ::continue::
     end
 end
 

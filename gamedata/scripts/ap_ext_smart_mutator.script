@@ -88,13 +88,6 @@ local _hold_drop_collector = {}
 -- Per-smart ephemeral game-sec clock for the mutator's own respawn cadence (never saved).
 local _respawn_stamp = {}
 
---- True when the smart terrain holds a live infest entry.
---- @param smart_id number
---- @return boolean
-function is_infested(smart_id)
-    return smart_id and _state.infest[smart_id] ~= nil
-end
-
 --- True if a smart holds a live mutation entry other than (mut_name, identity): another type or identity.
 --- The takeover exclusion gate; nil mut_name treats every live entry as other.
 --- @param smart_id number
@@ -347,18 +340,16 @@ _build_plan = function(entry, smart_id)
     end
     local g_max = cfg.mutator_area_conquest_guards_per_smart
     entry.guards = (g_max > 0) and math_random(1, g_max) or 0
-    if ap_core_debug.is_enabled() then
-        local roles = {}
-        for role in pairs(entry.services) do roles[#roles + 1] = role end
-        ap_core_debug.debug("[MUTATOR.SMART] plan: smart=%d faction=%s services=%s guards=%d",
-            smart_id, entry.faction, (#roles > 0) and table.concat(roles, ",") or "-", entry.guards)
-        if smart then
-            ap_core_debug.debug("[MUTATOR.SMART] suitability: smart=%d name=%s max_pop=%d campfire=%s surge=%s suitable=%s want=%d",
-                smart_id, smart:name(), smart.max_population or 0,
-                tostring(xsmart.has_campfire(smart)), tostring(xsmart.has_surge_shelter(smart)),
-                tostring(suitable and true or false), want)
-        end
-    end
+    if not ap_core_debug.is_enabled() then return end
+    local roles = {}
+    for role in pairs(entry.services) do roles[#roles + 1] = role end
+    ap_core_debug.debug("[MUTATOR.SMART] plan: smart=%d faction=%s services=%s guards=%d",
+        smart_id, entry.faction, (#roles > 0) and table.concat(roles, ",") or "-", entry.guards)
+    if not smart then return end
+    ap_core_debug.debug("[MUTATOR.SMART] suitability: smart=%d name=%s max_pop=%d campfire=%s surge=%s suitable=%s want=%d",
+        smart_id, smart:name(), smart.max_population or 0,
+        tostring(xsmart.has_campfire(smart)), tostring(xsmart.has_surge_shelter(smart)),
+        tostring(suitable and true or false), want)
 end
 
 -- Pin one outpost squad at its smart via scripted_target and ledger it.
@@ -409,9 +400,7 @@ local function _apply_service_entries(smart, data)
     end
     if (data.guards or 0) > 0 then
         local pool = xsmart_spawn.get_tiered_squads(smart, data.faction)
-        if pool then
-            xsmart_spawn.set_exclusive_section(smart, GUARD_KEY, pool, data.guards)
-        end
+        if pool then xsmart_spawn.set_exclusive_section(smart, GUARD_KEY, pool, data.guards) end
     end
 end
 
@@ -552,11 +541,11 @@ local function _try_stock(squad_id, entry)
     if not cfg_path then return end
     for member_id in xsquad.iterate_member_ids(squad) do
         local go = xobject.get_go(member_id)
-        if go then
-            _apply_trade_config(go, member_id, cfg_path, entry)
-            _show_service_icon(go, member_id, entry.role)
-            return
-        end
+        if not go then goto continue end
+        _apply_trade_config(go, member_id, cfg_path, entry)
+        _show_service_icon(go, member_id, entry.role)
+        do return end
+        ::continue::
     end
 end
 
@@ -596,9 +585,7 @@ end
 -- @cost O(n) held squads | _resolve_held + member resolve + 1 profile read per service
 local function _init_service_trades()
     for squad_id, entry in pairs(_held_squads) do
-        if entry.role ~= "guard" then
-            _try_stock(squad_id, entry)
-        end
+        if entry.role ~= "guard" then _try_stock(squad_id, entry) end
     end
 end
 
@@ -876,14 +863,14 @@ local function _load_pending(mut, now)
     local tbl = _state[mut.name]
     local restored, skipped = 0, 0
     for smart_id, data in pairs(pending) do
-        if type(data) == "table" and data.faction and data.level_id then
-            if mut.cap and not mut.cap(data.level_id) then
-                skipped = skipped + 1
-            else
-                tbl[smart_id] = _load_entry(mut, data, now, smart_id)
-                restored = restored + 1
-            end
+        if not (type(data) == "table" and data.faction and data.level_id) then goto continue end
+        if mut.cap and not mut.cap(data.level_id) then
+            skipped = skipped + 1
+        else
+            tbl[smart_id] = _load_entry(mut, data, now, smart_id)
+            restored = restored + 1
         end
+        ::continue::
     end
     _pending[mut.name] = nil
     if mut.cap then
@@ -901,17 +888,17 @@ local function _load_holds()
     local purge_services = not cfg.mutator_area_conquest_grow_services
     local restored, purged = 0, 0
     for squad_id, entry in pairs(_held_pending) do
-        if type(entry) == "table" and entry.smart_id and entry.role then
-            if purge_services and entry.role ~= "guard" then
-                local squad = _resolve_held(squad_id, entry)
-                if squad then _remove_service_squad(squad) end
-                purged = purged + 1
-            else
-                entry.stocked = nil
-                _held_squads[squad_id] = entry
-                restored = restored + 1
-            end
+        if not (type(entry) == "table" and entry.smart_id and entry.role) then goto continue end
+        if purge_services and entry.role ~= "guard" then
+            local squad = _resolve_held(squad_id, entry)
+            if squad then _remove_service_squad(squad) end
+            purged = purged + 1
+        else
+            entry.stocked = nil
+            _held_squads[squad_id] = entry
+            restored = restored + 1
         end
+        ::continue::
     end
     _held_pending = nil
     ap_core_debug.debug("[MUTATOR.SMART] on_game_load: holds restored=%d purged=%d", restored, purged)

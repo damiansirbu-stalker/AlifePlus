@@ -84,10 +84,10 @@ local function _run_upgrade_transfer(giver, giver_opts, receiver, receiver_opts,
 
     for cat, cand in pairs(best) do
         if budget.remaining <= 0 then break end
-        if cand.cost > recv_base[cat] and xinventory.transfer_item(giver, cand.item, receiver) then
-            budget.remaining = budget.remaining - 1
-            out[#out + 1] = cand.sec
-        end
+        if not (cand.cost > recv_base[cat] and xinventory.transfer_item(giver, cand.item, receiver)) then goto continue end
+        budget.remaining = budget.remaining - 1
+        out[#out + 1] = cand.sec
+        ::continue::
     end
 end
 

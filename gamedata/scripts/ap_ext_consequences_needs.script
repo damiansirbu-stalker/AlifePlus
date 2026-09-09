@@ -121,10 +121,9 @@ local function _create_on_arrive(entry)
             skip = _run_arrive_action(entry, tid, squad, args)
         end
         tmr:stop()
-        if dbg then
-            ap_core_debug.debug("%s [tid=%d] complete need=%s dst=%s%s [%.2fms]", entry.log_prefix, tid,
-                entry.name, args.dst_name or "?", skip and (" skip=" .. skip) or "", tmr:get_ms())
-        end
+        if not dbg then return end
+        ap_core_debug.debug("%s [tid=%d] complete need=%s dst=%s%s [%.2fms]", entry.log_prefix, tid,
+            entry.name, args.dst_name or "?", skip and (" skip=" .. skip) or "", tmr:get_ms())
     end
 end
 
