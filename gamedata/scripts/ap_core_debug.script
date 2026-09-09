@@ -6,6 +6,10 @@ local log = xlog.get_logger("AP", { outfile = "alifeplus.log", level = "WARN" })
 -- Level constants for the flush-on-emit flag: TRACE = flush every line, ERROR = default (xlog buffers below it).
 local _log_levels = xlog.get_levels()
 
+local function _on_first_update()
+    init_log_level()
+end
+
 function is_enabled()
     return log.get_level() >= 5
 end
@@ -43,10 +47,6 @@ function init_log_level()
     log.set_level(level)
     local flush = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_flush") or false
     log._logger.flush_on_level = flush and _log_levels.TRACE or _log_levels.ERROR
-end
-
-local function _on_first_update()
-    init_log_level()
 end
 
 function on_game_start()

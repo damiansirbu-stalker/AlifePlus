@@ -60,16 +60,6 @@ local function _build_smart_bucket()
     })
 end
 
---- Per-level smart bucket for xsmart.find_smart opts.source: nil if nothing yet, partial during xslice warmup, full after.
---- Cost scales with bucket size, not the full smart pool.
---- @safety SAFE - pure Lua hash read, nil-guarded
---- @cost O(1) | 0 luabind
---- @param level_id number Engine level_id
---- @return table|nil { [smart_id] = smart, ... } or nil if nothing bucketed for this level yet
-function get_smarts_on_level(level_id)
-    return _smarts_by_level and _smarts_by_level[level_id]
-end
-
 -- Bucket one stash into _stashes_by_level. Returns true to drain (xslice survivor protocol).
 -- @cost O(1) | 2-4 luabind (alife_object medium + m_game_vertex_id trivial + xlevel.get_level_id 0-3)
 local function _add_stash(id)
@@ -116,17 +106,6 @@ local function _build_stash_bucket()
     })
 end
 
---- Per-level stash bucket for xstash.find_stashes opts.source: nil if nothing yet, partial during xslice warmup, full after.
---- Grows monotonically; treat nil/empty as "no candidate this tick".
---- @safety SAFE - pure Lua hash read, nil-guarded
---- @cost O(1) | 0 luabind
---- @param level_id number Engine level_id
---- @return table|nil { [stash_id] = true, ... } or nil if nothing bucketed for this level yet
-function get_stashes_on_level(level_id)
-    if not _stashes_by_level then return nil end
-    return _stashes_by_level[level_id]
-end
-
 -- Bucket one squad into _squads_by_level (drain per xslice survivor protocol).
 -- Re-resolves via get_se per frame: a ref held across frames hits pure-virtual mid-destruction (pcall-safety.md:50-57).
 -- @cost O(1) | 1 xobject.get_se + 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
@@ -170,16 +149,6 @@ local function _build_squad_bucket()
             if debug_on then ap_core_debug.debug("[CORE.CACHE] squad bucket built: count=%d [%.2fms]", count, build_ms) end
         end,
     })
-end
-
---- Per-level squad bucket for xsquad.find_squads opts.source: nil before actor_on_first_update or an empty SIMBOARD.
---- Values are id-only `true` markers; the finder resolves the server object per id.
---- @safety SAFE - pure Lua hash read, nil-guarded
---- @cost O(1) | 0 luabind
---- @param level_id number Engine level_id
---- @return table|nil { [squad_id] = true, ... } or nil if bucket not built
-function get_squads_on_level(level_id)
-    return _squads_by_level and _squads_by_level[level_id]
 end
 
 -- Move a squad between level buckets when sim_squad_scripted:update() detects a level cross.
@@ -262,6 +231,37 @@ local function _on_actor_first_update()
         _initialized = true
         ap_core_debug.info("[CORE.CACHE] Initialized")
     end
+end
+
+--- Per-level smart bucket for xsmart.find_smart opts.source: nil if nothing yet, partial during xslice warmup, full after.
+--- Cost scales with bucket size, not the full smart pool.
+--- @safety SAFE - pure Lua hash read, nil-guarded
+--- @cost O(1) | 0 luabind
+--- @param level_id number Engine level_id
+--- @return table|nil { [smart_id] = smart, ... } or nil if nothing bucketed for this level yet
+function get_smarts_on_level(level_id)
+    return _smarts_by_level and _smarts_by_level[level_id]
+end
+
+--- Per-level stash bucket for xstash.find_stashes opts.source: nil if nothing yet, partial during xslice warmup, full after.
+--- Grows monotonically; treat nil/empty as "no candidate this tick".
+--- @safety SAFE - pure Lua hash read, nil-guarded
+--- @cost O(1) | 0 luabind
+--- @param level_id number Engine level_id
+--- @return table|nil { [stash_id] = true, ... } or nil if nothing bucketed for this level yet
+function get_stashes_on_level(level_id)
+    if not _stashes_by_level then return nil end
+    return _stashes_by_level[level_id]
+end
+
+--- Per-level squad bucket for xsquad.find_squads opts.source: nil before actor_on_first_update or an empty SIMBOARD.
+--- Values are id-only `true` markers; the finder resolves the server object per id.
+--- @safety SAFE - pure Lua hash read, nil-guarded
+--- @cost O(1) | 0 luabind
+--- @param level_id number Engine level_id
+--- @return table|nil { [squad_id] = true, ... } or nil if bucket not built
+function get_squads_on_level(level_id)
+    return _squads_by_level and _squads_by_level[level_id]
 end
 
 function on_game_start()
