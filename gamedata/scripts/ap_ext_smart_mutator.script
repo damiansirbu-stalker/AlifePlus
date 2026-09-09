@@ -21,6 +21,8 @@ local INFEST_KEY = "ap_infest"
 local TIMER_EV = "ap_ext_smart_mutator"
 local SCAN_ID = "mutation_scan"
 local SCAN_INTERVAL_SEC = 60
+-- Deferred stock-filter CreateTimeEvent id (per outpost service on restock).
+local STOCK_FILTER_EV = "ap_outpost_stock_filter"
 
 --- Species allowed to take territory (pack/lair creatures); public, gates swarm and infest.
 INFEST_SPECIES = {
@@ -71,6 +73,10 @@ local _held_pending = nil
 local _hold_drop_collector = {}
 -- Per-smart ephemeral game-sec clock for the mutator's own respawn cadence (never saved).
 local _respawn_stamp = {}
+-- respawn_point_prop_section -> descriptor; filled from MUTATIONS once it is built below.
+local _mut_by_key = {}
+-- Hub predicates already wrapped by _register_hub_gate (one wrap per predicate).
+local _hub_gated = {}
 
 --- True when the per-level infest cap allows another infestation.
 --- @param level_id number
@@ -118,8 +124,6 @@ local MUTATIONS = {
     },
 }
 
--- respawn_point_prop_section -> descriptor, for the deferred spawn trace.
-local _mut_by_key = {}
 for _, mut in pairs(MUTATIONS) do _mut_by_key[mut.key] = mut end
 
 -- respawn_params key for a service role ("ap_service_trader"); one key per role so decay is per-role.
@@ -891,7 +895,6 @@ end
 -- Outpost stock policy: per-role shelf caps plus a money bankroll, from ap_outpost_stock_policy.ltx.
 local STOCK_POLICY_PATH = "alifeplus\\ap_outpost_stock_policy.ltx"
 local STOCK_POLICY_PREFIX = "ap_outpost_stock_"
-local STOCK_FILTER_EV = "ap_outpost_stock_filter"
 local _STOCK_SPECIALS = { money = true }
 local _stock_policy
 local _stock_money
@@ -1084,7 +1087,6 @@ end
 
 -- Random-task gate: service profiles hand out the Warfare task pool, uncompletable without Warfare.
 local _org_build_available_tasks
-local _hub_gated = {}
 
 -- Pool side: the one seam the dialog and every PDA taskboard share, keyed on section identity.
 -- An unmade leftover stays gated; runs the original then empties its result, keeping vanilla bookkeeping.
