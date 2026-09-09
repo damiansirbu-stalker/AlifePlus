@@ -46,7 +46,7 @@ end
 --- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries so growth rebuilds under the current one-service-per-outpost rule.
 --- Empties the service sets and drops service holds; squads go at on_game_load (script-loading.md:425-455), the safe mutation point after objects().load.
 --- @src axr_main.script:272 load_state order is nondeterministic; the tables are mutated in place (held by ref), runs at whichever fires first.
-local function _v185_to_v186_clear_outpost_services(m_data)
+local function apply_185_186(m_data)
     local saved = m_data.ap_ext_smart_mutator
     local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
     if type(conquest) == "table" then
@@ -81,7 +81,7 @@ end
 
 -- v1.8.6 -> v1.8.7: outpost mini-base redesign; reset every conquest entry so the mutator rolls a fresh plan under current MCM sliders.
 -- Service holds drop with their squads, old pinned-guard holds release to the sim, and the world outpost-service purge is armed for on_game_load.
-local function _v186_to_v187_reset_outposts(m_data)
+local function apply_186_187(m_data)
     local saved = m_data.ap_ext_smart_mutator
     local conquest = (type(saved) == "table") and saved.conquered_smarts or nil
     if type(conquest) == "table" then
@@ -95,8 +95,8 @@ local function _v186_to_v187_reset_outposts(m_data)
     _purge_services_pending = true
 end
 
-xchange.register("ap_v185_to_v186_clear_outpost_services", _v185_to_v186_clear_outpost_services)
-xchange.register("ap_v186_to_v187_reset_outposts",         _v186_to_v187_reset_outposts)
+xchange.register("ap_v185_to_v186_clear_outpost_services", apply_185_186)
+xchange.register("ap_v186_to_v187_reset_outposts",         apply_186_187)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
