@@ -336,8 +336,6 @@ AlifePlus leans on the engine rather than working around it. It drives the engin
 ---
 
 Compatibility & Safety:
-- Requires xlibs and MCM.
-- Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build, and a feature that needs a newer one stays inactive on older exes.
 - Built and tested with GAMMA, also tested with Zona, EFP, and Forgotten Zone, and works mid-save.
 - No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). AlifePlus extends squads and never takes them over.
 - Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.
@@ -372,6 +370,7 @@ Mod compatibility:
 
 Requirements:
 - Anomaly 1.5.3
+- Modded exes: themrdemonized 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build; a feature that needs a newer one stays inactive on older exes.
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
@@ -404,9 +403,6 @@ Presets:
 ---
 
 FAQ:
-
-Do I need modded exes?
-  Yes. AlifePlus needs themrdemonized modded exes (2025.9.10 or newer) or AOEngine (v0.55 or newer). Vanilla Anomaly does not expose the APIs the framework relies on.
 
 Does it work with other A-Life mods?
   AlifePlus has no known incompatibilities with warfare or AI addons.
@@ -444,9 +440,8 @@ Usage and License:
 - Reproducing the implementation in other software: not allowed, even with credit.
 - Full license in LICENSE file and on GitHub.
 
-Reporting issues and suggestions
-Open a report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose, or ask on the EFP, Anomaly, and Zona Discord servers. Read this readme and the MCM options first.
-
-Include: exact repro steps (new game or named save, expected vs actual), engine build, modlist, load order, xray.log, and the mod debug log. With hundreds of mods loaded, only the log shows whether this one was involved.
-
-The debug log is required: set the MCM log level to DEBUG, reproduce, then back to WARN. DEBUG is not free. It writes a timed line for every evaluation and hitches single-threaded exes, and the millisecond figures include the tracing itself, so treat them as relative.
+Diagnostics and reporting:
+Development > Log level: set to DEBUG, reproduce, then back to WARN. Enables tracing and performance timing.
+Development > Debug markers: shows squad destination markers on the PDA map (approximate; reload the save to apply).
+Development > World trace log: writes periodic simulation-state dumps (smarts, squads, controlled-squad roster, trader inventories) to alifeplus_world.log.
+Report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose or the EFP, Anomaly, and Zona Discord. Include repro steps, engine build, modlist, load order, xray.log, and the debug log.
