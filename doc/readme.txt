@@ -238,7 +238,7 @@ Loot Policy
 
 Trade
 
-  AlifePlus runs a category-based buy and sell cycle at every vanilla trader smart terrain, from Sidorovich at Cordon to the Monolith trader in Pripyat. It is built on Alundaio's buy/sell core, maintained by Tronex for years, and modernized so that modpack items participate automatically, a Boomsticks round or a GAMMA medkit classifies through its existing engine fields, with no item file edits.
+  AlifePlus runs a category-based buy and sell cycle at every vanilla trader smart terrain, from Sidorovich at Cordon to the Monolith trader in Pripyat. It is built on Alundaio's buy/sell core, maintained by Tronex for years, and modernized so that modpack items participate automatically, a Boomsticks round classifies through its existing engine fields, with no item file edits.
 
   The policy is a pair of rank blocks, rookie and veteran, each listing categories with a min and max band, and the entry order sets what gets bought first. Ammo follows the NPC's real equipped weapons, split into basic and premium grades, so a veteran with an SVD buys 7.62x54R while a rookie with a PM gets plain 9x18, always the cheapest usable round first, never the jammed damaged ones a weapon can also chamber.
 
@@ -304,7 +304,7 @@ AlifePlus reworks the signal layer itself. Where Anomaly and the X-Ray engine of
 Animations, gulag, GOAP.
 
 AlifePlus chooses the destination and hands the squad to the engine. From there the engine's own chain takes over, with the gulag giving each arriving NPC a job from the smart terrain's catalog, the scheme system loading the behavior that job points to, and the GOAP planner running it tick by tick. AlifePlus works with that pipeline instead of replacing it.
-Before sending anyone, each cause asks the engine which smart terrains can actually host the activity, reading the same job catalog the gulag reads, with the same preconditions. Whatever jobs vanilla Anomaly or a modpack like GAMMA, EFP or Zona ships, the check covers them.
+Before sending anyone, each cause asks the engine which smart terrains can actually host the activity, reading the same job catalog the gulag reads, with the same preconditions. Whatever jobs vanilla Anomaly or a modpack like EFP or Zona ships, the check covers them.
 Anomaly carries a deep animation catalog that vanilla rarely shows, because most smart terrains never get occupied. AlifePlus fills those smart terrains, and every animpoint, patrol path and smartcover the game ever shipped finally runs in play.
 
 Off-map travel, under the hood.
@@ -338,7 +338,7 @@ AlifePlus leans on the engine rather than working around it. It drives the engin
 Compatibility & Safety:
 - Requires xlibs and MCM.
 - Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build, and a feature that needs a newer one stays inactive on older exes.
-- Built and tested with GAMMA, also tested with Zona and EFP, and works mid-save.
+- Built and tested with GAMMA, also tested with Zona, EFP, and Forgotten Zone, and works mid-save.
 - No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). AlifePlus extends squads and never takes them over.
 - Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.
 - No third-party bridge or synergy patch is needed or endorsed. Ones that claim to connect AlifePlus to another mod can cause instability and save corruption.
@@ -445,7 +445,7 @@ Usage and License:
 - Full license in LICENSE file and on GitHub.
 
 Reporting issues and suggestions
-Open a report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose, or ask on the GAMMA, EFP, Anomaly, and Zona Discord servers. Read this readme and the MCM options first.
+Open a report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose, or ask on the EFP, Anomaly, and Zona Discord servers. Read this readme and the MCM options first.
 
 Include: exact repro steps (new game or named save, expected vs actual), engine build, modlist, load order, xray.log, and the mod debug log. With hundreds of mods loaded, only the log shows whether this one was involved.
 
