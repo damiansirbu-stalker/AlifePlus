@@ -335,14 +335,12 @@ AlifePlus leans on the engine rather than working around it. It drives the engin
 
 ---
 
-Compatibility & Safety:
+Compatibility:
 - Built and tested with GAMMA, also tested with Zona, EFP, and Forgotten Zone, and works mid-save.
 - No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). AlifePlus extends squads and never takes them over.
 - Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.
 - No third-party bridge or synergy patch is needed or endorsed. Ones that claim to connect AlifePlus to another mod can cause instability and save corruption.
 - See integration.md on the project site for API reference and examples.
-
-Mod compatibility:
 
   Superseded:
   - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
