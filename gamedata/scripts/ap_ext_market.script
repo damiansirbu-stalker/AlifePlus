@@ -52,8 +52,6 @@ local _view_log_next = {}
 
 local _subscribed = false
 
--- POLICY LOADING
-
 --- Load the trader-buy whitelist (+ specials) and the trader-sell whitelist via the shared xinventory kernel.
 --- Same row shape; injection reads .trader_buy, the sell-out reads .trader_sell.
 --- @cost O(lines) | 1 ini parse at on_game_start
@@ -107,8 +105,6 @@ local function _load_rank_ruleset()
     RANK_RULESET = { floor = floor, bands = bands }
 end
 
--- CONFIG ACCESSORS
-
 local function _get_premium()        return cfg.market_premium end
 local function _get_item_condition()  return cfg.market_item_condition end
 local function _get_trader_sell_percent()  return cfg.market_trader_sell_percent end
@@ -117,8 +113,6 @@ local function _get_goods_window_sec() return cfg.market_window_hours * 3600 end
 local function _get_per_trader_cap()
     return cfg.market_items_per_trader
 end
-
--- FIFOS (observe ap_ext_trade output)
 
 local function _is_market_faction(faction)
     return faction ~= nil and not _SKIP_FACTION[faction]
@@ -169,8 +163,6 @@ local function _on_market_trade(orig, npc, seller)
     for i = 1, #bought do _push_fifo(_trader_sold, faction, bought[i], "sold") end
     return result
 end
-
--- INJECTION
 
 --- True if a trader serving role_info may stock items of this category.
 local function _can_accept_category(role_info, category)
@@ -271,8 +263,6 @@ local function _resolve_trader_role(trader)
     end
     return nil
 end
-
--- TRADER SELL-OUT (removal at restock)
 
 --- Strip an ammo section's condition suffix so every degraded variant collapses to one bullet type (ammo_9x18_fmj_verybad -> ammo_9x18_fmj).
 --- NPCs buy the cheapest degraded variant, traders restock the clean one; matching on bullet type lets the two meet.
@@ -484,8 +474,6 @@ local function _run_restock(trader_id)
     return true
 end
 
--- RESTOCK DETECTION (exactly one path)
-
 --- Detect a real restock by trade_manager.update advancing resupply_time (an unchanged reference means no restock).
 --- Defer the inject 0.1s so the freshly spawned stock registers.
 local function _update_wrapper(orig, npc, force_refresh)
@@ -507,8 +495,6 @@ local function _init_restock()
     xevent.register_hook("trade_manager", "update", _update_wrapper)
     ap_core_debug.info("%s restock via trade_manager.update hook", LOG)
 end
-
--- PREMIUM PRICING
 
 -- Debug: log one tagged good's live state at the viewed trader (online, current owner, condition).
 -- Names why a good the player expected can be missing; split out so _log_trade_view stays a flat walk.
@@ -564,8 +550,6 @@ local function _on_get_item_cost(_kind, obj, profile, _cost, ret)
     end
 end
 
--- WINDOW RELEASE
-
 --- Release one market good only if it is still the injected item in its injecting trader (online, parent == trader_id, section matches the tag).
 --- A bought / sold-on / purged / recycled good fails identity and is left untouched; the caller drops the tag either way.
 local function _release_good(id, tag)
@@ -617,8 +601,6 @@ local function _release_expired()
     return false
 end
 
--- SAVE / LOAD
-
 local function _on_save(m_data)
     m_data[SAVE_KEY] = { trader_bought = _trader_bought, trader_sold = _trader_sold, market_goods = _market_goods }
 end
@@ -645,8 +627,6 @@ local function _check_market_goods()
         ap_core_debug.debug("%s load dropped %d stale goods", LOG, dropped)
     end
 end
-
--- LIFECYCLE
 
 local function _on_first_update()
     if _subscribed then return end
