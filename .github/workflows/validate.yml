@@ -98,8 +98,17 @@ jobs:
       - name: Validate
         shell: bash
         run: |
+          # Grade-gate: validate-dev-mods exits nonzero on any gating finding (prose is unscored and
+          # never gates). Run without -e so the summary still publishes on a red run, then re-raise the
+          # code so the check goes red. Prose findings surface as a non-gating warning annotation.
+          set +e
           bash pipeline/stalker-manager/stalker-manager.sh validate-dev-mods AlifePlus --emit out
-          cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          rc=$?
+          [ -f out/summary.md ] && cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if grep -qE '[0-9]+ findings /' out/summary.md 2>/dev/null; then
+            echo "::warning::redlint prose findings present (advisory, not gated); see the run summary"
+          fi
+          exit $rc
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
