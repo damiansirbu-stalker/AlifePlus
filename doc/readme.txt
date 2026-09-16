@@ -324,14 +324,20 @@ AlifePlus corrects three long-standing vanilla Anomaly A-Life bugs. All three ar
 
 These patches are global and affect every squad, not only AlifePlus's. If another mod already patches the same engine scripts, disable ap_core_chase.script and ap_core_anomaly_fixes.script before installing.
 
-Performance:
+Performance and Infrastructure:
 
 Performance comes first here, ahead of any feature. When a feature cannot fit the budget, it is reworked, replaced, dropped, or removed with an X-Ray engine modification rather than allowed to slow the game. Features are negotiable. The frame budget is not.
 AlifePlus does no work when the engine fires no event, and its own event stream costs the same whether the Zone holds fifty squads or eight hundred. You decide how much happens per minute, and that is exactly what it produces.
 Everything expensive is bounded by design. Long scans spread across frames, lookups hit per-level caches instead of walking the world, throttles run on the real clock while world limits run on game time and survive save and sleep, and every measured flow targets 0.1ms per call with a hard 2ms ceiling, cold start and level transitions included.
 AlifePlus leans on the engine rather than working around it. It drives the engine's own mechanisms through xlibs, built and validated against the X-Ray C++ source, and makes the most of what is already there: squad targeting is one native field, the destination, and the engine's chain does the rest. Where the stock behavior falls short it nudges or corrects it, and only when that is not enough does it change the engine itself. Below DEBUG, profiling and tracing collapse to no-ops and the hot path makes no allocations.
-
-[BENCHMARKS: screenshots side by side]
+The framework is 100% reactive. No polling, no timers, nothing runs until an engine callback fires.
+Built from the X-Ray engine source by reverse engineering, with targeted engine changes of my own for performance, precision, and accuracy.
+Heavy work spreads across frames, paced by rate limiters and staggered, deferred queues, with the math to keep cost bounded at any entity count.
+A layered validator runs on every change, locally and in CI, and blocks the build on any crash, unsafe engine call, performance regression, style break, failed smoke load, or leaked secret.
+Profiled with JitProfiler, an engine-native, scientific profiler.
+Timings are worst-case, from a build with no multithreading or optimizations, so yours runs faster.
+Project Health: https://damiansirbu-stalker.github.io/AlifePlus/
+[JitProfiler: AlifePlus under CPU and allocation capture]
 
 ---
 
@@ -368,7 +374,7 @@ Compatibility:
 
 Requirements:
 - Anomaly 1.5.3
-- Modded exes: themrdemonized 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build; a feature that needs a newer one stays inactive on older exes.
+- Modded exes: themrdemonized or AOEngine v0.55 or newer. The full feature set needs the latest demonized build; a feature that needs a newer one stays inactive on older exes.
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
@@ -415,11 +421,6 @@ Known Issues:
 Map markers are debug-only and may glitch on some versions. Each marker shows the squad commander, so the stalker actually running the action may be a different squad member.
 
 ---
-
-Validation:
-
-luacheck and selene for static analysis, ast-grep for AST checks, contract rules (API safety, complexity, standards), lua54 integration tests against X-Ray engine stubs, gitleaks and trufflehog for secret scanning. Full report: doc/test-report.log.
-Beyond static checks, each release is soak-tested under chaos load: the A-Life rate and spawn density pushed far past normal play, hundreds of squads and outposts live at once, every flow timed. Performance is measured on the engine built from the latest source with no multithreading and no optimizations, so the timings are worst-case. The optimized multithreaded build you run is always faster.
 
 Localization:
 The mod includes English and Russian translations.
