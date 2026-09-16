@@ -1,7 +1,7 @@
 --- ap_ext_object_mutator: combat identity of the earned alpha status (hit power dealt/taken, panic immunity, trophy loot, particle mark), all event-driven.
 
 local pairs, next, tostring, math_random, RegisterScriptCallback = pairs, next, tostring, math.random, RegisterScriptCallback
-local xtable, xcreature, xobject = xtable, xcreature, xobject
+local xtable, xcreature, xobject, xprofiler = xtable, xcreature, xobject, xprofiler
 local ap_core_debug, ap_ext_tracker = ap_core_debug, ap_ext_tracker
 
 local CALLBACK = ap_core_const.CALLBACK
@@ -72,6 +72,8 @@ end
 -- @cost O(1) | pure-Lua early-out when no alphas are alive; 1-2 luabind on an alpha-involved hit
 local function _on_monster_before_hit(monster, shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
+    local dbg = ap_core_debug.is_enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local dealt = _apply_dealt_scale(shit)
     local victim_id = monster:id()
     local taken = _hit_power_taken[victim_id]
@@ -80,9 +82,10 @@ local function _on_monster_before_hit(monster, shit, _bone_id, _flags)
         monster:set_custom_panic_threshold(0)
         _panic_applied[victim_id] = true
     end
-    if (dealt or taken) and ap_core_debug.is_enabled() then
-        ap_core_debug.debug("%s monster_hit victim=%d dealt=%s taken=%s power=%.3f",
-            LOG, victim_id, tostring(dealt), tostring(taken), shit.power)
+    tmr:stop()
+    if (dealt or taken) and dbg then
+        ap_core_debug.debug("%s monster_hit victim=%d dealt=%s taken=%s power=%.3f [%.3fms]",
+            LOG, victim_id, tostring(dealt), tostring(taken), shit.power, tmr:get_ms())
     end
 end
 
@@ -90,9 +93,12 @@ end
 -- @cost O(1) | pure-Lua early-out when no alphas are alive
 local function _on_npc_before_hit(npc, shit, _bone_id, _flags)
     if next(_alpha_ids) == nil then return end
+    local dbg = ap_core_debug.is_enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local dealt = _apply_dealt_scale(shit)
-    if dealt and ap_core_debug.is_enabled() then
-        ap_core_debug.debug("%s npc_hit victim=%d dealt=%.3f power=%.3f", LOG, npc:id(), dealt, shit.power)
+    tmr:stop()
+    if dealt and dbg then
+        ap_core_debug.debug("%s npc_hit victim=%d dealt=%.3f power=%.3f [%.3fms]", LOG, npc:id(), dealt, shit.power, tmr:get_ms())
     end
 end
 
@@ -102,11 +108,14 @@ end
 local function _on_actor_before_hit(shit, _bone_id, _flags)
     if not cfg.mutator_alpha_vs_player then return end
     if next(_alpha_ids) == nil then return end
+    local dbg = ap_core_debug.is_enabled()
+    local tmr = xprofiler.new_if(dbg):start()
     local base = shit.power
     local dealt = _apply_dealt_scale(shit)
-    if dealt and ap_core_debug.is_enabled() then
-        ap_core_debug.debug("%s actor_hit dealt=%.3f base=%.3f -> power=%.3f (+%.1f%%)",
-            LOG, dealt, base, shit.power, (dealt - 1) * 100)
+    tmr:stop()
+    if dealt and dbg then
+        ap_core_debug.debug("%s actor_hit dealt=%.3f base=%.3f -> power=%.3f (+%.1f%%) [%.3fms]",
+            LOG, dealt, base, shit.power, (dealt - 1) * 100, tmr:get_ms())
     end
 end
 

@@ -246,10 +246,6 @@ end
 
 Generators are pure: no rate-limit awareness from outside, no counter manipulation, no side effects beyond the published payload.
 
-#### Instrumentation
-
-Both pipelines measure gate span and eval span. Gate span: time from first eligibility check to admission (radiant: BUDGET peek + is_protected + RATIO; reactive: PACER + RATIO). Eval span: cause generator evaluation, xbus dispatch, all consequence handlers. Spans accumulated per PACER_LOG_INTERVAL (60s) and reported as avg/max in the periodic [PIPELINE] dump. All timing uses os.clock() and is gated by debug enablement; zero overhead when log level is above DEBUG.
-
 ### Dispatch Pipeline (ap_core_consumer)
 
 After a cause publishes to xbus, the consumer receives the event and iterates registered consequence handlers. Loop in ap_core_consumer._process; per-handler steps in _dispatch_entry. _dispatch_entry times each handler call (xprofiler, DEBUG-gated) and logs one outcome line under the consequence bracket (entry.log_prefix, built at register from ap_core_debug.format_bracket(name)). Handlers are pure: they return { code, reason } and never time or log their own outcome, so a RULES rejection that returns before any world query logs the same way as a SUCCESS.
@@ -320,7 +316,7 @@ Radiant families (needs, instincts, area, stash) run alignment / scan / pick bef
 
 bracket(constant) in ap_core_debug composes log labels by uppercasing and replacing `:` with `.`: `"cause:hunger_campfire"` -> `"[CAUSE.HUNGER_CAMPFIRE]"`. Each cause / consequence file caches its bracket strings at module load (`entry.log_prefix`). No hardcoded `[CAUSE.X]` literals.
 
-Coarse inline timers cover the big flows with no per-cause / per-param / per-branch timer spam: the producer cause evaluation, each consequence, the broker scripted-squad sweep (per-item accumulate plus an `on_done` total), the map-marker tick, the ap_core_cache bucket warmup (same accumulate-plus-total shape), the loot-claim and loot-select passes, the market reshape, the news compose tick, and the tracker death handler. One line per component. `ap_ext_object_mutator` before-hit is a hot path (over 10/sec) and stays untimed; a per-hit timer would distort it.
+Coarse inline timers cover the big flows with no per-cause / per-param / per-branch timer spam: the producer cause evaluation, each consequence, the broker scripted-squad sweep (per-item accumulate plus an `on_done` total), the map-marker tick, the ap_core_cache bucket warmup (same accumulate-plus-total shape), the loot-claim and loot-select passes, the market reshape, the news compose tick, and the tracker death handler. One line per component. `ap_ext_object_mutator` before-hit is a hot path (over 10/sec); its per-hit line carries a debug-gated null-timer duration, so it costs nothing at the played Log level and still satisfies the every-line-has-a-duration rule when DEBUG is on.
 
 Below DEBUG: `ap_core_debug.debug` early-returns on the `enabled()` check, `xprofiler.new_if(false)` returns the shared null singleton (zero allocation, `get_ms()` returns 0), and the tid is not minted (`dbg and xtrace.new().id or 0`). Cost is one `enabled()` check per flow. All null singletons are pre-allocated; no allocation at non-debug levels.
 
