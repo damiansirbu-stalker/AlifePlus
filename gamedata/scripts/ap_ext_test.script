@@ -1,4 +1,5 @@
 --- ap_ext_test: console test driver; seeds real world state (item kits, cash, stash fills, hostile spawns), never AP internals. See architecture.md.
+--- @novalidate(conventions.unused_export, reason:"console commands, invoked by name via run_string")
 
 local pairs, string_format, os_clock, table_concat = pairs, string.format, os.clock, table.concat
 local xobject, xlevel, xslice, xdata, xmath = xobject, xlevel, xslice, xdata, xmath
@@ -78,13 +79,13 @@ local _pop_fields = nil
 
 local _runner = nil
 
-local function _tip(msg)
+local function _show_tip(msg)
     local actor = db.actor
-    if actor then news_manager.send_tip(actor, msg, nil, nil, 5000) end
+    if actor then news_manager.send_show_tip(actor, msg, nil, nil, 5000) end
 end
 
 -- Online, alive, scriptable stalker NPC ids on the actor's level.
-local function _stalkers_on_level()
+local function _get_level_stalkers()
     local actor = db.actor
     if not actor then return nil, "Not in game" end
     local actor_se = alife():actor()
@@ -119,7 +120,7 @@ local function _push_repeated(out, sec, count)
 end
 
 -- Flat spawn list for one kit pass: each category contributes picks x count sections.
-local function _kit_sections()
+local function _build_kit_sections()
     local out = {}
     for i = 1, #KIT do
         local entry = KIT[i]
@@ -134,53 +135,53 @@ end
 
 -- The engine strict-reads item fields at spawn (inv_weight per item, k_ap for ammo), so a section missing one is a CTD on create_item.
 -- Only spawn sections that carry inv_weight; real items always do (ammo k_ap is filtered upstream in xinventory's spawnable pool).
-local function _spawnable(sec)
+local function is_spawnable(sec)
     return ini_sys:r_float_ex(sec, "inv_weight") ~= nil
 end
 
-local function _kit_one_npc(npc_id)
-    local sections = _kit_sections()
+local function _add_npc_kit(npc_id)
+    local sections = _build_kit_sections()
     local spawned = 0
     for i = 1, #sections do
         local sec = sections[i]
-        if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
+        if is_spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     for _ = 1, WEAPONS_PER_NPC do
         local sec = xmath.select(WEAPONS)
-        if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
+        if is_spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     for i = 1, #PLATES do
         local sec = PLATES[i]
-        if _spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
+        if is_spawnable(sec) and xinventory.create_item(sec, npc_id) then spawned = spawned + 1 end
     end
     return spawned
 end
 
 -- Per-category surplus kit to every online stalker on the actor's level (xslice, no frame spike).
-local function _give_items()
-    if xslice.is_active("ap_ext_test_items") then return _tip("give_items already running") end
-    local ids, err = _stalkers_on_level()
-    if not ids then return _tip(err) end
-    if #ids == 0 then return _tip("No online stalkers on this level") end
+local function _add_items()
+    if xslice.is_active("ap_ext_test_items") then return _show_tip("give_items already running") end
+    local ids, err = _get_level_stalkers()
+    if not ids then return _show_tip(err) end
+    if #ids == 0 then return _show_tip("No online stalkers on this level") end
     local total = { npcs = 0, items = 0 }
     xslice.start("ap_ext_test_items", ids, {
         step = GIVE_ITEMS_STEP,
         func = function(npc_id)
-            total.items = total.items + _kit_one_npc(npc_id)
+            total.items = total.items + _add_npc_kit(npc_id)
             total.npcs = total.npcs + 1
             return true
         end,
         on_done = function()
-            _tip(string_format("give_items: %d NPCs / %d items", total.npcs, total.items))
+            _show_tip(string_format("give_items: %d NPCs / %d items", total.npcs, total.items))
             ap_core_debug.debug("[TEST] give_items OK npcs=%d items=%d", total.npcs, total.items)
         end,
     })
 end
 
 -- Cash to every online stalker on the actor's level (funds the trade buy phase).
-local function _give_money()
-    local ids, err = _stalkers_on_level()
-    if not ids then return _tip(err) end
+local function _add_money()
+    local ids, err = _get_level_stalkers()
+    if not ids then return _show_tip(err) end
     local given = 0
     for i = 1, #ids do
         local obj = xobject.get_go(ids[i])
@@ -189,23 +190,23 @@ local function _give_money()
             given = given + 1
         end
     end
-    _tip(string_format("give_money: %d NPCs x %d RU", given, MONEY_PER_NPC))
+    _show_tip(string_format("give_money: %d NPCs x %d RU", given, MONEY_PER_NPC))
     ap_core_debug.debug("[TEST] give_money OK npcs=%d amount=%d", given, MONEY_PER_NPC)
 end
 
 -- Item batches into nearby unfilled stashes (real treasure_manager state; feeds stash_loot).
-local function _fill_stashes()
+local function _add_stash_items()
     local actor = db.actor
-    if not actor then return _tip("Not in game") end
+    if not actor then return _show_tip("Not in game") end
     local actor_se = alife():actor()
-    if not actor_se then return _tip("No actor entity") end
+    if not actor_se then return _show_tip("No actor entity") end
     local stashes = xstash.find_stashes(actor:position(), {
         max_distance = STASH_MAX_DISTANCE,
         max_count = STASH_MAX_COUNT,
         level_id = xlevel.get_level_id(actor_se),
         filled = false,
     })
-    if #stashes == 0 then return _tip("No unfilled stashes within " .. STASH_MAX_DISTANCE .. "m") end
+    if #stashes == 0 then return _show_tip("No unfilled stashes within " .. STASH_MAX_DISTANCE .. "m") end
     local filled = 0
     for i = 1, #stashes do
         local items = {}
@@ -218,23 +219,23 @@ local function _fill_stashes()
             ap_core_debug.debug("[TEST] fill_stashes stash=%d items=%d", stashes[i].id, #items)
         end
     end
-    _tip(string_format("fill_stashes: %d/%d stashes", filled, #stashes))
+    _show_tip(string_format("fill_stashes: %d/%d stashes", filled, #stashes))
 end
 
 -- One artefact on the ground next to the actor; picking it up is a real actor_on_item_take.
-local function _drop_artefact()
+local function _spawn_artefact()
     local actor = db.actor
-    if not actor then return _tip("Not in game") end
+    if not actor then return _show_tip("Not in game") end
     local pos = actor:position()
     local spawn_pos = vector():set(pos.x + 2, pos.y + 0.3, pos.z + 2)
     local sec = xmath.select(ARTEFACTS)
     local se = alife():create(sec, spawn_pos, actor:level_vertex_id(), actor:game_vertex_id())
-    if not se then return _tip("Failed to spawn " .. sec) end
-    _tip("Dropped " .. sec .. " nearby")
+    if not se then return _show_tip("Failed to spawn " .. sec) end
+    _show_tip("Dropped " .. sec .. " nearby")
     ap_core_debug.debug("[TEST] drop_artefact OK sec=%s id=%d", sec, se.id)
 end
 
-local function _prune_spawned()
+local function _clear_spawned()
     local alive = {}
     for i = 1, #_spawned_hostiles do
         local id = _spawned_hostiles[i]
@@ -245,8 +246,8 @@ local function _prune_spawned()
 end
 
 -- Online stalker squads on the actor's level, deduped from the online NPC walk.
-local function _online_stalker_squads()
-    local ids, err = _stalkers_on_level()
+local function _get_online_squads()
+    local ids, err = _get_level_stalkers()
     if not ids then return nil, err end
     local seen, squads = {}, {}
     for i = 1, #ids do
@@ -279,12 +280,12 @@ end
 -- Spawn one squad hostile to a random online stalker squad, at that squad's smart, so real combat and deaths drive the reactive pipeline.
 -- xsquad.create_squad rides the vanilla board path (roster assignment + squad_on_npc_creation fire).
 local function _spawn_hostiles()
-    if _prune_spawned() >= SPAWN_MAX_ALIVE then
+    if _clear_spawned() >= SPAWN_MAX_ALIVE then
         ap_core_debug.debug("[TEST] spawn_hostiles skip: %d spawned squads still alive", #_spawned_hostiles)
         return
     end
-    local squads, err = _online_stalker_squads()
-    if not squads then return _tip(err) end
+    local squads, err = _get_online_squads()
+    if not squads then return _show_tip(err) end
     if #squads == 0 then return end
     local target = xmath.select(squads)
     local smart = xsquad.get_squad_smart(target)
@@ -298,7 +299,7 @@ local function _spawn_hostiles()
     if not squad then return end
     local smart_name = smart:name()
     _spawned_hostiles[#_spawned_hostiles + 1] = squad.id
-    _tip(string_format("Spawned %s vs %s at %s", section, target.player_id, smart_name))
+    _show_tip(string_format("Spawned %s vs %s at %s", section, target.player_id, smart_name))
     ap_core_debug.debug("[TEST] spawn_hostiles OK squad=%d section=%s target=%d faction=%s smart=%s",
         squad.id, section, target.id, target.player_id, smart_name)
 end
@@ -337,7 +338,7 @@ local function _pop_section()
 end
 
 -- Drop tracked squads no longer in the sim; return the live count.
-local function _prune_pop()
+local function _clear_pop()
     local alive = {}
     for i = 1, #_pop_squads do
         if xobject.get_se(_pop_squads[i]) then alive[#alive + 1] = _pop_squads[i] end
@@ -348,33 +349,33 @@ end
 
 -- Sellable surplus onto each member of a freshly spawned (offline) population squad, so a squad routing to a trader carries goods to sell.
 -- Weapons are sell-all (trade policy max 0) plus one ammo box; xinventory.create_item is offline-safe (falls back to the member's smart position).
-local function _seed_pop_squad(squad)
+local function _add_squad_gear(squad)
     if squad:npc_count() == 0 then return end
     local ammo = xinventory.get_category_sections("ammo_not_equipped")
     for member in squad:squad_members() do
         local wpn = xmath.select(WEAPONS)
-        if _spawnable(wpn) then xinventory.create_item(wpn, member.id) end
+        if is_spawnable(wpn) then xinventory.create_item(wpn, member.id) end
         if #ammo > 0 then xinventory.create_item(xmath.select(ammo), member.id, { ammo = TEST_AMMO_ROUNDS }) end
     end
 end
 
 -- Spawn one seeded squad at a field smart on the actor's level; track it and return true, or false if no smart / section / squad resolved.
 -- Flat guards keep the top-up loop shallow.
-local function _spawn_one_pop(actor_level)
+local function _spawn_pop_squad(actor_level)
     local smart = _select_field_smart(actor_level)
     if not smart then return false end
     local section = _pop_section()
     if not section then return false end
     local squad = xsquad.create_squad(smart, section)
     if not squad then return false end
-    _seed_pop_squad(squad)
+    _add_squad_gear(squad)
     _pop_squads[#_pop_squads + 1] = squad.id
     return true
 end
 
 -- One top-up pass: keep POP_TARGET squads alive at field smarts on the actor's level, POP_MAX_PER_PASS new per pass.
 -- The squads then live, move, fight, and trip AP's causes; bails at POP_ALIFE_CEILING so the driver never exhausts the id pool.
-local function _seed_population()
+local function _spawn_population()
     local actor = db.actor
     if not actor then return end
     local actor_se = alife():actor()
@@ -385,34 +386,34 @@ local function _seed_population()
         return
     end
     if not _pop_fields then _pop_fields = _build_field_smarts() end
-    local alive = _prune_pop()
+    local alive = _clear_pop()
     local actor_level = xlevel.get_level_id(actor_se)
     local want = POP_TARGET - alive
     local budget = POP_MAX_PER_PASS
     local spawned = 0
     while want > 0 and budget > 0 do
         budget = budget - 1
-        if _spawn_one_pop(actor_level) then
+        if _spawn_pop_squad(actor_level) then
             spawned = spawned + 1
             want = want - 1
         end
     end
-    _tip(string_format("seed_population: alive %d, +%d (target %d)", alive, spawned, POP_TARGET))
+    _show_tip(string_format("seed_population: alive %d, +%d (target %d)", alive, spawned, POP_TARGET))
     ap_core_debug.debug("[TEST] seed_population alive=%d spawned=%d target=%d fields=%d",
         alive, spawned, POP_TARGET, #_pop_fields)
 end
 
 -- The drive plan: every action fires on start, then re-seeds on its interval.
 local ACTIONS = {
-    { name = "seed_population", every = 300, action = _seed_population },
-    { name = "give_items",    every = 300, action = _give_items },
-    { name = "give_money",    every = 300, action = _give_money },
-    { name = "fill_stashes",   every = 600, action = _fill_stashes },
+    { name = "seed_population", every = 300, action = _spawn_population },
+    { name = "give_items",    every = 300, action = _add_items },
+    { name = "give_money",    every = 300, action = _add_money },
+    { name = "fill_stashes",   every = 600, action = _add_stash_items },
     { name = "spawn_hostiles", every = 600, action = _spawn_hostiles },
-    { name = "drop_artefact",  every = 900, action = _drop_artefact },
+    { name = "drop_artefact",  every = 900, action = _spawn_artefact },
 }
 
-local function _runner_tick()
+local function _update_runner()
     if not _runner then return true end
     ResetTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC)
     local now = os_clock()
@@ -433,54 +434,50 @@ local RANK_DEFAULT = 30000
 
 --- Set the player's character rank; run_string ap_ext_test.rank(25000).
 --- With no arg it jumps to expert, which opens the top market rank bands so the echo carries high-value goods.
---- @novalidate(code.unused_export, reason:"console command")
-function rank(value)
+function set_rank(value)
     local actor = db.actor
-    if not actor then return _tip("Not in game") end
+    if not actor then return _show_tip("Not in game") end
     local target = value or RANK_DEFAULT
     local before = actor:character_rank()
     actor:set_character_rank(target)
     local after = actor:character_rank()
-    _tip(string_format("Rank %d -> %d", before, after))
+    _show_tip(string_format("Rank %d -> %d", before, after))
     ap_core_debug.debug("[TEST] rank target=%d before=%d after=%d", target, before, after)
 end
 
 --- Advance the game clock; run_string ap_ext_test.time(48).
 --- With no arg it advances 24 h (one restock cycle), so traders resupply, the market injects and sells out, and radiant Hull/MVT windows mature.
---- @novalidate(code.unused_export, reason:"console command")
-function time(hours)
+function add_hours(hours)
     local delta_hours = hours or DEFAULT_SKIP_HOURS
     level.change_game_time(0, delta_hours, 0)
-    _tip(string_format("Advanced %d h", delta_hours))
+    _show_tip(string_format("Advanced %d h", delta_hours))
     ap_core_debug.debug("[TEST] time advanced hours=%d", delta_hours)
 end
 
 --- Start or stop the driver; while on, it re-seeds live world state on a timer so the real AP pipeline runs with no further input.
 --- Territory population, surplus kits and cash, stash fills, hostile spawns, and artefact drops (see ACTIONS); run time() to mature game-hour gates.
---- @novalidate(code.unused_export, reason:"console command")
-function drive()
+function run_driver()
     if _runner then
         _runner = nil
-        _tip("Test driver stopped")
+        _show_tip("Test driver stopped")
         ap_core_debug.debug("[TEST] driver stopped")
         return
     end
     _runner = { last = {}, runs = {} }
-    CreateTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC, _runner_tick)
-    _tip(string_format("Test driver on (%d actions)", #ACTIONS))
+    CreateTimeEvent("ap_ext_test", "runner", RUNNER_TICK_SEC, _update_runner)
+    _show_tip(string_format("Test driver on (%d actions)", #ACTIONS))
     ap_core_debug.debug("[TEST] driver started actions=%d", #ACTIONS)
 end
 
 --- Runner state and per-action run counts.
---- @novalidate(code.unused_export, reason:"console command")
-function status()
-    if not _runner then return _tip("Test runner off") end
+function show_status()
+    if not _runner then return _show_tip("Test runner off") end
     local parts = {}
     for i = 1, #ACTIONS do
         local entry = ACTIONS[i]
         parts[#parts + 1] = string_format("%s=%d", entry.name, _runner.runs[entry.name] or 0)
     end
     local line = table_concat(parts, " ")
-    _tip("Runner on: " .. line)
+    _show_tip("Runner on: " .. line)
     ap_core_debug.debug("[TEST] status %s", line)
 end
