@@ -374,7 +374,7 @@ Compatibility:
 
 Requirements:
 - Anomaly 1.5.3
-- Modded exes: themrdemonized or AOEngine v0.55 or newer. The full feature set needs the latest demonized build; a feature that needs a newer one stays inactive on older exes.
+- Modded exes: themrdemonized 20250908 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build. A feature that needs a newer one stays inactive on older exes.
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
 
