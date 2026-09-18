@@ -9,7 +9,7 @@ The framework produces its own radiant heartbeat (ap_core_callbacks.script decla
 
 Two layers: core (ap_core_*) and ext (ap_ext_*). Core never imports ext. All domain logic reaches the framework through registered function references.
 
-Built on xlibs. _ap_deps asserts xlibs presence and version on load. See conventions.md for naming, result codes, MCM, logging.
+Built on xlibs. _ap_init asserts xlibs presence and version on load, reading identity from _ap_manifest. See conventions.md for naming, result codes, MCM, logging.
 
 Part of a three-mod alife family: **AlifePlus** extends A-Life with new behaviors (this mod), **AlifeBalance** modulates rates and counts the engine already owns and never releases anything, **AlifeGuard** owns all release work, entities and items, and repairs alife state.
 
@@ -94,7 +94,8 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 
 | File | Role |
 |------|------|
-| _ap_deps | Dependency gate: assert xlibs installed and version-compatible |
+| _ap_manifest | Identity data: name, version, xlibs |
+| _ap_init | Dependency gate: assert xlibs installed and version-compatible |
 | ap_api | Public integration facade over broker / record / consumer / producer: owner registry, register_squad / register_actor_target, record queries, register_*_cause / register_consequence. The supported external surface (see integration.md) |
 | ap_core_const | Enums and timing constants: CALLBACK, CAUSE_TYPE, CAUSE_CATEGORY, RESULT, REASON, TRACE, RANGE_*. |
 | ap_core_mcm | MCM defaults, cfg snapshot, UI builder, on_option_change |
@@ -334,7 +335,7 @@ Engine auto-load resolves .script files on first namespace access (script_engine
 
 axr_main calls on_game_start() on every loaded script. File order alphabetical, but all operations are independent - no cross-module reads at this phase:
 
-- _ap_deps asserts xlibs compatibility. Hard crash on mismatch.
+- _ap_init asserts xlibs compatibility. Hard crash on mismatch.
 - ap_core_mcm loads config from defaults, registers on_option_change.
 - ap_core_debug registers actor_on_first_update for deferred log level init.
 - ap_core_callbacks declares both event names at module load (`AddScriptCallback`, phase 0) and installs both detections in its on_game_start: the `ap_squad_on_change` sweep (server_entity_on_unregister eviction + 1s tick, reading cfg.alife_rate/alife_ratio live) and the `ap_npc_medkit_use` hook on `xr_eat_medkit.consume_medkit`.
