@@ -429,10 +429,10 @@ Muratovnik: fixes and bug reports
 ---
 
 Usage and License:
-- Modpacks: allowed and encouraged. Keep the readme and license files.
-- Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
-- Reproducing the implementation in other software: not allowed, even with credit.
-- Full license in LICENSE file and on GitHub.
+  Modpacks: allowed and encouraged. Keep the readme and license files.
+  Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
+  Reproducing the implementation in other software: not allowed, even with credit.
+  Full license in LICENSE file and on GitHub.
 
 Diagnostics and reporting:
 Development > Log level: set to DEBUG, reproduce, then back to WARN. Enables tracing and performance timing.
