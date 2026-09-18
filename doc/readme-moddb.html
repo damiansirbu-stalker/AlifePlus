@@ -1,15 +1,7 @@
-<h3>Version: next (xlibs 1.8.5, demonized 20250908)</h3>
-<h3><a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">Manifesto</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md">Integration Guide</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog">Changelog</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt">На русском</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/issues">Bugs, suggestions</a></h3>
+<h3>Version: next | <a href="https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001">xlibs 1.8.5</a> | <a href="https://github.com/themrdemonized/xray-monolith/releases">demonized 20250908</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog">Changelog</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt">На русском</a> | <a href="https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md">Manifesto</a></h3>
 
-<h2>Alife Collection</h2>
-<ul>
-<li><a href="https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance">AlifeBalance</a></li>
-<li><a href="https://www.moddb.com/mods/stalker-anomaly/addons/diegetic-audio-control-100">AlifeDiegetic</a></li>
-<li><a href="https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001">AlifeGuard</a></li>
-<li><a href="https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01">AlifePlus</a></li>
-<li><a href="https://github.com/damiansirbu-stalker/AlifeSpooks">AlifeSpooks</a></li>
-<li><a href="https://www.moddb.com/mods/stalker-anomaly/addons/alifetactics">AlifeTactics</a></li>
-</ul>
+<h3>My work: <a href="https://github.com/orgs/damiansirbu-stalker/repositories">GitHub</a> | <a href="https://www.moddb.com/members/damian-sirbu/addons">ModDB</a> | <a href="https://www.nexusmods.com/profile/damiansirbu/mods">Nexus</a></h3>
+<h3>My contributions: <a href="https://github.com/themrdemonized/xray-monolith">X-Ray Monolith</a></h3>
 
 <p><b>! Please use the RESET button in MCM when updating to a new version !</b></p>
 
@@ -281,7 +273,7 @@
 <h2>Compatibility &amp; Safety</h2>
 <ul>
 <li>Requires xlibs and MCM.</li>
-<li>Runs on themrdemonized modded exes 2025.9.10 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build, and a feature that needs a newer one stays inactive on older exes.</li>
+<li>Runs on themrdemonized modded exes 20250908 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build, and a feature that needs a newer one stays inactive on older exes.</li>
 <li>Built and tested with GAMMA, also tested with Zona and EFP, and works mid-save.</li>
 <li>No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). AlifePlus extends squads and never takes them over.</li>
 <li>Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.</li>
@@ -346,16 +338,30 @@
 </ul>
 
 <h2>FAQ</h2>
-<p><b>Do I need modded exes?</b> Yes. AlifePlus needs themrdemonized modded exes (2025.9.10 or newer) or AOEngine (v0.55 or newer). Vanilla Anomaly does not expose the APIs the framework relies on.</p>
+<p><b>Do I need modded exes?</b> Yes. AlifePlus needs themrdemonized modded exes (20250908 or newer) or AOEngine (v0.55 or newer). Vanilla Anomaly does not expose the APIs the framework relies on.</p>
 <p><b>Does it work with other A-Life mods?</b> AlifePlus has no known incompatibilities with warfare or AI addons. It will conflict behavior-wise with mods that script squads heavily.</p>
 <p><b>Do I need offline combat enabled?</b> No. The engine setting (alife/general/offline_combat, default full) is independent of AlifePlus. Leave it at the default, since it drives the offscreen faction attrition most modpacks rely on. Turning it down produces fewer combat events while AlifePlus keeps generating the rest.</p>
 
 <h2>Known Issues</h2>
 <p>Map markers are debug-only and may glitch on some versions. Each marker shows the squad commander, so the stalker actually running the action may be a different squad member.</p>
 
-<h2>Validation</h2>
-<p>luacheck and selene for static analysis, ast-grep for AST checks, contract rules (API safety, complexity, standards), lua54 integration tests against X-Ray engine stubs, gitleaks and trufflehog for secret scanning. Full report: doc/test-report.log.</p>
-<p>Beyond static checks, each release is soak-tested under chaos load: the A-Life rate and spawn density pushed far past normal play, hundreds of squads and outposts live at once, every flow timed. Performance is measured on the engine built from the latest source with no multithreading and no optimizations, so the timings are worst-case. The optimized multithreaded build you run is always faster.</p>
+<h2>How It's Built</h2>
+<ul>
+<li>Although it started from work by Demonized, Alundaio, and Tronex, the current code and patterns are original, learned through reverse-engineering X-Ray, load testing, and custom X-Ray changes.</li>
+<li>The design favors the engine's own mechanisms and minimal intervention, with event-native pub/sub over polling.</li>
+<li>Work spreads across frames through deferred queues and rate limiters, while per-level caches replace world scans.</li>
+<li>The raycasting and range math are hand-written and tested live, and the code follows the engine's own standards and flags.</li>
+<li>Performance is the first invariant. Every flow stays under 2ms, and the build rewrites or drops anything that misses.</li>
+<li>Profiled continuously with JitProfiler, an engine-native scientific tool. Manual tests run on unoptimized, single-threaded exes.</li>
+<li>The code carries tracing and monitoring from the ground up, with every flow timed off the log level.</li>
+<li>Every commit runs the full pipeline locally and in CI: luacheck, a Selene build compiled for STALKER with flags the public build lacks, and a load test that runs every script against engine stubs.</li>
+<li>Rule layers then check crash safety, hotpath cost, engine correctness, complexity, architecture contracts, security, and the docs.</li>
+<li>Every mod is configurable through MCM or LTX, down to each rate, threshold, and toggle, with nothing tunable left hard-coded.</li>
+<li>The mod avoids writing engine values, holding its own state in parallel. Any value it must change stays inside the engine's own bounds, so save corruption is impossible.</li>
+<li>It depends on no other mod, not even my own. The only shared layers are X-Ray and xlibs.</li>
+</ul>
+<p>[Screenshot: AlifePlus under JitProfiler, a live CPU and allocation capture]</p>
+<p><a href="https://damiansirbu-stalker.github.io/AlifePlus/">Project Health</a></p>
 
 <h2>Localization</h2>
 <p>The mod includes English and Russian translations.</p>

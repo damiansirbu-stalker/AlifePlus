@@ -1,24 +1,16 @@
 AlifePlus: Emergent A-Life for STALKER Anomaly, by Damian
 - Version: next (xlibs 1.8.5, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
-- Integration guide: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/integration.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
-- Bugs, suggestions: https://github.com/damiansirbu-stalker/AlifePlus/issues
 
-Alife Collection:
-AlifeAmbience: https://github.com/damiansirbu-stalker/AlifeAmbience
-AlifeBalance: https://www.moddb.com/mods/stalker-anomaly/addons/alifebalance
-AlifeCompanions: https://github.com/damiansirbu-stalker/AlifeCompanions
-AlifeDiegetic: https://www.moddb.com/mods/stalker-anomaly/addons/diegetic-audio-control-100
-AlifeGuard: https://www.moddb.com/mods/stalker-anomaly/addons/alifeguard-1001
-AlifePlus: https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01
-AlifeSpooks: https://github.com/damiansirbu-stalker/AlifeSpooks
-AlifeTactics: https://www.moddb.com/mods/stalker-anomaly/addons/alifetactics
-FurnitureFuel: https://github.com/damiansirbu-stalker/FurnitureFuel
-JitProfiler: https://github.com/damiansirbu-stalker/JitProfiler
-TestZone: https://github.com/damiansirbu-stalker/TestZone
-xlibs: https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001
+My work:
+GitHub: https://github.com/orgs/damiansirbu-stalker/repositories
+ModDB: https://www.moddb.com/members/damian-sirbu/addons
+Nexus: https://www.nexusmods.com/profile/damiansirbu/mods
+
+My contributions:
+X-Ray Monolith: https://github.com/themrdemonized/xray-monolith
 
 ! Please use the RESET button in MCM when updating to a new version !
 
@@ -324,20 +316,23 @@ AlifePlus corrects three long-standing vanilla Anomaly A-Life bugs. All three ar
 
 These patches are global and affect every squad, not only AlifePlus's. If another mod already patches the same engine scripts, disable ap_core_chase.script and ap_core_anomaly_fixes.script before installing.
 
-Performance and Infrastructure:
+How It's Built:
 
-Performance comes first here, ahead of any feature. When a feature cannot fit the budget, it is reworked, replaced, dropped, or removed with an X-Ray engine modification rather than allowed to slow the game. Features are negotiable. The frame budget is not.
-AlifePlus does no work when the engine fires no event, and its own event stream costs the same whether the Zone holds fifty squads or eight hundred. You decide how much happens per minute, and that is exactly what it produces.
-Everything expensive is bounded by design. Long scans spread across frames, lookups hit per-level caches instead of walking the world, throttles run on the real clock while world limits run on game time and survive save and sleep, and every measured flow targets 0.1ms per call with a hard 2ms ceiling, cold start and level transitions included.
-AlifePlus leans on the engine rather than working around it. It drives the engine's own mechanisms through xlibs, built and validated against the X-Ray C++ source, and makes the most of what is already there: squad targeting is one native field, the destination, and the engine's chain does the rest. Where the stock behavior falls short it nudges or corrects it, and only when that is not enough does it change the engine itself. Below DEBUG, profiling and tracing collapse to no-ops and the hot path makes no allocations.
-The framework is 100% reactive. No polling, no timers, nothing runs until an engine callback fires.
-Built from the X-Ray engine source by reverse engineering, with targeted engine changes of my own for performance, precision, and accuracy.
-Heavy work spreads across frames, paced by rate limiters and staggered, deferred queues, with the math to keep cost bounded at any entity count.
-A layered validator runs on every change, locally and in CI, and blocks the build on any crash, unsafe engine call, performance regression, style break, failed smoke load, or leaked secret.
-Profiled with JitProfiler, an engine-native, scientific profiler.
-Timings are worst-case, from a build with no multithreading or optimizations, so yours runs faster.
+Although it started from work by Demonized, Alundaio, and Tronex, the current code and patterns are original, learned through reverse-engineering X-Ray, load testing, and custom X-Ray changes.
+The design favors the engine's own mechanisms and minimal intervention, with event-native pub/sub over polling.
+Work spreads across frames through deferred queues and rate limiters, while per-level caches replace world scans.
+The raycasting and range math are hand-written and tested live, and the code follows the engine's own standards and flags.
+Performance is the first invariant. Every flow stays under 2ms, and the build rewrites or drops anything that misses.
+Profiled continuously with JitProfiler, an engine-native scientific tool. Manual tests run on unoptimized, single-threaded exes.
+The code carries tracing and monitoring from the ground up, with every flow timed off the log level.
+Every commit runs the full pipeline locally and in CI: luacheck, a Selene build compiled for STALKER with flags the public build lacks, and a load test that runs every script against engine stubs.
+Rule layers then check crash safety, hotpath cost, engine correctness, complexity, architecture contracts, security, and the docs.
+Every mod is configurable through MCM or LTX, down to each rate, threshold, and toggle, with nothing tunable left hard-coded.
+The mod avoids writing engine values, holding its own state in parallel. Any value it must change stays inside the engine's own bounds, so save corruption is impossible.
+It depends on no other mod, not even my own. The only shared layers are X-Ray and xlibs.
+
+[Screenshot: AlifePlus under JitProfiler, a live CPU and allocation capture]
 Project Health: https://damiansirbu-stalker.github.io/AlifePlus/
-[JitProfiler: AlifePlus under CPU and allocation capture]
 
 ---
 
