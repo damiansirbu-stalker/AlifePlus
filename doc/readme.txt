@@ -440,4 +440,4 @@ Development > Debug markers: shows squad destination markers on the PDA map (app
 Development > World trace log: writes periodic simulation-state dumps (smarts, squads, controlled-squad roster, trader inventories) to alifeplus_world.log.
 Report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose or the EFP, Anomaly, and Zona Discord. Include repro steps, engine build, modlist, load order, xray.log, and the debug log.
 
-Tags: alife, emergent, reactive, radiant, event-driven, sandbox-economy, dynamic-territory, gsc-documents, unscripted, offline, stalker2
+Tags: alife, emergent, reactive, radiant, event-driven, sandbox-economy, dynamic-territory, gsc-documents, unscripted, offline, stalker2, engine-native, performance
