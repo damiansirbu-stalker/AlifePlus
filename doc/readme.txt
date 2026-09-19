@@ -16,21 +16,20 @@ X-Ray Monolith: https://github.com/themrdemonized/xray-monolith
 
 You are not special.
 
-AlifePlus is a reactive A-Life framework for STALKER Anomaly. It extends A-Life with event-driven emergent behavior built on GSC's original AI design, intercepting engine events, classifying them into causes, and dispatching consequences that extend the simulation.
+AlifePlus implements GSC's original A-Life, the design in their own documents. Only a fraction of it ever shipped. The rest is still in the engine source as stubs and commented-out code, with the architect's own notes to finish it.
 
-The X-Ray engine exposes the primitives for emergent behavior, a callback for every world event, a graph the simulation walks, a server object per entity. Stock Anomaly spends them on a random movement generator whose weights sit on the smart terrains, identical for every squad, so no squad decides for itself. AlifePlus spends the same primitives on events, world state, and per-squad logic grounded in GSC's design, alignment, personality, Hull drives, marginal value theorem, so behaviors chain and one consequence becomes the cause of the next.
+Anomaly filled the gap with a random mover, the same weighted pick for every squad, so no squad decides for itself. AlifePlus builds the full design as a reactive architecture on the current engine, events to causes to consequences, each consequence the cause of the next.
 
 Squads investigate massacres, hunt artefact carriers, claim empty territory, and act on hunger, sleep, and social needs. Everything that happens to the player happens to NPCs and mutants alike, and every action traces back to a cause, a world state, and a mechanic.
 
-AlifePlus draws on Roadside Picnic and the original STALKER vision, where the Zone runs on its own rules and the actor is just another entity inside it. Each faction acts on its identity: Duty holds ground, Bandits ambush and loot, Loners chase artefacts, Ecologists research, Military stays close to base, Monolith never retreats, Renegades scatter at first contact. Alignment determines what a faction can do at all, and personality how likely it is to act.
+AlifePlus draws on Roadside Picnic and the original STALKER vision, where the Zone runs on its own rules and the actor is just another entity inside it. Each faction acts on its identity: Duty holds ground, Bandits ambush and loot, Loners chase artefacts, Monolith never retreats. Alignment determines what a faction can do at all, and personality how likely it is to act.
 
 Every action has a systemic cause, and the simulation runs whether you are there or not. Structural invariants make this possible:
 - Event-driven contract: nothing runs unless the engine says something happened.
 - Physical simulation guarantee: consequences use entities already in the simulation, never spawned, teleported, or fabricated.
 - Item transfer only: items move between carriers (NPCs, stashes, traders). AlifePlus never invents new section names. Every materialized item is a section the engine already knows from vanilla configs.
-- Money flows match vanilla: NPCs gain money when they sell items at supply traders, spend money when they buy ammo and consumables. No money moves through stash loot, stash fill, the faction market, or any other AP flow. The market only moves trader stock and sets its price, which you pay at the trader like any purchase.
-
-The economy follows the same logic. Real items move between real stalkers, and real needs drive their decisions.
+- Money flows match vanilla: earned selling to traders, spent buying from them. Nothing else moves it.
+- Closed economy: what squads loot, trade, and barter reshapes the market you shop at.
 
 What you'll notice:
 
@@ -440,3 +439,5 @@ Development > Log level: set to DEBUG, reproduce, then back to WARN. Enables tra
 Development > Debug markers: shows squad destination markers on the PDA map (approximate; reload the save to apply).
 Development > World trace log: writes periodic simulation-state dumps (smarts, squads, controlled-squad roster, trader inventories) to alifeplus_world.log.
 Report at https://github.com/damiansirbu-stalker/AlifePlus/issues/new/choose or the EFP, Anomaly, and Zona Discord. Include repro steps, engine build, modlist, load order, xray.log, and the debug log.
+
+Tags: alife, emergent, reactive, radiant, event-driven, sandbox-economy, dynamic-territory, gsc-documents, unscripted, offline, stalker2
