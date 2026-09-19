@@ -1,0 +1,274 @@
+# GENERATED from stalker-manager/ci/ci.yml.template by `stalker-manager sync-ci`. Do not edit here.
+# Edit the template and re-run sync-ci; `sync-ci --check` reds the CI on drift.
+#
+# One workflow per mod: validate + deploy-pages run on every push; release and snapshot run only on
+# a manual dispatch. The release stage is tag-driven (doc/standards/stalker-compatibility.md, the
+# Versioning section): the tree always carries an x.y.z-snapshot, so a release tags the snapshot
+# commit, builds a zip stamped to the bare version, publishes it, then reopens the next snapshot.
+#
+# The private pipeline (stalker-dev) is checked out here with a read-only deploy key
+# (secret PIPELINE_SSH_KEY); nothing of its internals is stored or printed beyond the findings
+# about this mod. validate reads only; the release and snapshot jobs raise contents: write.
+
+name: ci
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'validate, snapshot (dev prerelease), or release'
+        type: choice
+        options: [validate, snapshot, release]
+        default: validate
+      version:
+        description: 'Release version X.Y.Z (release action only; must equal the tree snapshot)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event.inputs.action || 'push' }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout mod
+        uses: actions/checkout@v7
+        with:
+          path: AlifePlus
+
+      - name: Checkout xlibs dependency (sibling; public)
+        uses: actions/checkout@v7
+        with:
+          repository: damiansirbu-stalker/xlibs
+          path: xlibs
+      - name: Checkout pipeline (private stalker-dev)
+        uses: actions/checkout@v7
+        with:
+          repository: damiansirbu-stalker/stalker-dev
+          ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
+          path: pipeline
+          # Only the validator tree. sparse-checkout also makes checkout skip its upfront
+          # git lfs fetch (which would pull EVERY LFS object, incl. the ~40 engine binaries)
+          # and lazily smudge only in-cone LFS, i.e. stalker-manager/bin/*.exe.
+          sparse-checkout: stalker-manager
+          lfs: true
+
+      - name: Checkout redlint (prose lane; private)
+        uses: actions/checkout@v7
+        with:
+          # redlint_docs.py resolves it as a sibling of the pipeline checkout ($GITHUB_WORKSPACE/redlint);
+          # without it the prose lane degrades to skipped.
+          repository: damiansirbu-org/redlint
+          ssh-key: ${{ secrets.REDLINT_SSH_KEY }}
+          path: redlint
+
+      - name: Cache pipeline env
+        uses: actions/cache@v6
+        with:
+          path: pipeline/stalker-manager/env
+          key: mm-env-${{ hashFiles('pipeline/stalker-manager/requirements.txt') }}
+
+      - name: Setup pipeline env
+        shell: bash
+        run: |
+          if [ ! -d pipeline/stalker-manager/env/stalker-manager ]; then
+            bash pipeline/stalker-manager/stalker-manager.sh setup
+          fi
+
+      - name: Install uv (redlint venv builder)
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Build redlint venv
+        shell: bash
+        run: bash redlint/redlint.sh setup
+
+      - name: Point pipeline at this checkout
+        shell: bash
+        run: |
+          ws="${GITHUB_WORKSPACE//\\//}"
+          {
+            echo "repo_path: \"$ws\""
+            echo "mods_path: \"$ws\""
+            echo "dev_mods:"
+            echo "  - name: \"AlifePlus\""
+            echo "    repo: \"$ws/AlifePlus\""
+          } > pipeline/stalker-manager/dev.yaml
+          cat pipeline/stalker-manager/dev.yaml
+
+      - name: Validate
+        shell: bash
+        run: |
+          set +e
+          bash pipeline/stalker-manager/stalker-manager.sh validate AlifePlus --full --emit out
+          rc=$?
+          [ -f out/summary.md ] && cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if grep -qE '[0-9]+ findings /' out/summary.md 2>/dev/null; then
+            echo "::warning::redlint prose findings present (advisory, not gated); see the run summary"
+          fi
+          exit $rc
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: out
+
+  deploy-pages:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  # Dev prerelease (option B): one moving `snapshot` prerelease per repo, zip clobbered in place,
+  # kept out of the Latest slot. The zip carries the -snapshot version so a tester's log shows a dev build.
+  snapshot:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'snapshot'
+    needs: validate
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout mod
+        uses: actions/checkout@v7
+        with:
+          path: AlifePlus
+          fetch-depth: 0
+
+      - name: Checkout pipeline (private stalker-dev)
+        uses: actions/checkout@v7
+        with:
+          repository: damiansirbu-stalker/stalker-dev
+          ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
+          path: pipeline
+          sparse-checkout: stalker-manager
+          lfs: true
+
+      - name: Setup pipeline env
+        shell: bash
+        run: |
+          if [ ! -d pipeline/stalker-manager/env/stalker-manager ]; then
+            bash pipeline/stalker-manager/stalker-manager.sh setup
+          fi
+
+      - name: Point pipeline at this checkout
+        shell: bash
+        run: |
+          ws="${GITHUB_WORKSPACE//\\//}"
+          {
+            echo "dev_mods:"
+            echo "  - name: \"AlifePlus\""
+            echo "    repo: \"$ws/AlifePlus\""
+          } > pipeline/stalker-manager/dev.yaml
+
+      - name: Build snapshot zip
+        shell: bash
+        run: bash pipeline/stalker-manager/stalker-manager.sh release-zip AlifePlus --snapshot --out dist
+
+      - name: Publish snapshot prerelease (clobber in place)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view snapshot -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create snapshot -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "AlifePlus snapshot" --notes "Dev build. Changelog: doc/changelog top block."
+          fi
+          gh release upload snapshot -R "$GITHUB_REPOSITORY" dist/AlifePlus-snapshot.zip --clobber
+
+  # Tag-driven release: tag the snapshot commit, build a zip stamped to the bare version, publish it,
+  # then one bump commit reopening the next snapshot. Guarded to a dispatch with action=release.
+  release:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'release'
+    needs: validate
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout mod
+        uses: actions/checkout@v7
+        with:
+          path: AlifePlus
+          fetch-depth: 0
+
+      - name: Checkout pipeline (private stalker-dev)
+        uses: actions/checkout@v7
+        with:
+          repository: damiansirbu-stalker/stalker-dev
+          ssh-key: ${{ secrets.PIPELINE_SSH_KEY }}
+          path: pipeline
+          sparse-checkout: stalker-manager
+          lfs: true
+
+      - name: Setup pipeline env
+        shell: bash
+        run: |
+          if [ ! -d pipeline/stalker-manager/env/stalker-manager ]; then
+            bash pipeline/stalker-manager/stalker-manager.sh setup
+          fi
+
+      - name: Point pipeline at this checkout
+        shell: bash
+        run: |
+          ws="${GITHUB_WORKSPACE//\\//}"
+          {
+            echo "dev_mods:"
+            echo "  - name: \"AlifePlus\""
+            echo "    repo: \"$ws/AlifePlus\""
+          } > pipeline/stalker-manager/dev.yaml
+
+      - name: Precheck (snapshot ahead of tag)
+        shell: bash
+        run: bash pipeline/stalker-manager/stalker-manager.sh snapshot-ahead
+
+      - name: Tag the snapshot commit
+        shell: bash
+        working-directory: AlifePlus
+        run: |
+          v="${{ github.event.inputs.version }}"
+          if ! echo "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version must be X.Y.Z"; exit 1
+          fi
+          if git rev-parse "$v" >/dev/null 2>&1; then echo "::error::tag $v exists"; exit 1; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$v"
+          git push origin "$v"
+
+      - name: Build stamped release zip
+        shell: bash
+        run: bash pipeline/stalker-manager/stalker-manager.sh release-zip AlifePlus --version "${{ github.event.inputs.version }}" --out dist
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ github.event.inputs.version }}"
+          gh release create "$v" -R "$GITHUB_REPOSITORY" dist/AlifePlus-$v.zip \
+            --title "AlifePlus $v" --notes-file dist/AlifePlus-$v-notes.md
+
+      - name: Reopen the next snapshot
+        shell: bash
+        run: bash pipeline/stalker-manager/stalker-manager.sh release-bump AlifePlus
+
+      - name: Commit the bump
+        shell: bash
+        working-directory: AlifePlus
+        run: |
+          git add gamedata/scripts doc/readme.txt doc/changelog
+          git commit -m "chore(version): reopen the next snapshot after ${{ github.event.inputs.version }}"
+          git push
