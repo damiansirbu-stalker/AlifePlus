@@ -35,6 +35,9 @@ concurrency:
 jobs:
   validate:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout mod
         uses: actions/checkout@v7
@@ -113,6 +116,15 @@ jobs:
             echo "::warning::redlint prose findings present (advisory, not gated); see the run summary"
           fi
           exit $rc
+
+      # The findings become clickable file:line alerts in the repo Security tab. always() so a red
+      # validate still publishes them (the alerts are the point).
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: out/results.sarif
+          category: quality
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
