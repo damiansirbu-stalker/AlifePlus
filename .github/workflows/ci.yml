@@ -142,7 +142,9 @@ jobs:
 
   deploy-pages:
     needs: validate
-    if: ${{ !cancelled() }}
+    # Publish on every push (red or green -- !cancelled outranks the failed validate), never on a
+    # dispatch: a release/snapshot run skips the compat prep, so its report is not the full push view.
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
