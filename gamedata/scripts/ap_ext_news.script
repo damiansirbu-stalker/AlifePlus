@@ -3,7 +3,7 @@
 local IsStalker, get_object_story_id, get_actor_true_community = IsStalker, get_object_story_id, get_actor_true_community
 local pairs, tostring = pairs, tostring
 local math_random, math_floor = math.random, math.floor
-local string_format, string_gsub, string_find = string.format, string.gsub, string.find
+local string_format, string_gsub, string_find, string_match = string.format, string.gsub, string.find, string.match
 local table_concat = table.concat
 local game_translate_string = game.translate_string
 local xobject_se = xobject.get_se
@@ -89,13 +89,32 @@ local function _get_side_slots(entry, prefix)
     return faction, name, species
 end
 
+-- Escape a display name for use as a Lua pattern (level names can contain punctuation).
+local function _escape_pattern(s)
+    return (string_gsub(s, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+end
+
+-- Cut a leading map name off a smart display string so #location# does not read "Garbage Garbage Encampment".
+-- Doubled prefix (space / ". " / ", ") keeps one copy of the map word. "Map. Place" drops the map word.
+-- "Garbage Encampment" on map Garbage is left alone so the place name stays intact.
+local function _strip_level_prefix(name, level)
+    if name == "" or not level or level == "" then return name end
+    local esc = _escape_pattern(level)
+    local rest = string_match(name, "^" .. esc .. "[%.,]?%s+" .. esc .. "(.*)$")
+    if rest then return level .. rest end
+    rest = string_match(name, "^" .. esc .. "[%.,]%s+(.+)$")
+    if rest then return rest end
+    return name
+end
+
 -- Resolve location display from smart_id (stable, smarts do not despawn mid-session).
--- Engine smart names embed a period for level/sublocation; ". " becomes ", " so the location reads as one comma-separated phrase.
-local function _format_location(smart_id)
+-- Engine smart names embed a period for level/sublocation; leftover ". " becomes ", ".
+local function _format_location(smart_id, level)
     if not smart_id then return "" end
     local smart = xobject_se(smart_id)
     if not smart then return "" end
     local name = xlevel.get_smart_name(smart) or ""
+    name = _strip_level_prefix(name, level)
     name = string_gsub(name, "%. ", ", ")
     return name
 end
@@ -105,7 +124,7 @@ local function _build_slots(entry)
     local s_fac, s_name, s_spec = _get_side_slots(entry, "subject")
     local o_fac, o_name, o_spec = _get_side_slots(entry, "other")
     local level = entry.level_id and (xlevel.get_level_name(entry.level_id) or "") or ""
-    local location = _format_location(entry.smart_id)
+    local location = _format_location(entry.smart_id, level)
     if location == "" then location = level end
     return {
         subject_faction = s_fac, subject_name = s_name, subject_species = s_spec,
