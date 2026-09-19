@@ -35,6 +35,7 @@ concurrency:
 jobs:
   validate:
     runs-on: windows-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       security-events: write
@@ -107,32 +108,41 @@ jobs:
 
       - name: Validate
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p out
           set +e
           bash pipeline/stalker-manager/stalker-manager.sh validate AlifePlus --full --emit out
-          rc=$?
+          echo $? > out/rc
           [ -f out/summary.md ] && cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
           if grep -qE '[0-9]+ findings /' out/summary.md 2>/dev/null; then
             echo "::warning::redlint prose findings present (advisory, not gated); see the run summary"
           fi
-          exit $rc
 
-      # The findings become clickable file:line alerts in the repo Security tab. always() so a red
-      # validate still publishes them (the alerts are the point).
+      # Publish-then-gate: SARIF, the Pages artifact, and the dashboard deploy all run unconditionally,
+      # so a red run still shows the report that names what failed. The Grade gate, last, reds the check.
       - name: Upload SARIF to Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: out/results.sarif
           category: quality
 
       - name: Upload Pages artifact
+        if: always()
         uses: actions/upload-pages-artifact@v5
         with:
           path: out
 
+      - name: Grade gate
+        if: always()
+        shell: bash
+        run: exit "$(cat out/rc 2>/dev/null || echo 1)"
+
   deploy-pages:
     needs: validate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
