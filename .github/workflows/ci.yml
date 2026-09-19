@@ -199,6 +199,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout mod
         uses: actions/checkout@v7
@@ -255,6 +257,13 @@ jobs:
       - name: Build stamped release zip
         shell: bash
         run: bash pipeline/stalker-manager/stalker-manager.sh release-zip AlifePlus --version "${{ github.event.inputs.version }}" --out dist
+
+      # Sigstore provenance: verifiable "this zip was built from this commit by this workflow"
+      # (gh attestation verify). GA, becoming default for public repos.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/AlifePlus-${{ github.event.inputs.version }}.zip
 
       - name: Publish release
         shell: bash
