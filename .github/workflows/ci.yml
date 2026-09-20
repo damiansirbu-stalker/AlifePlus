@@ -38,7 +38,6 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
-      security-events: write
     steps:
       - name: Checkout mod
         uses: actions/checkout@v7
@@ -120,15 +119,19 @@ jobs:
             echo "::warning::redlint prose findings present (advisory, not gated); see the run summary"
           fi
 
-      # Publish-then-gate: SARIF, the Pages artifact, and the dashboard deploy all run unconditionally,
-      # so a red run still shows the report that names what failed. The Grade gate, last, reds the check.
-      - name: Upload SARIF to Code Scanning
+      - name: Fold in the published JitProfiler page
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: out/results.sarif
-          category: quality
+        shell: bash
+        run: |
+          # The in-game Publish commits pages/jitprofiler.html to the mod repo; place it in the Pages
+          # tree at /jitprofiler/. Absent until a capture is published, so a missing file is a no-op.
+          if [ -f AlifePlus/pages/jitprofiler.html ]; then
+            mkdir -p out/jitprofiler
+            cp AlifePlus/pages/jitprofiler.html out/jitprofiler/index.html
+          fi
 
+      # Publish-then-gate: the Pages artifact and the dashboard deploy run unconditionally, so a red run
+      # still shows the report that names what failed. The Grade gate, last, reds the check.
       - name: Upload Pages artifact
         if: always()
         uses: actions/upload-pages-artifact@v5
