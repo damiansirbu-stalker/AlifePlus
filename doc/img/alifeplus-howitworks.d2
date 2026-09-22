@@ -1,0 +1,44 @@
+direction: down
+
+style.fill: "#1f2421"
+
+**.style.fill: "#262c27"
+**.style.stroke: "#ece7d8"
+**.style.font-color: "#ece7d8"
+**.style.stroke-width: 2
+
+title: "AlifePlus - reactive A-Life: events in, squad commands out" {
+  near: top-center
+  style: { stroke-width: 0; fill: "#1f2421"; font-color: "#ece7d8"; font-size: 28 }
+}
+
+inputs: "Two triggers" {
+  grid-columns: 2
+  grid-gap: 18
+  rad: "Radiant heartbeat\nap_squad_on_change - a staggered squad sweep"
+  rea: "Reactive\nengine callbacks - death, hit, harvest, spawn"
+}
+
+producer: "Event pipeline (producer)" {
+  style.stroke: "#c9d8b6"
+  grid-columns: 1
+  grid-gap: 14
+  g: "gate chain - toggles, budget, protection"
+  c: "cause generator - one labeled cause, or none"
+}
+
+consumer: "Dispatch pipeline (consumer)" {
+  style.stroke: "#c9d8b6"
+  grid-columns: 1
+  grid-gap: 14
+  s: "subscribe to the cause on xbus"
+  h: "consequence handler - the action + register the squad"
+}
+
+out: "Write one field: scripted_target on the squad\nit walks straight to the assigned smart, overriding the vanilla lottery" {
+  style.stroke: "#c9d8b6"
+}
+
+inputs -> producer: "fire" { style: { stroke: "#c9d8b6"; font-color: "#c9d8b6" } }
+producer -> consumer: "publish on xbus" { style: { stroke: "#c9d8b6"; font-color: "#c9d8b6" } }
+consumer -> out: "acquire the squad" { style: { stroke: "#c9d8b6"; font-color: "#c9d8b6" } }
