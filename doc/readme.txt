@@ -1,6 +1,10 @@
 - Version: 1.8.8-snapshot (xlibs 1.8.5, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
-- Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog | Health: https://damiansirbu-stalker.github.io/AlifePlus/health/ | JitProfiler: https://damiansirbu-stalker.github.io/AlifePlus/jitprofiler/ | Bugs: https://github.com/damiansirbu-stalker/AlifePlus/issues | Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
+- Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
+- Health: https://damiansirbu-stalker.github.io/AlifePlus/health/
+- JitProfiler: https://damiansirbu-stalker.github.io/AlifePlus/jitprofiler/
+- Bugs: https://github.com/damiansirbu-stalker/AlifePlus/issues
+- Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
 
 My work:
 GitHub: https://github.com/orgs/damiansirbu-stalker/repositories
@@ -320,14 +324,14 @@ The design favors the engine's own mechanisms and minimal intervention, with eve
 Work spreads across frames through deferred queues and rate limiters, while per-level caches replace world scans.
 The raycasting and range math are hand-written and tested live, and the code follows the engine's own standards and flags.
 Performance is the first invariant. Every flow stays under 2ms, and the build rewrites or drops anything that misses.
-Profiled continuously with JitProfiler, an engine-native scientific tool. Manual tests run on unoptimized, single-threaded exes.
+Profiled continuously with JitProfiler, an engine-native profiler. Manual tests run on unoptimized, single-threaded exes.
 The code carries tracing and monitoring from the ground up, with every flow timed off the log level.
 Every commit runs the full pipeline locally and in CI: luacheck, a Selene build compiled for STALKER with flags the public build lacks, and a load test that runs every script against engine stubs.
 Rule layers then check crash safety, hotpath cost, engine correctness, complexity, architecture contracts, security, and the docs.
 Every mod is configurable through MCM or LTX, down to each rate, threshold, and toggle, with nothing tunable left hard-coded.
 The mod avoids writing engine values, holding its own state in parallel. Any value it must change stays inside the engine's own bounds, so save corruption is impossible.
 The family runs on one rulebook through xlibs. Every rule, policy, and check is one shared implementation, the same protection, distances, faction logic, and combat reads in every mod.
-It depends on no other mod, not even my own. The only shared layers are X-Ray and xlibs.
+It depends on no other mod, not even the author's own. The only shared layers are X-Ray and xlibs.
 
 That pipeline runs on every commit and publishes what it finds. The header links a live health page and a JitProfiler capture of the mod's real CPU and allocation cost.
 
@@ -406,7 +410,7 @@ Usage and License:
   Modpacks: allowed and encouraged. Keep the readme and license files.
   Addons, patches, integrations: allowed. Credit "AlifePlus by Damian Sirbu" visibly on your mod page.
   Reproducing the implementation in other software: not allowed, even with credit.
-  Full license in LICENSE file and on GitHub.
+  The full license is in the LICENSE file and on GitHub.
 
 Diagnostics and reporting:
 Every release goes through careful engineering and testing, but bugs can still slip through.
