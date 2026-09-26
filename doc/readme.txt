@@ -1,7 +1,6 @@
 - Version: 1.8.8-snapshot (xlibs 1.8.5, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
-- Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
-- Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
+- Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog | Health: https://damiansirbu-stalker.github.io/AlifePlus/health/ | JitProfiler: https://damiansirbu-stalker.github.io/AlifePlus/jitprofiler/ | Bugs: https://github.com/damiansirbu-stalker/AlifePlus/issues | Russian / На русском: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/readme_ru.txt
 
 My work:
 GitHub: https://github.com/orgs/damiansirbu-stalker/repositories
@@ -330,39 +329,25 @@ The mod avoids writing engine values, holding its own state in parallel. Any val
 The family runs on one rulebook through xlibs. Every rule, policy, and check is one shared implementation, the same protection, distances, faction logic, and combat reads in every mod.
 It depends on no other mod, not even my own. The only shared layers are X-Ray and xlibs.
 
-[Screenshot: AlifePlus under JitProfiler, a live CPU and allocation capture]
-Project Health: https://damiansirbu-stalker.github.io/AlifePlus/
+That pipeline runs on every commit and publishes what it finds. The header links a live health page and a JitProfiler capture of the mod's real CPU and allocation cost.
 
 ---
 
 Compatibility:
-- Built and tested with GAMMA, also tested with Zona, EFP, and Forgotten Zone, and works mid-save.
-- No base script edits, no engine patches, only engine-native mechanisms (the scripted-target slot, the simulation board, the job system). AlifePlus extends squads and never takes them over.
-- Story NPCs, companions, task givers, and quest squads are never touched. Squads owned by other mods like warfare or BAO are excluded automatically, and every scripted squad carries a TTL and auto-releases, so AlifePlus never holds one permanently.
-- No third-party bridge or synergy patch is needed or endorsed. Ones that claim to connect AlifePlus to another mod can cause instability and save corruption.
-- See integration.md on the project site for API reference and examples.
-
-  Superseded:
-  - NPC Loot Claim, NPC Loot Claim Remade: loot ownership covers all three directions (your kills, NPCs' kills, and between NPCs). Disable them, otherwise both intercept looting a claimed corpse and fight over it.
-  - Anti-loot addons (NPC Stop Looting Dead Bodies, BoltBeGone): the loot policy keeps NPC looting on and bounds what each looter keeps, so blocking the loot path is no longer needed. AlifeGuard's Inventory Balance does the same for standing inventory.
-  - Useful Idiots: turn its "no NPC looting" option OFF (defaults ON on GAMMA). It blocks all non-companion looting, so nothing feeds trade or the market.
-  - Vanilla "NPC loot distance" (Options > Gameplay > General, GAMMA sets 12 m): the loot claim replaces this radius, so set it to 0, or console run_string ui_options.set("gameplay/general/npc_loot_distance", 0).
-
-  Disable or patch these, each one breaks an AlifePlus system:
-  - Unauthorized synergy or bridge patches that claim to connect AlifePlus to another mod. They cause instability and save corruption. Do not install them.
-  - Squad-scripting mods that drive squads without the ownership handshake. Two systems then fight for the same squads. Disable one.
-
-  Works alongside, with a note:
-  - G.A.M.M.A. Actor Damage Balancer: finalizes damage the player takes, reading the hit's power and then applying the damage itself. A modifier this mod makes to a hit against the player still reaches final damage, because the balancer reads that power before applying it and this mod's scripts (at_, ap_) load ahead of grok_ by name. That order is fixed by the file names, so it holds on any standard install. Only a damage mod whose scripts sort ahead of both could take it over.
-  - G.A.M.M.A. Ballistics Overhaul and Close Quarter Combat (the grok_bo hit system): when you shoot an alpha, grok_bo's mutant handler scales the hit's power rather than replacing it, so the alpha's own damage reduction still applies on top. The two compose and no patch is needed.
-  - Warfare A-Life Overhaul, Better A-Life Overhaul: own their squads, excluded via the ownership registry.
-  - Faction-relation mods (Dynamic Faction Relations, zone-relation tweaks): change which causes can fire, which is intended.
-  - Spawn / population mods (Dynamic Mutants, ReSpawn Mutant Collection, Rebound Encounters): more entities to act on, and pair with AlifeGuard.
-  - Extended sim-distance / offline mods (Living Zone, Extended Offline, ROAD alife range): enlarge the population, which loads AlifeGuard more than AlifePlus.
-  - Autolooter / proximity-loot mods: opening a claimed corpse is blocked, so auto-loot driven through the loot window is stopped with it. Only remote/proximity transfer that never opens the corpse can still take a claimed kill. Reserving your own kills from NPC looters is unaffected.
-  - Interaction Dot Marks (Catspaw): opening, take-all, and auto-loot of a claimed corpse through its dot are blocked. Remote transfer that never opens the corpse can still take a claimed kill.
-  - Death-drop / weapon-on-ground mods: gear dropped to the ground on death is taken through the gather-items scheme, outside corpse ownership.
-  - Trader stock addons (Trader Destockifier, restock hooks, stock injectors): every outpost service holds a posted job that declares its trade config, which is what these addons read to recognize a trader, so they govern outpost services like any other trader on top of the below-hub supplies rule and the stock policy. The faction market detects restocks through the same pipeline, so it works with them too.
+Depends only on xlibs. Install and uninstall mid-save work. Tested: Anomaly 1.5.3, GAMMA, EFP, Zona, Forgotten Zone.
+Disable (conflict, superseded, problematic):
+- NPC Loot Claim, NPC Loot Claim Remade - intercept looting a claimed corpse, so both fight the loot ownership over the same kill.
+- NPC Stop Looting Dead Bodies, and any anti-loot mod - block the NPC looting the loot policy keeps on and bounds.
+- Useful Idiots - a broad combat-AI overhaul that blocks all non-companion looting, so nothing feeds trade or the market.
+- Autolooter, Interaction Dot Marks, and any remote auto-loot mod - take items by direct transfer, which bypasses the claim veto, so they steal claimed kills.
+- Squad-scripting mods that drive squads without the ownership handshake - two systems then fight for the same squads.
+- Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
+Change:
+- Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
+Coexists:
+- Warfare A-Life Overhaul, Better A-Life Overhaul - drive their own squads and coordinate ownership through AP, so AlifePlus never routes them.
+- GAMMA Ballistics Overhaul, Actor Damage Balancer - both scale the hit power instead of replacing it, so AP's alpha damage modifier survives into final damage.
+It coexists with everything else.
 
 ---
 
@@ -371,17 +356,6 @@ Requirements:
 - Modded exes: themrdemonized 20250908 or newer, or AOEngine v0.55 or newer. The full feature set needs the latest demonized build. A feature that needs a newer one stays inactive on older exes.
 - xlibs (https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1001)
 - MCM
-
-Install (MO2):
-1. Install xlibs
-2. Install AlifePlus
-3. Load order does not matter
-4. Configure via MCM
-
-Note: press RESET in MCM when updating. Most upgrade issues come from stale MCM state or outdated xlibs.
-
-Uninstall (MO2):
-Disable or remove in MO2.
 
 ---
 
@@ -405,6 +379,7 @@ FAQ:
 Does it work with other A-Life mods?
   AlifePlus has no known incompatibilities with warfare or AI addons.
   It will conflict behavior-wise with mods that script squads heavily.
+  Integrators: see integration.md for the ap_api reference and examples.
 
 Do I need offline combat enabled?
   No. The engine setting (alife/general/offline_combat, default full) is independent of AlifePlus. Leave it at the default, since it drives the offscreen faction attrition most modpacks rely on. Turning it down produces fewer combat events while AlifePlus keeps generating the rest.
