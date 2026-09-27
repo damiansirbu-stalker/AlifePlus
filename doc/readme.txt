@@ -1,4 +1,4 @@
-- Version: 1.8.8-snapshot (xlibs 1.8.5, demonized 20250908)
+- Version: 1.8.9-snapshot (xlibs 1.8.5, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Health: https://damiansirbu-stalker.github.io/AlifePlus/health/
