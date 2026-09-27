@@ -413,21 +413,18 @@ If another mod already patches the same engine scripts, disable this mod's chase
 
 How It's Built:
 
-Although it started from work by Demonized, Alundaio, and Tronex, the current code and patterns are original, learned through reverse-engineering X-Ray, load testing, and custom X-Ray changes.
-The design favors the engine's own mechanisms and minimal intervention, with event-native pub/sub over polling.
-Work spreads across frames through deferred queues and rate limiters, while per-level caches replace world scans.
-The raycasting and range math are hand-written and tested live, and the code follows the engine's own standards and flags.
-Performance is the first invariant. Every flow stays under 2ms, and the build rewrites or drops anything that misses.
-Profiled continuously with JitProfiler, an engine-native profiler. Manual tests run on unoptimized, single-threaded exes.
-The code carries tracing and monitoring from the ground up, with every flow timed off the log level.
-Every commit runs the full pipeline locally and in CI: luacheck, a Selene build compiled for STALKER with flags the public build lacks, and a load test that runs every script against engine stubs.
-Rule layers then check crash safety, hotpath cost, engine correctness, complexity, architecture contracts, security, and the docs.
-Every mod is configurable through MCM or LTX, down to each rate, threshold, and toggle, with nothing tunable left hard-coded.
-The mod avoids writing engine values, holding its own state in parallel. Any value it must change stays inside the engine's own bounds, so save corruption is impossible.
-The family runs on one rulebook through xlibs. Every rule, policy, and check is one shared implementation, the same protection, distances, faction logic, and combat reads in every mod.
-It depends on no other mod, not even the author's own. The only shared layers are X-Ray and xlibs.
-
-That pipeline runs on every commit and publishes what it finds. The header links a live health page and a JitProfiler capture of the mod's real CPU and allocation cost.
+The code and patterns are original, built on best practices from the best STALKER modders and hands-on reverse-engineering of X-Ray.
+The design stays engine-native and minimal, with event-native pub/sub over polling, work spread across frames through deferred queues and rate limiters, and per-level caches that replace world scans.
+The raycasting and range math are hand-written and load-tested live, following the engine's own standards and flags.
+Where scripting hits an engine limit, the fix is made in X-Ray itself, in the modded exes.
+Performance is the first invariant, so every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.
+Every mod carries OpenTelemetry-style tracing and performance monitoring, spanning world events and every flow, gated by the log level so it costs nothing when off.
+Every commit runs the full pipeline locally and in CI, with luacheck, a custom STALKER selene build, and a load test on engine stubs.
+Rule layers then check Lua practice, engine truth, conventions, contracts, release, security, and docs.
+Every rate, threshold, and toggle is exposed through MCM or LTX with nothing left hard-coded, and it writes no engine values, keeping its state within engine bounds so a save can never corrupt.
+It runs on one xlibs rulebook shared across the whole mod family, the same protection, distances, faction logic, and combat reads in every mod.
+It depends on no other mod, not even the author's own, and needs only X-Ray and xlibs beneath it.
+See the Health and JitProfiler links up top for every test and smoke result, and the mod's real CPU and allocation cost.
 
 ---
 
@@ -518,4 +515,4 @@ Send the traces on the Anomaly Discord, or file a defect on GitHub with the same
 Attach xray.log, the mod log, the engine build, the modlist, and the load order.
 For deep technical details and mechanisms, check the architecture docs on GitHub.
 
-Tags: alife, emergent, reactive, radiant, event-driven, sandbox-economy, dynamic-territory, gsc-documents, unscripted, offline, stalker2, engine-native, performance, save-safe
+Tags: alife, emergent, reactive, radiant, event-driven, sandbox-economy, dynamic-territory, gsc-documents, unscripted, offline, stalker2, engine-native, performance, save-safe, reverse-engineering
