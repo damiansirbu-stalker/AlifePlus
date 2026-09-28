@@ -1,4 +1,4 @@
-- Version: 1.8.9-snapshot (xlibs 1.8.5, demonized 20250908)
+- Version: 1.8.9-snapshot (xlibs 1.9.0, demonized 20250908)
 - Manifesto: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/manifesto.md
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Health: https://damiansirbu-stalker.github.io/AlifePlus/health/
@@ -14,7 +14,9 @@ Nexus: https://www.nexusmods.com/profile/damiansirbu/mods
 My contributions:
 X-Ray Monolith: https://github.com/themrdemonized/xray-monolith
 
-! Please use the RESET button in MCM when updating to a new version !
+[ Hero image: alifeplus-hero.gif - squads react across the Zone ]
+
+! Reset MCM settings to defaults after updating !
 
 You are not special.
 
@@ -59,7 +61,7 @@ Territory and population:
 - A held area grows into a mini base: service NPCs (trader, barman, mechanic, or medic) plus resident guards, kept manned by the game's own respawn while the hold lasts.
 - Conquests decay if nobody holds them.
 - Mutants infest lairs and buildings as nests.
-- Radiant dispatches weigh tactical soundness. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad targets, scores low and usually stays.
+- Radiant dispatches weigh tactical sense. A squad that would leave its base undefended by its faction, or pile onto a destination another scripted squad targets, scores low and usually stays.
 
 Alpha mutants:
 - A mutant that survives fights is promoted through alpha levels by its kill count.
@@ -109,7 +111,7 @@ Example scenario (economy loop):
 - Every loner crew on Cordon lives by the same trade policy, all selling to Sidorovich and all buying rifle rounds and medkits from him.
 - Walk into Sidorovich yourself and the market policy makes it show.
   The artefacts and devices those crews sold him sit on his shelf at a premium, gated to your rank, while the ammo and medkits they keep buying have run thin.
-- Nothing here is scripted and nothing plays by special rules. The Loners answer to the same loot, trade, and market limits you do, so what they do to their trader is what you find waiting there.
+- Nothing here is scripted and nothing plays by special rules. The Loners answer to the same loot, trade, and market limits you do, so what they do to their trader is what you find there.
 
 ---
 
@@ -228,7 +230,7 @@ Needs
   - Supply: The stalker walks to a trader, medic, or mechanic (anyone the game wires as a trader) to sell surplus and restock per a rank-tiered policy.
     Veterans add premium ammo, grenades, and larger consumable bands. Rookies carry basic ammo and standard medkits.
   - Barter: The stalker walks to a same-faction squad and swaps items with a stalker there, no money.
-    Each hands over the surplus the other is short on (ammo for equipped weapons, medical supplies, grenades) and a spare weapon, outfit, or helmet that costs more than the one the other carries.
+    Each hands over the surplus the other is short on (ammo for equipped weapons, medical supplies, grenades) and a spare weapon, outfit, or helmet worth more than the one the other carries.
     An off-map version travels to a friendly squad on another map. It shares the Supply need, so a stalker restocks whichever is reachable.
   - Job: The stalker guards outposts and checkpoints, explores the Zone, or researches anomalies.
   - Social: The stalker walks to a campfire or base for company.
@@ -237,7 +239,7 @@ Needs
   Sociable factions like Ecologists, Clear Sky, Freedom and Loners visit another smart terrain for company.
   Greedy ones cross over to restock when no trader is reachable at home, and the curious Ecologists and Clear Sky scout neighboring maps.
   Army, Monolith and Zombified squads never leave their own.
-  Their reach grows as you clear the Zone, one map further once X-16 is shut down, another after the Brain Scorcher falls, and one more for master-rank commanders, all tunable under World > Off-map.
+  Their reach grows as you clear the Zone, one map further once X-16 shuts down, another after the Brain Scorcher falls, one more for master-rank commanders, all tunable under World > Off-map.
   A squad that travels settles where it lands and does not come home, and anything stuck out there is cleaned up after a week.
 
   Reaching the smart terrain is what satisfies the need. Nothing in the squad's inventory is consumed, and combat use of medkits and stims in a firefight is the engine's own, untouched.
@@ -414,7 +416,7 @@ If another mod already patches the same engine scripts, disable this mod's chase
 How It's Built:
 
 The code and patterns are original, built on best practices from the best STALKER modders and hands-on reverse-engineering of X-Ray.
-The design stays engine-native and minimal, with event-native pub/sub over polling, work spread across frames through deferred queues and rate limiters, and per-level caches that replace world scans.
+The design stays engine-native and minimal, with event-native pub/sub not polling, work spread across frames via deferred queues and rate limiters, and per-level caches replacing world scans.
 The raycasting and range math are hand-written and load-tested live, following the engine's own standards and flags.
 Where scripting hits an engine limit, the fix is made in X-Ray itself, in the modded exes.
 Performance is the first invariant, so every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.
