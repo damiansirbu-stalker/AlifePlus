@@ -16,6 +16,10 @@ X-Ray Monolith: https://github.com/themrdemonized/xray-monolith
 
 [ Hero image: alifeplus-hero.gif - squads react across the Zone ]
 
+Thank you for the support, I do not need donations. Reviews, ratings, and proper bug reports help.
+An organized group plagiarizes my work, posts daily lies and mass-downvotes my mods everywhere.
+Most modpacks use my work, established projects integrate with it, and downloads near 1 million.
+
 ! Reset MCM settings to defaults after updating !
 
 You are not special.
