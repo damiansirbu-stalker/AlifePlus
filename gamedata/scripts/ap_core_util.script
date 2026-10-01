@@ -62,7 +62,7 @@ end
 local function _is_target_lost(entry)
     if _is_actor_chase(entry) then return false end
     local target = _get_chase_target_se(entry)
-    if not target then return true end
+    if not xsquad.is_squad(target) then return true end
     return target:npc_count() <= 0
 end
 
