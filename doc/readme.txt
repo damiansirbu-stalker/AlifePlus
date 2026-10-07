@@ -436,19 +436,19 @@ See the Health and JitProfiler links up top for every test and smoke result, and
 
 Compatibility:
 Depends only on xlibs. Install and uninstall mid-save work. Tested: Anomaly 1.5.3, GAMMA, EFP, Zona, Forgotten Zone.
-Disable (conflict, superseded, problematic):
+Drop:
 - NPC Loot Claim, NPC Loot Claim Remade - intercept looting a claimed corpse, so both fight the loot ownership over the same kill.
 - NPC Stop Looting Dead Bodies, and any anti-loot mod - block the NPC looting the loot policy keeps on and bounds.
-- Autolooter, Interaction Dot Marks, and any remote auto-loot mod - take items by direct transfer, which bypasses the claim veto, so they steal claimed kills.
 - Squad-scripting mods that drive squads without the ownership handshake - two systems then fight for the same squads.
 - Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
 Change:
+- Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option; it bypasses the claim veto, while opening a claimed corpse is already blocked.
 - Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
 - Useful Idiots no-NPC-looting option (its MCM, on by default in GAMMA) - turn it off, it blocks all non-companion looting so nothing feeds trade or the market.
 Coexists:
 - Warfare A-Life Overhaul, Better A-Life Overhaul - drive their own squads and coordinate ownership through AP, so AlifePlus never routes them.
 - GAMMA Ballistics Overhaul, Actor Damage Balancer - both scale the hit power instead of replacing it, so AP's alpha damage modifier survives into final damage.
-It coexists with everything else.
+Everything else coexists, as long as it extends X-Ray and Anomaly and never overrides them.
 
 ---
 
