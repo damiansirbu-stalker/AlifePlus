@@ -441,7 +441,10 @@ Drop:
 - NPC Stop Looting Dead Bodies, and any anti-loot mod - block the NPC looting the loot policy keeps on and bounds.
 - Squad-scripting mods that drive squads without the ownership handshake - two systems then fight for the same squads.
 - Clash Routing and Alife Pathing manager (CRAP) - overwrites the A-Life squad-targeting fields AlifePlus owns to force random squads into scripted fights, with no ownership handshake, and pins them always-online, defeating offline culling.
+- Cypret's SafeSpawn - force-toggles NPC online-switching and sweeps alife every level change, fighting AlifePlus squad and online-state handling.
 - Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
+- siski, ZHOPA, and any renamed clone - unauthorized copies of AlifePlus and xlibs code, so the same systems load twice and corrupt state (DMCA'd off ModDB and GitHub).
+- Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice; run only the current release.
 Change:
 - Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option; it bypasses the claim veto, while opening a claimed corpse is already blocked.
 - Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
