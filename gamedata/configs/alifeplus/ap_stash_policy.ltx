@@ -1,13 +1,9 @@
-; AlifePlus stash policy. Single uniform block (no per-rank). DLTX-overridable.
-; Loot flow: for each category, take from stash if squad_count < min, up to min.
-; Fill flow: for each category, deposit to stash if squad_count > max, total per event capped by fill_max.
-; extras_max: after category-based loot, take top-N additional items from stash by `cost` field.
-; Quest / untouchable sections in stash -> whole stash skipped (no loot, no clear). Hardcoded.
-; Toolkit-containing stashes -> whole stash skipped only when MCM consequence_stash_loot_skip_crafting on.
-; Sell-only categories use 0, 0 (never lootable to squad, never deposited to stash).
-; A row key is either a category or a single item section; an item unlisted by any row is left
-; alone (never looted, never deposited). Grenades are listed individually so smoke (grenade_smoke)
-; is simply left out -- it never enters or leaves a stash (engine crash on NPC throw).
+; AlifePlus stash policy. Single uniform block, no per-rank. DLTX-overridable.
+; Loot: for each category, take from the stash while squad_count < min, up to min. Fill: deposit while squad_count > max, total per event capped by fill_max.
+; extras_max: after category loot, take the top-N further items by `cost`. Sell-only categories use 0, 0 (never looted to the squad, never deposited).
+; A quest or untouchable section anywhere in a stash skips the whole stash (no loot, no clear); a toolkit-bearing stash is skipped only when MCM consequence_stash_loot_skip_crafting is on.
+; A key is a category or a single item section; an unlisted item is left alone. Grenades are listed individually so smoke (grenade_smoke) stays out, never entering or leaving a stash
+; (engine crash on NPC throw).
 
 [ap_stash_policy]
 ammo_slot_3_t1    = 15, 45

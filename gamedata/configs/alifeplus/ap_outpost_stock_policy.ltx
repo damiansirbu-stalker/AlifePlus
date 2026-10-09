@@ -1,41 +1,15 @@
-; AlifePlus outpost stock policy. Filters a conquered-area service NPC's player-facing stock
-; after each restock, so a field outpost sells a lean assortment instead of the full faction
-; shelf. Applied on top of the below-hub supplies drop (Mutators > Conquest); this file decides
-; WHICH kinds a service stocks, the supplies drop decides HOW DEEP its ammo/gear tiers go.
-;
-; ONE BLOCK PER SERVICE ROLE. A cap that suits a trader guts a specialist: a barman's whole trade
-; is food and drink, a medic's is medical, a mechanic's is tools and parts. Each role is capped
-; generously in its own trade and hard everywhere else, so a service stays recognisably itself.
-; A role whose block is missing or empty is not filtered at all (logged at load).
-;
-; FORMAT: `key = N`. One number, a CAP. There is no minimum: nothing here ever adds stock, it
-; only removes what is over the cap.
-;   N = 0  -> stripped from stock entirely.
-;   N > 0  -> kept, capped at N.
-;   row deleted entirely -> that category is left untouched.
+; AlifePlus outpost stock policy. Filters a conquered-area service NPC's player-facing stock after each restock, so a field outpost sells a lean assortment, not the full faction
+; shelf. Applied on top of the below-hub supplies drop (Mutators > Conquest): this file decides which kinds a service stocks, the supplies drop decides how deep its ammo/gear tiers go.
 ; DLTX-overridable.
 ;
-; HOW A ROW COUNTS -- read the key name:
-;   <category>              a SHELF TOTAL for that whole category. `food = 8` means 8 food items
-;                           on the shelf, all kinds together. Vanilla lists many sections per
-;                           category (a barman's supply list carries 77 separate meats and foods),
-;                           so a total is the only cap that keeps the shelf lean.
-;   ammo_rounds_per_type    ROUNDS, not boxes, and counted separately for each ammo type. 90 means
-;                           90 rounds of EACH type, so a shelf carries several calibers and ammo
-;                           stays the bulk of a trader's business. A box counts as the rounds in
-;                           it, so a value below one box size (30-60 rounds for most types) strips
-;                           that ammo entirely rather than leaving a partial box -- stacks release
-;                           whole.
-;   <item section>          a row may also name one item section (energy_drink = 2); it then caps
-;                           that section alone and overrides its category row.
-;   money                   the role's BANKROLL in rubles: the service's money is RESET to this
-;                           value on every restock. Selling to him drains it; the next restock
-;                           tops it back up -- so the cash you can extract by selling is capped
-;                           per restock cycle, like a limited-funds hub trader. Row deleted ->
-;                           his money is left to the engine.
+; One block per service role. A cap that suits a trader guts a specialist (a barman's trade is food and drink, a medic's is medical, a mechanic's is tools and parts), so each role is
+; capped generously in its own trade and hard everywhere else and stays recognisably itself. A role whose block is missing or empty is not filtered (logged at load).
 ;
-; Category names match get_section_category (the same vocabulary the other policy files use).
-; Equipped weapon and armor and quest items are never in scope -- the categorizer skips them.
+; Format: key = N, a cap; there is no minimum (nothing here adds stock, it only removes over the cap). N = 0 strips the kind from stock; a deleted row leaves that category untouched.
+; A key counts by its name. A category is a shelf total for the whole category (food = 8 is 8 food items of all kinds, the only cap that keeps a 77-section supply list lean). An ammo
+; category is rounds per type, not boxes (90 = 90 rounds of each type; a box counts as its rounds, and a value below one box size strips that ammo since stacks release whole). A single
+; item section caps that section alone and overrides its category (energy_drink = 2). money is the role's bankroll in rubles, reset on every restock, so sell-to-cash is capped per cycle;
+; a deleted money row leaves his cash to the engine. Category names match get_section_category. Equipped weapon, armor, and quest items are never in scope; the categorizer skips them.
 
 ; Field resupply post: ammo by the caseload plus a little of everything else.
 [ap_outpost_stock_trader]

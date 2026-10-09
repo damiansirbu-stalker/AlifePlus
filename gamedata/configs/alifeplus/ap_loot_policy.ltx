@@ -1,16 +1,10 @@
 ; AlifePlus loot policy. Single uniform block. DLTX-overridable.
-; Applied by ap_ext_loot_select to what an NPC just looted from a corpse: for each capped key,
-; the cheapest looted members are deleted until the NPC's whole-inventory count for that key is at
-; or under max, so the kept loot is the highest-value. Only this pickup is trimmed; the standing
-; loadout is left to the AlifeBalance cull (whose ceilings match these GATHER caps).
+; Applied by ap_ext_loot_select to what an NPC just looted from a corpse: for each capped key the cheapest looted members are deleted until the NPC's whole-inventory count for that
+; key is at or under max, so the kept loot is the highest value. Only the pickup is trimmed; the standing loadout is left to the separate loadout cull, whose ceilings match these caps.
 ;
-; Row shape: `key = min, max`. Loot uses MAX only (min is ignored -- a pickup is never "filled"
-; to a minimum). A key is a category name or a single item section name. A key left unlisted is
-; never trimmed; money is the only intentional case. Combat ammo is capped at the 3-box CAP
-; (45 rifle / 48 pistol; box_size 15 / 16) so an NPC can scavenge spare boxes but not hoard up
-; to the cull ceiling. grenade_smoke = 0 drops looted smoke on pickup (engine crash when NPCs
-; throw it). Untouchable (quest / anim / blacklisted) and equipped items are skipped
-; automatically by the xinventory categorizer regardless of policy contents.
+; Row: key = min, max, but loot uses max only (a pickup is never filled to a minimum). A key is a category or a single item section; an unlisted key is never trimmed (money is the
+; only intended case). Combat ammo caps at the 3-box total (45 rifle / 48 pistol, box_size 15 / 16) so an NPC scavenges spare boxes without hoarding to the cull ceiling. grenade_smoke = 0
+; drops looted smoke on pickup (engine crash when NPCs throw it). Untouchable (quest / anim / blacklisted) and equipped items are skipped by the xinventory categorizer regardless of policy.
 
 [ap_loot_policy]
 ammo_slot_3_t1    = 0, 45

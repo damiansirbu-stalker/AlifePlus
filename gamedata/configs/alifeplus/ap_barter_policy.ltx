@@ -1,18 +1,11 @@
-; AlifePlus barter policy. NPC-to-NPC item swap, no money (the counterpart of ap_trade_policy.ltx,
-; which is the visiting stalker vs a service trader with cash). One uniform block, no rank tiers, same
-; shape as ap_stash_policy.ltx and ap_loot_policy.ltx. DLTX-overridable.
+; AlifePlus barter policy. NPC-to-NPC item swap, no money; ap_trade_policy.ltx is the stalker-vs-trader cash version. One uniform block, no rank tiers. DLTX-overridable.
 ;
-; Same category system as trade: keys are engine-derived (xinventory.get_category / get_category_opts
-; resolves ammo_slot_2/3_tN per the NPC's equipped pistol/rifle, ammo_not_equipped, grenades,
-; medical/food/drink). Each row is a category band in the HOLDER's perspective: min = keep at least
-; this many, max = give away above this. An item moves from A to B when A holds it above A's max
-; (surplus) AND B holds it below B's min (deficit). Ammo counts in rounds; items otherwise. Total
-; items moved per barter event is capped by MCM barter_max_items (economy > barter).
+; Same category system as trade: keys are engine-derived (xinventory.get_category / get_category_opts resolves ammo_slot_2/3_tN per the NPC's equipped pistol/rifle, ammo_not_equipped,
+; grenades, medical/food/drink). Each row is a category band in the holder's view: min = keep at least this many, max = give away above this. An item moves from A to B when A holds it
+; above A's max and B holds it below B's min. Ammo counts in rounds, items otherwise. Items moved per event are capped by MCM barter_max_items (Economy > barter).
 ;
-; Weapons, outfits, and helmets are NOT count-band rows here -- the barter orchestrator handles them on
-; a separate cost-upgrade pass (a spare moves only when its get_cost beats the receiver's equipped one),
-; so they are absent from this block. Untouchable and equipped items are dropped by
-; xinventory.get_category before any policy lookup.
+; Weapons, outfits, and helmets are not count-band rows; the barter orchestrator upgrades them on a separate cost pass (a spare moves only when its get_cost beats the receiver's equipped
+; one), so they are absent here. Untouchable and equipped items are dropped by xinventory.get_category before any policy lookup.
 
 [ap_barter_policy]
 ammo_slot_3_t1    = 15, 45

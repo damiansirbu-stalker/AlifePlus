@@ -1,19 +1,9 @@
-; AlifePlus faction market policy, all rows in the TRADER's perspective (the counterpart file,
-; ap_trade_policy.ltx, is the visiting stalker's perspective). Two directions, one filter chain:
-; [ap_market_trader_buy] echoes what the faction's traders bought from stalkers onto the shelf at
-; restock, rank-gated and priced at a premium; [ap_market_trader_sell] removes a share of what
-; those traders sold to stalkers from the freshly respawned shelf at the same restock.
-; DLTX-overridable. Categories are engine-derived (xinventory.get_section_category over Parse_ITM
-; _ITM buckets + curated consumable sets); nothing here invents sections.
+; AlifePlus faction market policy. The trader's side of NPC trading; ap_trade_policy.ltx is the stalker's side. DLTX-overridable.
+; Two directions share one filter chain: [ap_market_trader_buy] echoes what traders bought from stalkers back onto the shelf at restock, rank-gated and premium priced;
+; [ap_market_trader_sell] removes the share they sold. Categories are engine-derived (xinventory.get_section_category); nothing here invents sections.
 ;
-; [ap_market_trader_buy] specials (single numeric values, not category rows):
-;   fifo_max            distinct sections kept per faction (bounded dedup FIFO, oldest evicted;
-;                       one depth for both the bought and the sold FIFO)
-; Price premium and spawn condition are MCM settings (Economy > Faction market), not here.
-; Category/section rows: key = per-trader cap (max copies of that key at one trader).
-;   A key is a category (medkit, device, ...) or a single item section. An item uses its
-;   section rule when listed, else its category rule; a key absent here is NEVER injected.
-;   Cap 0 = listed-but-excluded (same as absent for injection). Ammo counts in rounds.
+; Row: key = per-trader cap (max copies at one trader). A key is a category or a single item section; an item uses its section rule when listed, else its category rule.
+; A key absent here, or cap 0, is never injected. Ammo counts in rounds. Special fifo_max = distinct sections kept per faction. Premium and spawn condition are MCM (Economy > Faction market).
 
 [ap_market_trader_buy]
 fifo_max            = 20
@@ -31,7 +21,8 @@ grenade             = 2
 ; is otherwise sold (cap 0 = listed-but-excluded, same rejection as absent).
 grenade_smoke       = 0
 
-; Weapons and armor are injection-capable but left off. To enable, uncomment a row (value = max copies per trader):
+; Weapons and armor are injection-capable but off by default. To enable, uncomment a row (value = max copies). Some modpacks block weapon and armor sales (the section is listed
+; with an empty value, read as not-tradable), so an injected gun sits in the trader's bag but never shows there until that modpack's gear-sales option is on. Mechanism in the dev todo.
 ;weapon             = 1
 ;outfit             = 1
 ;helmet             = 1
