@@ -30,14 +30,21 @@ grenade_smoke       = 0
 ; Trader-sell whitelist: which keys the sell-out may remove from a trader's fresh stock, value =
 ; max sections of that key removed per restock (same row shape and filter chain as injection,
 ; own scope). The sell-out mirrors what the faction's stalkers actually buy (ap_trade_policy),
-; so only the staples they consume are listed: ammo and medical supplies. A key absent here is
-; NEVER removed. ammo_not_equipped is the context-free ammo category every ammo section resolves
-; to. The removal share per section is the MCM trader sell-out slider (Economy > Faction market).
+; so only the staples they consume are listed: ammo, medical, provisions, grenades, pills,
+; crafting parts. A key stalkers never buy is dead here and is left out (stim and device are
+; both min 0 in ap_trade_policy). A key absent here is NEVER removed. ammo_not_equipped is the
+; context-free ammo category every ammo section resolves to. The removal share per section is a
+; random roll between the MCM min and max sell-out sliders (Economy > Faction market).
 [ap_market_trader_sell]
 ammo_not_equipped   = 4
 medkit              = 3
 bandage             = 3
-stim                = 2
+antirad             = 2
+pill                = 2
+food                = 2
+drink               = 2
+grenade             = 2
+crafting            = 2
 
 ; Hard rank floor: a category (or single section) here is blocked until the player reaches the
 ; named rank tier. Tier names per game_relations.ltx [game_relations] rating
