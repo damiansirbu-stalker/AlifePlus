@@ -107,7 +107,12 @@ end
 
 local function _get_premium()        return cfg.market_premium end
 local function _get_item_condition()  return cfg.market_item_condition end
-local function _get_trader_sell_percent()  return cfg.market_trader_sell_percent end
+local function _get_trader_sell_ceiling()  return cfg.market_trader_sell_percent end
+-- The floor can never exceed the ceiling, so a mis-set min above the max collapses to the max (keeps math_random's lo <= hi contract).
+local function _get_trader_sell_floor()
+    local lo, hi = cfg.market_trader_sell_floor, cfg.market_trader_sell_percent
+    return lo < hi and lo or hi
+end
 local function _get_fifo_max()      return (MARKET_POLICY and MARKET_POLICY.specials.fifo_max) or DEFAULT_FIFO_MAX end
 local function _get_goods_window_sec() return cfg.market_window_hours * 3600 end
 local function _get_per_trader_cap()
@@ -302,11 +307,12 @@ local function _collect_trader_sold_stock(trader, wanted, rules)
     return stock
 end
 
---- Sell out one class from the trader's stock: release floor(held x percent / 100) items at random and claim each removed section for the window.
---- The share rounds down, so scarce stock survives at low pct; returns (removed_count, rep_section), ctx = { trader_id, faction, pct, window }.
+--- Sell out one class: release floor(held x pct / 100) items at random, pct a fresh per-class roll in [sell_floor, sell_ceiling], claim each removed section.
+--- The share rounds down so scarce stock survives; returns (removed_count, rep_section), ctx = { trader_id, faction, sell_floor, sell_ceiling, window }.
 local function _try_get_sellout_class(ctx, cls, items)
     local held = items and #items or 0
-    local remove = math_floor(held * ctx.pct / 100)
+    local pct = math_random(ctx.sell_floor, ctx.sell_ceiling)
+    local remove = math_floor(held * pct / 100)
     if remove <= 0 then
         if ap_core_debug.is_enabled() then ap_core_debug.debug("%s sellout skip %s held=%d below-share", LOG, cls, held) end
         return 0
@@ -345,13 +351,14 @@ end
 
 --- Sell out at one online trader what he recently sold to his faction's stalkers: the mirror of _run_injection over _trader_sold, matched by sell-out class.
 --- Runs before _run_injection and claims what it removes so injection skips it; the engine respawns config next cycle, so removal never damages a trader.
---- @safety SAFE - bails on disabled, zero percent, dead trader, unresolved role/faction, nil policy
+--- @safety SAFE - bails on disabled, zero ceiling, dead trader, unresolved role/faction, nil policy
 --- @param trader game_object Online trader at its restock
 local function _run_sellout(trader)
     if not cfg.market_enabled or not MARKET_POLICY then return end
     if not trader or not trader:alive() then return end
-    local pct = _get_trader_sell_percent()
-    if pct <= 0 then return end
+    local sell_ceiling = _get_trader_sell_ceiling()
+    if sell_ceiling <= 0 then return end
+    local sell_floor = _get_trader_sell_floor()
     local cap = _get_per_trader_cap()
     if cap <= 0 then return end
 
@@ -364,8 +371,8 @@ local function _run_sellout(trader)
     local rules = MARKET_POLICY.trader_sell
     local eligible = _collect_eligible_sections(_trader_sold, faction, role_info, rules, "sellout")
     if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("%s sellout trader=%d(%s) faction=%s pct=%d cap=%d eligible=%d", LOG,
-            trader_id, tname, faction, pct, cap, #eligible)
+        ap_core_debug.debug("%s sellout trader=%d(%s) faction=%s pct=%d-%d cap=%d eligible=%d", LOG,
+            trader_id, tname, faction, sell_floor, sell_ceiling, cap, #eligible)
     end
     if #eligible == 0 then return end
 
@@ -376,7 +383,7 @@ local function _run_sellout(trader)
     for cls in pairs(stock) do classes[#classes + 1] = cls end
     _shuffle(classes)
 
-    local ctx = { trader_id = trader_id, faction = faction, pct = pct, window = _get_goods_window_sec() }
+    local ctx = { trader_id = trader_id, faction = faction, sell_floor = sell_floor, sell_ceiling = sell_ceiling, window = _get_goods_window_sec() }
     local sold_out, best_removed, best_sec = 0, 0, nil
     for i = 1, #classes do
         if sold_out >= cap then break end

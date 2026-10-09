@@ -360,7 +360,8 @@ defaults = {
     market_window_hours = 12,
     market_premium = 5.0,
     market_item_condition = 0.9,
-    market_trader_sell_percent = 30,
+    market_trader_sell_floor = 10,
+    market_trader_sell_percent = 60,
 
     -- Development
     log_level = "WARN",
@@ -444,6 +445,7 @@ local _key_to_tab = {
     market_window_hours = "economy/market",
     market_premium = "economy/market",
     market_item_condition = "economy/market",
+    market_trader_sell_floor = "economy/market",
     market_trader_sell_percent = "economy/market",
     cause_alpha_enabled = "causes/reactions",
     cause_alpha_kills_per_level = "causes/reactions",
@@ -894,6 +896,7 @@ function on_mcm_load()
                             _build_track("market_window_hours", 1, 48, 1),
                             _build_track("market_premium", 1, 20, 0.5),
                             _build_track("market_item_condition", 0.05, 1, 0.05),
+                            _build_track("market_trader_sell_floor", 0, 100, 5),
                             _build_track("market_trader_sell_percent", 20, 100, 5),
                         },
                     },
