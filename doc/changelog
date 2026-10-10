@@ -6,19 +6,14 @@
 
   Economy
     Faction market
-      - Trader stock now swings with how much a faction fights and trades. The supplies its stalkers
-        go through come up short by a different amount each restock, while a quiet faction keeps full shelves.
-      - Every kind of supply a faction's stalkers buy can now run low, including grenades, food,
-        drink and crafting parts.
+      - Trader stock now swings with how much a faction fights and trades. What its stalkers go through comes up short by a different amount each restock, and a quiet faction keeps full shelves.
+      - Every kind of supply a faction's stalkers buy can now run low, including grenades, food, drink and crafting parts.
       - Each restock reshapes more of the shelf, so stock turns over faster between visits.
 
   News
-    - You now overhear nearby stalkers between runs: resupplying or offloading a haul at a trader,
-      passing a gun to a squadmate, stripping a body. First person, on the local PDA feed.
-    - Integrated AlifePlus's PDA reports into the vanilla feed. Any report, ours or vanilla, on any
-      channel now holds the next line for a few seconds, so the whole feed reads as one stream.
-    - Every report and overheard line now comes in its own voice: a rumor, an eyewitness, a read off the
-      tracks, a named runner's word. The feed stops repeating one phrasing, and no line names gear you could buy.
+    - You now overhear nearby stalkers between runs: resupplying or offloading a haul at a trader, passing a gun to a squadmate, stripping a body. First person, on the local PDA feed.
+    - Integrated AlifePlus's PDA reports into the vanilla feed. Any report, ours or vanilla, on any channel now holds the next line for a few seconds, so the whole feed reads as one stream.
+    - Every report and overheard line comes in its own voice: a rumor, an eyewitness, a read off the tracks, a named report. The feed never repeats one phrasing, and no line names gear you could buy.
 
 1.8.8
   Summary: loot-claim rework, world trace, outpost service removal, performance and infrastructure
@@ -113,15 +108,14 @@
   Territory
     - Fixed the outpost trader leaving his trade post to follow the player around the level. (reported by Rambito)
     - Killing a service NPC no longer drops his shop stock, only the ordinary loot of a stalker his rank, so an outpost trader is no longer a walking weapon cache. (suggested by Derda)
-    - A held area now grows 1 service NPC rather than the full set, and a faction's areas grow the least common service first,
-      so a map fills with a mix of traders, barmen, mechanics, and medics.
+    - A held area now grows 1 service NPC rather than the full set, and a faction's areas grow the least common service first, so a map fills with a mix of traders, barmen, mechanics, and medics.
       Spread is tuned by Max services per level and Max same service per faction per level under Mutators > Conquest.
     - The outpost trader now carries the standard PDA trader icon, shown like any hub trader and hidden while his faction is hostile to you.
     - The outpost trader now stocks below his faction's hub trader.
       His assortment tracks your goodwill and wealth like the hub, then drops a set number of tiers, so an area shop always trails the hub and scales with your standing.
       Set the drop and an absolute ceiling with Supplies tiers below hub and Max supplies tier under Mutators > Conquest. (reported by Greshnik5126)
-    - Outpost services now stock a lean field assortment by category, editable in a DLTX config: the default sells ammo, medical, provisions, and a few grenades and repair parts,
-      and drops weapons, armor, and artefacts, so an outpost service resupplies you without being a full armory. Caps are per item type. (suggested by BigPok)
+    - Outpost services now stock a lean field assortment by category, editable in a DLTX config: the default sells ammo, medical, provisions, and a few grenades and repair parts, and drops weapons,
+      armor, and artefacts, so an outpost service resupplies you without being a full armory. Caps are per item type. (suggested by BigPok)
     - Outpost traders now restock through the game's standard trader pipeline, so trader stock addons (destockifiers, restock hooks, stock injectors) govern them like any other trader.
     - Conquered areas now decay after 5 game days by default, up from 2, and the service NPC dissolves with the area rather than wandering off as a stocked shopkeeper.
 
@@ -146,8 +140,7 @@
     - Added infestations. A pack carrying an alpha turns a den into a nest: more squads than a swarm, replacing the smart's original spawns entirely until it decays, under its own per-level cap.
 
   Economy
-    - Added NPC to NPC barter. Stalkers now trade with their own faction, beyond visiting traders.
-      A supply-short squad that reaches a friendly smart swaps surplus for what it lacks with a stalker there,
+    - Added NPC to NPC barter. Stalkers trade with their own faction, beyond visiting traders. A supply-short squad that reaches a friendly smart swaps surplus for what it lacks with a stalker there,
       no money changing hands: ammo for its equipped weapons, medical supplies, grenades, and a spare weapon, outfit, or helmet that beats what the other carries.
       An off-map version makes the trip to a friendly squad on another map. Barter switches on under Causes > Needs, and the per-meeting item cap sits under Economy > Barter.
     - Added an Economy > Loot toggle to let your companions loot and field-dress bodies you killed. They are held off your kills by default, like any other NPC.
@@ -252,11 +245,9 @@
 1.7.7
   Summary: Loot ownership, trade profit cap, smoke grenade exclusion, wider off-map travel, AOEngine compatibility, massacre human-only
 
-  - Added loot ownership, both ways. Your kills are reserved from NPC looters within a radius,
-    and an NPC's kill cannot be looted while its killer is alive and nearby. Radius is tunable under Economy.
+  - Added loot ownership, both ways. Your kills are reserved from NPC looters within a radius, and an NPC's kill cannot be looted while its killer is alive and nearby. Radius is tunable under Economy.
   - Added a Trade profit cap (Economy): the net rubles an NPC gains per trade, all ranks, default 5000.
-  - Changed trade and stash to keep smoke grenades out of NPC item flow. NPCs never buy, sell, or
-    stash smoke, which crashes the game when an NPC throws it on current exes.
+  - Changed trade and stash to keep smoke grenades out of NPC item flow. NPCs never buy, sell, or stash smoke, which crashes the game when an NPC throws it on current exes.
   - Changed off-map travel so veteran-led squads now make cross-map trips, previously master-led only.
   - Added AOEngine v0.55+ support.
   - Fixed massacre investigations firing when a mutant pack wipes a stalker squad.
@@ -480,8 +471,7 @@
     Fixed: Mutant Swarm publishes correctly 
     Fixed: Squadkill Revenge fires on NPC-vs-NPC kills 
     Fixed: Alpha Kill skips story NPCs, traders, and named characters. It matches the alpha, wounded, and harvest protection.
-    Fixed: Scripted squads release cleanly when the destination's animation precondition flips during the pre-arrival hold (surge transition, day-to-night for sleepers,
-    zombie state, trader running dry).
+    Fixed: Scripted squads release cleanly when the destination's animation precondition flips in the pre-arrival hold (surge transition, day-to-night for sleepers, zombie state, trader running dry).
     Fixed: Peaceful destinations (supply, money harvest, money hunt, job research) exclude hostile-faction smarts. Github Issue #7.
     Fixed: Stash loot, ambush, fill no longer route into a hostile post-stash destination.
     Fixed: PDA map markers render for every scripted squad. Massacre, basekill, harvest haunt, and wounded squads previously dropped silently.
@@ -787,7 +777,6 @@
   Summary: First release, massacre, squad kill, base kill, wounded, harvest, stash, area conquer, chase API, MCM
   First release. Event-driven emergent A-Life system.
   10 causes, 17 consequences. Full MCM configuration.
-  Added: reactive causes (massacre, squadkill, basekill, elite, legend,
-         legendkill, wounded, harvest)
+  Added: reactive causes (massacre, squadkill, basekill, elite, legend, legendkill, wounded, harvest)
   Added: radiant causes (stash, area)
   Added: chase API, area conquest, hit modifiers, rank boost
