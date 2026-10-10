@@ -1,4 +1,4 @@
-- Version: 1.8.9-snapshot (xlibs 1.9.1, demonized latest)
+- Version: 1.8.10-snapshot (xlibs 1.9.1, demonized latest)
 - Changelog: https://github.com/damiansirbu-stalker/AlifePlus/blob/main/doc/changelog
 - Health: https://damiansirbu-stalker.github.io/AlifePlus/health/
 - JitProfiler: https://damiansirbu-stalker.github.io/AlifePlus/jitprofiler/
