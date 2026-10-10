@@ -206,6 +206,16 @@ function execute_trade(npc, seller)
             #bought, table_concat(bought, ","), cash_before, xcreature.get_money(npc))
     end
 
+    if cfg.chatter_enabled and (#sold > 0 or #bought > 0) then
+        local se = xobject.get_se(npc:id())
+        local level_id = se and xlevel.get_level_id(se)
+        if level_id then
+            local faction = xcreature.get_community(npc)
+            if #sold > 0 then ap_ext_news.publish_item_chatter("st_ap_chatter_trade_sold", sold, faction, level_id) end
+            if #bought > 0 then ap_ext_news.publish_item_chatter("st_ap_chatter_trade_bought", bought, faction, level_id) end
+        end
+    end
+
     return { sold = sold, bought = bought }
 end
 

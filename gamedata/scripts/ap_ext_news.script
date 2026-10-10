@@ -7,7 +7,7 @@ local string_format, string_gsub, string_find = string.format, string.gsub, stri
 local table_concat = table.concat
 local game_translate_string = game.translate_string
 local xobject_se = xobject.get_se
-local xtime, xlevel, xpda, xprofiler = xtime, xlevel, xpda, xprofiler
+local xtime, xlevel, xpda, xprofiler, xinventory = xtime, xlevel, xpda, xprofiler, xinventory
 local ap_core_debug, ap_core_record = ap_core_debug, ap_core_record
 
 local TRACE, CONSEQUENCE, REASON = ap_core_const.TRACE, ap_core_const.CONSEQUENCE, ap_core_const.REASON
@@ -20,6 +20,14 @@ local NEWS_LOG = "[EXT.NEWS]"
 local CHATTER_LOG = "[EXT.CHATTER]"
 
 local MAX_TEMPLATE_VARIANTS = 20
+
+-- A flavour line stays silent while any PDA line, ours or vanilla, drew inside this real-sec window, so the feed never piles up.
+local QUIET_WINDOW_SEC = 5
+-- Odds one economy moment (a sale, a barter, a loot) speaks, rolled before the quiet window and the per-line throttle.
+local CHATTER_CHANCE = 0.25
+-- An economy line speaks only for gear worth mentioning: these categories, or any section at or above this base cost.
+local NOTABLE_COST = 5000
+local NOTABLE_CATEGORY = { weapon = true, outfit = true, helmet = true, artefact = true }
 
 local SCOPE_OWN, SCOPE_ALLIES, SCOPE_WORLD = "own", "allies", "world"
 
@@ -339,6 +347,16 @@ local function _on_compose_timer()
     return false
 end
 
+--- True when a section is worth an economy chatter line: a listed category, or cost at or above NOTABLE_COST.
+--- @safety SAFE - nil-guarded through get_section_category / get_cost
+--- @cost O(1) | 1 get_section_category + up to 1 get_cost (ini cost read)
+--- @param sec string Item section
+--- @return boolean
+local function _is_notable(sec)
+    if NOTABLE_CATEGORY[xinventory.get_section_category(sec)] then return true end
+    return (xinventory.get_cost(sec) or 0) >= NOTABLE_COST
+end
+
 --- Push one chatter line for the pool prefix, filled from slots; returns true if a line was spoken.
 --- Gated (local, non-hostile, throttled), picks an online stalker voice, dispatches immediately to the actor, not via the radio channel queue.
 --- @param pool_prefix string Template id prefix, e.g. "st_ap_chatter_<type>"
@@ -349,6 +367,14 @@ function publish_chatter(pool_prefix, slots, opts)
     local dbg = ap_core_debug.is_enabled()
     if not cfg.chatter_enabled or not slots then
         if dbg then ap_core_debug.debug("%s skip %s: disabled or no slots", CHATTER_LOG, tostring(pool_prefix)) end
+        return false
+    end
+    if math_random() >= CHATTER_CHANCE then
+        if dbg then ap_core_debug.debug("%s skip %s: chance", CHATTER_LOG, pool_prefix) end
+        return false
+    end
+    if is_feed_busy() then
+        if dbg then ap_core_debug.debug("%s skip %s: feed busy", CHATTER_LOG, pool_prefix) end
         return false
     end
     if opts and opts.level_id and opts.level_id ~= xlevel.get_actor_level() then
@@ -393,10 +419,41 @@ function publish_chatter(pool_prefix, slots, opts)
     return true
 end
 
+--- True while any PDA line, ours or vanilla, drew within QUIET_WINDOW_SEC; the chatter, the news feed, and the loot-claim line read it to stay off a busy feed.
+--- @safety SAFE - pure read of the shared xpda clock
+--- @cost O(1) | 1 xpda.get_last_news + 1 os.clock
+--- @return boolean
+function is_feed_busy()
+    return os.clock() - xpda.get_last_news() < QUIET_WINDOW_SEC
+end
+
+--- Publish one chatter line about the first notable section in a list that changed hands; the chance roll and feed gate live in publish_chatter.
+--- @safety SAFE - no-ops on an empty list, no notable section, or an unresolved level
+--- @cost O(n) | n = list length, per section 1 _is_notable; on a hit 1 get_item_name + 1 publish_chatter
+--- @param pool string Chatter pool prefix, e.g. "st_ap_chatter_barter"
+--- @param sections table Item sections that moved
+--- @param faction string The actor-faction gate for publish_chatter
+--- @param level_id number The level the moment happened on (chatter is local)
+--- @return boolean spoken
+function publish_item_chatter(pool, sections, faction, level_id)
+    if not (sections and level_id) then return false end
+    for i = 1, #sections do
+        local sec = sections[i]
+        if _is_notable(sec) then
+            return publish_chatter(pool, {
+                item = xinventory.get_item_name(sec),
+                location = xlevel.get_level_name(level_id) or "",
+            }, { level_id = level_id, faction = faction })
+        end
+    end
+    return false
+end
+
 --- run_news_tick: news pipeline tick; AP-side compose is timed as one span.
 --- Engine dispatch runs after the timer stops, so vanilla cost is logged on its own line, not attributed to the AP compose span.
 function run_news_tick()
     if not cfg.news_enabled then return { code = TRACE.NONE } end
+    if is_feed_busy() then return { code = TRACE.NONE } end
     _pending_dispatch = nil
     local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
@@ -414,5 +471,6 @@ end
 
 function on_game_start()
     _locale = nil
+    xpda.start_news_hook()
     CreateTimeEvent(COMPOSER_TIMER_EV, COMPOSE_TICK, 30, _on_compose_timer)
 end

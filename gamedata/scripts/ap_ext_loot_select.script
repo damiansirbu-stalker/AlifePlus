@@ -21,6 +21,8 @@ local LOOT_POLICY = nil
 
 -- npc_id -> item ids the NPC took this frame, drained by the deferred trim; ephemeral, cleared next frame so no leak.
 local _looted = {}
+-- Parallel to _looted: the sections an NPC took this pickup, so the trim can name a notable one. Same lifecycle (set in _on_loot, drained in the trim).
+local _looted_secs = {}
 
 --- Per-item count unit matching xinventory.collect_policy_counts's _unit: ammo in ROUNDS, everything else in ITEMS.
 --- Kept local, mirrors xinventory.script:766.
@@ -116,6 +118,8 @@ end
 local function _run_deferred_trim(npc_id)
     local ids = _looted[npc_id]
     _looted[npc_id] = nil
+    local secs = _looted_secs[npc_id]
+    _looted_secs[npc_id] = nil
     if not ids or not cfg.loot_select_enabled or not LOOT_POLICY then return true end
 
     local npc = xobject.get_go(npc_id)
@@ -135,6 +139,13 @@ local function _run_deferred_trim(npc_id)
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s trim npc=%d released=%d [%.2fms]", LOG, npc_id, released, tmr:get_ms())
+    end
+    if cfg.chatter_enabled and secs then
+        local se = xobject.get_se(npc_id)
+        local level_id = se and xlevel.get_level_id(se)
+        if level_id then
+            ap_ext_news.publish_item_chatter("st_ap_chatter_loot", secs, xcreature.get_community(npc), level_id)
+        end
     end
     return true
 end
@@ -158,6 +169,9 @@ local function _on_loot(npc, _corpse, item, lootable)
         _looted[npc_id] = ids
     end
     ids[#ids + 1] = item:id()
+    local secs = _looted_secs[npc_id]
+    if not secs then secs = {}; _looted_secs[npc_id] = secs end
+    secs[#secs + 1] = item:section()
     CreateTimeEvent(TIMER_EV, npc_id, 0, _run_deferred_trim, npc_id)
 end
 

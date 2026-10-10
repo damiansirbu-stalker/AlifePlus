@@ -122,6 +122,14 @@ function execute_barter(visitor, peer)
             #received, table_concat(received, ","))
     end
 
+    if cfg.chatter_enabled and #given > 0 then
+        local se = xobject.get_se(visitor:id())
+        local level_id = se and xlevel.get_level_id(se)
+        if level_id then
+            ap_ext_news.publish_item_chatter("st_ap_chatter_barter", given, xcreature.get_community(visitor), level_id)
+        end
+    end
+
     return { given = given, received = received }
 end
 
