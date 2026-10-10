@@ -331,17 +331,17 @@ Market
   The faction market connects the two for the first time. What a faction's stalkers sell and buy at their own traders now shapes what you find on his shelf, both directions, within bounds.
 
   When a hub trader restocks, the items his faction's stalkers recently sold turn up in stock, rank-gated and premium-priced, gone after a short window.
-  The ammo and medical those stalkers keep purchasing run short in his fresh stock.
+  Every staple those stalkers keep buying runs short in his fresh stock, from ammo and medical to grenades, food, drink, and repair parts.
 
   Nothing is transferred. The stock is wiped and respawned each restock, so what appears is a fresh copy, capped at what the faction really trades.
   The market reads two bounded lists per faction, recent sales and recent buys, and moves no goods of its own.
 
-  The sell-out pulls a share of the drained ammo and medical, 30% by default.
-  At the default the last few of anything survive, and at maximum a trader is stripped bare.
+  The sell-out thins the drained staples, each type rolling its own share each restock, so the shelf comes up short by a different amount every time.
+  A low floor leaves the last few of a type on the shelf, a high ceiling can strip it bare, and a faction that barely trades keeps full stock.
   Rookies see common goods, veterans the artefacts and devices a faction is bleeding.
   Each item shows once, at one trader, at several times value, five by default, and different traders carry different stock.
   A nearby stalker may call it out on the PDA when a trader takes in something rich or runs dry.
-  Premium, condition, sell-out share, and the item lists sit under Economy then Faction market. Off restores vanilla stock.
+  Premium, condition, the min and max sell-out, and the item lists sit under Economy then Faction market. Off restores vanilla stock.
 
 Instincts
 
@@ -369,9 +369,12 @@ News: PDA radio gossip from the simulation
   The speaker's faction is the radio channel, so Monolith, Army, Greh, and ISG chatter stays member-only.
   The vanilla rules still hold, so emissions and psi-storms silence the radio and the PDA message cap applies.
 
+  You also overhear nearby stalkers between runs, first person on the local feed: one resupplying or offloading a haul at a trader, passing a gun to a squadmate, stripping a body.
+  These lines are immediate and local, apart from the delayed radio gossip above.
+
   Sample radio lines:
-    Heard a Free stalkers crew bedded down at Rookie Village a few hours ago after a long march.
-    Heard a Bandit lost Trailer Camp to Military a few hours ago and the backup crew got there too late.
+    Story going round a Free stalkers crew bedded down at Rookie Village a few hours ago after a long march.
+    Watched the last Bandit guns walk out of Trailer Camp before Military came in through the wire.
 
 Day/Night Cycle sets the world clock.
 
