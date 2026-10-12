@@ -34,6 +34,8 @@ local _alignment_naturalist = ap_ext_const.alignment_naturalist
 local _alignment_principled = ap_ext_const.alignment_principled
 local _alignment_offmap = ap_ext_const.alignment_offmap
 local _alignment_ecolog = { ecolog = true }
+-- Per-smart memo for the harvest/research artefact-anomaly filter; 60s via xttltable, owned here not in xlibs.
+local _artefact_cache = xttltable and xttltable.create_ttl_table({ default_ttl = 60 })
 
 --- 9 drives (Hull weight + threshold key + period gating); enable is per-cause (cause_<name>_enabled) via ap_ext_util.try_cause, no drive-level enable.
 local NEEDS = {
@@ -74,6 +76,18 @@ end
 local function _is_unclaimed(smart)
     if not smart then return false end
     return xsmart.iterate_stationed_squads(smart.id)() == nil
+end
+
+-- Memoized xsmart.has_artefact_anomaly: find_smart re-tests the same static smarts across squads, so cache per smart id (_artefact_cache, 60s).
+local function _has_artefact_anomaly(smart)
+    if not smart then return false end
+    if _artefact_cache then
+        local cached = _artefact_cache:get(smart.id)
+        if cached ~= nil then return cached end
+    end
+    local present = xsmart.has_artefact_anomaly(smart)
+    if _artefact_cache then _artefact_cache:set(smart.id, present) end
+    return present
 end
 
 -- Resolve total BFS hops for the off-map adjacency search; pre-story stalkers stay home (hops = 0 -> no neighbors -> off-map never publishes).
@@ -283,7 +297,7 @@ function on_game_start()
           alignment = _alignment_offmap, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.INV_AGGRESSION }, offmap = true },
         { cause = CAUSE.MONEY_HARVEST,    name = "money_harvest",    need = "money",
-          filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_jobs(s) end,
+          filter = function(s) return _has_artefact_anomaly(s) and xsmart.has_animated_jobs(s) end,
           alignment = _alignment_selfserving, exclude_enemy = true,
           personality = { PERSONALITY.GREED, PERSONALITY.PERCEPTION } },
         { cause = CAUSE.MONEY_HUNT,       name = "money_hunt",       need = "money",
@@ -303,7 +317,7 @@ function on_game_start()
           alignment = _alignment_offmap,
           personality = { PERSONALITY.PERCEPTION, PERSONALITY.INV_AGGRESSION }, offmap = true },
         { cause = CAUSE.JOB_RESEARCH,     name = "job_research",     need = "job",
-          filter = function(s) return xsmart.has_anomaly(s) and xsmart.has_animated_jobs(s) end,
+          filter = function(s) return _has_artefact_anomaly(s) and xsmart.has_animated_jobs(s) end,
           alignment = _alignment_ecolog, exclude_enemy = true,
           personality = { PERSONALITY.PERCEPTION, PERSONALITY.DISCIPLINE } },
         { cause = CAUSE.SOCIAL_CAMPFIRE,  name = "social_campfire",  need = "social",
