@@ -471,7 +471,7 @@ Change:
 - Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
 - Useful Idiots no-NPC-looting option (its MCM, on by default in GAMMA) - turn it off, it blocks all non-companion looting so nothing feeds trade or the market.
 Coexists:
-- Warfare A-Life Overhaul, current Better A-Life Overhaul - their squads carry the warfare ownership flag AlifePlus recognizes, so AlifePlus never routes them.
+- Warfare A-Life Overhaul (Vintar0 via the ownership flag, erepb via the integration API), current Better A-Life Overhaul - AlifePlus recognizes their squads and never routes them.
 - GAMMA Ballistics Overhaul, Actor Damage Balancer - both scale the hit power instead of replacing it, so AP's alpha damage modifier survives into final damage.
 Everything else coexists, as long as it extends X-Ray and Anomaly and never overrides them.
 
