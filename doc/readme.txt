@@ -468,13 +468,17 @@ Drop:
 - Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
 - siski, ZHOPA, and any renamed clone - unauthorized copies of AlifePlus and xlibs code, so the same systems load twice and corrupt state (DMCA'd off ModDB and GitHub).
 - Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice; run only the current release.
-Avoid:
-- Better A-Life Overhaul 1.4.4 and older - drives its own squads but does not set the warfare ownership flag AlifePlus looks for, so the two fight over the same squads. Runs without crashing, but not recommended.
 Change:
 - Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option; it bypasses the claim veto, while opening a claimed corpse is already blocked.
 - Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
 - Useful Idiots no-NPC-looting option (its MCM, on by default in GAMMA) - turn it off, it blocks all non-companion looting so nothing feeds trade or the market.
+Interferes:
+- Useful Idiots - while an emission or psi storm kills unsheltered NPCs, it clears the companion flag and the companion squad tables, then restores them in the same call.
+  A companion check that runs during that kill reads a companion as a regular stalker.
+- Better A-Life Overhaul 1.4.4 and older - its own squad driving and offline combat resolution, with no warfare ownership flag, so AlifePlus routes squads it is already driving.
+  A squad under both takes orders from both.
 Coexists:
+- More Aggressive NPC Looting (on by default in EFP) - NPCs keep looting while you stand nearby, and more corpses count as lootable. The loot claim and the inventory bounds apply on top.
 - Warfare A-Life Overhaul (Vintar0 via the ownership flag, erepb via the integration API), current Better A-Life Overhaul - AlifePlus recognizes their squads and never routes them.
 - GAMMA Ballistics Overhaul, Actor Damage Balancer - both scale the hit power instead of replacing it, so AP's alpha damage modifier survives into final damage.
 Everything else coexists, as long as it extends X-Ray and Anomaly and never overrides them.
