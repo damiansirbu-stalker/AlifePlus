@@ -24,11 +24,13 @@ Engines:
   X-Ray Monolith: https://github.com/themrdemonized/xray-monolith/pulls?q=is%3Apr+author%3Adamiansirbu+is%3Amerged
   OpenXRay: https://github.com/OpenXRay/xray-16/pulls?q=is%3Apr+author%3Adamiansirbu+is%3Amerged
   IX-Ray: https://github.com/ixray-team/ixray-1.6-stcop/commits/develop?author=damiansirbu
-Integrations:
+Dependents:
+  COMPASS: https://github.com/Crimento/COMPASS
+  Nemesis Wave Spawn System: https://github.com/SirEndet/Nemesis-Wave-Spawn-System
   Word of Mouth: https://github.com/joshcoppola/word_of_mouth
+Integrations:
   Warfare (erepb): https://www.moddb.com/mods/stalker-anomaly/addons/warfare-alife-overhaul-new
   Stealth Overhaul: https://github.com/Alex-leon1594/Stealth_Overhaul_Reworked
-  COMPASS: https://github.com/Crimento/COMPASS
 Collaborations:
   xAGNA: https://www.moddb.com/mods/stalker-anomaly/addons/xagna
 
@@ -38,7 +40,8 @@ Thanks for the support, but I don't need donations. Reviews, ratings, and proper
 An organized group copies my work, spreads daily lies, and mass-downvotes my mods across platforms.
 My work is open source, present in most modpacks, and integrates with established projects.
 
-! Reset MCM settings to defaults after updating !
+Every release is stable and whole new systems may appear. Always understand the documentation.
+After every update, use Reset ALL to Defaults in MCM under Development.
 
 You are not special.
 
