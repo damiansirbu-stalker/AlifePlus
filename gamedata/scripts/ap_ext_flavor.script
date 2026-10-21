@@ -1,0 +1,436 @@
+--- ap_ext_flavor: idle ambient actions; a calm, visually idle stalker near the player plays one short full-body action and returns to his logic.
+
+local RegisterScriptCallback, get_object_squad = RegisterScriptCallback, get_object_squad
+local IsStalker, IsWounded, character_community = IsStalker, IsWounded, character_community
+local math_random, os_clock, time_global, tostring, pairs = math.random, os.clock, time_global, tostring, pairs
+
+local cfg = ap_core_mcm.cfg
+local CALLBACK = ap_core_const.CALLBACK
+local FLAVOR_LOG = "[EXT.FLAVOR]"
+
+local ACTID = 188510
+local EVAID = 188510
+evaid = EVAID
+actid = ACTID
+
+-- stype_stalker (modules.script:6), inlined because the modules namespace may be nil at file-scope load.
+local STYPE_STALKER = 0
+
+-- Standing, self-contained state_lib recipes, each with at most one context condition; filtered against the live state_lib so an absent name is never ordered.
+local STATE_CANDIDATES = {
+    { name = "smoking_stand" }, { name = "binocular" }, { name = "use_pda" }, { name = "fold_arms" }, { name = "drink_vodka_stand" },
+    { name = "ward" }, { name = "ward_short" }, { name = "guard_chasovoy" },
+    { name = "wait_rac" }, { name = "wait_rac_noweap" }, { name = "wait_rac_stc" },
+    { name = "caution", cond = "wary" }, { name = "search", cond = "field" },
+    { name = "probe_stand", cond = "field" }, { name = "probe_stand_detector_advanced", cond = "field" },
+    { name = "probe_stand_detector_elite", cond = "field" }, { name = "scaner_stand", cond = "field" },
+    { name = "give_orders", cond = "commander" }, { name = "choose", cond = "commander" },
+    { name = "stay_smirno", cond = "military" }, { name = "salut_free", cond = "military" },
+    { name = "prisyad", cond = "military" }, { name = "otzhiman", cond = "military" },
+    { name = "smeh", cond = "group" }, { name = "punch", cond = "group" },
+    { name = "drunk_stand", cond = "drinker" },
+}
+
+local MONSTER_RADIUS_SQR = 60 * 60
+local CTX_TTL_SEC = 15
+local MILITARY_COMMUNITY = { army = true, dolg = true, monolith = true, freedom = true }
+local DRINKER_COMMUNITY = { bandit = true, renegade = true }
+
+local STATES = {}
+local _eligible = {}
+
+-- Neutral states (state_mgr.get_state): a statue doing nothing, or a calm walker halted by the state machine for the play. Any pose or activity is left alone.
+local NEUTRAL_STATES = {
+    idle = true, wait = true, wait_na = true, guard = true, guard_na = true,
+    walk = true, walk_noweap = true, patrol = true,
+}
+
+local ZOMBIED_COMMUNITY = "zombied"
+local DECOY_SECTION = "actor_visual_stalker"
+
+-- Proximity scan period (real seconds); the scan only does real work when the play cooldown is open, so this is the retry cadence not a per-play rate.
+local SCAN_PERIOD_SEC = 8
+local TIMER_EV = "ap_ext_flavor"
+local TIMER_ACT = "scan"
+
+-- Hard scan bounds so no population or config can break the 0.1ms/s invariant (see architecture.md Flavor).
+local MAX_SCAN = 64
+local MAX_SQUAD_SIZE = 6
+local MAX_PER_SQUAD = 2
+local MAX_CANDIDATES = 8
+
+local _npc_cooldown = {}
+local _global_next = 0
+local _requests = {}
+local _last_state = nil
+local _ctx_cache = nil
+local _candidates = {}
+local _candidate_squads = {}
+local _squad_counts = {}
+local _scan_cursor = 0
+local _scan_apos = nil
+local _scan_radius_sqr = 0
+local _EMPTY = {}
+
+-- Clears the request and logs the release; shared by the evaluator (pre-selection) and the action (mid-play).
+local function _release_request(id, reason)
+    _requests[id] = nil
+    if ap_core_debug.is_enabled() then ap_core_debug.debug("%s release id=%d reason=%s", FLAVOR_LOG, id, reason) end
+end
+
+-- Returns "enemy" or "danger" when combat must preempt the play, else nil; shared by the evaluator and the action.
+local function get_combat_release(npc)
+    if npc:best_enemy() then return "enemy" end
+    if xr_danger.has_danger(npc) then return "danger" end
+    return nil
+end
+
+--- Returns nil when the NPC may play a flavor action, else the reason it is skipped (for tracing).
+local function get_skip_reason(npc, id, now)
+    if not IsStalker(npc) then return "not_stalker" end
+    local cooldown = _npc_cooldown[id]
+    if cooldown then
+        if now < cooldown then return "cooldown" end
+        _npc_cooldown[id] = nil
+    end
+    if not npc:alive() then return "dead" end
+    if npc:movement_type() == move.run then return "running" end
+    if npc:body_state() ~= move.standing then return "crouch" end
+    if npc:mental_state() ~= anim.free then return "mental" end
+    if npc:best_enemy() then return "enemy" end
+    if xr_danger.has_danger(npc) then return "danger" end
+    if IsWounded(npc) then return "wounded" end
+    if npc:in_smart_cover() then return "smart_cover" end
+    if npc:is_talking() then return "talking" end
+    local state = state_mgr.get_state(npc)
+    if not NEUTRAL_STATES[state] then return "busy", state end
+    if character_community(npc) == ZOMBIED_COMMUNITY then return "zombied" end
+    if npc:section() == DECOY_SECTION then return "decoy" end
+    return nil
+end
+
+-- True when any online monster is within MONSTER_RADIUS_SQR of pos (the dd_director monster-sensor shape).
+local function _check_monsters_near(pos)
+    for _, obj in xcreature.iterate_online_monsters() do
+        if obj and pos:distance_to_sqr(obj:position()) <= MONSTER_RADIUS_SQR then return true end
+    end
+    return false
+end
+
+-- Artefact-zone proximity, keyed on the squad's smart (nil squad -> no smart -> false); cached per squad (xttltable).
+-- Artefact zones, not hazard fields: invisible radiation/psi patches must not read as "anomaly near" (tested 2026-10-20, Cordon roadside).
+local function _check_field_near(squad)
+    if not squad then return false end
+    local key = "f" .. squad.id
+    local v = _ctx_cache:get(key)
+    if v == nil then
+        local smart = squad.smart_id and xobject.get_se(squad.smart_id)
+        v = (smart and xsmart.has_artefact_anomaly(smart)) or false
+        _ctx_cache:set(key, v)
+    end
+    return v
+end
+
+local function _check_monsters_cached(npc)
+    local key = "m" .. npc:id()
+    local v = _ctx_cache:get(key)
+    if v == nil then
+        v = _check_monsters_near(npc:position())
+        _ctx_cache:set(key, v)
+    end
+    return v
+end
+
+-- Each condition is squad-optional: a squadless NPC plays universal and npc-only states, the squad-gated ones nil-guard off.
+local COND = {
+    field = function(_npc, squad)
+        return _check_field_near(squad)
+    end,
+    wary = function(npc, squad)
+        if _check_field_near(squad) then return true end
+        return _check_monsters_cached(npc)
+    end,
+    commander = function(npc, squad) return squad ~= nil and squad:npc_count() > 1 and squad:commander_id() == npc:id() end,
+    military = function(npc) return MILITARY_COMMUNITY[character_community(npc)] == true end,
+    group = function(_npc, squad) return squad ~= nil and squad:npc_count() > 1 end,
+    drinker = function(npc) return DRINKER_COMMUNITY[character_community(npc)] == true end,
+}
+
+-- Rebuilds the context-eligible pool for this candidate; returns its size.
+local function _collect_eligible(npc, squad)
+    for i = #_eligible, 1, -1 do _eligible[i] = nil end
+    for i = 1, #STATES do
+        local row = STATES[i]
+        local cond = row.cond
+        if not cond or COND[cond](npc, squad) then _eligible[#_eligible + 1] = row.name end
+    end
+    return #_eligible
+end
+
+-- Picks one state from the eligible pool, never repeating the last shown; also returns the pool size for tracing.
+local function _select_state(npc, squad)
+    local count = _collect_eligible(npc, squad)
+    if count == 0 then return nil, 0 end
+    local idx = math_random(count)
+    local state = _eligible[idx]
+    if state == _last_state and count > 1 then state = _eligible[idx % count + 1] end
+    _last_state = state
+    return state, count
+end
+
+-- Logs a debug skip line (debug-gated by the caller); kept out of the hot path's own branches.
+local function _log_skip(id, reason, detail)
+    ap_core_debug.debug("%s skip id=%d reason=%s%s", FLAVOR_LOG, id, reason, detail and (":" .. detail) or "")
+end
+
+-- Returns nil when the squad passes the caps (a nil squad = squadless, always passes), else the reason to skip; pure, no mutation.
+local function get_squad_skip_reason(squad)
+    if not squad then return nil end
+    if squad.scripted_target or axr_companions.companion_squads[squad.id] then return "owned" end
+    if squad:npc_count() > MAX_SQUAD_SIZE then return "big_squad" end
+    if (_squad_counts[squad.id] or 0) >= MAX_PER_SQUAD then return "squad_full" end
+    return nil
+end
+
+-- Resolves and vets one online stalker against the radius, eligibility, and squad caps; adds it (with its squad) to the pool.
+-- Returns true once the pool is full, so the scan stops early. Scan context via the _scan_* upvalues.
+local function _collect_candidate(id, now, dbg)
+    local st = db.storage[id]
+    local npc = st and st.object
+    if not npc then return false end
+    if _scan_apos:distance_to_sqr(npc:position()) > _scan_radius_sqr then return false end
+    local reason, detail = get_skip_reason(npc, id, now)
+    if reason then
+        if dbg then _log_skip(id, reason, detail) end
+        return false
+    end
+    local squad = get_object_squad(npc)
+    local squad_reason = get_squad_skip_reason(squad)
+    if squad_reason then
+        if dbg then _log_skip(id, squad_reason) end
+        return false
+    end
+    if squad then _squad_counts[squad.id] = (_squad_counts[squad.id] or 0) + 1 end
+    local slot = #_candidates + 1
+    _candidates[slot] = npc
+    _candidate_squads[slot] = squad or false
+    return slot >= MAX_CANDIDATES
+end
+
+-- Walks up to MAX_SCAN online stalkers from a rotating cursor, collecting capped candidates (the dd_director _collect_stalkers shape, bounded).
+local function _collect_candidates(actor, now, dbg)
+    for i = #_candidates, 1, -1 do
+        _candidates[i] = nil
+        _candidate_squads[i] = nil
+    end
+    for key in pairs(_squad_counts) do _squad_counts[key] = nil end
+    local online = db.OnlineStalkers or _EMPTY
+    local total = #online
+    _scan_apos = actor:position()
+    _scan_radius_sqr = cfg.flavor_radius_m * cfg.flavor_radius_m
+    local idx = _scan_cursor
+    local walked = 0
+    local limit = total < MAX_SCAN and total or MAX_SCAN
+    while walked < limit do
+        idx = idx % total + 1
+        walked = walked + 1
+        if _collect_candidate(online[idx], now, dbg) then break end
+    end
+    _scan_cursor = idx
+end
+
+-- Periodic proximity scan (dd_director tick shape): when the play cooldown is open, pick one eligible stalker near the actor and flag it.
+local function _on_tick()
+    ResetTimeEvent(TIMER_EV, TIMER_ACT, SCAN_PERIOD_SEC)
+    if not cfg.flavor_enabled then return false end
+    if #STATES == 0 then return false end
+    local actor = db.actor
+    if not actor then return false end
+    local now = os_clock()
+    if now < _global_next then return false end
+    _global_next = now + cfg.flavor_global_cooldown_sec
+    local dbg = ap_core_debug.is_enabled()
+    local tmr = xprofiler.new_if(dbg):start()
+    _collect_candidates(actor, now, dbg)
+    local count = #_candidates
+    if count == 0 then
+        tmr:stop()
+        if dbg then ap_core_debug.debug("%s no_candidate [%.2fms]", FLAVOR_LOG, tmr:get_ms()) end
+        return false
+    end
+    local pick = math_random(count)
+    local npc = _candidates[pick]
+    local id = npc:id()
+    local squad = _candidate_squads[pick] or nil
+    local state, pool_count = _select_state(npc, squad)
+    if not state then
+        tmr:stop()
+        if dbg then ap_core_debug.debug("%s id=%d empty_pool [%.2fms]", FLAVOR_LOG, id, tmr:get_ms()) end
+        return false
+    end
+    _requests[id] = state
+    _npc_cooldown[id] = now + cfg.flavor_npc_cooldown_sec
+    tmr:stop()
+    if dbg then
+        ap_core_debug.debug("%s pick id=%d npc=%s state=%s pool=%d squad=%s cand=%d [%.2fms]", FLAVOR_LOG,
+            id, npc:name(), state, pool_count, tostring(squad and squad.id), count, tmr:get_ms())
+    end
+    return false
+end
+
+-- Add the bottle prop to drink_vodka_stand; GSC shipped that motion with no {a=} hook, and it is untriggered in vanilla so we are its only consumer.
+local function _add_vodka_prop()
+    local list = state_mgr_animation_list and state_mgr_animation_list.animations
+    if not (list and copy_table) then return end
+    copy_table(list, {
+        drink_vodka_stand = {
+            prop = { maxidle = 3, sumidle = 3, rnd = 100 },
+            into = { [0] = { "stoya_flyachka_in", { a = "vodka" } } },
+            out  = { [0] = { "stoya_flyachka_out", { d = "vodka" } } },
+            idle = { [0] = "stoya_flyachka_idle" },
+            rnd  = nil,
+        },
+    })
+end
+
+-- The engine recycles freed ids, so a request left by a despawned NPC must not fire on the id's next owner.
+local function _on_npc_destroy(npc)
+    _requests[npc:id()] = nil
+end
+
+-- state_lib is overlaid by modpacks, so only names present on this install are orderable; set_state errors on an unknown name.
+local function _collect_states()
+    local states = state_lib and state_lib.states
+    if not states then return end
+    for i = #STATES, 1, -1 do STATES[i] = nil end
+    for i = 1, #STATE_CANDIDATES do
+        local row = STATE_CANDIDATES[i]
+        if states[row.name] then STATES[#STATES + 1] = row end
+    end
+end
+
+class "eva_ap_flavor" (property_evaluator)
+function eva_ap_flavor:__init(npc, name, storage) super(nil, name)
+    self.st = storage
+end
+function eva_ap_flavor:evaluate()
+    local npc = self.object
+    local id = npc:id()
+    if not _requests[id] then return false end
+    local release = get_combat_release(npc)
+    if release then
+        _release_request(id, release .. "_pre")
+        return false
+    end
+    return true
+end
+
+class "act_ap_flavor" (action_base)
+function act_ap_flavor:__init(npc, name, storage) super(nil, name)
+    self.st = storage
+end
+function act_ap_flavor:initialize()
+    action_base.initialize(self)
+    local npc = self.object
+    self.begin_ms = time_global()
+    self.until_ms = self.begin_ms + cfg.flavor_hold_sec * 1000
+    if ap_core_debug.is_enabled() then
+        ap_core_debug.debug("%s play id=%d state=%s", FLAVOR_LOG, npc:id(), _requests[npc:id()] or "?")
+    end
+end
+function act_ap_flavor:execute()
+    action_base.execute(self)
+    local npc = self.object
+    local state = _requests[npc:id()]
+    if not state then return end
+    if not self.until_ms then self.until_ms = time_global() + cfg.flavor_hold_sec * 1000 end
+    local release = time_global() > self.until_ms and "held" or get_combat_release(npc)
+    if not release then
+        state_mgr.set_state(npc, state, nil, nil, {}, { fast_set = true })
+        return
+    end
+    _release_request(npc:id(), release)
+    self.until_ms = nil
+end
+function act_ap_flavor:finalize()
+    action_base.finalize(self)
+    local npc = self.object
+    local held = self.begin_ms and (time_global() - self.begin_ms) or -1
+    _requests[npc:id()] = nil
+    self.until_ms = nil
+    self.begin_ms = nil
+    if ap_core_debug.is_enabled() then ap_core_debug.debug("%s done id=%d held=%dms", FLAVOR_LOG, npc:id(), held) end
+end
+
+-- @novalidate(reason:"xr_logic scheme-binder interface; name, signature, and export are fixed by the scheme manager, which calls these by name")
+function setup_generic_scheme(npc, ini, scheme, section, stype, temp)
+    xr_logic.assign_storage_and_bind(npc, ini, "ap_flavor", section, temp)
+end
+
+-- @novalidate(reason:"xr_logic scheme-binder interface; name, signature, and export are fixed by the scheme manager, which calls these by name")
+function add_to_binder(npc, ini, scheme, section, storage, temp)
+    if not npc then return end
+    local manager = npc:motivation_action_manager()
+    if not manager then return end
+    if not npc:alive() then
+        manager:add_evaluator(EVAID, property_evaluator_const(false))
+        temp.needs_configured = false
+        return
+    end
+    local evaluator = eva_ap_flavor(npc, "eva_ap_flavor", storage)
+    temp.action = act_ap_flavor(npc, "act_ap_flavor", storage)
+    if not evaluator or not temp.action then return end
+    manager:add_evaluator(EVAID, evaluator)
+    temp.action:add_precondition(world_property(stalker_ids.property_alive, true))
+    temp.action:add_precondition(world_property(stalker_ids.property_danger, false))
+    temp.action:add_precondition(world_property(EVAID, true))
+    temp.action:add_effect(world_property(EVAID, false))
+    manager:add_action(ACTID, temp.action)
+end
+
+-- @novalidate(reason:"xr_logic scheme-binder interface; name, signature, and export are fixed by the scheme manager, which calls these by name")
+function configure_actions(npc, ini, scheme, section, stype, temp)
+    if not npc then return end
+    local manager = npc:motivation_action_manager()
+    if not manager or not temp.action then return end
+    temp.action:add_precondition(world_property(xr_evaluators_id.sidor_wounded_base, false))
+    if _G.schemes["xagna_pda_idle"] then
+        temp.action:add_precondition(world_property(xagna_scheme_pda_idle.evaid, false))
+    end
+    local blocked = {
+        xr_danger.actid,
+        stalker_ids.action_combat_planner,
+        stalker_ids.action_danger_planner,
+        xr_actions_id.state_mgr + 2,
+        xr_actions_id.alife,
+    }
+    for i = 1, #blocked do
+        local a = manager:action(blocked[i])
+        if a then a:add_precondition(world_property(EVAID, false)) end
+    end
+end
+
+-- @novalidate(reason:"xr_logic scheme-binder interface; name, signature, and export are fixed by the scheme manager, which calls these by name")
+function disable_generic_scheme(npc, scheme, stype)
+    local st = db.storage[npc:id()][scheme]
+    if st then
+        st.enabled = false
+    end
+end
+
+-- @novalidate(conventions.unused_export, reason:"probe/integration seam; forces a flavor request on an npc id for in-game testing")
+function add_request(id, state)
+    _requests[id] = state
+end
+
+function on_game_start()
+    _add_vodka_prop()
+    _ctx_cache = xttltable.create_ttl_table({ default_ttl = CTX_TTL_SEC })
+    RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _collect_states)
+    RegisterScriptCallback(CALLBACK.NPC_ON_NET_DESTROY, _on_npc_destroy)
+    CreateTimeEvent(TIMER_EV, TIMER_ACT, SCAN_PERIOD_SEC, _on_tick)
+end
+
+if LoadScheme then
+    LoadScheme("ap_ext_flavor", "ap_flavor", STYPE_STALKER)
+end

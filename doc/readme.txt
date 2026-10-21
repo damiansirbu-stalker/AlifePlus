@@ -361,6 +361,15 @@ Instincts
   - Explore: Mutants wander to a different territory or lair during active hours.
   - Socialize: Pack animals move toward smart terrains where same-faction squads are present.
 
+Flavor: idle stalkers do things
+
+  A calm stalker standing near you lights a smoke, drinks from a bottle, checks his PDA, scans with binoculars, crosses his arms.
+  Context picks the act. Detectors and ground searches come out near anomaly fields, and watchful poses appear when mutants roam close.
+  Military factions snap salutes and run drills. Squad leaders give orders. Groups laugh and spar. Outlaws sway drunk.
+  The act lasts seconds, then he returns to whatever he was doing. Any threat interrupts it instantly.
+  Busy or talking stalkers are never picked. Neither are wounded or alert ones.
+  All 26 animations are GSC's own, most wired by the original designers and triggered by nothing until now.
+
 News: PDA radio gossip from the simulation
 
   Squad activity turns into radio chatter on your PDA.

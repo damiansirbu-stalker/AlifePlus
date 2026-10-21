@@ -14,6 +14,13 @@ defaults = {
     consequence_max_events = 2,
     global_consequence_max_events = 5,
 
+    -- Flavor (idle ambient actions)
+    flavor_enabled = true,
+    flavor_radius_m = 50,
+    flavor_hold_sec = 6,
+    flavor_npc_cooldown_sec = 180,
+    flavor_global_cooldown_sec = 20,
+
     -- News (PDA gossip composer)
     news_enabled = true,
     chatter_enabled = true,
@@ -420,6 +427,11 @@ local _key_to_tab = {
     cause_max_opportunities = "framework",
     consequence_max_events = "framework",
     global_consequence_max_events = "framework",
+    flavor_enabled = "flavor",
+    flavor_radius_m = "flavor",
+    flavor_hold_sec = "flavor",
+    flavor_npc_cooldown_sec = "flavor",
+    flavor_global_cooldown_sec = "flavor",
     news_enabled = "news",
     chatter_enabled = "news",
     chatter_interval_sec = "news",
@@ -1569,6 +1581,19 @@ function on_mcm_load()
                             _check("consequence_area_infest_rush"),
                         },
                     },
+                },
+            },
+            {
+                id = "flavor",
+                sh = true,
+                gr = {
+                    _build_slide("ui_mcm_ap_flavor_title"),
+                    _build_desc("ui_mcm_ap_flavor_desc"),
+                    _check("flavor_enabled"),
+                    _build_track("flavor_radius_m", 10, 150, 5),
+                    _build_track("flavor_hold_sec", 3, 20, 1),
+                    _build_track("flavor_npc_cooldown_sec", 30, 600, 30),
+                    _build_track("flavor_global_cooldown_sec", 0, 300, 10),
                 },
             },
             {

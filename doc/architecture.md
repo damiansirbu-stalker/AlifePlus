@@ -139,6 +139,7 @@ Consequence files (always plural): ap_ext_consequences_alpha, ap_ext_consequence
 | ap_ext_market | Faction market: the player-facing echo of NPC trading at a faction's hub traders, injection and sell-out in trader perspective. Canonical section: Item flow -> Faction market |
 | ap_ext_loot_select | Corpse loot policy (sibling to loot_claim: claim decides who may loot, select decides what is kept): a looter keeps a policy-bounded, value-ranked share of what it just took from a body. Canonical row: Item flow -> Corpse Loot Trim |
 | ap_ext_news | News composer: per-consequence templates, slot substitution, speaker selection, dynamic_news_manager dispatch |
+| ap_ext_flavor | Idle ambient animations: an idle calm stalker near the actor plays one short state_lib state and resumes his logic. A timer proximity scan over db.OnlineStalkers plus a passive GOAP scheme (id 188510). Canonical section: Flavor |
 | ap_ext_test | Console test driver: world-state seeders (per-category NPC item kits, NPC cash, stash fills, artefact drop) plus a periodic runner (run()) that re-seeds on intervals for soak sessions; seeds only real world state, never AP internals |
 
 ---
@@ -776,6 +777,62 @@ NONE (disabled or no entries), NO_TEMPLATES, NO_MSG, NO_SENDER, SENT.
 ### Content
 
 ui_st_ap_news.xml ships per locale (eng, rus). Per-consequence templates plus mutant faction and species display plurals plus ago strings. Validator enforces id-set parity between locales.
+
+---
+
+## Flavor (ap_ext_flavor)
+
+An idle, calm stalker near the actor plays one short full-body `state_lib` state and resumes his logic.
+The states are smoke, drink, binoculars, PDA, detector sweep, salute, drill, laugh.
+One module holds two halves. A director scans the stalkers near the actor on a timer and flags at most one. A passive generic GOAP scheme plays the flag.
+The module runs nothing of substance between ticks and saves nothing.
+
+It affects any online human stalker near the actor, named characters included: faction rank-and-file, named uniques (Fanatic among them, field-confirmed 2026-10-21), and a walker caught mid-route -- the state machine halts him for the play and his scheme resumes the route after (state_mgr.script:30). Nothing marks a story or named NPC out on its own; an NPC is kept out only by combat or danger, a wound, a crouch, a run, dialogue, the zombified community, a companion or AP-routed squad, or a squad past its caps.
+
+### Director (_on_tick)
+
+A proximity scan on a `CreateTimeEvent` timer (`SCAN_PERIOD_SEC`, 8s real), the DiegeticDread `dd_director` tick shape (`ResetTimeEvent` at the top, `return false`). A dedicated scan around the actor, not a parasite on `ap_squad_on_change` (that event is a level-wide round-robin, so near-player coverage was accidental and left dead minutes; proven in the log 2026-10-20). `CreateTimeEvent`/`ResetTimeEvent` are called as globals, never cached: the demonized exes replace them at runtime (`demonized_time_events`).
+
+The tick guards cheapest first: `flavor_enabled`, a non-empty state list, actor present, the global cooldown (`flavor_global_cooldown_sec`). While the cooldown is closed the tick exits on these compares. The cooldown is armed on EVERY scan that runs, not just on a play: a scan that finds nobody playable still blocks the next for the full cooldown, so the expensive pass runs at most once per cooldown regardless of outcome (the hard perf invariant: <= 0.1ms/s amortized, debug off).
+
+When the cooldown has expired it scans `db.OnlineStalkers` (the dd `_collect_stalkers` shape), bounded four ways so no population mod or config can break the invariant: `MAX_SCAN` (64) entries walked per scan from a rotating `_scan_cursor` that continues next scan, so a large population is covered over successive scans and never one; `MAX_SQUAD_SIZE` (6), skip a member of a bigger squad (army/warfare blobs get no idle flavor); `MAX_PER_SQUAD` (2), candidates taken from any one squad, so no squad dominates the pick; `MAX_CANDIDATES` (8), collected before the scan stops early. Worst case is then O(constant): <= 64 distance checks, <= 64 eligibility runs, <= 8 candidates.
+
+Per walked stalker: resolve `db.storage[id].object`, distance-filter against `flavor_radius_m`, then `get_skip_reason` (IsStalker, per-NPC cooldown swept on read, alive, not running -- walkers qualify, the state machine halts them for the play and their scheme resumes after, state_mgr.script:30 -- standing body, mental free, no `best_enemy`, no `xr_danger.has_danger`, not wounded, not in smart_cover, not talking, `state_mgr.get_state` in the neutral allowlist [idle, wait, wait_na, guard, guard_na, walk, walk_noweap, patrol], not zombied, not the actor decoy; danger gaits need no entry -- sneak fails the body check, raid/assault the mental, rush the run). An eligible stalker then passes `get_squad_skip_reason`, and the survivor is stored with its squad; one is picked at random from the pool.
+
+The squad is never assumed. `get_object_squad(npc)` returns nil for level-placed and story NPCs (traders, static guards), and a squadless stalker still plays -- `get_squad_skip_reason(nil)` passes. A squad that EXISTS is skipped only when AP-routed (`scripted_target`), a companion, over `MAX_SQUAD_SIZE`, or already at `MAX_PER_SQUAD`. The squad is resolved during collection (not at pick), so the owned/cap filters all run once in one place and the pick never lands on an excluded NPC. It is a soft input to the context conditions (commander, group, field), which nil-guard off when absent; the universal and npc-only states (military, drinker, monster-wary) play regardless.
+
+Selection starts from `STATE_CANDIDATES`, 26 standing self-contained recipes.
+The list is filtered against the live `state_lib.states` at `actor_on_first_update`, because overlays alter state_lib. An absent name is dropped, never ordered.
+Each row carries at most one condition from `COND`:
+
+| cond | gate |
+|------|------|
+| field | `xsmart.is_hazard_anomaly_near`, 40m |
+| wary | field, else any online monster within 60m |
+| commander | squad leader with at least one man under him |
+| military | army, dolg, monolith, freedom |
+| group | squad of 2 or more |
+| drinker | bandit, renegade |
+
+Both proximity scans are memoized per squad for 15s (`xttltable`).
+The director rolls once over the eligible pool. The last state shown never repeats.
+
+### Scheme (eva_ap_flavor / act_ap_flavor, id 188510)
+
+The passive plug follows the Improved Gestures Tool shape.
+The evaluator is one `_requests[id]` lookup, false until the director writes it. All decisions live in the director.
+While flagged, blocking preconditions hold off the combat planner, the danger planner, xr_danger, `state_mgr + 2` and alife.
+The action re-asserts `state_mgr.set_state(state, {fast_set = true})` each execute, a no-op while held.
+It self-releases on hold expiry (`flavor_hold_sec`), enemy, or danger. `finalize` clears the request, so a planner preemption always releases cleanly.
+xAGNA's pda scheme is excluded through its evaid precondition when present. `sidor_wounded_base` blocks a mid-play wounding.
+`npc_on_net_destroy` clears a dead id's request, because the engine recycles ids.
+`_add_vodka_prop` injects the `{a="vodka"}` and `{d="vodka"}` attach hooks GSC omitted from `drink_vodka_stand`. The state is untriggered in vanilla, so this module is its only consumer.
+
+### Tracing
+
+Every line is gated on `ap_core_debug.is_enabled()` and costs nothing when debug is off.
+The log shows per-member `skip id reason`, `no_candidate` and `empty_pool` with ms, and `pick` with state, pool size, the field and monster facts, and ms.
+The play side adds `play`, `release reason` (held, enemy, danger), and `done held=ms`.
 
 ---
 
