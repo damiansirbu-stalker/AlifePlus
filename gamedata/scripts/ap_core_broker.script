@@ -440,8 +440,8 @@ end
 -- Per-entry tracked-state log; split out of _update_scripted_squads to keep that loop flat.
 local function _log_tracked_entry(squad_id, data, now)
     if data.scripted_target then
-        ap_core_world_trace.debug("[SQUAD] tracked: id=%d target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
-            squad_id, data.scripted_target, tostring(data.on_arrive or "-"),
+        ap_core_world_trace.debug("[SQUAD] tracked: id=%d section=%s target=%s on_arrive=%s age=%ds offmap=%s arrived=%s interruptable=%s",
+            squad_id, tostring(data.section or "-"), data.scripted_target, tostring(data.on_arrive or "-"),
             now - (data.tracked_at or now),
             tostring(data.offmap or false), tostring(data.arrived or false),
             tostring(data.interruptable or false))
@@ -708,6 +708,7 @@ function register_squad(squad, smart, opts)
     local now = xtime.get_game_sec()
     local data = {
         scripted_target   = name,
+        section           = squad:section_name(),
         target_smart_id   = smart.id,
         tracked_at        = now,
         on_arrive         = opts.on_arrive,
