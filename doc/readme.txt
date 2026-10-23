@@ -48,8 +48,6 @@ You are not special.
 AlifePlus implements GSC's original A-Life, the design in their own documents.
 Only a fraction ever shipped. The rest sits in the engine source as stubs and commented-out code, with the architect's own notes to finish it.
 
-Every system in this mod is a behaviour GSC designed, or one the engine left unfinished in code. The manifesto documents the source behind each.
-
 Anomaly filled the gap with a random mover, the same weighted pick for every squad, so no squad decides for itself.
 AlifePlus builds the full design as a reactive architecture on the current engine, events to causes to consequences, each consequence the cause of the next.
 
