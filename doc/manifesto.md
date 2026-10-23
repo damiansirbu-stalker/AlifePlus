@@ -25,7 +25,7 @@ The mod invents nothing and fakes nothing.
 
 ## Principles
 
-### Event-Driven Contract
+### Event-driven contract
 
 AlifePlus runs on no scripted timer and no hidden director.
 Every reaction traces to something that happened in the Zone, a death, a healing, an artefact lifted, a squad walking into a camp.
@@ -37,7 +37,7 @@ The engine even carries the seam for it, an NPC-to-NPC encounter hook GSC stubbe
 > "Based on distance, potential gain, and the character's personality, a course of action is selected: (a) Ignore the signal. (b) Kill and loot the sender. (c) Rescue the sender."
 > GSC AI design documents [8]
 
-### Physical Simulation Guarantee
+### Physical simulation
 
 AlifePlus spawns no one into a role.
 Every stalker and every mutant in a consequence was already out there before the event pulled it in.
@@ -47,13 +47,13 @@ GSC built this movement to carry real weight, sizing a stalker's food by the len
 > "He is one of many, whose lives crossed the Zone."
 > Alexey Sytianov, Shpil Magazine [2]
 
-### Engine-Native Behaviour
+### Engine first
 
 Every behaviour comes from the engine and the Anomaly layer.
 The callbacks, the movement, the smart terrains, and the squads are the engine's own.
 AlifePlus wires them together and never rebuilds in script what the engine already does.
 
-### Symmetric Entity Treatment
+### One of many
 
 The simulation does not revolve around the player.
 Causes fire for every creature and consequences resolve for every faction.
@@ -63,7 +63,7 @@ Some characters stand outside it, the traders, quest givers, and faction leaders
 > "The paradigm of Stalker at the time was that we don't really care about the player. We have this living world."
 > Andrii Verpakhovskyi, original game designer [9]
 
-### Emergent Narration
+### Emergent news
 
 AlifePlus writes no message in advance.
 It builds every PDA line when it is sent, from primitive pieces combined by rule and filled with the live facts of the event.
