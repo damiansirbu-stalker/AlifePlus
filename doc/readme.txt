@@ -226,7 +226,7 @@ Opportunities
 
   Territory
     - Area Conquer: Stalker factions take over empty wild camps (Ecologists excluded, mutants use Area Swarm, bases and story camps are never taken).
-      The conqueror owns the area outright. It respawns only the winner's squads, matched to the region's danger, and the claim decays over time (MCM configurable).
+      The conqueror owns the area alone. It respawns only the winner's squads, matched to the region's danger, and the claim decays over time (MCM configurable).
       Who conquers follows the level's population. Factions with little presence there conquer more, the dominant one less.
       Each faction holds a bounded number of areas per level, so newcomers and underdogs expand first.
     - Area Swarm: Pack and lair mutants take over empty areas the same way, the area spawning only their species while held. Solo bosses and vermin never do.
@@ -280,7 +280,7 @@ Part of what a faction sells reaches you through its own traders.
   Loot claim. A kill belongs to whoever made it, held while the owner stays near the body.
   The same rule runs three ways, identical for every side: your kills against NPC looters, an NPC squad's kills against you, and rival squads against each other.
 
-  Loot policy. An NPC keeps ammo that fits its own weapons and the most valuable items in each class, then destroys the rest.
+  Loot policy. An NPC keeps ammo that fits its own weapons and the highest-value items in each class, then destroys the rest.
   Stalkers carry a working loadout and the bodies you reach are leaner. Long saves stay clear of the loot buildup that drags them down.
 
   Trade. At a trader a stalker sells his surplus and restocks ammo and supplies by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
@@ -307,7 +307,7 @@ Loot Policy
   Only the fresh pickup is bounded, the looter's standing gear is left alone.
 
   He keeps ammo that fits his own pistol or rifle and a capped share of each supply class, a few medkits and bandages, some food and drink, one spare weapon, one outfit and so on.
-  Ammo for weapons he does not carry is dropped, and when a class runs over its cap the cheap surplus goes while the most valuable items stay.
+  Ammo for weapons he does not carry is dropped, and when a class runs over its cap the cheap surplus goes while the highest-value items stay.
 
   Quest items, story gear, gifts you gave a companion, and equipped weapons and armour are never touched.
   Companions, traders, and named characters are never trimmed at all. The caps live in an editable policy file, the toggle under Economy > Loot policy.
@@ -478,9 +478,9 @@ Drop:
 - Cypret's SafeSpawn - force-toggles NPC online-switching and sweeps alife every level change, fighting AlifePlus squad and online-state handling.
 - Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
 - siski, ZHOPA, and any renamed clone - unauthorized copies of AlifePlus and xlibs code, so the same systems load twice and corrupt state (DMCA'd off ModDB and GitHub).
-- Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice; run only the current release.
+- Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice. Run only the current release.
 Change:
-- Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option; it bypasses the claim veto, while opening a claimed corpse is already blocked.
+- Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option. It bypasses the claim veto, while opening a claimed corpse is already blocked.
 - Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
 - Useful Idiots no-NPC-looting option (its MCM, on by default in GAMMA) - turn it off, it blocks all non-companion looting so nothing feeds trade or the market.
 Interferes:

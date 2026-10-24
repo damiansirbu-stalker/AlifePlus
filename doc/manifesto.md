@@ -175,7 +175,7 @@ Money never changes hands between them.
 #### Market
 
 What NPCs sell surfaces on that faction's hub shelves, at a premium, for the player to buy.
-The goods move from a corpse to a trader to a new owner.
+Goods move from a corpse to a trader to a new owner.
 The world spawns nothing and deletes nothing.
 
 ### News
