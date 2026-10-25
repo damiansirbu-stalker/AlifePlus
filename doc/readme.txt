@@ -30,6 +30,7 @@ Dependents:
   Word of Mouth: https://github.com/joshcoppola/word_of_mouth
 Integrations:
   Warfare (erepb): https://www.moddb.com/mods/stalker-anomaly/addons/warfare-alife-overhaul-new
+  Homestead: https://www.moddb.com/mods/stalker-anomaly/addons/homestead-stalker-settlement-builder
   Stealth Overhaul: https://github.com/Alex-leon1594/Stealth_Overhaul_Reworked
 Collaborations:
   xAGNA: https://www.moddb.com/mods/stalker-anomaly/addons/xagna

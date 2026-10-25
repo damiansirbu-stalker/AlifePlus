@@ -113,7 +113,7 @@ Two layers. Core is the framework. Ext is the domain. Core never imports ext; al
 | ap_core_record | Activity record: FIFO of dispatched consequences with denormalized display facts; HUD / news / external integrators read from it |
 | ap_core_map | PDA map markers rendered from activity record entries; 10s apply timer, 20s validate pass, 60s linger before unmark |
 | ap_core_hud | Pipeline statistics overlay (UIStatsHUD): counters, gate breakdown, periodic dump |
-| ap_core_compat | Save data cleanup for version upgrades, default ownership proxy (warfare) |
+| ap_core_compat | Save data cleanup for version upgrades, default ownership proxy for the original Vintar0 Warfare that never calls ap_api (erepb's build and other integrators self-register) |
 
 ### Ext: cause and consequence files
 
