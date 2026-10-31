@@ -26,8 +26,8 @@ Engines:
   IX-Ray: https://github.com/ixray-team/ixray-1.6-stcop/commits/develop?author=damiansirbu
 Dependents:
   COMPASS: https://github.com/Crimento/COMPASS
-  Nemesis Wave Spawn System: https://github.com/SirEndet/Nemesis-Wave-Spawn-System
-  Word of Mouth: https://github.com/joshcoppola/word_of_mouth
+  Nemesis Spawn System: https://github.com/SirEndet/Nemesis-Spawn-System
+  Word of Mouth: https://www.moddb.com/mods/stalker-anomaly/addons/word-of-mouth
 Integrations:
   Warfare (erepb): https://www.moddb.com/mods/stalker-anomaly/addons/warfare-alife-overhaul-new
   Homestead: https://www.moddb.com/mods/stalker-anomaly/addons/homestead-stalker-settlement-builder
