@@ -33,6 +33,7 @@ Integrations:
   Homestead: https://www.moddb.com/mods/stalker-anomaly/addons/homestead-stalker-settlement-builder
   Stealth Overhaul: https://github.com/Alex-leon1594/Stealth_Overhaul_Reworked
   TALKER: https://www.moddb.com/mods/stalker-anomaly/addons/talker-ai-powered-npc-dialogue-beta
+  Factions of the Zone: https://github.com/devinhorowitz/factionsofthezone
 Collaborations:
   xAGNA: https://www.moddb.com/mods/stalker-anomaly/addons/xagna
 
