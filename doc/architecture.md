@@ -471,7 +471,9 @@ The seam. Two hook points, no base-script edits:
 - `xr_corpse_detection.near_actor` (xevent hook), the per-corpse gate the engine calls inside every NPC's loot scan (`find_valid_target`). reserve-own and npc-vs-npc run here as one exclusion arbiter; when neither claims the corpse the wrapper falls through to the vanilla `npc_loot_distance` radius.
 - The actor's own input. block-npc vetoes the player opening a claimed corpse via `on_before_key_press` (the USE-key pre-open veto, the only one that holds under the modded loot UI whose init_mode opens regardless of ret), with an `ActorMenu_on_item_before_move` backstop for take paths that skip the keystroke, plus Dot Marks callbacks when that addon is present.
 
-The three flows, each with its own MCM toggle, radius (default 75m), and TTL, no master switch (recording gates on any flow being enabled):
+Each flow has its own MCM toggle, radius, and TTL, no master switch (recording runs while any flow is on).
+The default radius is 150m, a stalker's `eye_range` in m_stalker.ltx, enough for the owner to see someone strip its body. Its slider caps at 300m, sniping distance.
+An NPC picks loot targets from its visual memory and never walks to a body it has not seen. A longer block holds loot no one collects. Three flows apply the rule:
 - reserve-own (loot_reserve_own): an NPC leaves a body the actor killed while the actor is within range with a clear line to it. Companions obey by default (loot_include_companions on); turning it off exempts them so a companion may loot the actor's kills.
 - block-npc (loot_block_npc): the actor cannot open a living NPC squad's kill while the killer or a squadmate is within range with a clear line to the body; that clear-line member sends the PDA tip, so a block always carries a message and vice versa. Behind a wall, or out of range, the actor loots it.
 - npc-vs-npc (loot_block_npc_vs_npc): a passing squad cannot strip another squad's kill while a member of the owning squad is within range. Distance only, silent.
@@ -483,7 +485,7 @@ Invariants:
 - Ownership is the killer's squad, not the individual; losing one member never frees the body while another holds range and line.
 - Companions, zombified killers, and story corpses never hold a claim against the actor.
 - Relation is read at block time, so a faction turning hostile lapses its claim live.
-- Block and warn share one test: the squadmate with the clear line is the warn speaker, so the player-facing block is never silent and the warn never fires without a block (bar a 5s per-corpse anti-spam throttle). The NPC-yields cases (reserve-own, npc-vs-npc) are silent by default and only rarely voice an overheard line - a low roll, a shared cooldown, and the actor within earshot of the yielding NPC.
+- Block and warn share one test: the squadmate with the clear line is the warn speaker, so the player-facing block is never silent and the warn never fires without a block (bar a 5s per-corpse anti-spam throttle). The NPC-yields cases (reserve-own, npc-vs-npc) are silent by default and only rarely voice an overheard line - an MCM chance roll (`loot_yield_chance`, 0 silences them), a shared cooldown, and the actor within earshot of the yielding NPC.
 - Pure veto: no item transfer, no money, no save-side effect beyond the ledger.
 - No frame or timer hook: recording is death/hit-driven, the block fires on the player's input or the engine's throttled corpse scan (once per 250ms per NPC), and the ray runs only for a claimed, in-range corpse.
 

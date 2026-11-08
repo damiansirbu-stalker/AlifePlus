@@ -303,7 +303,7 @@ Loot Claim
   A passing stalker will not strip a kill another squad made while that squad is near, so the loot a squad earns stays with it until they leave or fall.
 
   Companions, zombified killers, and story corpses never hold a claim against you.
-  Each direction has its own toggle, radius, and duration, 150 m and 1 game hour by default, under Economy > Loot claim. Turn all three off for plain vanilla looting.
+  Each direction has its own toggle, range, and duration, 150 m and 1 game hour by default, up to 300 m, under Economy > Loot claim. Turn all three off for plain vanilla looting.
 
 Loot Policy
 

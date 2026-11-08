@@ -22,11 +22,10 @@ local TIP_TTL_SEC = 5
 local WARN_PREFIX = "st_ap_loot_claim_warn"
 local MAX_WARN_VARIANTS = 16
 
--- Respect (yield) lines: an NPC audibly passing up a claimed kill, overheard by the player; rare, gated by low roll + shared cooldown + earshot.
+-- Respect (yield) lines: an NPC audibly passing up a claimed kill, overheard; gated by MCM chance (loot_yield_chance, 0 silences) + cooldown + earshot.
 local RESERVE_YIELD_PREFIX = "st_ap_loot_reserve_yield"
 local NPCVNPC_YIELD_PREFIX = "st_ap_loot_npcvnpc_yield"
 local MAX_YIELD_VARIANTS = 16
-local YIELD_TIP_CHANCE = 0.15
 local YIELD_EARSHOT = 30
 -- Wall seconds (os.clock): a shared cooldown so overheard yield lines stay rare and survive time skips.
 local YIELD_TIP_INTERVAL_SEC = 1200
@@ -109,10 +108,10 @@ local function _resolve_pooled(prefix, pool_n, name)
 end
 
 --- Rare overheard yield line: an NPC audibly passing up a claimed kill.
---- Gates: low roll, not an actor-enemy, shared cooldown, actor within earshot; name fills #name# (actor for reserve-own, nil for npc-vs-npc).
+--- Gates: MCM chance roll, not an actor-enemy, shared cooldown, actor within earshot; name fills #name# (actor for reserve-own, nil for npc-vs-npc).
 --- @cost O(1) | roll on the common bail; 1 relation + 1 distance past it; interval set only on a hit
 local function _show_yield_tip(npc, prefix, pool_n, name)
-    if not npc or math_random() >= YIELD_TIP_CHANCE then return end
+    if not npc or math_random() * 100 >= cfg.loot_yield_chance then return end
     local actor = db.actor
     if not actor or xcreature.is_actor_enemy(npc) then return end
     local now = os.clock()
