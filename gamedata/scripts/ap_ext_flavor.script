@@ -1,4 +1,4 @@
---- ap_ext_flavor: idle ambient actions; a calm, visually idle stalker near the player plays one short full-body action and returns to his logic.
+--- ap_ext_flavor: dynamic jobs; a calm stalker near the player plays one context-picked state_lib state anywhere, no smart terrain slot, then resumes logic.
 
 local RegisterScriptCallback, get_object_squad = RegisterScriptCallback, get_object_squad
 local IsStalker, IsWounded, character_community = IsStalker, IsWounded, character_community
@@ -32,8 +32,10 @@ local STATE_CANDIDATES = {
 }
 
 local MONSTER_RADIUS_SQR = 60 * 60
+-- Metres from the stalker to an artefact zone for the detector poses: af_radius, the range a vanilla detector responds at (items_devices.ltx).
+local FIELD_RADIUS_M = 30
 local CTX_TTL_SEC = 15
-local MILITARY_COMMUNITY = { army = true, dolg = true, monolith = true, freedom = true }
+local MILITARY_COMMUNITY = { army = true, dolg = true, killer = true, monolith = true }
 local DRINKER_COMMUNITY = { bandit = true, renegade = true }
 
 local STATES = {}
@@ -117,15 +119,13 @@ local function _check_monsters_near(pos)
     return false
 end
 
--- Artefact-zone proximity, keyed on the squad's smart (nil squad -> no smart -> false); cached per squad (xttltable).
+-- Artefact-zone proximity from the stalker's own position, cached per NPC (xttltable); never his squad's smart, which can sit 100m from him.
 -- Artefact zones, not hazard fields: invisible radiation/psi patches must not read as "anomaly near" (tested 2026-10-20, Cordon roadside).
-local function _check_field_near(squad)
-    if not squad then return false end
-    local key = "f" .. squad.id
+local function _check_field_near(npc)
+    local key = "f" .. npc:id()
     local v = _ctx_cache:get(key)
     if v == nil then
-        local smart = squad.smart_id and xobject.get_se(squad.smart_id)
-        v = (smart and xsmart.has_artefact_anomaly(smart)) or false
+        v = xsmart.is_artefact_anomaly_near(npc:position(), FIELD_RADIUS_M)
         _ctx_cache:set(key, v)
     end
     return v
@@ -143,11 +143,11 @@ end
 
 -- Each condition is squad-optional: a squadless NPC plays universal and npc-only states, the squad-gated ones nil-guard off.
 local COND = {
-    field = function(_npc, squad)
-        return _check_field_near(squad)
+    field = function(npc)
+        return _check_field_near(npc)
     end,
-    wary = function(npc, squad)
-        if _check_field_near(squad) then return true end
+    wary = function(npc)
+        if _check_field_near(npc) then return true end
         return _check_monsters_cached(npc)
     end,
     commander = function(npc, squad) return squad ~= nil and squad:npc_count() > 1 and squad:commander_id() == npc:id() end,
@@ -227,7 +227,7 @@ local function _collect_candidates(actor, now, dbg)
     local online = db.OnlineStalkers or _EMPTY
     local total = #online
     _scan_apos = actor:position()
-    _scan_radius_sqr = cfg.flavor_radius_m * cfg.flavor_radius_m
+    _scan_radius_sqr = cfg.dynamic_jobs_radius_m * cfg.dynamic_jobs_radius_m
     local idx = _scan_cursor
     local walked = 0
     local limit = total < MAX_SCAN and total or MAX_SCAN
@@ -242,13 +242,13 @@ end
 -- Periodic proximity scan (dd_director tick shape): when the play cooldown is open, pick one eligible stalker near the actor and flag it.
 local function _on_tick()
     ResetTimeEvent(TIMER_EV, TIMER_ACT, SCAN_PERIOD_SEC)
-    if not cfg.flavor_enabled then return false end
+    if not cfg.dynamic_jobs_enabled then return false end
     if #STATES == 0 then return false end
     local actor = db.actor
     if not actor then return false end
     local now = os_clock()
     if now < _global_next then return false end
-    _global_next = now + cfg.flavor_global_cooldown_sec
+    _global_next = now + cfg.dynamic_jobs_global_cooldown_sec
     local dbg = ap_core_debug.is_enabled()
     local tmr = xprofiler.new_if(dbg):start()
     _collect_candidates(actor, now, dbg)
@@ -269,7 +269,7 @@ local function _on_tick()
         return false
     end
     _requests[id] = state
-    _npc_cooldown[id] = now + cfg.flavor_npc_cooldown_sec
+    _npc_cooldown[id] = now + cfg.dynamic_jobs_npc_cooldown_sec
     tmr:stop()
     if dbg then
         ap_core_debug.debug("%s pick id=%d npc=%s state=%s pool=%d squad=%s cand=%d [%.2fms]", FLAVOR_LOG,
@@ -333,7 +333,7 @@ function act_ap_flavor:initialize()
     action_base.initialize(self)
     local npc = self.object
     self.begin_ms = time_global()
-    self.until_ms = self.begin_ms + cfg.flavor_hold_sec * 1000
+    self.until_ms = self.begin_ms + cfg.dynamic_jobs_hold_sec * 1000
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s play id=%d state=%s", FLAVOR_LOG, npc:id(), _requests[npc:id()] or "?")
     end
@@ -343,7 +343,7 @@ function act_ap_flavor:execute()
     local npc = self.object
     local state = _requests[npc:id()]
     if not state then return end
-    if not self.until_ms then self.until_ms = time_global() + cfg.flavor_hold_sec * 1000 end
+    if not self.until_ms then self.until_ms = time_global() + cfg.dynamic_jobs_hold_sec * 1000 end
     local release = time_global() > self.until_ms and "held" or get_combat_release(npc)
     if not release then
         state_mgr.set_state(npc, state, nil, nil, {}, { fast_set = true })

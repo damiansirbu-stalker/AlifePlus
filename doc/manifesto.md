@@ -254,6 +254,18 @@ The engine carries the eating and sleeping states, and nothing triggers them by 
 > "It was planned that character behaviour would diversify due to introduction of requirements of food and sleep."
 > Dmitriy Iassenev, Game Developer (2008) [1]
 
+### Flavor
+
+#### Dynamic Jobs
+
+A calm stalker near you takes a short job where he stands, a smoke, the PDA, a detector sweep at an anomaly, a drill with his faction, then walks on.
+GSC listed playing a specific animation among the ways a character reacts to what happens around him.
+The engine ships the states in its state library and plays them only where a level designer scripted one, at a single smart terrain slot.
+AlifePlus frees them from the slot, and the stalker's own situation picks the job.
+
+> "Example reactions: change of relation, play a specific animation, say a line, send a PDA message."
+> GSC AI design documents [8]
+
 ---
 
 ## Sources

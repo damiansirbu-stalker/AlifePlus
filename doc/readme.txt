@@ -112,6 +112,9 @@ Loot claim (protection):
 Loot policy (what a looter keeps):
 - A looting NPC keeps only what fits its gear and a fair share of supplies, so the bodies you reach later are not stripped bare. The toggles sit under the Economy menu.
 
+Dynamic jobs:
+- Calm stalkers near you smoke, drink, sweep a detector at an anomaly, drill, or spar, picked by their situation, anywhere, not only at a smart terrain slot.
+
 Day/night cycle:
 - Stalkers work and trade by day, then rest and sleep at campfires by night.
 - Nocturnal predators hunt after dark and hole up in lairs at dawn, while diurnal mutants run the opposite clock.
@@ -367,14 +370,19 @@ Instincts
   - Explore: Mutants wander to a different territory or lair during active hours.
   - Socialize: Pack animals move toward smart terrains where same-faction squads are present.
 
-Flavor: idle stalkers do things
+Flavor
 
-  A calm stalker standing near you lights a smoke, drinks from a bottle, checks his PDA, scans with binoculars, crosses his arms.
-  Context picks the act. Detectors and ground searches come out near anomaly fields, and watchful poses appear when mutants roam close.
-  Military factions snap salutes and run drills. Squad leaders give orders. Groups laugh and spar. Outlaws sway drunk.
-  The act lasts seconds, then he returns to whatever he was doing. Any threat interrupts it instantly.
-  Busy or talking stalkers are never picked. Neither are wounded or alert ones.
-  All 26 animations are GSC's own, most wired by the original designers and triggered by nothing until now.
+Dynamic Jobs
+
+  A calm stalker near you takes a short job where he stands, then goes back to his routine.
+  Vanilla hands out jobs only through smart terrain slots, a fixed pose at a fixed spot. A Duty soldier does push-ups only where a level designer scripted it.
+  Dynamic jobs free the same states from the slot. Any stalker qualifies, in camp, on patrol, or walking a route, and his situation picks the job.
+  The universal jobs are a smoke, a drink, the PDA, binoculars, folded arms, and a guard stance.
+  Within 30 m of an artefact anomaly he sweeps a detector or searches the ground. With a mutant within 60 m he turns wary.
+  A squad leader gives orders and a squad laughs and spars. Army, Duty, Mercenaries, and Monolith drill. Bandits and renegades sway drunk.
+  A walker stops for the job and walks on after. The system skips a stalker who is running, crouching, wounded, talking, or alert.
+  An enemy or danger ends the job at once. Every job is a state from GSC's own state library, played through the state manager the vanilla schemes use.
+  One bounded scan of the stalkers near you runs at most once every 20 seconds, measured under 0.03 ms per second.
 
 News: PDA radio gossip from the simulation
 
