@@ -20,7 +20,7 @@ local function _load_barter_policy()
 end
 
 -- Count-band direction: hand the giver's per-category surplus to a receiver that is below its own floor.
--- Transfers via iterate_surplus while the shared budget lasts; gear kinds are absent from the bands (the upgrade pass owns them).
+-- The receiver keys the item by its own guns, so ammo and attachments go only to a stalker whose gun takes them.
 local function _run_surplus_transfer(giver, giver_opts, receiver, receiver_opts, budget, out)
     if budget.remaining <= 0 then return end
     local rules = BARTER_POLICY.rules
@@ -30,9 +30,10 @@ local function _run_surplus_transfer(giver, giver_opts, receiver, receiver_opts,
     xinventory.iterate_surplus(giver, giver_opts, {
         rules = rules,
         counts = giver_counts,
-        on_surplus = function(item, cat, sec, unit)
+        on_surplus = function(item, _cat, sec, unit)
             if budget.remaining <= 0 then return true end
-            local key = (rules[sec] and sec) or cat
+            local key = xinventory.get_policy_key(item, receiver_opts, rules)
+            if not key then return end
             local rrule = rules[key]
             local rmin = (rrule and rrule.min) or 0
             local have = receiver_counts[key] or 0

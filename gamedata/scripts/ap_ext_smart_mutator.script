@@ -1000,10 +1000,11 @@ local function _try_preempt_below_hub(npc, id, force_refresh)
     return true
 end
 
--- Map an engine item category to its outpost-stock policy key: ammo_* folds to ammo_rounds_per_type.
+-- Map an engine item category to its outpost-stock policy key: ammo_* folds to ammo_rounds_per_type, attachment_slot_* to attachment.
 -- Every other category already matches the policy vocabulary.
 local function _get_shelf_key(category)
     if string_sub(category, 1, 5) == "ammo_" then return "ammo_rounds_per_type" end
+    if string_sub(category, 1, 11) == "attachment_" then return "attachment" end
     return category
 end
 
@@ -1026,7 +1027,7 @@ local function _filter_stock(npc, npc_id, role)
         local rule = section_rule or rules[_get_shelf_key(cat)]
         if not rule then return end
         local is_ammo = string_sub(cat, 1, 5) == "ammo_"
-        local key = (is_ammo or section_rule) and sec or cat
+        local key = (is_ammo or section_rule) and sec or _get_shelf_key(cat)
         local unit = is_ammo and (item:ammo_get_count() or 0) or 1
         local total = (counted[key] or 0) + unit
         counted[key] = total

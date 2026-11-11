@@ -12,6 +12,8 @@ local DEFAULT_COST = ap_core_const.DEFAULT_TRADE_COST
 local POLICY_PATH = "alifeplus\\ap_trade_policy.ltx"
 -- Ammo slot categories: slot 2 is the equipped pistol's ammo, slot 3 the rifle's.
 local SLOT_PISTOL_AMMO, SLOT_RIFLE_AMMO = "ammo_slot_2", "ammo_slot_3"
+-- Attachment slot categories: a loose attachment that fits the equipped pistol (slot 2) or rifle (slot 3).
+local SLOT_PISTOL_ATTACHMENT, SLOT_RIFLE_ATTACHMENT = "attachment_slot_2", "attachment_slot_3"
 local LOG = "[EXT.TRADE]"
 local cfg = ap_core_mcm.cfg
 
@@ -97,10 +99,9 @@ local function _run_section_buy(npc, seller, sec, current, target, bought)
     return current
 end
 
--- Buy from a consumable category cheapest-first until count >= target or no affordable section remains.
+-- Buy from a section list cheapest-first until count >= target or no affordable section remains.
 -- A section with its own policy row (e.g. grenade_f1) is skipped here; its own entry buys it, matching collect_policy_counts keying.
-local function _run_consumable_buy(ctx, category, current, target)
-    local sections = xinventory.get_category_sections(category)
+local function _run_cheapest_buy(ctx, sections, current, target)
     if #sections == 0 then return current end
     local sorted = _sort_by_cost(sections)
     local rules = ctx.rules
@@ -118,6 +119,17 @@ local function _is_ammo_slot_category(cat)
     return string_sub(cat, 1, 11) == "ammo_slot_2" or string_sub(cat, 1, 11) == "ammo_slot_3"
 end
 
+local function _is_attachment_slot_category(cat)
+    return cat == SLOT_PISTOL_ATTACHMENT or cat == SLOT_RIFLE_ATTACHMENT
+end
+
+-- For the attachment buy path: the equipped gun an attachment-slot category buys for, from the opts snapshot.
+local function _resolve_attachment_buy_gun(category, cat_opts)
+    if category == SLOT_PISTOL_ATTACHMENT then return cat_opts.equipped_pistol end
+    if category == SLOT_RIFLE_ATTACHMENT then return cat_opts.equipped_rifle end
+    return nil
+end
+
 -- For the ammo buy path: resolve the equipped weapon section and tier number from the category.
 -- Parses the trailing _t<N> via string_match, so ammo_slot_2_t10 resolves correctly (a last-char slice broke for n_tiers > 9).
 local function _resolve_ammo_buy_context(category, cat_opts)
@@ -129,7 +141,7 @@ local function _resolve_ammo_buy_context(category, cat_opts)
 end
 
 -- Execute one BUY policy entry against the NPC's current counts; ctx = { npc, seller, cat_opts, counts, bought, rules }.
--- The key is an ammo-slot (via _run_ammo_buy), a category with members (_run_consumable_buy), or an item section (_run_section_buy).
+-- The key is an ammo-slot, an attachment-slot (what fits that gun), a category with members, or an item section.
 local function _run_buy_entry(entry, ctx)
     local rule_min = entry.rule.min
     if not (rule_min and rule_min > 0) then return end
@@ -141,8 +153,12 @@ local function _run_buy_entry(entry, ctx)
         local weapon_sec, tier_num = _resolve_ammo_buy_context(key, ctx.cat_opts)
         if not (weapon_sec and tier_num) then return end
         counts[key] = current + _run_ammo_buy(ctx.npc, ctx.seller, weapon_sec, tier_num, rule_min - current, ctx.bought)
+    elseif _is_attachment_slot_category(key) then
+        local gun = _resolve_attachment_buy_gun(key, ctx.cat_opts)
+        if not gun then return end
+        counts[key] = _run_cheapest_buy(ctx, xinventory.get_fitting_attachments(gun), current, rule_min)
     elseif #xinventory.get_category_sections(key) > 0 then
-        counts[key] = _run_consumable_buy(ctx, key, current, rule_min)
+        counts[key] = _run_cheapest_buy(ctx, xinventory.get_category_sections(key), current, rule_min)
     else
         counts[key] = _run_section_buy(ctx.npc, ctx.seller, key, current, rule_min, ctx.bought)
     end

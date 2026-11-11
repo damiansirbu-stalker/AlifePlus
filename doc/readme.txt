@@ -101,8 +101,9 @@ Alpha mutants:
 - A dust-shimmer particle marks its body, so you read the pack leader on sight. Killing one draws same-species hunters.
 
 Trade and needs:
-- Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, and repair supplies.
-- Stalkers barter with their own faction at a friendly area, swapping surplus for what they lack, no money: ammo, meds, grenades, and a spare weapon or armor better than the other carries.
+- Stalkers sell surplus and restock at traders by rank, rookies on basics and provisions, veterans on premium ammo, grenades, repair supplies, and the scope, silencer or launcher that fits their gun.
+- Stalkers barter with their own faction at a friendly area, swapping surplus for what they lack, no money: ammo, meds, grenades, attachments, and a spare weapon or armor better than the other carries.
+  Ammo and attachments go only to a stalker whose gun takes them.
 - Squads loot stashes and hide supplies in them, leaving quest items alone, then head to campfires and bases to eat, rest, heal, and shelter.
 
 Loot claim (protection):
@@ -291,6 +292,7 @@ Part of what a faction sells reaches you through its own traders.
   Stalkers carry a working loadout and the bodies you reach are leaner. Long saves stay clear of the loot buildup that drags them down.
 
   Trade. At a trader a stalker sells his surplus and restocks ammo and supplies by rank, under a profit cap. The same category limits decide what he offloads and what he buys.
+  A veteran buys the cheapest scope, silencer or launcher that fits his pistol or rifle, and keeps one for each gun.
   Market. A faction's hub traders briefly stock a bounded sample of what that faction's stalkers recently sold, gated to your rank and priced at a premium.
   The surplus a faction sells reaches you through its own traders, and the ammo and medical supplies it keeps buying run short at them.
 

@@ -164,6 +164,7 @@ If you drop a man his gear is yours to claim before an NPC nearby takes it, and 
 #### Trade
 
 A stalker carries his surplus to a trader and runs a real buy and sell, selling spares and restocking by rank.
+A veteran also buys the cheapest scope, silencer or launcher that fits his own gun, the way he buys ammo for it.
 GSC designed the trader to price goods by supply and money on hand, and to generate artefact orders.
 Anomaly ships the full cycle, Alundaio's work and Tronex's upkeep, and it almost never fires on its own, so AlifePlus drives it directly.
 
@@ -171,6 +172,7 @@ Anomaly ships the full cycle, Alundaio's work and Tronex's upkeep, and it almost
 
 Two stalkers of one faction barter on the trail, one man's surplus for another's need, and a better gun passes for the worth of the old one.
 Money never changes hands between them.
+Ammo and attachments go only to a man whose gun takes them.
 
 #### Market
 
