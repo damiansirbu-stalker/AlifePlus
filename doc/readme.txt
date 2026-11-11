@@ -334,7 +334,9 @@ Trade
   On arrival the stalker first sells everything above his caps at half price, never touching equipped gear, quest items or player gifts.
   Then he buys back up to his minimums with the cash he made.
   Rookies stock basics, veterans add premium rounds and grenades, and their shots hit you with the real armor piercing of those rounds.
+  Veterans also buy the scope, silencer or launcher that fits their own gun.
   A profit cap, 5000 RU by default, limits what an NPC can net per visit, and anything above it returns to the trader.
+  He buys at most 5 items per visit by default, ammo first. An empty stalker restocks over several trips.
 
   This closes the in-Zone economy loop. NPCs harvest anomaly fields and hunt mutants. They loot and fill stashes.
   The surplus turns into cash at the next trader visit, and the cash funds the ammo the next firefight burns through.

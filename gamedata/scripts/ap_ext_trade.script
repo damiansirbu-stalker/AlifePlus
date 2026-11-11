@@ -54,6 +54,11 @@ local function _is_degraded_ammo(sec)
     return sec:sub(-4) == "_bad" or sec:sub(-8) == "_verybad"
 end
 
+-- True while the visit's buy budget (MCM trade_max_items, one per item or ammo box) has room; it bounds the spawns of one trade whatever the policy says.
+local function _has_buy_budget(bought)
+    return #bought < cfg.trade_max_items
+end
+
 -- Buy ammo for the target tier, cheapest-first; on cash < cost or create_item failure the inner loop breaks so the outer can try the next section.
 -- A cheaper section usually fails the same way (cost is monotonic), but a create_item failure on the cheapest is recoverable by falling through.
 local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, bought)
@@ -71,7 +76,7 @@ local function _run_ammo_buy(npc, seller, weapon_sec, tier_num, target_rounds, b
     for _, sec in ipairs(tier_sections) do
         local box = xinventory.get_box_size(sec) or 30
         local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
-        while rounds_added < target_rounds do
+        while rounds_added < target_rounds and _has_buy_budget(bought) do
             if xcreature.get_money(npc) < cost then break end
             if not xinventory.create_item(sec, npc:id(), { ammo = box }) then break end
             xcreature.transfer_money(npc, cost, seller)
@@ -89,7 +94,7 @@ local function _run_section_buy(npc, seller, sec, current, target, bought)
     local box = xinventory.get_box_size(sec)
     local step = box or 1
     local cost = floor((xinventory.get_cost(sec) or DEFAULT_COST) * BUY_MULT)
-    while current < target do
+    while current < target and _has_buy_budget(bought) do
         if xcreature.get_money(npc) < cost then break end
         if not xinventory.create_item(sec, npc:id(), box and { ammo = box } or nil) then break end
         xcreature.transfer_money(npc, cost, seller)
@@ -145,6 +150,7 @@ end
 local function _run_buy_entry(entry, ctx)
     local rule_min = entry.rule.min
     if not (rule_min and rule_min > 0) then return end
+    if not _has_buy_budget(ctx.bought) then return end
     local key = entry.category
     local counts = ctx.counts
     local current = counts[key] or 0
