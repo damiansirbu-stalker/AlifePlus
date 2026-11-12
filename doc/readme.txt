@@ -504,6 +504,8 @@ Interferes:
   A companion check that runs during that kill reads a companion as a regular stalker.
 - Better A-Life Overhaul 1.4.4 and older - its own squad driving and offline combat resolution, with no warfare ownership flag, so AlifePlus routes squads it is already driving.
   A squad under both takes orders from both.
+- Oleh's Weapons Sounds Tweaks and Fixes (GAMMA) - its shot sounds let NPCs hear an unsilenced rifle from about 5 m and a silenced one from about 100 m, the reverse of vanilla.
+  A silencer a veteran buys makes him easier for other NPCs to hear.
 Coexists:
 - More Aggressive NPC Looting (on by default in EFP) - NPCs keep looting while you stand nearby, and more corpses count as lootable. The loot claim and the inventory bounds apply on top.
 - Warfare A-Life Overhaul (Vintar0 via the ownership flag, erepb via the integration API), current Better A-Life Overhaul - AlifePlus recognizes their squads and never routes them.
