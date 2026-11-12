@@ -164,7 +164,7 @@ end
 local function _find_squad_claimer(squad_id, corpse_pos, radius)
     local squad = xobject.get_se(squad_id)
     if not xsquad.is_squad(squad) then return nil end
-    if axr_companions.companion_squads[squad_id] then return nil end
+    if xsquad.is_companion(squad) then return nil end
     if game_relations.get_squad_relation_to_actor_by_id(squad_id) == xconst.RELATION.ENEMY then return nil end
     return _find_first_clear_member(squad, corpse_pos, radius)
 end
@@ -290,17 +290,17 @@ local function _on_death(victim, killer)
     local victim_id, killer_id = victim:id(), killer:id()
     if victim_id == killer_id then return end
     if get_object_story_id(victim_id) then return end
-    if victim:has_info("npcx_is_companion") then return end
+    if xcreature.is_companion(victim) then return end
     if killer_id == _ac_id then
         _set_owner(victim_id, _ac_id, nil)
         return
     end
     if not xcreature.is_stalker(killer) then return end
-    if killer:has_info("npcx_is_companion") then return end
+    if xcreature.is_companion(killer) then return end
     if xcreature.get_community(killer) == xconst.COMMUNITY.ZOMBIED then return end
     local squad = get_object_squad(killer)
     local squad_id = squad and squad.id or nil
-    if squad_id and axr_companions.companion_squads[squad_id] then return end
+    if squad and xsquad.is_companion(squad) then return end
     _set_owner(victim_id, killer_id, squad_id)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s squad=%s", LOG, victim_id, killer_id, tostring(squad_id))

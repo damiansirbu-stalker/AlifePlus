@@ -120,7 +120,7 @@ local function _check_monsters_near(pos)
 end
 
 -- Artefact-zone proximity from the stalker's own position, cached per NPC (xttltable); never his squad's smart, which can sit 100m from him.
--- Artefact zones, not hazard fields: invisible radiation/psi patches must not read as "anomaly near" (tested 2026-10-20, Cordon roadside).
+-- Artefact zones, not hazard fields: invisible radiation/psi patches must not read as "anomaly near".
 local function _check_field_near(npc)
     local key = "f" .. npc:id()
     local v = _ctx_cache:get(key)
@@ -186,7 +186,7 @@ end
 -- Returns nil when the squad passes the caps (a nil squad = squadless, always passes), else the reason to skip; pure, no mutation.
 local function get_squad_skip_reason(squad)
     if not squad then return nil end
-    if squad.scripted_target or axr_companions.companion_squads[squad.id] then return "owned" end
+    if squad.scripted_target or xsquad.is_companion(squad) then return "owned" end
     if squad:npc_count() > MAX_SQUAD_SIZE then return "big_squad" end
     if (_squad_counts[squad.id] or 0) >= MAX_PER_SQUAD then return "squad_full" end
     return nil
