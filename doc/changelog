@@ -275,7 +275,7 @@
 
   - Improved corpse loot ownership stability when loading a save or crossing a level transition (fast travel).
   - An NPC's claimed kill now won't open at all. Earlier it only blocked item takes. Auto-loot through the loot window is stopped with it.
-  - Split loot ownership into two independent Economy toggles: reserve your kills, and block looting NPC kills.
+  - Split loot ownership into 2 independent Economy toggles: reserve your kills, and block looting NPC kills.
   - An enemy faction's kill no longer locks you out. Only neutral and friendly stalkers' claims hold.
   - Your own companion's body is always yours to recover.
   - The claim warning now varies across several lines.
@@ -361,7 +361,7 @@
     Stash Loot: squads skip the entire stash if it holds any crafting item, by the vanilla kind classification, so the stash stays untouched for the player.
     MCM-gated (Consequences > Stash Loot > Skip stashes with crafting items, default on).
     Otherwise the squad takes only items on the AP keep list (PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades), capped per section by vanilla keep count, and clears the rest.
-    The same keep list drives Stash Fill and the trader buy phase. One allowlist governs all three flows. Addon crafting items are protected automatically by the engine kind classifier.
+    The same keep list drives Stash Fill and the trader buy phase. One allowlist governs all 3 flows. Addon crafting items are protected automatically by the engine kind classifier.
     Stash Fill: squads deposit only surplus from their own inventory above the per-section keep floor.
     The 1.6.0 curated pool that spawned random artefacts, medkits, and toolkits into stashes is gone. AlifePlus no longer spawns items, it transfers what the squad already carries.
     Restricted to the keep list (PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades), the same allowlist that drives the trader buy phase.
@@ -376,7 +376,7 @@
     Squads already committed to a territory take, a stash run, an off-map trip, or a reactive task continue uninterrupted. External script ownership (Warfare) stays protected.
     Radiant decisions score for tactical soundness after rules and SCAN pass.
     A squad that would leave its source smart undefended by its faction, or that would target a smart another scripted squad is already heading to, scores low and usually gets rejected.
-    Two static conditions: last-of-faction at source (-0.20), smart already targeted by another scripted squad (-0.20).
+    2 static conditions: last-of-faction at source (-0.20), smart already targeted by another scripted squad (-0.20).
     Reactive consequences bypass this, since event responses are not voluntary picks.
   Drives:
     Supply need weight raised to 2.0 (was 1.0). Job weight raised to 1.5. Squads pursue trade and outpost trips above campfire and shelter when several needs come due at once.
@@ -396,7 +396,7 @@
     Removed: Mutators > Alpha and Stalker Rank pages. Alpha Promote loot toggle. Social Off-base (cause + consequence).
     Stash Loot protect-toolkits toggle (vanilla kind classification protects them unconditionally now).
     Renamed: "active period" / "dormant period" relabeled "day" / "night" across cause descriptions.
-    Changed: Area mutators (Conquest, Swarm, Infest) on by default. Per-level cap unified at 3 across all three (was global FIFO 30 for Conquest/Swarm, per-level 1 for Infest). Decay 48h.
+    Changed: Area mutators (Conquest, Swarm, Infest) on by default. Per-level cap unified at 3 across all 3 (was global FIFO 30 for Conquest/Swarm, per-level 1 for Infest). Decay 48h.
     Upgrade clears any previously persisted conquered/swarmed/infested smarts once (xchange migration), spawns revert to vanilla LTX until repopulated by live dispatch.
     Changed: Radiant tick 10s -> 20s. News compose interval 30-100s -> 60-200s (news fires half as often).
   Fixed:
@@ -578,10 +578,10 @@
 1.4.0
   Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
   Gameplay:
-    Added: mutant instincts. Five deprivation-scored drives (scatter, feed, sleep, explore, socialize) parallel to stalker needs.
+    Added: mutant instincts. 5 deprivation-scored drives (scatter, feed, sleep, explore, socialize) parallel to stalker needs.
     Per-instinct xbus routing, Hull drive competition, independent thresholds.
     Changed: mutant personality and alignment redesigned from GSC source (monstry.doc). Species and subspecies detection via xlibs replaces naive community categories.
-    Added: food chain. Four behavioral groups (cowardly, feral, predator, aberrant) with tiered avoidance.
+    Added: food chain. 4 behavioral groups (cowardly, feral, predator, aberrant) with tiered avoidance.
     Cowardly flees feral+predator+aberrant, feral flees predator+aberrant, predator flees aberrant.
     Added: day/night cycle. Stalkers work by day, rest at night. Nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night, retreat at dawn.
     All needs and instincts time-gated to the cycle.
@@ -700,8 +700,8 @@
     Fixed: stash loot evaluates squad eligibility before chance roll
     Changed: default consequence chances retuned (stash_fill 15%, stash/area/needs 20%, reactive 30%)
   Compatibility:
-    Changed: four protection types (permanent, active role, task target, externally scripted) verified through one unified function ensuring single source of truth
-    Changed: layered NPC protection: producer rejects radiant squads before any cause evaluates, consequence search excludes all four types, tracker rejects anything that reaches script_squad
+    Changed: 4 protection types (permanent, active role, task target, externally scripted) verified through one unified function ensuring single source of truth
+    Changed: layered NPC protection: producer rejects radiant squads before any cause evaluates, consequence search excludes all 4 types, tracker rejects anything that reaches script_squad
     Changed: bounty targets, hostage targets, and externally scripted squads rejected at producer level
   Map & PDA:
     Added: map markers MCM toggle, independent from debug tracing
