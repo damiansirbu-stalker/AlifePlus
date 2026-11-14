@@ -678,7 +678,7 @@ end
 cfg, get_config, load_config = xmcm.create_config("ap", defaults, _build_path)
 
 -- Apply a profile: write overrides, save, reload, fire MCM_OPTION_RESTORE_DEFAULT so consumer caches refresh, then show a message.
--- Uses functor_ui (gui arg) and closes via On_Cancel to dodge the ui_mcm scroll_opt:Clear use-after-free (see doc/library/modding/mcm.md).
+-- Uses functor_ui (gui arg) and closes via On_Cancel to dodge the ui_mcm scroll_opt:Clear use-after-free.
 local function _apply_profile(gui, overrides, msg)
     local config = axr_main.config
     for k, v in pairs(defaults) do
