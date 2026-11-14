@@ -281,11 +281,13 @@ local function _publish_looker(orig, self)
     return result
 end
 
---- Record corpse ownership on death; skips suicides, story corpses, and the actor's own companions.
+--- Record corpse ownership on death; a weapon killer resolves to its holder (a silent kill sets the weapon as draftsman); skips suicide, story, own companions.
 --- Actor kills store individual ownership; NPC killers store the killer's squad or the lone killer, skipping non-stalker / companion / zombied.
 --- @cost O(1) | story id + victim companion always; is_stalker/companion/community + squad lookup for NPC killers
 local function _on_death(victim, killer)
     if not _is_recording_enabled() or not victim or not killer then return end
+    if not xcreature.is_stalker(killer) then killer = killer:parent() end
+    if not killer then return end
     _ac_id = _ac_id or (db.actor and db.actor:id())
     local victim_id, killer_id = victim:id(), killer:id()
     if victim_id == killer_id then return end
@@ -304,22 +306,6 @@ local function _on_death(victim, killer)
     _set_owner(victim_id, killer_id, squad_id)
     if ap_core_debug.is_enabled() then
         ap_core_debug.debug("%s death v=%s k=%s squad=%s", LOG, victim_id, killer_id, tostring(squad_id))
-    end
-end
-
---- Record the actor's own kills: vanilla fires npc_on_death_callback only for NPC/monster killers (xr_motivator.script:394), never the actor.
---- On death the binder's hit_callback(victim, .., actor, "from_death_callback") fires npc_on_hit_callback with who = actor, the only actor-kill signal.
---- @cost O(1) | bone_index string compare first; the owner write only on the actor's death-hit
-local function _on_hit(obj, _amount, _dir, who, bone_index)
-    if not _is_recording_enabled() or bone_index ~= "from_death_callback" then return end
-    if not obj or not who then return end
-    _ac_id = _ac_id or (db.actor and db.actor:id())
-    if who:id() ~= _ac_id then return end
-    local victim_id = obj:id()
-    if get_object_story_id(victim_id) then return end
-    _set_owner(victim_id, _ac_id, nil)
-    if ap_core_debug.is_enabled() then
-        ap_core_debug.debug("%s death v=%s k=%s actor_kill=true (via hit)", LOG, victim_id, _ac_id)
     end
 end
 
@@ -430,10 +416,15 @@ local function _on_dotmarks_secondary(id, _mark, prompt, _functor, flags)
     _on_dotmarks_loot(id or (prompt and prompt.args and prompt.args.id), flags)
 end
 
+--- Saved row expiry on the game clock: the death time plus the ledger cap, so a reload never extends a claim.
+local function _get_expiry(v)
+    return v.t + OWNER_TTL_MAX_SEC
+end
+
 local function _on_first_update()
     _ac_id = db.actor and db.actor:id()
     if _saved_owner then
-        _owner:load(_saved_owner)
+        _owner:load(_saved_owner, _get_expiry)
         _saved_owner = nil
     end
 end
@@ -477,7 +468,6 @@ function on_game_start()
 
     RegisterScriptCallback(CALLBACK.NPC_ON_DEATH_CALLBACK, _on_death)
     RegisterScriptCallback(CALLBACK.MONSTER_ON_DEATH_CALLBACK, _on_death)
-    RegisterScriptCallback(CALLBACK.NPC_ON_HIT_CALLBACK, _on_hit)
     RegisterScriptCallback(CALLBACK.ON_BEFORE_KEY_PRESS, _on_before_key_press)
     RegisterScriptCallback(CALLBACK.ACTOR_MENU_ON_ITEM_BEFORE_MOVE, _on_item_before_move)
     RegisterScriptCallback(CALLBACK.ACTOR_ON_FIRST_UPDATE, _on_first_update)

@@ -45,7 +45,7 @@ local function _clear_service_holds(holds)
 end
 
 --- v1.8.5 -> v1.8.6: delete every outpost service a pre-1.8.6 save carries so growth rebuilds under the current one-service-per-outpost rule.
---- Empties the service sets and drops service holds; squads go at on_game_load (script-loading.md:425-455), the safe mutation point after objects().load.
+--- Empties the service sets and drops service holds; squads go at on_game_load, after objects().load registered them (xray/alife_storage_manager.cpp:141-149).
 --- @src axr_main.script:272 load_state order is nondeterministic; the tables are mutated in place (held by ref), runs at whichever fires first.
 local function apply_185_186(m_data)
     local saved = m_data.ap_ext_smart_mutator
@@ -96,8 +96,20 @@ local function apply_186_187(m_data)
     _purge_services_pending = true
 end
 
+--- v1.8.9 -> v1.8.10: empty the loot-claim ledger; load used to refresh every row, so old saves carry stale rows, some still pre-1.8.0 bare killer ids.
+--- Emptied in place: ap_ext_loot_claim's load_state may already hold the table by ref (load_state order is nondeterministic).
+local function apply_189_1810(m_data)
+    local saved = m_data.ap_ext_loot_claim
+    local owner = (type(saved) == "table") and saved.owner or nil
+    if type(owner) ~= "table" then return end
+    for k = 1, #_to_remove do _to_remove[k] = nil end
+    for victim_id in pairs(owner) do _to_remove[#_to_remove + 1] = victim_id end
+    for i = 1, #_to_remove do owner[_to_remove[i]] = nil end
+end
+
 xchange.register("ap_v185_to_v186_clear_outpost_services", apply_185_186)
 xchange.register("ap_v186_to_v187_reset_outposts",         apply_186_187)
+xchange.register("ap_v189_to_v1810_clear_loot_claim",      apply_189_1810)
 
 --- Run all registered changesets on load_state. m_data only; no engine state.
 local function _on_load_state(m_data)
@@ -213,7 +225,7 @@ local function _flush_outpost_services()
     end
 end
 
---- Drain queued engine-side work; on_game_load is the documented safe mutation point (script-loading.md:425-455): entities registered, no update tick yet.
+--- Drain queued engine-side work at on_game_load, sent from the actor net_spawn (anomaly/bind_stalker_ext.script(61)): entities registered, no update tick yet.
 --- The orphan-service sweep queues into the same removal list first, so one pass deletes the changeset-queued removals and the orphans.
 local function _on_game_load()
     _flush_releases()
