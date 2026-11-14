@@ -107,7 +107,7 @@ local function _build_stash_bucket()
 end
 
 -- Bucket one squad into _squads_by_level (drain per xslice survivor protocol).
--- Re-resolves via get_se per frame: a ref held across frames hits pure-virtual mid-destruction (pcall-safety.md:50-57).
+-- Re-resolves via get_se per frame: a ref held across frames hits pure-virtual mid-destruction.
 -- @cost O(1) | 1 xobject.get_se + 1-3 luabind (xlevel.get_level_id cached or 0-3 cold)
 local function _add_squad(id)
     if not id then return true end
