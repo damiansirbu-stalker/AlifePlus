@@ -6,7 +6,7 @@ A simulation layer for A-Life, built on a reactive engine: engine callbacks beco
 On that runs an emergent economy. Squads trade, barter, loot corpses and stock stashes, and what a faction buys and sells reshapes what its traders put on the shelf for you.
 Squads are tracked off-map, marked on the PDA and reported as news. Any "when X happens, do Y" scenario registers as a cause and a consequence. See the [integration guide](doc/integration.md).
 
-[![ModDB](https://img.shields.io/badge/ModDB-c8102e)](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01) [![Nexus Mods](https://img.shields.io/badge/Nexus_Mods-da8e35)](https://www.nexusmods.com/stalkeranomaly/mods/103) [![Releases](https://img.shields.io/badge/Releases-24292f?logo=github&logoColor=white)](https://github.com/damiansirbu-stalker/AlifePlus/releases) [![Bugs, suggestions](https://img.shields.io/badge/Bugs%2C_suggestions-24292f?logo=github&logoColor=white)](https://github.com/damiansirbu-stalker/AlifePlus/issues) [![Ko-fi](https://img.shields.io/badge/Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/damiansirbu)
+[![ModDB](https://img.shields.io/badge/ModDB-c8102e)](https://www.moddb.com/mods/stalker-anomaly/addons/alifeplus-v1-0-01) [![Nexus Mods](https://img.shields.io/badge/Nexus_Mods-da8e35)](https://www.nexusmods.com/stalkeranomaly/mods/103) [![Releases](https://img.shields.io/badge/Releases-24292f?logo=github&logoColor=white)](https://github.com/damiansirbu-stalker/AlifePlus/releases) [![Bugs, suggestions](https://img.shields.io/badge/Bugs%2C_suggestions-24292f?logo=github&logoColor=white)](https://github.com/damiansirbu-stalker/AlifePlus/issues) [![Anomaly Discord](https://img.shields.io/badge/Anomaly_Discord-5865f2?logo=discord&logoColor=white)](https://discord.gg/c4RuJNs) [![Ko-fi](https://img.shields.io/badge/Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/damiansirbu)
 
 [![ci](https://github.com/damiansirbu-stalker/AlifePlus/actions/workflows/ci.yml/badge.svg)](https://github.com/damiansirbu-stalker/AlifePlus/actions/workflows/ci.yml) [![Project Health](https://img.shields.io/badge/project_health-dashboard-00ced1)](https://damiansirbu-stalker.github.io/AlifePlus/)
 
@@ -48,4 +48,4 @@ PolyForm Perimeter License. Other mods can depend on, call, and ship with AlifeP
 What is not allowed: cloning the architecture, reverse-engineering internal systems, or reproducing the implementation in a competing mod.
 See [LICENSE](LICENSE) and the [integration guide](doc/integration.md).
 
-A report documenting unauthorized reproduction of this codebase is at https://damiansirbu-stalker.github.io/siski-report/
+[A report](https://damiansirbu-stalker.github.io/siski-report/) documents the unauthorized reproduction of this codebase.

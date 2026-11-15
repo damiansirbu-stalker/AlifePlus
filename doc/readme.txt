@@ -579,7 +579,9 @@ Diagnostics and reporting:
 Every release goes through careful engineering and testing, but bugs can still slip through.
 To report one, reproduce with debug logging on, and the world log where the mod has one.
 First rule this mod out: reproduce with it off, then on. The cleanest test is this mod alone on vanilla and xlibs.
-Send the traces on the Anomaly Discord, or file a defect on GitHub with the same information.
+Send the traces to my Anomaly Discord thread: https://discord.com/channels/456765861953536020/1512539453791670402
+Join the server first through the Anomaly Discord invite: https://discord.gg/c4RuJNs
+Or file a defect with the same information on GitHub: https://github.com/damiansirbu-stalker/AlifePlus/issues
 Attach xray.log, the mod log, the engine build, the modlist, and the load order.
 For deep technical details and mechanisms, check the architecture docs on GitHub.
 

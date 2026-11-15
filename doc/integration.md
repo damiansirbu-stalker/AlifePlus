@@ -360,7 +360,7 @@ Foreign mods adding new consequences add matching *&lt;string id="..."&gt;* entr
 
 ## Contact
 
-- Discord: **damian_sirbu**
+- Discord: **damian_sirbu**, in [my thread](https://discord.com/channels/456765861953536020/1512539453791670402) on the [Anomaly Discord](https://discord.gg/c4RuJNs)
 - ModDB: **damian_sirbu**
 - Email: **dami.sirbu@gmail.com**
 - GitHub: **github.com/damiansirbu-stalker**
