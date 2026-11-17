@@ -44,8 +44,8 @@ My work is free and open source, ships in most modpacks, and integrates with est
 An organized group copies my work, defames, impersonates and review-bombs me across platforms.
 You can help with a review, a rating, a proper bug report, or a coffee on Ko-fi: https://ko-fi.com/damiansirbu
 
-Every release is stable and whole new systems may appear. Always understand the documentation.
-After every update, use Reset ALL to Defaults in MCM under Development.
+Every release is stable, and a new one can add whole systems or move the settings that drive them.
+After every update, open Development in the mod's MCM and reset every setting to its default.
 
 You are not special.
 
