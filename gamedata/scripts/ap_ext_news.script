@@ -211,8 +211,8 @@ end
 
 -- NPC-attribute eligibility (everything testable without faction/channel context).
 local function _is_speaker_npc_eligible(npc, id)
-    if not npc or not npc:alive() then return false end
-    if not IsStalker(npc, npc:clsid()) then return false end
+    if not npc or not IsStalker(npc, npc:clsid()) then return false end
+    if not npc:alive() then return false end
     if get_object_story_id(id) then return false end
     if npc:best_enemy() then return false end
     return true
