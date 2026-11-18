@@ -470,18 +470,18 @@ If another mod already patches the same engine scripts, disable this mod's chase
 
 How It's Built:
 
-The code and patterns are original, built on best practices from the best STALKER modders and hands-on reverse-engineering of X-Ray.
+The code and patterns are original, built on best practices from the best STALKER modders and on hands-on reverse-engineering of X-Ray and the Anomaly scripts.
 The design stays engine-native and minimal, with event-native pub/sub not polling, work spread across frames via deferred queues and rate limiters, and per-level caches replacing world scans.
-The raycasting and range math are hand-written and load-tested live, following the engine's own standards and flags.
+Raycasting and range math are hand-written and load-tested live, on X-Ray's standards and flags.
 Where scripting hits an engine limit, the fix is made in X-Ray itself, in the modded exes.
-Performance is the first invariant, so every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.
-Every mod carries OpenTelemetry-style tracing and performance monitoring, spanning world events and every flow, gated by the log level so it costs nothing when off.
-Every commit runs the full pipeline locally and in CI, with luacheck, a custom STALKER selene build, and a load test on engine stubs.
-Rule layers then check Lua practice, engine truth, conventions, contracts, release, security, and docs.
-Every rate, threshold, and toggle is exposed through MCM or LTX with nothing left hard-coded, and it writes no engine values, keeping its state within engine bounds so a save can never corrupt.
-It runs on one xlibs rulebook shared across the whole mod family, the same protection, distances, faction logic, and combat reads in every mod.
-It depends on no other mod, not even the author's own, and needs only X-Ray and xlibs beneath it.
-See the Health and JitProfiler links up top for every test and smoke result, and the mod's real CPU and allocation cost.
+Performance is the first invariant. Every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.
+Each mod carries OpenTelemetry-style tracing and performance monitoring, spanning world events and every flow, gated by the log level, which skips the tracing work when it is off.
+Every commit runs the full pipeline locally and in CI, with luacheck, a custom STALKER selene build, and a load test that runs every script on engine stubs.
+Rule layers then check Lua practice, engine truth, conventions, contracts, release, security and docs, and a grade gate fails the build on any code or security finding.
+Every rate, threshold and toggle sits in MCM or LTX with nothing hard-coded, and any engine value a mod writes stays within engine bounds, which keeps every save loadable.
+It needs only X-Ray and the shared xlibs rulebook beneath it, which gives every mod in the family the same protection, distances, faction logic and combat reads.
+It depends on no other mod, the author's other mods included.
+See the Health and JitProfiler links up top for every test and smoke result, and for the mod's real CPU and allocation cost, measured in a live game session.
 
 ---
 
@@ -579,7 +579,8 @@ Usage and License:
 Diagnostics and reporting:
 Every release goes through careful engineering and testing, but bugs can still slip through.
 To report one, reproduce with debug logging on, and the world log where the mod has one.
-First rule this mod out: reproduce with it off, then on. The cleanest test is this mod alone on vanilla and xlibs.
+First rule this mod out: reproduce with it off, then on.
+The cleanest test is this mod alone on vanilla and xlibs.
 Send the traces to my Anomaly Discord thread: https://discord.com/channels/456765861953536020/1512539453791670402
 Join the server first through the Anomaly Discord invite: https://discord.gg/c4RuJNs
 Or file a defect with the same information on GitHub: https://github.com/damiansirbu-stalker/AlifePlus/issues

@@ -423,18 +423,18 @@ If another mod already patches the same engine scripts, disable this mod's chase
 <div style="border-top:1px solid #555555;width:40%;margin:20px auto;">&#8203;</div>
 <span style="font-weight:bold;">How It's Built</span><br />
 <br />
-The code and patterns are original, built on best practices from the best STALKER modders and hands-on reverse-engineering of X-Ray.<br />
+The code and patterns are original, built on best practices from the best STALKER modders and on hands-on reverse-engineering of X-Ray and the Anomaly scripts.<br />
 The design stays engine-native and minimal, with event-native pub/sub not polling, work spread across frames via deferred queues and rate limiters, and per-level caches replacing world scans.<br />
-The raycasting and range math are hand-written and load-tested live, following the engine's own standards and flags.<br />
+Raycasting and range math are hand-written and load-tested live, on X-Ray's standards and flags.<br />
 Where scripting hits an engine limit, the fix is made in X-Ray itself, in the modded exes.<br />
-Performance is the first invariant, so every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.<br />
-Every mod carries OpenTelemetry-style tracing and performance monitoring, spanning world events and every flow, gated by the log level so it costs nothing when off.<br />
-Every commit runs the full pipeline locally and in CI, with luacheck, a custom STALKER selene build, and a load test on engine stubs.<br />
-Rule layers then check Lua practice, engine truth, conventions, contracts, release, security, and docs.<br />
-Every rate, threshold, and toggle is exposed through MCM or LTX with nothing left hard-coded, and it writes no engine values, keeping its state within engine bounds so a save can never corrupt.<br />
-It runs on one xlibs rulebook shared across the whole mod family, the same protection, distances, faction logic, and combat reads in every mod.<br />
-It depends on no other mod, not even the author's own, and needs only X-Ray and xlibs beneath it.<br />
-See the Health and JitProfiler links up top for every test and smoke result, and the mod's real CPU and allocation cost.<br />
+Performance is the first invariant. Every flow stays under 2ms or the build rewrites or drops it, profiled continuously with JitProfiler and hand-tested on unoptimized, single-threaded exes.<br />
+Each mod carries OpenTelemetry-style tracing and performance monitoring, spanning world events and every flow, gated by the log level, which skips the tracing work when it is off.<br />
+Every commit runs the full pipeline locally and in CI, with luacheck, a custom STALKER selene build, and a load test that runs every script on engine stubs.<br />
+Rule layers then check Lua practice, engine truth, conventions, contracts, release, security and docs, and a grade gate fails the build on any code or security finding.<br />
+Every rate, threshold and toggle sits in MCM or LTX with nothing hard-coded, and any engine value a mod writes stays within engine bounds, which keeps every save loadable.<br />
+It needs only X-Ray and the shared xlibs rulebook beneath it, which gives every mod in the family the same protection, distances, faction logic and combat reads.<br />
+It depends on no other mod, the author's other mods included.<br />
+See the Health and JitProfiler links up top for every test and smoke result, and for the mod's real CPU and allocation cost, measured in a live game session.<br />
 <div style="border-top:1px solid #555555;width:40%;margin:20px auto;">&#8203;</div>
 <h3>Compatibility</h3>
 Depends only on xlibs. Install and uninstall mid-save work. Tested: Anomaly 1.5.3, GAMMA, EFP, Zona, Forgotten Zone.<br />
@@ -515,7 +515,8 @@ The mod includes English and Russian translations.<br />
 <h3>Diagnostics and reporting</h3>
 Every release goes through careful engineering and testing, but bugs can still slip through.<br />
 To report one, reproduce with debug logging on, and the world log where the mod has one.<br />
-First rule this mod out: reproduce with it off, then on. The cleanest test is this mod alone on vanilla and xlibs.<br />
+First rule this mod out: reproduce with it off, then on.<br />
+The cleanest test is this mod alone on vanilla and xlibs.<br />
 Send the traces to my <a href="https://discord.com/channels/456765861953536020/1512539453791670402">Anomaly Discord thread</a>.<br />
 Join the server first through the <a href="https://discord.gg/c4RuJNs">Anomaly Discord invite</a>.<br />
 Or file a defect with the same information on <a href="https://github.com/damiansirbu-stalker/AlifePlus/issues">GitHub</a>.<br />
