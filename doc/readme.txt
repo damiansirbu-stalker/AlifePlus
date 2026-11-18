@@ -488,20 +488,21 @@ See the Health and JitProfiler links up top for every test and smoke result, and
 Compatibility:
 Depends only on xlibs. Install and uninstall mid-save work. Tested: Anomaly 1.5.3, GAMMA, EFP, Zona, Forgotten Zone.
 Drop:
-- NPC Loot Claim, NPC Loot Claim Remade - intercept looting a claimed corpse, so both fight the loot ownership over the same kill.
-- NPC Stop Looting Dead Bodies, and any anti-loot mod - block the NPC looting the loot policy keeps on and bounds.
-- Clash Routing and Alife Pathing manager (CRAP) - overwrites the A-Life squad-targeting fields AlifePlus owns to force random squads into scripted fights, with no ownership handshake, and pins them always-online, defeating offline culling.
-- Cypret's SafeSpawn - force-toggles NPC online-switching and sweeps alife every level change, fighting AlifePlus squad and online-state handling.
-- Unauthorized bridge or synergy patches that claim to connect AlifePlus to another mod - cause instability and save corruption.
+- Clash Routing and Alife Pathing manager (CRAP) - it overwrites the squad targets AlifePlus owns to force random squads into fights, and keeps those squads always online.
+- Cypret's SafeSpawn - it force-toggles NPC online-switching and sweeps alife on every level change, fighting the AlifePlus squad and online-state handling.
+  A save while it hides stalkers leaves them 200m under the map.
+- Unofficial bridge or synergy patches for AlifePlus - they cause instability and save corruption.
 - siski, ZHOPA, and any renamed clone - unauthorized copies of AlifePlus and xlibs code, so the same systems load twice and corrupt state (DMCA'd off ModDB and GitHub).
-- Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice. Run only the current release.
+- Any older or modpack-bundled copy of AlifePlus, such as GAMMA's integrated Alife Plus - the same mod loaded twice, so run only the current release of AlifePlus.
+Avoid:
+- NPC Loot Claim, NPC Loot Claim Remade - they intercept the looting of a claimed corpse themselves, so both mods fight over who owns the loot of the same kill.
+- NPC Stop Looting Dead Bodies, and any anti-loot mod - they block NPC looting.
 Change:
 - Autolooter, Interaction Dot Marks, and any remote auto-loot mod - turn off their remote-transfer option. It bypasses the claim veto, while opening a claimed corpse is already blocked.
-- Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the loot claim replaces the radius.
-- Useful Idiots no-NPC-looting option (its MCM, on by default in GAMMA) - turn it off, it blocks all non-companion looting so nothing feeds trade or the market.
+- Vanilla NPC loot distance (Options, Gameplay, General) - set it to 0, the claim replaces it.
+- Useful Idiots (its MCM) - turn off no-NPC-looting, on by default in GAMMA, which blocks all non-companion looting so nothing feeds trade or the market.
+  Turn off Surges kill companions, on by default outside GAMMA, which hides your companions from AlifePlus while an emission or a psi storm kills unsheltered NPCs.
 Interferes:
-- Useful Idiots - while an emission or psi storm kills unsheltered NPCs, it clears the companion flag and the companion squad tables, then restores them in the same call.
-  A companion check that runs during that kill reads a companion as a regular stalker.
 - Better A-Life Overhaul 1.4.4 and older - its own squad driving and offline combat resolution, with no warfare ownership flag, so AlifePlus routes squads it is already driving.
   A squad under both takes orders from both.
 - Oleh's Weapons Sounds Tweaks and Fixes (GAMMA) - its shot sounds let NPCs hear an unsilenced rifle from about 5 m and a silenced one from about 100 m, the reverse of vanilla.
