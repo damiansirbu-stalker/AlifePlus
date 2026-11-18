@@ -82,7 +82,7 @@ Project-wide constraints that hold across all pipelines and modules.
 - **Use the engine, don't work around it.** Every capability comes from the engine and the Anomaly layer first, always through xlibs; our own code enters only where stock behavior falls short, escalating nudge / correct (callback, wrapped setter, monkey-patch, DLTX/DXML). We fix a defect in the engine or a performance cost in the engine, seam first. A full-file vanilla override is the last resort. Never reimplement in script what the engine already does. See `doc/standards/stalker-code.md` "Use the engine, don't work around it".
 - Performance budget. Every measured flow (each bracketed inline-timer line in the log: `[DISPATCH.FIND_SQUADS]`, the `[NEEDS]` / `[STASH]` cause families, the `[SQUAD]` broker sweep, `[CORE.CACHE]`, ...) targets 0.1ms average per call and has a hard 2ms ceiling per call. No exceptions, including cold start, save load, and level transition. Any preload (index build, cache warm, registry walk) that would breach 2ms in a single tick must be frame-spread (xslice or equivalent), with the search path falling back to the un-indexed walk until the build completes. A flow that averages above 0.1ms, or that ever exceeds 2ms in a single call, is a regression and requires a perf task. See `doc/standards/stalker-code.md` "Performance budget".
 - Item transfer only. AlifePlus never invents new section names. Every materialized item is a section that already exists in vanilla configs. AP policy LTX files (`ap_trade_policy.ltx`, `ap_barter_policy.ltx`, `ap_stash_policy.ltx`, `ap_loot_policy.ltx`, `ap_market_policy.ltx`) declare category bands; the actual sections come from `xinventory.get_category_sections(category)`, which reads vanilla Parse_ITM buckets (`_ITM["outfit"]`, `_ITM["ammo"]`, etc.) and hand-curated sets of real vanilla sections (`_medkit_set`, `_grenade_set`, etc.). Some sections come from `character_desc [supplies]`, `trade_*.ltx [supplies_N]`, or `treasure_manager` tier configs. None are invented by AP.
-- Money flows match vanilla. NPCs gain money when they sell items above category max (`floor(cost * 0.5)`) and spend money when they buy items below category min (`floor(cost * 1.0)`). Cost reads `xinventory.get_cost(sec)` which wraps `ini_sys:r_float_ex(sec, "cost")`. Money moves only inside `ap_ext_trade.trade` via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow (see todo-demonized-exes.md n015 PR). No money moves through stash loot, stash fill, the faction market, barter (item transfer only, both directions), or any other AP path. The market's premium is not an AP money move: it overrides the engine's displayed price for tagged trader stock (`on_get_item_cost`), and the player pays it through the normal engine buy.
+- Money flows match vanilla. NPCs gain money when they sell items above category max (`floor(cost * 0.5)`) and spend money when they buy items below category min (`floor(cost * 1.0)`). Cost reads `xinventory.get_cost(sec)` which wraps `ini_sys:r_float_ex(sec, "cost")`. Money moves only inside `ap_ext_trade.trade` via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow. No money moves through stash loot, stash fill, the faction market, barter (item transfer only, both directions), or any other AP path. The market's premium is not an AP money move: it overrides the engine's displayed price for tagged trader stock (`on_get_item_cost`), and the player pays it through the normal engine buy.
 
 ---
 
@@ -457,9 +457,9 @@ Per-flow policy lives in dedicated LTX files under `configs/alifeplus/`, DLTX-ov
 
 The faction market, unlike the others, is not a squad-arrival move and has its own pipeline below.
 
-`ap_ext_consequences_needs.script` `_on_arrive` previously also ran a per-need item-consumption step (HUNGER ate food, HEAL used medkits, etc.); dropped per n477. Need satisfaction is now the arrival itself (DTO timestamp reset). The Supply Trader arrival action above is the only item-mutation flow under the Needs umbrella.
+A Needs arrival (`_create_on_arrive` in `ap_ext_consequences_needs.script`) satisfies the need by the arrival itself (DTO timestamp reset), and eats no food and uses no medkits. The Supply Trader arrival action above is the only item-mutation flow under the Needs umbrella.
 
-Money moves only inside `ap_ext_trade.trade` (via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow at `script_game_object_inventory_owner.cpp:693`). See todo-demonized-exes.md n015 for the engine PR. The faction market moves no money of its own: it adds stock to a trader and overrides the engine's *displayed* price for tagged goods (`on_get_item_cost`); the player pays that premium through the normal engine buy, the same path as any other trader purchase.
+Money moves only inside `ap_ext_trade.trade` (via `xcreature.transfer_money` and `xcreature.give_money`, both defensive against the engine `TransferMoney` u32 underflow at `script_game_object_inventory_owner.cpp:693`). The faction market moves no money of its own: it adds stock to a trader and overrides the engine's *displayed* price for tagged goods (`on_get_item_cost`); the player pays that premium through the normal engine buy, the same path as any other trader purchase.
 
 ### Corpse loot ownership (ap_ext_loot_claim)
 
@@ -869,7 +869,7 @@ ALPHA_PROMOTE marker integration is record-driven: ap_ext_consequences_alpha cal
 
 ### Smart Mutator (ap_ext_smart_mutator)
 
-Runtime smart terrain mutations, one descriptor-driven lifecycle (a `MUTATIONS` table + `_apply_mutation` / `_update_mutations` / `_load_pending`): territory conquest (a faction), swarm (a mutant species), and infestation (a mutant species, higher count + species allowlist + per-level cap), all EXCLUSIVE spawn (sole ownership). A new mutation type is a descriptor entry, not a copied lifecycle. (n490 conquest overhaul: conquest and swarm were additive shared spawn before, made exclusive here.)
+Runtime smart terrain mutations, one descriptor-driven lifecycle (a `MUTATIONS` table + `_apply_mutation` / `_update_mutations` / `_load_pending`): territory conquest (a faction), swarm (a mutant species), and infestation (a mutant species, higher count + species allowlist + per-level cap), all EXCLUSIVE spawn (sole ownership). A new mutation type is a descriptor entry, not a copied lifecycle.
 
 #### Engine respawn pathways
 
@@ -1201,7 +1201,7 @@ Mutant instincts:
 
 | Drive | Flag | Effect |
 |-------|------|--------|
-| scatter | (none) | any time (transitional, moving to FLEE family per n102) |
+| scatter | (none) | any time (transitional) |
 | feed | active_period | active period only |
 | slumber | dormant_period | dormant period only |
 | roam | active_period | active period only |
