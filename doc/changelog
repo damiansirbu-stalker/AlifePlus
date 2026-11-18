@@ -1,822 +1,747 @@
 1.8.10-snapshot
-  Summary: dynamic jobs, loot claim ranges, attachment caps, attachment buying, trade item cap, barter by gun, anomaly-detection performance near harvest and research sites, roster tracing
-
-  Flavor
-    Dynamic jobs
-      - Added dynamic jobs. A calm stalker near you takes a short job where he stands, a smoke, a drink, the PDA, binoculars, then returns to his routine.
-        Vanilla gives jobs only through smart terrain slots, one pose at one spot. Here any stalker qualifies, in camp, on patrol or walking past, and his situation picks the job.
-        A detector within 30 m of an artefact anomaly, a wary stance with a mutant close, orders from a squad leader, sparring in a squad, drill for military factions, a drunk sway for bandits.
-        An enemy or danger ends the job at once. One bounded scan runs every 20 s, measured under 0.03 ms per second. Radius, length and cooldowns sit in MCM.
+  Dynamic jobs, attachments across the stalker economy, and longer loot claims
+    Flavor is a new tab. A calm stalker near you takes a short job where he stands, picked by his situation, then returns to his routine.
+    Trade, Barter, Loot policy and Stash Fill now handle attachments. Stalkers keep, buy, barter and stash the scopes, silencers and launchers that fit their guns, and a trade visit is capped.
+    Other things you will notice. Loot claims reach sniping distance, the overheard loot lines have a chance slider, companions hold no claim, and A-Life runs faster near anomalies.
 
   Economy
     Loot claim
-      - Changed the ranges in every direction: default 150 m, a stalker's sight range, cap 300 m. A kill at sniping distance now stays yours while you walk to it with a clear line to the body.
-      - Added a chance slider for the overheard "not my kill" lines, 0 turns them off. The warning when you reach for an NPC's kill stays.
-      - Fixed killing your own companion reserving the body as your kill, which kept stalkers from looting it.
-      - Fixed a reload restarting every claim. A claim now ends 6 game hours after the kill, and loading a 1.8.9 or older save clears its old claims once.
+      - Changed the claim ranges to a stalker's sight range. If you kill a man at sniping distance, the body stays yours while you walk to it with a clear line to it.
+      - Added a chance slider for the lines you overhear when a stalker leaves your kill, and 0 silences them. The warning when you reach for an NPC's kill stays.
+      - Fixed killing your own companion reserving his body as your kill, which kept stalkers from looting it.
+      - Fixed a companion holding a kill against you right after a load.
+      - Fixed a reload restarting every claim. A claim now ends a fixed time after the kill, and a save from 1.8.9 or older clears its old claims once.
     Loot policy
-      - A looting stalker now keeps up to 2 scopes, silencers or grenade launchers, apart from his one spare gun.
-      - A looting stalker now also keeps one attachment that fits his own pistol and one that fits his rifle, apart from those 2.
+      - Changed a looting stalker to keep up to 2 loose attachments, plus one that fits his pistol and one that fits his rifle. Each one counted as a spare gun before.
     Trade
-      - Stalkers now keep up to 2 loose attachments when trading. They used to sell every attachment as a spare weapon.
-      - Added a Max items bought per trade slider, default 5. A stalker restocks in policy order, ammo first, and an empty one tops up over several visits.
-        A stalker used to buy until his money ran out. One trade could spawn dozens of items.
-      - Added attachment buying. A veteran buys the cheapest scope, silencer or grenade launcher that fits his own pistol or rifle, one per gun per trade.
-        A silencer or launcher goes straight onto the gun, and a scope stays in his pack for the gun. Rookies keep one that fits but never buy.
+      - Changed trade to let a stalker keep up to 2 loose attachments. He sold every attachment as a spare weapon before.
+      - Added Max items bought per trade. A stalker restocks in policy order with ammo first, and when he arrives empty he tops up over several visits.
+        A trade used to spawn as much as his money could buy.
+      - Added attachment buying. A veteran buys the cheapest attachment that fits his pistol or rifle, one per gun on each visit.
+        A silencer or launcher goes onto the gun, and a scope stays in his pack. A rookie keeps one that fits but never buys one.
     Barter
-      - Changed barter to hand ammo and attachments only to a stalker whose gun takes them, and to pass a spare scope or silencer to a peer whose gun fits it.
-        Barter used to hand over ammo the other stalker's gun could not fire, which the inventory cleanup then deleted.
+      - Changed barter to hand ammo and attachments only to a stalker whose gun takes them. A spare scope or silencer now reaches a peer whose gun fits it.
+        Barter used to hand over ammo the other stalker's gun could not fire, and the inventory cleanup deleted it.
 
   Consequences
     Stash Fill
-      - Squads now keep up to 2 loose attachments when filling a stash and deposit only the extras.
+      - Changed a squad filling a stash to keep up to 2 loose attachments and deposit the rest.
+
+  Flavor
+    Dynamic jobs
+      - Added Dynamic jobs. A calm stalker near you takes a short job where he stands, a smoke, a drink, the PDA or binoculars, then returns to his routine.
+        Vanilla hands out jobs only through smart terrain slots. Here any stalker qualifies, in camp, on patrol or walking past, and his situation picks the job.
+        Near an artefact anomaly he sweeps a detector, and when a mutant is close he turns wary. A squad leader gives orders, the military factions drill and bandits sway drunk.
+        An enemy or a danger ends the job at once.
 
   Performance
-    - Improved A-Life performance near anomalies: the harvest and research checks reuse a short-lived per-location anomaly lookup shared across every squad that passes through.
+    - Improved A-Life performance near anomalies.
 
   Development
-    World trace
-      - The controlled-squad roster now names each squad's section, so a squad AlifePlus steers is identifiable from its roster line alone.
+    - Changed the world trace roster to name each controlled squad's section.
 
 1.8.9
-  Summary: chase crash fix, trader stock follows NPC trading, overheard economy, voiced reports
-
-  General
-    - Fixed a rare crash caused by the engine recycling a dead squad's id to another object while a chase against it was still tracked.
+  Trader stock that follows NPC trading, overheard stalkers, and a chase crash fix
+    The Market now reads both sides of NPC trading. A trader's shelf thins by how much his faction's stalkers buy, each type by a different amount at each restock.
+    Added economy chatter. You overhear stalkers near you resupplying, selling a haul or stripping a body, and AlifePlus reports read as part of the vanilla PDA feed.
+    Other things you will notice. Each report speaks in a different voice, and a rare chase crash is gone.
 
   Economy
-    Faction market
-      - Trader stock now swings with how much a faction fights and trades. What its stalkers go through comes up short by a different amount each restock, and a quiet faction keeps full shelves.
-      - Every kind of supply a faction's stalkers buy can now run low, including grenades, food, drink and crafting parts.
-      - Each restock reshapes more of the shelf, so stock turns over faster between visits.
+    Market
+      - Changed the sell-out to follow how much a faction's stalkers buy. Each type they go through runs short by a different amount every restock, and a quiet faction keeps full shelves.
+      - Changed the sell-out to reach every supply stalkers buy, grenades, food, drink and crafting parts included.
+      - Changed the default stock per trader upward, and the shelf turns over faster between your visits.
 
   News
-    - You now overhear nearby stalkers between runs: resupplying or offloading a haul at a trader, passing a gun to a squadmate, stripping a body. First person, on the local PDA feed.
-    - Integrated AlifePlus's PDA reports into the vanilla feed. Any report, ours or vanilla, on any channel now holds the next line for a few seconds, so the whole feed reads as one stream.
-    - Each report is a different stalker on the radio, avoiding repetition, and the chatter names only notable items.
+    - Added overheard chatter. A stalker near you says that he resupplied or sold a haul at a trader, passed a gun to a squadmate or stripped a body.
+    - Changed AlifePlus reports to share the vanilla PDA feed. A report from any channel, ours or vanilla, holds the next line back for a moment.
+    - Changed every report and chatter pool to vary its voice, and the chatter names only notable items.
+
+  General
+    - Fixed a rare crash when X-Ray gave a dead squad's id to another object while a chase against that squad was still tracked.
 
 1.8.8
-  Summary: loot-claim rework, world trace, outpost service removal, performance and infrastructure
+  The loot claim rework, outpost service removal, and the world trace
+    The loot claim of 1.8.0 now needs a clear line to the body wherever you are involved, and nobody claims a corpse through a wall.
+    Turning off Grow services now clears the outposts already placed, and the world trace dumps the squads AlifePlus controls.
 
   Territory
-    - Turning off Grow services now cleanly removes the outpost services already placed, on the next load. Guards and area ownership stay.
+    Conquest
+      - Changed Grow services so that turning it off removes the outpost services already placed on the next load. Guards and area ownership stay.
 
   Economy
     Loot claim
-      - Reworked kill reservation. Distance still holds a body. Where you are involved it also takes line of sight, so nobody claims a corpse through a wall, either direction.
-        An owner blocks you only with a clear line to the body. An NPC leaves your kill only while you keep one to it. NPC-vs-NPC stays distance only. (designed with Bazinga, John.Sick)
-      - Reserve, block, and NPC-vs-NPC ranges are now separate sliders in MCM, default 75m (was 150m).
-      - Mechanic and messages now follow one rule. The "hands off" warn fires on your attempt. Rarer overheard lines cover an NPC leaving your kill or passing up another squad's.
+      - Changed kill reservation to need a clear line to the body wherever you are involved, as well as distance. Designed with Bazinga and John.Sick.
+        An owner blocks you only while he can see the body, and an NPC leaves your kill only while you can see it. Between NPCs, distance alone still holds.
+      - Added separate range sliders for the reserve, the block and the NPC-vs-NPC claim.
+      - Changed the loot claim lines to follow the same rule as the claim. The hands-off warning fires when you try to loot.
+        Rarer overheard lines cover an NPC leaving your kill or passing up another squad's.
 
   Development
-    World trace
-      - Expanded the world trace log. It now dumps the squads AlifePlus controls with their dispatch record, every squad and online NPC and mutant on the level,
-        and a smart-occupancy count that names any spot where squads pile up.
-        Each squad and NPC line carries the character name, so someone seen in a screenshot or clip can be found in the log. The heavy work is spread across frames, so the dump never costs a frame.
-
-  Performance and Infrastructure
-    - Rebuilt the validator into layered rules for crashes, unsafe engine usage, performance, best practices, smoke load, and secret leaks.
-    - The validator runs on every change, locally and in CI, and a grade gate fails the build on any finding.
-    - Profiled and tuned with JitProfiler, an engine-native, scientific profiler.
-    - Consolidated the whole engine layer into xlibs and standardized naming and structure across every mod.
+    - Changed the world trace log to dump the squads AlifePlus controls with their dispatch record, every squad, NPC and mutant on the level, and where squads pile up on a smart.
+      Each line carries the character name, so a stalker from a screenshot or a clip can be found in the log.
 
 1.8.7
-  Summary: outpost mini bases, population-driven conquest, trader funds, world respawn pacing, loot-claim messages, outpost service cleanup, off-map destinations, level-transition performance,
-           log flush toggle, world trace log, tracing performance, spawn crash fix
+  Outpost mini bases, population-driven conquest, and off-map destinations by drive
+    Conquest outposts now hold service NPCs and a guard detail. They man a conquered area, kept manned by the vanilla respawn while the area is held.
+    Conquest now follows the level's population. A weak faction takes more ground and a dominant one less, and mutants swarm and nest by the same rule.
+    Other things you will notice. Each off-map drive heads to a different kind of place, loot lines need a close look at the body, and a level change loads faster.
 
   Territory
-    - Conquered areas now grow into mini bases: service NPCs (different roles, configurable count) plus guard squads, kept manned by the game's own respawn while the area is held,
-      and removed when the claim decays.
-      The outpost is now built the vanilla way, from respawn rows and the job system, replacing the old version that scripted NPC behaviour and swapped models by hand.
-      This runs faster and is more stable.
-    - Conquest is now population-driven: weak factions on a level conquer more, dominant ones less, each capped at a bounded area count. Mutants swarm and nest by the same rule.
-    - Outpost services now hold a limited amount of money, reset at each restock (configurable). Selling them loot runs it out until the next restock.
-    - Outpost services now spawn as ordinary faction NPCs with a shop and a map icon, holding a job at the area. Trader stock mods recognize them.
-    - On decay, the outpost is undone: each service loses its role and becomes an ordinary stalker, its guards stay as ordinary squads, and the area returns to its normal spawns.
-    - Changed the 3 Area respawn (minutes) sliders (conquest, swarm, infest): a held area under its squad count now refills within the set minutes if the world respawn is slower.
-      Works under GAMMA and vanilla. It never spawns on screen, and never faster than the world would on its own.
-    - Removed the outpost model dressing: a service wears his own profile's look.
-    - Outpost services from earlier versions are removed on first load, including NPCs with no squad that old builds left behind, so no stray area trader is left to wander or hand out missions.
-      Held areas build a fresh base under the new rules.
-    - Fixed a crash when a held outpost respawned a service squad whose section was unavailable (a partial install, or a smart with an invalid spawn position).
-      The spawn is now skipped and the game keeps running. (reported by JossieDiaz)
+    Conquest
+      - Changed a held area to grow service NPCs and a guard detail from the vanilla respawn rows and jobs. The old outpost scripted the NPCs and swapped their models by hand.
+      - Changed conquest to follow the level's population. A weak faction conquers more and a dominant one less, each up to a set number of areas, and mutants swarm and nest the same way.
+      - Added a money limit for outpost services that resets at each restock. Selling them loot runs it out until the next one.
+      - Changed outpost services to spawn as ordinary faction NPCs with a shop, a map icon and a job at the area. Trader stock mods recognize them.
+      - Changed decay to undo the outpost. Each service becomes an ordinary stalker, the guards stay as ordinary squads, and the area returns to its LTX spawns.
+      - Changed the Area respawn sliders of Conquest, Swarm and Infest to refill a held area under its squad count when the world respawn is slower.
+        It works under GAMMA and vanilla, spawns out of your view, and runs no faster than the world would.
+      - Removed the outpost model dressing. A service wears the look of his profile.
+      - Changed the first load of an older save to remove its outpost services, squadless leftovers included, and the held areas build a fresh base.
+      - Fixed a crash when a held outpost respawned a service squad whose section was missing. The spawn is skipped. Reported by JossieDiaz.
 
   Economy
     Loot claim
-      - Fixed loot-ownership lines firing for kills the speaking NPC was too far from or could not see.
-        A stalker now comments on a kill only when it stands within 30m of both the body and the one it addresses, and can see each. (reported by Bazinga)
+      - Fixed loot claim lines from a stalker too far from the kill to see it. A stalker speaks only when he is close to both the body and the one he addresses, and can see each. Reported by Bazinga.
+    Trade
+      - Changed trade, barter, stash fill and loot to let a stalker keep an armour plate. He used to sell or deposit every plate he carried.
 
   Needs
-    - Changed off-map travel so each drive heads to its own kind of place: a supply run to a faction base, a barter run to an occupied field camp, and a social visit to a campfire.
+    - Changed off-map travel so each drive heads to its own kind of place, a supply run to a faction base, a barter run to an occupied field camp and a social visit to a campfire.
 
   Development
-    - Added a Flush log every line option, which writes each log line to disk at once instead of buffering, so a crash keeps its final log lines for a bug report.
-    - Added a World trace log option that writes periodic simulation state dumps (smarts, squads, the controlled-squad roster, trader inventories) to a separate alifeplus_world.log,
-      so the main log stays a clean record of A-Life decisions.
+    - Added Flush log every line, which writes each log line to disk at once, so a crash keeps its last lines for a bug report.
+    - Added World trace log, periodic dumps of smarts, squads, the controlled squads and trader inventories to a separate alifeplus_world.log.
+    - Fixed the PDA marker of a squad chasing another squad fading in the middle of the chase.
 
   Performance
-    - Improved level-transition and save-load performance: the framework now holds less state and does less work on every load and level change.
-    - Overhauled and simplified A-Life tracing. Nothing is allocated for it at the default log level, and with debug on the trace is faster and clearer to read.
+    - Improved level change and save load performance. The framework holds less state and does less work on each load.
+    - Improved A-Life tracing performance. The default log level allocates no tracing memory.
 
 1.8.6
-  Summary: lean outpost shelves, service posts, service looks, service placement, service sidearm, service rank, old service reset, trader addon support, service scope, reliable posting,
-           kept artefacts and devices
+  Outpost service roles, shelves, posts and looks, and kept artefacts
+    An outpost service now trades, repairs or heals from a shelf for his role, at a post around the area center.
+    Each service wears a look from his faction's wardrobe, carries a sidearm and spawns at the rank of a faction regular.
+    Other things you will notice. Stalkers keep an artefact, binoculars and a night vision device, and trader stock addons reach every outpost service.
 
   Territory
-    - An outpost service now only trades, repairs, or heals. A mission taken before this change can still be turned in.
-    - Outpost service stock is now capped per category, so a shelf carries a working assortment instead of every variant the game lists.
-      Ammo is capped per type, in rounds, so an outpost trader deals mainly in ammunition. (reported by Charles Peugeot)
-    - Each service role now stocks from its own list.
-      A barman keeps a full pantry, a medic a full dispensary, and a mechanic his tools and detectors.
-    - Barmen, mechanics, and medics now hold a post at their area with their own PDA icon, as the trader does.
-    - An outpost service that is hijacked, displaced or loses its job is now returned to its post within seconds, or replaced if it cannot, instead of wandering off or trailing you.
-    - Outpost services now stand at their own point around the area center, each facing in. (reported by Charles Peugeot)
-    - An outpost service now wears a model from his faction's own wardrobe, and each service of a faction on a map wears a different one. (reported by Charles Peugeot)
-      12 looks per faction, masks and gasmasks first, each an ordinary faction fighter's face. Renegades wear bandit masks, like the game's own renegades.
-    - An outpost service now carries a sidearm. (reported by jacksob)
-    - An outpost service now spawns rank-and-file instead of near-max rank, so killing one hits faction relations like any ordinary kill and he is no longer a hub-grade fighter.
-    - Trader stock addons now recognize every outpost service, so destockifiers and stock injectors reach area barmen, mechanics, and medics. (reported by Charles Peugeot)
-    - Areas from an older save reset to 1 service on first load and grow again from there. (reported by Charles Peugeot)
+    Conquest
+      - Changed an outpost service to trade, repair or heal only. A mission taken before this change can still be turned in.
+      - Changed outpost stock to a cap per category, and ammo to a cap per type in rounds. An outpost trader deals mainly in ammunition. Reported by Charles Peugeot.
+      - Changed each service role to stock from a list of its kind. A barman keeps a full pantry, a medic a full dispensary and a mechanic his tools and detectors.
+      - Added a post and a PDA icon for every barman, mechanic and medic, as the trader has.
+      - Changed a service that is hijacked, displaced or loses his job to return to his post, or to be replaced when he cannot, instead of wandering off or trailing you.
+      - Changed outpost services to stand at separate points around the area center, each facing in. Reported by Charles Peugeot.
+      - Added a look from the faction's wardrobe for each service, a different one for each service of a faction on a map. Renegades wear bandit masks. Reported by Charles Peugeot.
+      - Added a sidearm for each outpost service. Reported by jacksob.
+      - Changed an outpost service to spawn at a regular rank. Killing one hits faction relations like any ordinary kill.
+      - Changed trader stock addons to recognize every outpost service. Destockifiers and injectors reach area barmen, mechanics and medics. Reported by Charles Peugeot.
+      - Changed the areas of an older save to reset to 1 service on the first load and grow again. Reported by Charles Peugeot.
 
   Economy
-    - Fixed stalkers clearing out their own artefacts, binoculars, and night-vision devices through trade, barter, and loot, until they carried none.
-      A stalker now keeps one of each and moves only the surplus. Those items turn up on the bodies you loot again.
+    - Fixed stalkers selling, bartering and looting away their artefacts, binoculars and night vision devices until they carried none.
+      A stalker now keeps one of each and moves only the surplus, and those items turn up on the bodies you loot again.
 
 1.8.5
-  Summary: trader follow fix, kill-loot fix, service variety, supplies below hub, PDA marker, decay default
+  The outpost trader at his post, a field stock below the hub, and service variety
+    The outpost trader now holds his post, stocks a lean field assortment below his faction's hub, and restocks through the game's trader pipeline.
+    Held areas now grow a mix of services, the least common role first, and a map gets traders, barmen, mechanics and medics.
+    Other things you will notice. A killed service drops only a stalker's loot, the trader has a PDA icon, and areas decay later by default.
 
   Territory
-    - Fixed the outpost trader leaving his trade post to follow the player around the level. (reported by Rambito)
-    - Killing a service NPC no longer drops his shop stock, only the ordinary loot of a stalker his rank, so an outpost trader is no longer a walking weapon cache. (suggested by Derda)
-    - A held area now grows 1 service NPC rather than the full set, and a faction's areas grow the least common service first, so a map fills with a mix of traders, barmen, mechanics, and medics.
-      Spread is tuned by Max services per level and Max same service per faction per level under Mutators > Conquest.
-    - The outpost trader now carries the standard PDA trader icon, shown like any hub trader and hidden while his faction is hostile to you.
-    - The outpost trader now stocks below his faction's hub trader.
-      His assortment tracks your goodwill and wealth like the hub, then drops a set number of tiers, so an area shop always trails the hub and scales with your standing.
-      Set the drop and an absolute ceiling with Supplies tiers below hub and Max supplies tier under Mutators > Conquest. (reported by Greshnik5126)
-    - Outpost services now stock a lean field assortment by category, editable in a DLTX config: the default sells ammo, medical, provisions, and a few grenades and repair parts, and drops weapons,
-      armor, and artefacts, so an outpost service resupplies you without being a full armory. Caps are per item type. (suggested by BigPok)
-    - Outpost traders now restock through the game's standard trader pipeline, so trader stock addons (destockifiers, restock hooks, stock injectors) govern them like any other trader.
-    - Conquered areas now decay after 5 game days by default, up from 2, and the service NPC dissolves with the area rather than wandering off as a stocked shopkeeper.
+    Conquest
+      - Fixed the outpost trader leaving his post to follow you around the level. Reported by Rambito.
+      - Changed a killed service NPC to drop only the loot of a stalker of his rank. He used to drop his whole shop stock. Suggested by Derda.
+      - Changed a held area to grow 1 service, the role a faction's areas have least, tuned by Max services per level and Max same service per faction per level.
+      - Added the PDA trader icon for the outpost trader, shown like a hub trader's and hidden while his faction is hostile to you.
+      - Changed the outpost trader to stock below his faction's hub trader. His stock follows your goodwill and wealth, then drops a set number of tiers. Reported by Greshnik5126.
+      - Added a lean field stock for outpost services, set in a DLTX config. It sells ammo, medical, provisions, a few grenades and repair parts, and leaves out weapons and armor. Suggested by BigPok.
+      - Changed the outpost trader to restock through the game's trader pipeline. Trader stock addons govern him like any trader.
+      - Changed the default decay of a conquered area to a longer one, and the service NPC now goes with the area.
 
 1.8.4
-  Summary: Alpha combat, conquest, swarm, infestation, outpost traders, barter, campfire reach
+  Alpha combat, territory takeovers, outpost services and NPC barter
+    Creatures is a new tab, and the alpha combat cut in 1.7.0 returns. Each kill makes an alpha hit harder and take less, and it carries trophy parts and a dust shimmer.
+    Conquest, swarms and infestations become takeovers. The holder owns the area until its claim decays, and a held camp grows outpost services.
+    Other things you will notice. Stalkers barter within their faction, companions can loot your kills, and squads gather at campfires across the map.
+
+  Territory
+    Conquest
+      - Added outpost services on held camps. A trader takes a post at the camp center and works as a full shopkeeper, alongside a barman, a mechanic or a medic who trade, repair and heal.
+        Guards and residents keep their patrols and camp jobs around them, and every service stocks the faction's market.
+      - Changed conquest to a takeover. The winning faction owns the area, which respawns only its squads and refills faster while held, capped by the map's danger tier.
+        A held area stays locked until its claim decays, and wiping the holders leaves it with them.
+    Swarm
+      - Added mutant swarms. Pack and lair species, bloodsuckers, snorks, dogs and cats, take an empty smart the way stalkers conquer, and it respawns only their species while held.
+        Solo bosses and vermin never take ground.
+    Infest
+      - Added infestations. A pack with an alpha turns a den into a nest that holds more squads than a swarm and replaces the smart's spawns until it decays.
 
   Creatures
-    - Alpha mutants scale with their kills.
-      Each alpha level raises damage dealt and lowers damage taken, up to +15% and -15% at max level, scaling linearly from level 1, each capped by its own slider.
-      The caps are set separately against the player and against NPCs. Alphas also gain panic immunity, so they never flee on hit. The corpse carries the species hide plus extra trophy parts.
-    - Added a dust-shimmer particle on every alpha's body, so you read the pack leader on sight. Toggle under Creatures > Alpha.
-
-  Territory
-    - Added outpost services on held camps. A camp a faction holds long enough spawns real service NPCs that run the game's own jobs.
-      The trader takes a real trade post at the camp center and works as a full shopkeeper you buy from and sell to, alongside a barman, mechanic, or medic that trade, repair, and heal.
-      Guards and residents keep their patrols and camp jobs around them, every service stocks the faction's market, and growth runs on game time. Turn it off under Mutators > Conquest.
-    - Conquest is now a takeover. The winning faction owns the area, so it respawns only the winner's squads and refills faster while held.
-      Squads are capped to the map's danger tier: novices in Cordon and Marsh, up to veterans from the mid maps north.
-      A held smart is locked until its claim decays: nothing re-seizes it, and wiping the holders does not flip it.
-    - Added mutant swarms. Pack and lair species (bloodsuckers, snorks, dog and cat packs) take an empty smart the same way stalkers conquer, and it respawns only their species while held.
-      Solo bosses (pseudogiants, chimeras) and vermin never take ground, and all mutant species share one per-map cap.
-    - Added infestations. A pack carrying an alpha turns a den into a nest: more squads than a swarm, replacing the smart's original spawns entirely until it decays, under its own per-level cap.
+    Alpha
+      - Added alpha combat. Each alpha level raises the damage an alpha deals and lowers the damage it takes, with separate caps against you and against NPCs.
+        An alpha never panics, and its corpse carries the species hide and extra trophy parts.
+      - Added a dust shimmer on every alpha's body. You can tell the pack leader on sight.
 
   Economy
-    - Added NPC to NPC barter. Stalkers trade with their own faction, beyond visiting traders. A supply-short squad that reaches a friendly smart swaps surplus for what it lacks with a stalker there,
-      no money changing hands: ammo for its equipped weapons, medical supplies, grenades, and a spare weapon, outfit, or helmet that beats what the other carries.
-      An off-map version makes the trip to a friendly squad on another map. Barter switches on under Causes > Needs, and the per-meeting item cap sits under Economy > Barter.
-    - Added an Economy > Loot toggle to let your companions loot and field-dress bodies you killed. They are held off your kills by default, like any other NPC.
+    Loot claim
+      - Added a toggle that lets your companions loot the bodies you killed. They stay off your kills by default, like any NPC.
+    Barter
+      - Added NPC barter. A supply-short squad at a friendly smart swaps surplus for what it lacks with a stalker of its faction, and no money changes hands.
+        Ammo for its guns, medical supplies, grenades, and a weapon, outfit or helmet that beats what the other carries move. An off-map version travels to a friendly squad on another map.
 
   Needs
-    - Added campfire detection across the whole map. Squads now gather at fires everywhere, instead of only in bases or near the player.
+    - Changed campfire detection to cover the whole map. Squads gather at fires everywhere, where they used to gather only in bases or near you.
 
 1.8.3
-  Summary: Trader sell-out, market chatter, ammo quality, trade variety, presence-capped conquest, off-map release fix
-
-  Market
-    - The faction market now works both directions.
-      It already restocked a trader with the items his faction's stalkers recently sold him, and now it also reduces his stock of the staples they keep buying.
-      A share of each drained by ral stalkers buying items is applied at every restock, 30% by default and up to a full wipe at the maximum,
-      so a faction that trades heavily leaves its own traders visibly short.
-    - A nearby stalker now remarks on the PDA when a trader takes in something valuable or runs short of a staple.
-
-  Trade
-    - NPCs no longer buy broken and old ammo, restocking usable rounds instead of the cheapest damaged ones.
-    - NPCs now restock food, drink, and anti-rad at traders, and veterans also buy pills, tools, and repair parts, feeding all of it into the trader sell-out.
-
-  Dispatch
-    - An off-map squad that times out now releases its members with it, rather than leaving them behind in the world.
+  The market sell-out, trader chatter, better NPC restocks and presence-capped conquest
+    The Market now works both ways, and a trader runs short of the staples his faction's stalkers keep buying.
+    Trade restocks more. Stalkers restock usable ammo, food, drink and anti-rad, and conquest follows a faction's live presence on a level.
+    Other things you will notice. A stalker remarks when a trader runs short, off-map squads release their members, and the MCM resets speak Russian.
 
   Territory
-    - Conquest and swarming now calculate a faction's live presence on a level. Previous system was favoring the dominant faction, now it is viceversa.
-      Reading real occupancy means a faction with nothing on a level always gets its first, so dominant factions saturate and stop while newcomers and underdogs keep expanding.
-    - The last smart terrain a community holds on a level is never a conquest, swarm, or infestation target, so no faction is wiped off a map.
-    - Replaced the Max conquered and Max swarmed per level sliders with Max faction smarts per level under Causes > Opportunities, one for conquest and one for swarm.
+    - Changed conquest and swarming to read a faction's live presence on a level. A faction with nothing on a level always gets its first area, and dominant factions stop while newcomers expand.
+      The old rule favoured the dominant faction.
+    - Changed the last smart a community holds on a level to stay out of conquest, swarm and infestation, so no faction is wiped off a map.
+    - Changed the Max conquered and Max swarmed per level sliders to Max faction smarts per level under Causes > Opportunities, one for conquest and one for swarm.
+
+  Economy
+    Market
+      - Added the sell-out. A trader's stock of the staples his faction's stalkers keep buying shrinks at each restock. A faction that trades heavily leaves its own traders short.
+      - Added a PDA remark from a nearby stalker when a trader runs short of a staple.
+    Trade
+      - Changed stalkers to buy usable rounds instead of the cheapest damaged ammo.
+      - Changed stalkers to restock food, drink and anti-rad at traders, and veterans also buy pills, tools and repair parts.
+      - Fixed NPC sales handing gear to the trader. A sold item is released.
+
+  General
+    - Fixed an off-map squad that timed out leaving its members behind in the world.
+    - Added Russian text for the MCM reset confirmations.
 
 1.8.2
-  Summary: Squad change sensor, loot yield tips, alpha tracking, mutation caps, off-map settle, smart-count fix, massacre firing, heal detection, platform status
-
-  - Added a compatibility check for the xlibs and xray-monolith/AOEngine versions, with a clear pass or fail.
-  - An outdated xlibs no longer crashes AlifePlus on load. The dependency check now shows the update-xlibs message instead of a raw script error from the MCM platform footer.
-  - Added Russian localization for the MCM reset confirmation messages.
-  - The imprecise vanilla squad update is replaced by one that fires only when a squad really changes: a property, a move to another smart, a level crossing, or going online or offline.
-    The new A-Life Rate setting produces exactly that many squad events per minute, Zone-wide. The A-Life Ratio setting now splits that rate between your map and background maps at the source.
-    The result is consistent, emergent behavior with harmonized on-map and off-map events. It costs almost nothing, since a real event fires for any change instead of 200 throttled events per second.
-  - Fixed enemies voicing the leave-a-kill-for-you remark, now only neutral and friendly stalkers do.
-  - Fixed kill counts of despawned NPCs leaking to new entities, falsely promoting mutants to alpha. (diagnosed by Muratovnik)
-  - Fixed mutation caps lowered in MCM not applying to existing saves, restore now trims to the cap. (PR by Muratovnik)
-  - Fixed the radio re-gossiping already-broadcast events after a reload or level change. (diagnosed by Muratovnik)
-  - Fixed massacre and base-attack reactions suppressed during the heavy combat that triggers them. (diagnosed by Muratovnik)
-  - Fixed error spam when the loot claim read a corpse position on a skeleton without a spine bone.
-  - The statistics overlay now reads as a ledger: incoming, denied, evaluated, outcome sections, full-word labels, radiant and reactive columns, rates over the last minute instead of session averages.
-  - Lowered the Supply need threshold default from 24 to 12 game hours, stalkers restock twice as often.
-  - Player heals now draw enemy hunts or ally aid for any medical item, not a fixed list. (diagnosed by Muratovnik)
-  - Added a vanilla A-Life fix keeping smart terrain squad counts accurate when a squad relocates.
-  - Off-map travellers settle at their destination now that the vanilla smart-count bug is fixed.
-
-1.8.1
-  Summary: Save self-heal
-
-  Compatibility
-    - Saves carrying loot-ownership data from before 1.8.0 self-heal on load.
-
-1.8.0
-  Summary: Symmetric chase, symmetric kill ownership, fair corpse looting, faction market, shared item policy, reaction limit
-  
-  Market
-    - A faction's hub traders now briefly stock a few items that faction's stalkers recently sold.
-      The stock is gated to your rank, priced at a premium, and cleared after a short window.
-      Works only with real items, sold by stalkers in the Trade system which earlier were obtained from looting or loadouts
-    - Loot, trade, and stash now share the same policies  
-
-  Loot Claim
-    - A kill now belongs to whoever made it, reserved the same way in every direction.
-      Your kills are reserved from NPCs, an NPC's from you, and NPCs no longer strip each other.
-      The claim covers the killer's whole squad, so the body stays held while the squad stands over it.
-      Each side has its own switch, radius, and claim time under Economy > Loot claim, 150 m and 1 hour.
-	  
-  Loot Policy
-    - An NPC that loots a body now takes a fair share and leaves the rest, based on a policy config 
-      A looter keeps only ammo for its own weapon and a capped share of each supply, the rest is destroyed.
-      Bodies you reach later still hold their gear, so loot-blocker addons are no longer needed.
-    - NPCs occasionally remark when they leave a kill for you or for another squad.
-	
-  Chase
-    - New chase system extended from vanilla based on target live position, symmetrical for player and NPCs.
-      It cancels on the target's death, map exit, or turn to non-hostile. It pauses when the target is at a base or a surge occurs.	
+  A squad change sensor, A-Life Rate and Ratio, and fixes from Muratovnik
+    A squad event now fires when a squad moves, crosses a level or goes online, and A-Life Rate sets how many fire per minute.
+    A-Life Ratio splits that rate between your map and the other maps.
+    Other things you will notice. Alphas, mutation caps, gossip and massacre reactions are fixed, the overlay shows sections per stage, and stalkers restock more often.
 
   Framework
-    - A map where you are the only enemy no longer aims every reaction at you. Each instigator triggers only so many reactions per game hour, tunable as Reactions per causer.
-	- Improved the logic of checking available job/animations in smart terrains. Squads now move on from a full base campfire to find room elsewhere.
+    - Changed the squad update to fire only when a squad really changes, a move to another smart, a level crossing or going online or offline.
+      A-Life Rate produces that many squad events per minute across the Zone, and A-Life Ratio splits them between your map and the rest. It replaces a stream of throttled vanilla updates.
+    - Added a vanilla A-Life fix that keeps a smart's squad count right when a squad relocates, and off-map travellers now settle at their destination.
+
+  Creatures
+    - Fixed the kill counts of despawned NPCs passing to new entities and promoting mutants to alpha. Diagnosed by Muratovnik.
+
+  Territory
+    - Fixed mutation caps lowered in MCM not applying to an existing save. A restore trims to the cap. PR by Muratovnik.
+
+  Economy
+    Loot claim
+      - Fixed enemies voicing the leave-a-kill remark. Only neutral and friendly stalkers do.
+      - Fixed error spam when the loot claim read a corpse with no spine bone.
+
+  News
+    - Fixed the radio gossiping already broadcast events again after a reload or a level change. Diagnosed by Muratovnik.
+
+  Causes
+    Reactions
+      - Fixed massacre and base attack reactions held back during the heavy combat that triggers them. Diagnosed by Muratovnik.
+      - Changed a heal by the player to draw enemy hunts or ally aid for any medical item. Diagnosed by Muratovnik.
+    Needs
+      - Changed the Supply need to come due sooner by default, and stalkers restock twice as often.
+
+  Development
+    - Changed the statistics overlay to read as a ledger, with incoming, denied, evaluated and outcome sections and rates over the last minute.
+    - Added a compatibility status for the xlibs, xray-monolith and AOEngine versions, with a clear pass or fail.
+    - Fixed an outdated xlibs crashing AlifePlus on load. The dependency check shows the update message.
+
+1.8.1
+  A save repair for old loot ownership data
+    A save that carries loot ownership data from before 1.8.0 repairs itself on load.
+
+  - Fixed a save from before 1.8.0 carrying loot ownership rows the new loot claim could not read. They are dropped on load.
+
+1.8.0
+  The faction market, symmetric chase and kill ownership, and fair corpse looting
+    Economy splits into pages. A faction's hub traders briefly stock what its stalkers sold, and the loot ownership of 1.7.7 now holds in every direction.
+    Chases now follow the target's live position for you and for NPCs alike, and a looting NPC keeps a fair share of a body.
+    Other things you will notice. Stalkers voice trader news on the PDA, a map where you are the only enemy no longer aims every reaction at you, and squads leave a full campfire.
+
+  Economy
+    Market
+      - Added the Market. A faction's hub traders briefly stock a few items its stalkers recently sold, gated to your rank, priced at a premium and cleared after a short window.
+        It works only with real items that stalkers sold through trade after looting them or carrying them in their loadouts.
+      - Added PDA chatter. A nearby stalker remarks when his faction's trader restocks something notable.
+    Loot claim
+      - Added kill ownership in every direction. Your kills are reserved from NPCs, an NPC's from you, and NPCs no longer strip each other's kills.
+        The claim covers the killer's whole squad, and the body stays held while the squad stands over it. Each side has its own switch, radius and claim time.
+    Loot policy
+      - Added the loot policy. A looting NPC keeps ammo for his own weapon and a capped share of each supply, and the rest is destroyed.
+        Bodies you reach later still hold their gear, and loot blocker addons are no longer needed.
+      - Added remarks from NPCs who leave a kill for you or for another squad.
+    Trade
+      - Changed loot, trade and stash to share the same item policies.
+
+  Framework
+    - Added Reactions per causer. Each instigator triggers only so many reactions per game hour, and a map where you are the only enemy no longer aims every reaction at you.
+
+  Consequences
+    - Changed chases to follow the target's live position, the same for you and for NPCs. A chase ends when the target dies, leaves the map or stops being hostile.
+      It pauses while the target sits in a base or a surge is on.
+    - Changed squads at a full base campfire to move on and find room elsewhere, and squads that scatter off a fire or stand on an empty slot are released.
 
 1.7.9
-  Summary: Interaction Dot Marks compatibility
+  Interaction Dot Marks compatibility for the loot claim
+    The NPC kill block now holds against Interaction Dot Marks.
 
-  - Fixed Interaction Dot Marks bypassing the NPC kill block (corpse open, take-all, and auto-loot).
+  - Fixed Interaction Dot Marks opening, taking all from and auto-looting an NPC's claimed kill.
 
 1.7.8
-  Summary: Loot ownership: open-block, split toggles, faction and companion exemptions, load reliability
+  Loot ownership toggles, a full open block, and faction and companion rules
+    An NPC's claimed kill no longer opens at all, and the reserve and the block have separate toggles.
 
-  - Improved corpse loot ownership stability when loading a save or crossing a level transition (fast travel).
-  - An NPC's claimed kill now won't open at all. Earlier it only blocked item takes. Auto-loot through the loot window is stopped with it.
-  - Split loot ownership into 2 independent Economy toggles: reserve your kills, and block looting NPC kills.
-  - An enemy faction's kill no longer locks you out. Only neutral and friendly stalkers' claims hold.
-  - Your own companion's body is always yours to recover.
-  - The claim warning now varies across several lines.
+  Economy
+    - Changed an NPC's claimed kill to stay closed. It used to block only the item takes, and auto-loot through the loot window is stopped with it.
+    - Changed loot ownership into 2 toggles, reserve your kills and block looting NPC kills.
+    - Changed an enemy faction's kill to stay open to you. Only the claims of neutral and friendly stalkers hold.
+    - Changed the body of your own companion to stay yours to recover.
+    - Changed the claim warning to vary across several lines.
+    - Improved corpse loot ownership on a save load or a level change.
 
 1.7.7
-  Summary: Loot ownership, trade profit cap, smoke grenade exclusion, wider off-map travel, AOEngine compatibility, massacre human-only
+  Loot ownership, a trade profit cap, wider off-map travel and AOEngine support
+    Economy is a new tab. Your kills are reserved from NPC looters nearby, and an NPC's kill stays closed while its killer is close.
+    Other things you will notice. Trade caps an NPC's profit, veteran-led squads travel off-map, and AlifePlus runs on AOEngine.
 
-  - Added loot ownership, both ways. Your kills are reserved from NPC looters within a radius, and an NPC's kill cannot be looted while its killer is alive and nearby. Radius is tunable under Economy.
-  - Added a Trade profit cap (Economy): the net rubles an NPC gains per trade, all ranks, default 5000.
-  - Changed trade and stash to keep smoke grenades out of NPC item flow. NPCs never buy, sell, or stash smoke, which crashes the game when an NPC throws it on current exes.
-  - Changed off-map travel so veteran-led squads now make cross-map trips, previously master-led only.
-  - Added AOEngine v0.55+ support.
-  - Fixed massacre investigations firing when a mutant pack wipes a stalker squad.
+  Economy
+    - Added loot ownership both ways, with its radius under Economy.
+    - Added Trade profit cap, the net rubles an NPC gains per trade at any rank.
+    - Changed trade and stash to keep smoke grenades out of NPC item flow. A smoke grenade an NPC throws crashes the game on current exes.
 
-1.7.6
-  Summary: offmap class guard, MCM reset fix, save self-heal, reset warning
+  World
+    Off-map
+      - Changed off-map travel to include veteran-led squads. Only master-led squads used to make the trip.
 
-  - Offmap dispatch no longer crashes when a squad's class binding is broken.
-  - Reset ALL to Defaults, Reset ALL to Stateless Defaults no longer crash on click on certain exes
-  - Saves carrying stale offmap tracking from prior versions self-heal on load.
-  - Added warning above reset buttons to save or discard pending MCM changes first.
-
-1.7.5
-  Summary: Trade rework, Social Off-map, item-keeping arrivals, MCM stateless reset, supply routing fix, runtime untouchables
-
-  Trade
-    - NPCs visit trader smarts on arrival, sell surplus, and restock ammo, grenades, consumables per rank.
-      Trade policy is editable per rank in a DLTX config, built on Alundaio's buy and sell core.
-      Addon items inherit their category automatically, so AI medkits, AP rounds, and GAMMA ammo all work.
-      Equipped pistols and rifles drive k_ap-sorted ammo tier picks at runtime.
-    - Rookies now carry basics, veterans now carry premium ammo (real k_ap), grenades, larger stocks.
-    - Per-rank profit cap (1500/5000 RU) and SELL-before-BUY order so sales fund restocks.
-
-  Needs
-    - NPC arrivals at campfires, shelters, outposts no longer consume carried items.
-    - Social Off-map cause now fires: peaceful sociable factions travel cross-map for downtime visits.
-      Ecologists, Loners, Clear Sky now appear at off-map bases like Cordon farm and Yantar.
-      Includes 5 EN + 5 RU PDA news templates for cross-faction visits.
-    - Supply Trader off-map now peaceful greedy factions only (outlaws stay in their territory).
-
-  Stash
-    - Stash policy is now editable in a DLTX config: per-category bands, extras, and fill specials.
-      Ammo loot matches per squad member: each round goes to the member whose pistol or rifle takes it.
-      Extras pass after the category sweep picks the top-N by cost (squads grab valuables policy missed).
-      Whole stash skipped if any quest item is present (untouchable preservation).
-
-  Supply routing
-    - Supply traffic now reaches every curated trader, medic, mechanic across the entire Zone.
-      Added 22 mechanics + 4 quest NPCs as supply destinations, plus a Loris faction fix.
-
-  MCM
-    - Added Reset ALL to Stateless Defaults button + Causes/Consequences Social Off-map pages.
-    - Removed cash cap, stash loot/fill sliders, and Arrive action toggles (sliders to LTX, toggles no-op).
-    - Fixed Reset ALL to Defaults to apply on first click.
-
-  Performance
-    - xlibs index + frame-spread optimizations now cover same-level creatures, chests, smarts.
+  Causes
+    Reactions
+      - Fixed massacre investigations firing when a mutant pack wipes a stalker squad.
 
   Compatibility
-    - Quest items (story_id), companion gifts, player-strapped weapons now survive NPC trade and stash deposits.
-    - xlibs 1.7.5 dependency (delivers xinventory category model, runtime untouchables, xdata trader audit).
+    - Added AOEngine support.
+
+1.7.6
+  An off-map crash guard, an MCM reset fix and a save repair
+    Off-map dispatch survives a squad whose class binding is broken, and the MCM reset buttons no longer crash.
+
+  - Fixed off-map dispatch crashing on a squad whose class binding is broken.
+  - Fixed Reset ALL to Defaults and Reset ALL to Stateless Defaults crashing on some exes.
+  - Fixed stale off-map tracking from earlier versions. A save repairs it on load.
+  - Added a warning above the reset buttons to save or discard pending MCM changes first.
+
+1.7.5
+  The trade rework, off-map social visits, item-keeping arrivals and stateless reset
+    Stalkers now trade like the player. They visit traders to sell their surplus and restock by rank, on a trade policy you can edit in DLTX.
+    Added Social Off-map. Peaceful factions visit other maps for downtime, and arrivals at campfires and shelters leave carried items alone.
+    Other things you will notice. Stash policy is editable, supply runs reach every trader, medic and mechanic, and quest items survive NPC trade.
+
+  Economy
+    Trade
+      - Changed trade to run on arrival at a trader. An NPC sells his surplus and restocks ammo, grenades and consumables by rank, on Alundaio's buy and sell core.
+        The policy is editable per rank in a DLTX config, and addon items take their category on their own, so AI medkits, AP rounds and GAMMA ammo all work.
+      - Changed rookies to carry the basics and veterans premium ammo, grenades and larger stocks, with a profit cap per rank. Sales come first and fund the restock.
+
+  Causes
+    Needs
+      - Changed arrivals at campfires, shelters and outposts to leave carried items alone.
+      - Added Social Off-map. Peaceful sociable factions travel to another map for downtime, and Ecologists, Loners and Clear Sky turn up at bases like the Cordon farm and Yantar.
+      - Changed Supply Trader Off-map to peaceful greedy factions only. Outlaws stay in their territory.
+      - Changed supply runs to reach every trader, medic and mechanic in the Zone, the vanilla mechanics and quest NPCs included.
+    Opportunities
+      - Changed the stash policy to a DLTX config. Ammo goes to the squad member whose gun takes it, the best extras by cost come after, and a stash with a quest item is skipped.
+
+  Development
+    - Added Reset ALL to Stateless Defaults and the Social Off-map pages.
+    - Removed the cash cap, the stash loot and fill sliders and the arrive action toggles.
+    - Fixed Reset ALL to Defaults needing a second click.
+
+  Compatibility
+    - Changed NPC trade and stash deposits to leave quest items, companion gifts and weapons the player strapped alone.
+
+  Performance
+    - Improved world scan performance for the creatures, chests and smarts on your level.
 
 1.7.1
-  Summary: load-time fps fix for the world-scan caches
-  Fixed: Save load no longer drops to 30fps for 10+ seconds on saves with large alife populations.
-  A per-entity tracing wrap was removed from the cache builders. At the debug log level it cost 30-50 microseconds per entity, pushing 200 operations per frame over budget during warmup.
-  Fixed: Standalone-NPC cache filters to Stalker-class at iterate time. Queue shrinks from the full alife pool (40k+ on heavy GAMMA saves, mostly inventory items) to the actual Stalker population.
-  Script_Trader entities (Sidorovich and the named base traders) no longer indexed by this bucket.
+  A load-time stutter fix for the world scan caches
+    A save with a large A-Life population loads without a long frame drop.
+
+  - Fixed a save load dropping the frame rate for several seconds on a large A-Life population.
+  - Changed the standalone NPC cache to index stalkers only, which shrinks the queue from the whole A-Life pool to the real stalker population.
 
 1.7.0
-  Summary: stalker trade economy with player parity, world scan performance, stash and consume rebuild, reactive preemption, radiant tactical scoring, per-generator SCAN budget, Area Swarm split,
-           area mutators on by default with per-level caps, damage mutators removed
-  Trade:
-    NPCs that arrive at a supply trader smart sell loot for money and buy ammo for their equipped pistol and rifle, plus PDAs, medkits, bandages, and grenades from a curated keep list.
-    One economy for the player and NPCs, with modpack items working automatically. Built on Alundaio and Tronex's offline-trade work.
-    Destination filter: only smarts hosting a curated trader, medic, or mechanic count. Off-map Supply Trader trips no longer cross maps to faction HQs without a known trader.
-    Sells: anything not equipped, not quest, not money, not on the keep list, not ammo for the equipped pistol or rifle. Vanilla prices, default half-cost for unclassified items.
-    Buys: pistol and rifle ammo, plus the keep list (PDAs, medkits, bandages). Grenades restricted to F1 and RGD5, veteran rank or higher only, at 2x price.
-    Cash cap: after sell and buy, any cash above the cap (MCM, default 5000 RU) goes back to the trader. NPCs never leave a supply visit with more than the cap.
-    Hostility: faction squads route around enemy bases on routine trips. The smart hostility scan reads curated NPC faction overrides (Petrenko at the Dolg base, Sakharov at Yantar, Ashot at Yanov,
-    the Freedom leader at Army Warehouses, and the rest), so bases identified by their named trader or leader correctly turn away enemies.
-  Item economy:
-    Stash Loot: squads skip the entire stash if it holds any crafting item, by the vanilla kind classification, so the stash stays untouched for the player.
-    MCM-gated (Consequences > Stash Loot > Skip stashes with crafting items, default on).
-    Otherwise the squad takes only items on the AP keep list (PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades), capped per section by vanilla keep count, and clears the rest.
-    The same keep list drives Stash Fill and the trader buy phase. One allowlist governs all 3 flows. Addon crafting items are protected automatically by the engine kind classifier.
-    Stash Fill: squads deposit only surplus from their own inventory above the per-section keep floor.
-    The 1.6.0 curated pool that spawned random artefacts, medkits, and toolkits into stashes is gone. AlifePlus no longer spawns items, it transfers what the squad already carries.
-    Restricted to the keep list (PDAs, medkits, stims, bandages, drugs, AI medkits, unprimed grenades), the same allowlist that drives the trader buy phase.
-    Food, drink, weapons, outfits, artefacts, generic ammo all stay with the squad: the stash cache stores section names only,
-    so anything with condition / charge / count state would round-trip pristine, and food/drink aren't on-brand for a stalker stash anyway.
-    Stash dispatches now fire at any non-base smart and while the squad is at its own base. Old hostility filter and at-own-base rejection removed.
-    Needs: arrival consumption (eat, heal, rest, social, outpost) walks inventory and releases the first vanilla-classified match.
-    Hunger consumes food and drink, including cooked mutant meat. Healing consumes health and bleed items. Rest, social, and outpost consume anti-rad.
-    Any addon consumable with the right kind or reward set satisfies the need.
-  Dispatch:
-    Reactive events (massacre, wounded, base attacks, squad kills, artefact takes, alpha kills) can preempt squads walking to an on-map need, an instinct, or a stash ambush.
-    Squads already committed to a territory take, a stash run, an off-map trip, or a reactive task continue uninterrupted. External script ownership (Warfare) stays protected.
-    Radiant decisions score for tactical soundness after rules and SCAN pass.
-    A squad that would leave its source smart undefended by its faction, or that would target a smart another scripted squad is already heading to, scores low and usually gets rejected.
-    2 static conditions: last-of-faction at source (-0.20), smart already targeted by another scripted squad (-0.20).
-    Reactive consequences bypass this, since event responses are not voluntary picks.
-  Drives:
-    Supply need weight raised to 2.0 (was 1.0). Job weight raised to 1.5. Squads pursue trade and outpost trips above campfire and shelter when several needs come due at once.
-  Performance:
-    5-10x faster world scanning across find squads, find smarts, find stashes. Per-level caches with frame-spread refresh replace the global pool walk on every scan.
-    The radiant scan budget is now per-generator. A slot is spent only when a cause actually scans the world, and cheap rule rejections cost nothing.
-    No single cause can starve the rest of the cascade.
-    Reactive fan-out caps at 2 consequences per triggering event (was 5). The cap is on how many consequences fire from one cause, not on what each consequence does.
-    A single squad wipe or wounded call no longer expands into a 5-way chain.
-  Combat:
-    Object mutators removed. Alpha mutants and veteran+ stalkers now take vanilla damage and drop vanilla loot.
-    Specifically dropped: alpha hit power dealt/taken bonus, alpha panic immunity, alpha bonus loot table, veteran+ stalker hit power dealt/taken multiplier (NPC-vs-NPC).
-    Alpha promotion is unchanged. Alphas still register with the tracker, so same-species hunters dispatch when one is killed.
-  MCM:
-    Added: Mutators > Area Swarm page. Consequences > Stash Loot min/max items sliders. Consequences > Stash Loot "Skip stashes with crafting items" toggle (default on).
-    Consequences > Supply Trader NPC cash cap slider (0-50000 RU, default 5000, caps post-trade NPC cash).
-    Removed: Mutators > Alpha and Stalker Rank pages. Alpha Promote loot toggle. Social Off-base (cause + consequence).
-    Stash Loot protect-toolkits toggle (vanilla kind classification protects them unconditionally now).
-    Renamed: "active period" / "dormant period" relabeled "day" / "night" across cause descriptions.
-    Changed: Area mutators (Conquest, Swarm, Infest) on by default. Per-level cap unified at 3 across all 3 (was global FIFO 30 for Conquest/Swarm, per-level 1 for Infest). Decay 48h.
-    Upgrade clears any previously persisted conquered/swarmed/infested smarts once (xchange migration), spawns revert to vanilla LTX until repopulated by live dispatch.
-    Changed: Radiant tick 10s -> 20s. News compose interval 30-100s -> 60-200s (news fires half as often).
-  Fixed:
-    Hostility now revalidates on every scan during long-running dispatches.
-    Squadkill Revenge and Harvest Rob actor chasers release within 20s if the chaser's faction becomes friendly to the player mid-pursuit
-    (previously the chaser kept following across a Loner -> Duty / Freedom switch).
-    The smart terrain roster now tracks AlifePlus squad moves, so capacity counts our routings. Integrator mods receive a squad-enters-smart and a squad-leaves-smart callback.
-    Non-combat radiant gates (supply trader, harvest, hunt, shelter, social, stash relocate) read runtime smart occupancy.
-    This removes a Lua-iterator pick over a smart's props that could flip the result between sessions where a smart carried several faction props.
+  The stalker trade economy, faster world scans, reactive preemption and Area Swarm
+    Supply Trader now trades. Stalkers at a supply trader sell their loot and buy ammo for the guns they carry, on the trade rules the player uses.
+    World scans run on per-level caches, and a reaction can now pull a squad off a routine trip.
+    Other things you will notice. Area Swarm has a page, the area mutators start on, squads weigh a trip's tactics, and alphas fight at vanilla strength again.
+
+  Territory
+    - Added the Area Swarm page.
+    - Changed Conquest, Swarm and Infest to start on, with the same per-level cap. An upgrade clears the held areas once, and live dispatch fills them again.
+    - Removed the Alpha and Stalker Rank pages. Alphas and veteran stalkers take vanilla damage and drop vanilla loot, and alpha promotion stays.
+
+  Causes
+    Needs
+      - Added trade at the supply trader. A squad sells loot for money and buys ammo for its pistols and rifles, PDAs, medkits, bandages and grenades from a keep list.
+        Only smarts with a curated trader, medic or mechanic count, a veteran or higher buys grenades, and a cash cap sends the excess back. Built on Alundaio and Tronex's offline trade.
+      - Changed arrivals to use what the need asks for. Hunger eats food and drink, cooked mutant meat included, healing uses medical items, and rest, social and outpost visits use anti-rad.
+      - Changed the Supply and Job needs to weigh more. Trade and outpost trips come before campfires and shelters when several needs are due.
+      - Removed Social Off-base.
+    Opportunities
+      - Changed Stash Loot to skip a stash that holds a crafting item, and to take only items on the keep list otherwise.
+      - Changed Stash Fill to deposit only the squad's surplus above the keep floor. AlifePlus no longer spawns items into a stash.
+      - Changed stash trips to fire at any smart outside a base, and while the squad sits at its faction's base.
+
+  Consequences
+    - Changed reactions to take squads off an on-map need, an instinct or a stash ambush. Squads on a territory take, a stash run, an off-map trip or a reaction carry on.
+    - Added tactical scoring for radiant trips. A trip that leaves the source smart undefended by its faction, or heads where another scripted squad is going, scores lower and is rejected more often.
+    - Changed a reaction to fire at most 2 consequences.
+    - Fixed hostility going stale on long dispatches, and chasers following you after their faction turned friendly.
+    - Fixed the smart roster missing AlifePlus squad moves. Integrator mods get a squad enters smart and a squad leaves smart callback.
+
+  News
+    - Changed the news to come half as often by default.
+
+  Performance
+    - Improved world scan performance with per-level caches that refresh across frames.
+    - Changed the radiant scan budget to count per generator, spent only when a cause scans the world.
 
 1.6.0
-  Summary: off-map travel, news rework, faction-relation fixes
-  Off-map travel:
-    Cross-map travel system. Stalker squads dispatch across maps for supply, scouting, or social visits, peer to on-map dispatch in the cascade.
-    Adjacency picker. Destination scan is a BFS over engine A-Life level adjacency, so dispatches go to a real neighboring map.
-    Reach gated by player progression. Base reach defaults to 0 (matches vanilla story gating). Yantar X-16, Radar Brain Scorcher, and a master-rank commander each unlock 1 hop. Tunable in MCM.
-    Rate limiter. Off-map dispatches capped per source map on a sliding window. Cap and window configurable in MCM.
-    Return cycle. Squads return home after dwelling at destination (MCM-tunable). Home level captured on first observation, persists across save/load.
-    Return target is a faction base on home level, fallback to any smart.
-    Cleanup. Squads stuck off-map past the despawn-safety window are released when offline. Story, task, companion, and warfare-owned squads spared via the full protection check.
-    Re-dispatch guard. A squad on the off-map track is not redispatched off-map until its return cycle completes.
-    Causes: Supply (bases, traders), Job Explore, Social Off-base.
-    Greedy non-territorial squads travel for trade. Peaceful curious factions scout neighbors. Peaceful sociable factions visit other camps.
-    Army, Monolith, Zombified never travel off-map.
-  News:
-    Changed: News composer reads the activity record. Standalone ledger retired.
-    Changed: PDA marker shows action, consequence, subject (and other if any), target smart with level, and dispatch time. Mutant subjects render as species only.
-    Removed: News Chance slider. Compose interval and scope filter remain.
-  MCM:
-    Added: World tab with Off-map cap slider.
-    Added: World > Off-map reach sliders (X-16, Brain Scorcher, master rank).
-    Added: World > Off-map lifecycle sliders. Return-home hours and despawn safety hours.
-    Fixed: Off-map squad lifecycle merged into the scripted-squad lifecycle.
-    The off-map subsystem ran as a parallel registry. Its timeout could fire mid-transit and drop the engine script.
-    A local arrival then stamped falsely as the off-map arrival and queued a phantom return home from a place the squad never visited. Now one collection and one scan hold the single source of truth.
-    Off-map sessions live until home arrival or the despawn-safety window. They survive non-off-map re-dispatches during dwell.
-    Changed: Per-consequence rate cap slider applies mid-session.
-    Changed: the Map markers MCM toggle applies mid-session. Toggling off clears markers and stops the scan. Toggling on arms the timer and applies markers from active records.
-    Added: right-click on an AlifePlus map marker offers Teleport to squad. Same level teleports in place. Cross-level uses the engine level change. Gated by the Debug markers toggle.
-    Changed: A-Life interval default raised from 5s to 10s. Tunable on framework page.
-    Renamed: Mutator cfg keys follow mutator_<name>_<setting>. Old keys revert to defaults on first load.
-  Modder API:
-    Added: a modder API call for a squad's home level, captured on the first protection check and persisted across save and load.
-    Added: modder API calls to publish and read activity records.
-    Changed: activity record fields are now localization keys, translated through the modder API at render.
-    Changed: the activity record moved to its own module, with the modder API unaffected.
-    Changed: PDA map markers moved to their own module. The statistics overlay stays in its own.
-    Changed: Warfare integration shim widened. Erepb's Warfare-A-Life-Overhaul receives the activity record fields and the consequence dispatch info via the existing compat surface.
-  Localization:
-    Added: EN + RU strings for the off-map causes, consequences, and MCM additions.
-  Fixed:
-    Fixed: Harvest Rob and Squadkill Revenge now gate on a hostile relation to the target's true community, disguise-aware. The player and NPC-vs-NPC branches share the check.
-    Fixed: Mutant Swarm filter checks accepts_mutant. Swarming squads no longer dispatch to smart terrains whose props reject their species.
-    Fixed: Peer radiant causes (offmap vs on-map needs, slumber variants, infest vs swarm) shuffle per squad tick so no peer has a structural first-pick advantage.
-    Fixed: Wounded, Stash, Massacre, Squadkill, and Basekill gates check own-faction base, not any base.
-    Wounded NPCs at enemy bases get the help reaction. Squads wiped at enemy bases produce Squadkill and Massacre.
-    Stash Ambush suppresses only at an own base. Basekill fires only at an own-faction base.
-    Fixed: News template slot substitution accepts the _ character in slot names. Slots like #subject_faction#, #subject_name#, #other_name# resolve to the named values.
-    Fixed: alpha bonus loot caps pelts at 1 per kill. The remaining slots roll rare parts. Earlier each slot drew independently and could stack 2-4 pelts on high-level alphas.
+  Off-map travel, the news rework and faction relation fixes
+    World is a new tab. Squads travel to a neighboring map for supply, scouting or a social visit, as far as your story progress allows.
+    The news reads the activity record, and the PDA marker shows the action, the subject and the target.
+    Other things you will notice. Robbers and avengers read a target's true faction, and the base checks look at the squad's faction.
 
+  World
+    Off-map
+      - Added off-map travel. Squads go to a neighboring map for supply, scouting or a social visit, and Army, Monolith and the Zombified stay home.
+        Reach increases with Yantar X-16, the Brain Scorcher and a master-rank commander, and a cap per source map limits the trips.
+        Squads return home after a stay, and a squad stuck off-map is released once offline. Story, task, companion and Warfare squads are spared.
+      - Fixed the off-map lifecycle dropping a squad's script mid-transit and queuing a return from a place it never visited.
 
-1.5.5 - "Maintenance"
-  Summary: animated destinations, mutant swarm, massacre loot, slumber by species, stash by alignment, day/night split, MCM regroup, ap_api facade
-  Gameplay:
-    Changed: over 100 local updates and fixes regarding routing, personality, alignment, squad choices that should make stalkers and behave more naturally 
-    Changed: Animated destinations only. Smart terrains without real animation jobs (campfires, shelters, traders, patrol slots) are filtered out at scan.
-    If slots get taken between dispatch and arrival, the squad releases and returns to simulation.
-    Added: Mutant Swarm. Feral, predator, and aberrant squads claim empty smart terrains alongside the originals. Parallel to stalker Area Conquer, and each tunes independently.
-    Added: Massacre Loot. Bandits, renegades, and Greh strip massacre sites for weapons and gear, alongside cowardly mutants that scavenge.
-    Added: Mutant slumber differentiated by species. Cowardly bed in territory. Feral and predator retreat to lairs. Aberrant and predator seek surge shelter.
-    Changed: Radiant pipeline harmonized. Rules and scan run at the cause stage. A per-tick in-place shuffle and round-robin admission give every squad a fair turn.
-    The cascade reaches every applicable cause, so each squad picks the action that fits its faction, species, personality, and active period.
-    Changed: Cause budgets are per-category (Reactions, Needs, Instincts, Opportunities). A busy category cannot starve another.
-    Changed: Each cause attempt picks one specific action (campfire halt, lair retreat, stash fill, surge shelter), not a category. More variety per drive.
-    Changed: Day/night gating split. Work shifts (trade, money harvest, hunt, outpost, exploration, research) are daytime. Sleep and shelter are night. Eat, heal, rest, and social are any-hour.
-    Mutants follow a species circadian cycle. Nocturnal species invert it.
-    Changed: Stash work split by alignment. Outlaws ambush. Loners, Clear Sky, Freedom, and Mercenaries loot. Duty, Military, Monolith, ISG, and Ecologists fill. One role per faction.
-    Changed: Stash Ambush is presence-only. Squad arrives, cooldown resets, no item action runs.
-    Changed: Stash Fill rolls items at arrival, not at publish. Each visit draws independently.
-    Changed: Massacre Scavenge narrowed to cowardly mutants (Flesh, Zombie, Tushkano, Rat, Karlik). Outlaw scavenging moved to Massacre Loot.
-    Changed: Wounded Hunt narrowed to predator and aberrant mutants. Outlaws no longer participate.
-    Changed: Stash and Area cooldowns are per-cause game-hour thresholds, tunable in MCM. Survives saves and time acceleration.
-    Changed: infestation now sits in the Area family, grouped with Conquer and Swarm under one MCM section. The trigger is unchanged.
-    Changed: Post-conquest hold shortened. Conquered territory turns over more often.
-    Changed: Mutant instincts use scent range only. Eye-range checks removed.
-    Changed: the personality floor is lower. Low-trait factions act less often on poorly-suited consequences, so faction differences widen.
-    Changed: Newly-tracked squads start with jittered overdue timers and begin acting on the first tick after load instead of warming up over the full threshold window.
-    Removed: Squadkill Flee, not propely supported by the engine
-  News:
-    Added: News Chance slider on the News tab (0-100, default 20). Each consequence rolls against it before publishing. Stacks with the existing compose-interval and scope throttles.
-    Changed: Templates are per-consequence only. Multi-event composite templates retired.
-    Changed: PDA marker label is action phrase, consequence tag, and subject. Other-party identity moved into news content.
-    Fixed: Templates no longer voice as if the speaker shared the subject's faction. Any speaker can voice any template.
-  MCM:
-    Changed: Cause sidebar collapsed from 11 pages to 4 (Reactions, Opportunities, Needs, Instincts). One page per category.
-    Changed: each page reads Cause, Description, and Rules. Range and active period appear inside Rules. Plain English only, with no internal identifiers.
-    Added: Per-category cause budget sliders. A busy category cannot starve another.
-    Added: per-cause toggles and game-hour thresholds for stash and area (loot, ambush, fill, conquer, swarm, infest).
-    Added: Mutators tab consolidates territory conquest, infestation, alpha, and stalker rank settings.
-    Added: Stash Ambush minimum-items slider.
-    Added: Massacre Loot section under Consequences (toggle, rush, max squads).
-    Removed: Master umbrella toggles for needs, instincts, stash, area. Per-cause toggles cover the same scope.
-    Removed: Drive-level toggles for needs and instincts.
-    Removed: Per-cause and per-consequence personality min/max sliders. One global clamp applies to every roll.
-  Compatibility:
-    Added: Save migration releases scripted squads whose arrival consequence no longer exists. Self-healing across version upgrades.
-    Added: Warfare A Life Overhaul (erepb GAMMA fork) compat shim. Old call shapes preserved.
-    Added: xchange (xlibs) save-data migration registry. Each migration runs once per save and is skipped on subsequent loads.
-  Fixed:
-    Fixed: Mutant Swarm publishes correctly 
-    Fixed: Squadkill Revenge fires on NPC-vs-NPC kills 
-    Fixed: Alpha Kill skips story NPCs, traders, and named characters. It matches the alpha, wounded, and harvest protection.
-    Fixed: Scripted squads release cleanly when the destination's animation precondition flips in the pre-arrival hold (surge transition, day-to-night for sleepers, zombie state, trader running dry).
-    Fixed: Peaceful destinations (supply, money harvest, money hunt, job research) exclude hostile-faction smarts. Github Issue #7.
-    Fixed: Stash loot, ambush, fill no longer route into a hostile post-stash destination.
-    Fixed: PDA map markers render for every scripted squad. Massacre, basekill, harvest haunt, and wounded squads previously dropped silently.
-    Fixed: Mutant species and faction names render lowercase in PDA news ("zombies", not "Zombies"). Github Issue #8.
-    Fixed: Zombified factions no longer trigger human news templates. Github Issue #9.
-    Fixed: Harvest Haunt and Wounded Hunt no longer dispatch broken-commander mutant squads. Predator and aberrant species only.
-    Fixed: Late-registered causes and consequences run synchronously when registered after game start.
-    Fixed: Disabled or wrong-alignment radiant causes no longer waste a budget slot. Cascade reaches every generator each tick.
-    Fixed: Squads with free job slots no longer eject on arrival.
-  Modder API:
-    Added: a public modder API for foreign mods, documented in the integration guide.
-           It covers squad-ownership coordination, read and release of AlifePlus-scripted squads, and full-lifecycle dispatch.
-           It also does localized phrase lookup, registration of foreign causes and consequences, and introspection for cleanup.
-    Added: an ACTION enum parallel to CONSEQUENCE. Both sets are localization ids, and the API translates either.
-    Added: CAUSE_CATEGORY enum (REACTIONS, NEEDS, INSTINCTS, OPPORTUNITIES). Foreign causes pick a category for rate-limit grouping.
-    Removed: the activity record API. News owns its own queue, and the HUD reads scripted-squad state directly.
-  Localization:
-    Added: 5 EN + 5 RU news templates for Massacre Loot.
-    Added: Russian MCM rebuilt at parity with English (605 strings).
-    Added: Stalker_Boss credited as Russian translator. gwalls credited for English copyediting.
-    Removed: 25 multi-event composite news template ids per locale.
-    Changed: News voice and time-anchor sweep across EN and RU templates.
+  News
+    - Changed the composer to read the activity record.
+    - Changed the PDA marker to show the action, the consequence, the subject, the target smart with its level and the dispatch time.
+    - Removed the News Chance slider.
+
+  Consequences
+    - Fixed Harvest Rob and Squadkill Revenge reading the target's disguise in place of his true community.
+    - Fixed Wounded, Stash, Massacre, Squadkill and Basekill checking any base where they should check a base of the squad's faction.
+    - Fixed swarms going to smarts whose props reject their species.
+    - Fixed peer causes having a fixed first pick.
+    - Fixed alpha loot stacking several pelts on one kill.
+
+  Development
+    - Added Teleport to squad on the right-click menu of an AlifePlus map marker, gated by the debug markers toggle.
+    - Changed the map markers toggle and the per-consequence cap to apply mid-session.
+    - Changed the A-Life interval default to a longer one, and the mutator settings reset to defaults on the first load.
+
+  Modder API
+    - Added calls for a squad's home level and to publish and read activity records, with record fields as localization keys.
+    - Changed the Warfare shim to pass the activity record to erepb's Warfare A-Life Overhaul.
+
+1.5.5
+  Animated destinations, Mutant Swarm, Massacre Loot, the day and night split and the modder API
+    Squads now go only to smart terrains with animation jobs, and a squad whose slot is taken on the way returns to the simulation.
+    Added Mutant Swarm, Massacre Loot and slumber by species. Mutants swarm empty smarts, outlaws loot massacres, and mutants sleep by kind, in their territory, a lair or a surge shelter.
+    Other things you will notice. Stalkers work by day and sleep at night, and each faction has a stash role. The MCM regroups its causes, and the Russian MCM matches the English.
+
+  Causes
+    - Changed the radiant pipeline to run the rules and the scan at the cause, and to give every squad a fair turn. Each squad picks the action that fits its faction, species, personality and hour.
+    - Changed the cause budgets to count per category, Reactions, Needs, Instincts and Opportunities, so a busy category cannot starve another.
+    - Changed each cause attempt to pick one specific action, a campfire halt, a lair retreat, a stash fill or a surge shelter, for more variety per drive.
+    - Changed work to happen by day and sleep and shelter by night, with eating, healing, rest and social at any hour. Mutants follow their species' cycle, and nocturnal species invert it.
+    - Changed the destinations to smart terrains with real animation jobs. A squad whose slot is taken between dispatch and arrival returns to the simulation.
+    - Changed stash work by alignment. Outlaws ambush, Loners, Clear Sky, Freedom and Mercenaries loot, and Duty, the Military, Monolith, ISG and Ecologists fill.
+    - Changed the stash and area cooldowns to game-hour thresholds per cause, and infestation joins Conquer and Swarm in the Area family.
+    - Changed the personality floor lower, and faction differences widen.
+    - Changed newly tracked squads to act on the first tick after a load.
+    - Added over 100 smaller changes to routing, personality, alignment and squad choices.
+
+  Consequences
+    - Added Mutant Swarm. Feral, predator and aberrant squads claim empty smart terrains next to the original spawns.
+    - Added Massacre Loot. Bandits, renegades and Greh strip massacre sites for weapons and gear.
+    - Added slumber by species. Cowardly mutants bed down in their territory, feral and predator mutants retreat to lairs, and aberrant and predator mutants seek a surge shelter.
+    - Changed Massacre Scavenge to the cowardly mutants and Wounded Hunt to predator and aberrant mutants.
+    - Changed Stash Ambush to presence only, and Stash Fill to roll its items on arrival.
+    - Changed a held conquest to turn over more often.
+    - Removed Squadkill Flee, which the engine does not support well.
+    - Fixed Mutant Swarm not publishing, and Squadkill Revenge missing NPC-vs-NPC kills.
+    - Fixed Alpha Kill reacting to story NPCs, traders and named characters.
+    - Fixed scripted squads stuck when a destination's animation conditions flipped before arrival, and squads with free job slots ejected on arrival.
+    - Fixed peaceful trips and stash trips ending at a hostile faction's smart.
+    - Fixed Harvest Haunt and Wounded Hunt sending mutant squads with a broken commander.
+
+  News
+    - Added a News Chance slider.
+    - Changed the templates to one set per consequence. Any speaker can now voice any template.
+    - Changed the PDA marker to show the action, the consequence and the subject.
+    - Fixed PDA markers missing for massacre, basekill, harvest haunt and wounded squads.
+    - Fixed capitalized mutant and faction names in the news, and zombified squads using human templates.
+
+  MCM
+    - Changed the causes to a page each for Reactions, Opportunities, Needs and Instincts, each read as Cause, Description and Rules in plain English.
+    - Added the per-category budgets, the stash and area toggles and thresholds, the Mutators tab, a Stash Ambush minimum and a Massacre Loot section.
+    - Removed the master toggles, the drive toggles and the personality sliders. One global clamp applies to every roll.
+
+  Compatibility
+    - Added a save migration that releases scripted squads whose arrival consequence no longer exists.
+    - Added a shim for erepb's GAMMA fork of Warfare A-Life Overhaul.
+
+  Modder API
+    - Added the public modder API, documented in the integration guide, for squad ownership, dispatch, localized phrases, foreign causes and consequences, and cleanup.
+    - Added the ACTION and CAUSE_CATEGORY enums.
+    - Removed the activity record API.
+
+  Localization
+    - Added the Massacre Loot templates and a Russian MCM at parity with the English. Stalker_Boss translates Russian and gwalls copyedits English.
 
 1.5.0
-  Summary: PDA news system, mutant infestation, additive territory conquest, generative templates, localization (EN+RU), modder API, personality retune
-  Gameplay:
-    Added: PDA news system. An online stalker on your frequency relays squad activity as radio chatter.
-           The framework records every cause and consequence in the simulation as a journal entry.
-           News surfaces the journal as emergent gossip, based on how impactful the event is and how relevant the data is for the world.
-           Speakers rotate across hearsay, witness, survivor, tracker, and named report.
-           Speakers are chosen based on whether they were part of the event, saw the event or proximity to it.
-           The news is about the causes, the consequences, or about chained events such as a cause generating multiple consequences or consequences leading to other events.
-           PDA system reworked around XRAY systems, integrated with existing news queue, respecting emissions, psi-storms, PDA charge, queue cap, and member-only faction channels.
-           Visibility of the messages configurable in MCM: own faction, faction and allies, world.
-           Rewrote all news text to adapt to the new chained events and to use the data saved in the core broker
-    Added: mutant infestation. Feral, predator, and aberrant ALPHAS claim smart terrains as nests. Original spawns are replaced by the infesting species, turning the smart into a single-species lair.
-    (per-map cap configurable in MCM)
-    Changed: territory conquest is additive (was exclusive). Conquerors add their faction's spawns alongside the originals instead of replacing them.
-    A conquest produces a mixed zone, matching vanilla behavior.
-    Changed: personality values and default ceiling retuned to be more in line with the lore
-    Changed: stash fill skips squads at bases. Matches stash loot and stash ambush behavior.
-  Core:
-    Added: spawn attribution tracing. Every squad spawned by area_conquer or instinct_infest logs with smart, faction, and section when DEBUG is on.
-    Added: activity records capture translated display strings for faction, name, and species (subject and other) at write time.
-    Changed: All stash causes avoid bases for balance
-    Changed: PDA map markers now use a multi-line label with action phrase, "Subject: name (faction)", and "Other: name (faction)" for two-party consequences.
-             Markers read pre-translated fields directly from the activity record, so no string resolution at render time.
-  MCM:
-    Added: News tab. Master toggle, compose interval (1-600 seconds, default 30-100). Scope selector (own / allies / world, default allies). Max age (1-72 game hours, default 12).
-    Added: instinct infest settings. Enabled, threshold, rush, personality floor and ceiling.
-    Added: infestation mutator settings. Enabled, max per level, spawn count, decay hours.
-    Removed: per-consequence PDA chance sliders. News volume is tuned from the News tab.
-  Integration:
-    Added: an activity record API. Modders write and read a squad's record, and it clears on entity death.
-    Added: localized rendering of each consequence, with a short caption and a full action phrase from the engine string table, shipped in English and Russian.
-    Added: trace paths that name each dispatch sub-phase, consumed at the debug log level.
-    Added: a news dispatch entry that groups sibling events for paired reports and enables two-party templates.
-    Added: spawn injection to place a faction or species alongside the originals for conquest, or in place of them for infestation.
-    Added: xlibs helpers for the commander name, cached species detection, a localized level name, a locale-aware capitalized first letter, and a bounded cache with an eviction hook.
+  PDA news, mutant infestation, additive conquest and the first modder API
+    News is a new tab. A stalker on your frequency relays what squads do as radio chatter, picked by how much it matters and how close he was.
+    Added infestation. A mutant alpha turns a smart into a single-species nest, and a conquest adds the winner's spawns beside the originals.
+    Other things you will notice. Personality follows the lore more closely, the PDA marker names both sides, and every text ships in English and Russian.
 
-  Fixes:
-    Fixed: squadkill_revenge chased the player after the player's actor_stalker relation drifted hostile from own-faction kills.
-    Fixed: better discovering of player and NPC true community when dispathcing news
-    Fixed: Russian MCM News tab strings synced with English.
+  News
+    - Added the PDA news. The framework records every cause and consequence, and a speaker who took part, saw it or stood near relays it as hearsay, a witness, a survivor, a tracker or a named report.
+      It runs on the vanilla news queue, respects emissions, psi storms, PDA charge and faction channels, and reaches your faction, your allies or the whole world.
+
+  Consequences
+    - Added mutant infestation. Feral, predator and aberrant alphas claim smart terrains as nests, and the infesting species replaces the original spawns.
+    - Changed territory conquest to add the winner's spawns beside the originals, which leaves a mixed zone as vanilla does.
+    - Changed stash fill and every stash cause to skip bases.
+    - Changed personality values and the default ceiling to follow the lore.
+    - Fixed Squadkill Revenge chasing you after your own-faction kills drifted your relation hostile.
+
+  MCM
+    - Added the News tab, the infest instinct settings and the infestation mutator settings.
+    - Removed the PDA chance sliders per consequence.
+
+  Development
+    - Changed the PDA map marker to a multi-line label with the action, the subject and the other side.
+    - Added spawn tracing for every squad that conquest or infestation spawns.
+
+  Modder API
+    - Added the activity record API, localized consequence captions in English and Russian, and spawn injection beside or in place of a smart's spawns.
 
 1.4.0
-  Summary: Mutant instincts, pipeline redesign, day/night cycle, food chain, range-based perception, personality recalibration, statistics overlay, integration API
-  Gameplay:
-    Added: mutant instincts. 5 deprivation-scored drives (scatter, feed, sleep, explore, socialize) parallel to stalker needs.
-    Per-instinct xbus routing, Hull drive competition, independent thresholds.
-    Changed: mutant personality and alignment redesigned from GSC source (monstry.doc). Species and subspecies detection via xlibs replaces naive community categories.
-    Added: food chain. 4 behavioral groups (cowardly, feral, predator, aberrant) with tiered avoidance.
-    Cowardly flees feral+predator+aberrant, feral flees predator+aberrant, predator flees aberrant.
-    Added: day/night cycle. Stalkers work by day, rest at night. Nocturnal mutants (bloodsuckers, lurkers, chimeras, zombies, fractures) hunt at night, retreat at dawn.
-    All needs and instincts time-gated to the cycle.
-    Added: range-based perception. EyeRange (200m, vision), RadioRange (500m, stalker PDA), ScentRange (500m, mutant tracking). Each cause type maps to a range tier.
-    Distances derived from empirical smart terrain geometry analysis across 14 levels (nearest-neighbor spacing, vertex density, level dimensions).
-    Changed: when an alpha dies, same-species mutants on the level hunt the killer.
-    Added: artefact pickup triggers reactions. Outlaws chase the taker. Aberrant mutants converge on the site.
-    Changed: decay and cooldown timers use game time (respects time acceleration and realism mods).
-  Core:
-    Changed: pipeline redesign. Ineligible squads filtered before evaluation budget. Every trigger produces a result.
-    Changed: cascading causes with pure predicate gates. Rejections skip expensive queries and immediately try the next cause.
-    Added: squad ownership reassertion. Dead squad cleanup. Invalid cause-consequence pairs blocked at cause level.
-    Added: statistics overlay. Real-time pipeline metrics (rates, blockers, counts), configurable position via MCM.
-    Changed: map markers use blue icons, linger 60s after completion, then fade.
-    Changed: general tuning (rush defaults, gulag duration, return-to-simulation timing).
-  MCM:
-    Added: instincts configuration. Per-instinct toggles, thresholds, and rush settings.
-    Added: statistics overlay configuration.
-    Added: per-consequence personality floor and ceiling sliders.
-  Integration:
-    Added: activity record API. record() and get_record() for external mods (e.g. warfare map tooltips).
-    Added: PDA marker descriptions via register_descriptions().
-    Changed: register_owner() supports override. Integration guide rewritten with current API and examples.
-  Compatibility:
-    Removed: modded exes requirement. Works with vanilla Anomaly 1.5.3, Demonized, Demonized MT, AOEngine. Tested with GAMMA, EFP, Zona.
+  Mutant instincts, the day and night cycle, the food chain and range-based perception
+    Added mutant instincts beside the stalker needs. Mutants scatter, feed, sleep, explore and gather, and each group avoids the ones above it in the food chain.
+    Added the day and night cycle and range tiers. Stalkers work by day and rest at night, nocturnal mutants hunt in the dark, and a cause reaches as far as a squad sees, radios or smells.
+    Other things you will notice. Mutants hunt an alpha's killer, artefact pickups draw reactions, and a statistics overlay shows the pipeline.
+
+  Causes
+    - Added mutant instincts, scatter, feed, sleep, explore and socialize, scored by how long each drive has gone unmet, beside the stalker needs.
+    - Changed mutant personality and alignment to follow GSC's monster design, with species detection through xlibs.
+    - Added the food chain. Cowardly mutants avoid feral, predator and aberrant ones, feral avoid predator and aberrant, and predators avoid aberrant.
+    - Added the day and night cycle. Stalkers work by day and rest at night, and bloodsuckers, lurkers, chimeras, zombies and fractures hunt at night and retreat at dawn.
+    - Added range-based perception. Each cause reaches as far as the squad sees, radios or smells, measured on smart terrain spacing across the levels.
+    - Changed the death of an alpha to send its species on the level after the killer.
+    - Added artefact pickup reactions. Outlaws chase the taker, and aberrant mutants converge on the site.
+    - Changed decay and cooldown timers to game time.
+
+  Framework
+    - Changed the pipeline to filter ineligible squads before the budget, and to try the next cause at once when one is rejected.
+    - Added squad ownership reassertion, dead squad cleanup and a block on invalid cause and consequence pairs.
+
+  Development
+    - Added the statistics overlay, live pipeline rates, blockers and counts, at a position set in MCM.
+    - Changed the map markers to blue icons that linger after the trip ends, then fade.
+
+  Modder API
+    - Added the activity record API and PDA marker descriptions, and register_owner supports an override.
+
+  Compatibility
+    - Removed the modded exes requirement. AlifePlus runs on vanilla Anomaly 1.5.3, the demonized exes and AOEngine, tested with GAMMA, EFP and Zona.
 
 1.3.6
-  Summary: Hotfix, save compat
-  Fixed: updated save migrations. Old scripted squad entries released and rebuilt on load.
+  A save migration hotfix
+    A save from an earlier version releases and rebuilds its old scripted squad entries on load.
+
+  - Fixed old scripted squad entries in a save. They are released and rebuilt on load.
 
 1.3.5
-  Summary: Alignment system, alpha mutants, reactive chaining, combat mutators, expanded mutant factions
-  Gameplay:
-    Added: alpha mutants. Mutants that rack up kills become alphas. They hit harder, absorb more punishment, never flee, and drop bonus loot for their species. Scales with kill level.
-    Each feature toggleable in MCM.
-    Added: alpha kill retaliation. Killing an alpha triggers same-species mutants to hunt the killer.
-    Added: species-based squad death responses. Predator and territorial packs avenge killed members. Herbivores and weak mobs scatter.
-    Added: combat mutators via hit callbacks. Alpha hit power scales with kill level. Veteran-and-up stalker hit power scales with rank, to a legend cap. Separate MCM toggles.
-    Added: alignment system based on GSC's moral axis (principled, self-serving, unprincipled, outlaw). Military never flees, ecologists never conquer, renegades never investigate etc
-    Added: mutant territorial behavior. Mutants conquer territory, avenge their dead, and hunt wounded stalkers based on personality traits.
-    Changed: reactive consequences chain. A single event now triggers multiple independent responses. A squad wipe fires both revenge and retreat.
-    A medkit use attracts predators and sends allies to help. A massacre draws scavengers and investigators.
-    Changed: personality probability narrowed. Factions commit to identity-consistent behavior more often and hesitate less.
-    Changed: squads stay at destinations for realistic durations to let gulag jobs (patrol, sleep, socialize etc) unfold. Previously all squads left after 5 minutes.
-    Removed: stalker elites. The engine tracks stalker progression natively through kill-to-rank points.
-    Removed: elite kill bounty.
-  Core:
-    Added: mutators MCM section with toggles for alpha and stalker combat modifiers.
-    Added: tracing statistics every minute when debug is on, will help standardise log parsing from users
-  i18n:
-    Added: full Russian description (doc/readme_ru.txt).
-    Fixed: Russian MCM synced with English.
-  Fixed:
-    Fixed: crash on fast travel when a scripted squad dies offline and the engine recycles its entity ID.
+  Alignment, alpha mutants, chained reactions and combat mutators
+    Added alignment, GSC's moral axis of principled, self-serving, unprincipled and outlaw, and mutants hold territory, avenge their dead and hunt the wounded.
+    A mutant that racks up kills becomes an alpha, and a single event now draws several independent responses.
+    Other things you will notice. Squads stay at a destination long enough for camp jobs to play out, and the readme ships in Russian.
+
+  Causes
+    - Added the alignment system on GSC's moral axis. The Military holds its ground, Ecologists leave conquest to others and renegades skip investigations.
+    - Added mutant territorial behavior. Mutants conquer territory, avenge their dead and hunt wounded stalkers by their personality.
+    - Changed reactions to chain. A squad wipe fires both revenge and retreat, a medkit use draws predators and sends allies to help, and a massacre draws scavengers and investigators.
+    - Changed the personality chances narrower, so factions act true to their identity more often.
+    - Removed stalker elites and the elite kill bounty. X-Ray tracks a stalker's progress through his rank.
+
+  Consequences
+    - Added alpha mutants. A mutant that racks up kills hits harder, takes more punishment, never flees and drops bonus loot of its species, scaling with its kill level.
+    - Added alpha kill retaliation. Killing an alpha sends its species after the killer.
+    - Added squad death responses by species. Predators and territorial packs avenge their members, and herbivores and weak mobs scatter.
+    - Changed squads to stay at a destination long enough for camp jobs, patrols and sleep to play out. Every squad used to leave after a few minutes.
+    - Fixed a crash on fast travel when a scripted squad died offline and X-Ray recycled its id.
+
+  Mutators
+    - Added the Mutators section, with toggles for the alpha and stalker combat modifiers. An alpha's hit power scales with its kill level, and a veteran stalker's with his rank.
+
+  Localization
+    - Added the full Russian readme, and the Russian MCM matches the English.
 
 1.3.0
-  Summary: Personality system, mutant conquest, territory decay, round-robin dispatch, ownership registry, integration framework, fixes
-  Requires xlibs update.
+  Personality, mutant conquest, territory decay and the ownership registry
+    Every stalker and mutant faction now has a personality, and its traits pick the consequences it takes.
+    Mutants now conquer territory, conquered ground decays when nobody holds it, and other A-Life mods can mark the squads they own.
+    Other things you will notice. Save data cleans up on an upgrade, arrivals are detected faster, and the post-arrival wait follows game time.
 
-  Gameplay:
-    Added: personality profiles for all stalker and mutant factions with trait-driven consequence selection.
-    Added: persistent map markers for elite promotion. Marks the elite's squad on the PDA until death.
-    Added: squad ownership registry. Alife mods register an ownership filter, AlifePlus skips squads they own. Warfare and BAO registered via legacy proxies.
-    Added: integration API for external mods. Register custom causes and consequences without modifying AlifePlus code.
-    Added: automatic save data cleanup on version upgrade. Orphaned squads released, stale keys removed.
-    Added: conquered territory decays after configurable game hours if not reconquered.
-    Added: per-smart cooldown on area cause. Same location cannot trigger conquest repeatedly.
-    Changed: each needs consequence tied to specific personality traits. Hunger and sleep use survival, money uses greed, jobs use territory and perception, social uses relation.
-    Changed: per-consequence rate budget tightened. The same consequence type cannot dominate a session.
-    Changed: post-arrival wait uses game time. Advances during time skips, survives save and load.
-    Changed: squads detected as arrived faster (scan interval reduced).
-    Changed: stash consequences (loot, ambush, fill) harmonized into the same config-driven pattern as needs.
-    Changed: smart terrain mutation and load restore unified into a single periodic update.
-    Changed: radiant interval and global consequence budget defaults adjusted for less frequent, more varied activity.
-    Removed: job_worship and job_exercise consequences, MCM entries, PDA messages, and item sections.
-    Removed: per-consequence chance sliders. Replaced by personality system. PDA chance sliders remain.
-  Compatibility:
-    Fixed: warfare and BAO ownership filters gave false positives on squads without the expected field.
-  Fixed:
-    Fixed: area conquest MCM toggle had no effect on previously conquered smart terrains.
-    Fixed: radiant causes did not fire on first session after game start.
-    Fixed: needs thresholds broke on young saves with low game time.
-  Internal:
-    Changed: codebase restructured into core (pipeline) and ext (domain).
-    Changed: chance gate removal eliminates per-consequence random rolls from every dispatch cycle.
-    Changed: protection gate no longer allocates strings below DEBUG log level.
-    Changed: producer luabind crossings reduced via global xlibs caching.
-    Changed: pacer retries faster on protection reject instead of burning the full interval.
-    Changed: radiant and reactive pipelines use independent Bresenham counters. Reactive events no longer biased by radiant traffic volume.
-    Added: consumer statistics (pipeline, causes, dispatch, lifecycle) logged every 60s at the debug level, with no cost above it.
-    Changed: the alignment and personality checks moved out of the core pipeline, which now holds no domain knowledge.
-    Changed: PDA sender selection and message dispatch moved out of the core, which now has no references to the domain layer.
-    Changed: all consequence gates (alignment, personality) run inside observe() with full tid/path tracing.
-    Changed: guard clause detector recognizes multi-line guards and counts guards throughout the function body.
-    Changed: rate limiting reworked with sliding window counters and per-pipeline pacing.
-  xlibs (requires xlibs update):
-    Added: composite squad protection guard with shared commander context.
-    Added: a vertex-to-level cache with no luabind cost on repeat lookups.
-    Changed: scripted check uses engine fields only. Mod-specific fields handled by AP ownership registry.
-    Removed: dead code in squad and smart terrain modules.
+  Causes
+    - Added personality profiles for every stalker and mutant faction, whose traits pick the consequence. Hunger and sleep use survival, money greed, jobs territory and perception, social relation.
+    - Added a cooldown per smart for the area cause, so a location cannot trigger conquest again and again.
+    - Changed the per-consequence budget tighter, so one consequence cannot dominate a session.
+    - Removed the per-consequence chance sliders. The personality system replaces them.
+
+  Consequences
+    - Added territory decay. A conquered area decays after a set number of game hours unless it is taken again.
+    - Added a persistent PDA marker for an elite's squad until it dies.
+    - Changed the post-arrival wait to game time, which advances in a time skip and survives a save.
+    - Changed the arrival scan to detect an arrival faster.
+    - Changed the stash consequences to the config pattern the needs use.
+    - Removed job_worship and job_exercise.
+    - Fixed the area conquest toggle having no effect on smarts already conquered.
+    - Fixed radiant causes not firing in the first session after a game start, and needs thresholds breaking on a young save.
+
+  Modder API
+    - Added the squad ownership registry. An A-Life mod registers a filter, and AlifePlus skips the squads it owns. Warfare and BAO register through legacy proxies.
+    - Added the integration API for custom causes and consequences.
+    - Fixed the Warfare and BAO filters claiming squads without the expected field.
+
+  Compatibility
+    - Added save data cleanup on an upgrade. Orphaned squads are released and stale keys removed.
+    - Changed the xlibs requirement to the new version.
+
+  Performance
+    - Improved pipeline performance. The chance rolls are gone, the protection gate allocates nothing below DEBUG, and the producer makes fewer engine calls.
 
 1.2.3
-  Summary: Radiant/reactive split, NPC protection, global cooldown, PDA rebuild, map marker split, performance, fixes
-  Core:
-    Added: radiant/reactive event split, world-state changes and combat events rate-limited independently (no starvation)
-    Added: global radiant cooldown prevents consequence bursts in busy areas (MCM configurable)
-    Changed: map marker system decoupled from tracing and optimized for performance
-    Changed: consequence chances use pseudo-random distribution for uniform distribution
-  Gameplay:
-    Fixed: territory changes hands only after the conquering squad physically arrives
-    Fixed: stashes only filled when empty, prevents stacking
-    Fixed: mutant squads no longer trigger stalker stash events, filtered at cause level
-    Fixed: squads no longer oscillate between nearby locations, with fixed TTL between radiant transitions
-    Fixed: revenge only rolls against valid enemy factions
-    Fixed: elite hunters respect the protection list
-    Fixed: stash loot evaluates squad eligibility before chance roll
-    Changed: default consequence chances retuned (stash_fill 15%, stash/area/needs 20%, reactive 30%)
-  Compatibility:
-    Changed: 4 protection types (permanent, active role, task target, externally scripted) verified through one unified function ensuring single source of truth
-    Changed: layered NPC protection: producer rejects radiant squads before any cause evaluates, consequence search excludes all 4 types, tracker rejects anything that reaches script_squad
-    Changed: bounty targets, hostage targets, and externally scripted squads rejected at producer level
-  Map & PDA:
-    Added: map markers MCM toggle, independent from debug tracing
-    Changed: the PDA sender was rebuilt to match the vanilla news manager's approach (friendly factions only, from the online NPC registry)
-    Changed: PDA messages come from stalkers already in the world (no server-object lookups, no sender cache)
-  MCM:
-    Added: version displayed at startup (mod + xlibs)
-    Changed: MCM visual refresh
-    Fixed: Russian MCM encoding restored (windows-1251)
-  X-Ray & xlibs:
-    Added: timed events work correctly with the demonized time-events addon and major modpacks, since globals resolve at call time
-    Added: log deadbanding suppresses repeated lines in busy areas for cleaner logs
-    Added: consequence rate limit peek without consuming tokens
-    Added: cleaner console output (xmath.chance diagnostic noise removed)
-    Changed: find_squads distance bounds use inclusive upper
+  The radiant and reactive split, NPC protection and the PDA rebuild
+    The pipeline splits world changes from combat events, each rate-limited apart, and a global cooldown stops bursts in busy areas.
+    Protected NPCs go through a single check at every layer, and PDA messages come from stalkers already in the world.
+    Other things you will notice. Map markers have their own toggle, territory changes hands only on arrival, and squads stop oscillating between nearby spots.
+
+  Framework
+    - Added the radiant and reactive split, with each rate-limited on its own.
+    - Added a global radiant cooldown against consequence bursts in busy areas.
+    - Changed consequence chances to a pseudo-random distribution.
+
+  Consequences
+    - Fixed territory changing hands before the conquering squad arrived.
+    - Fixed stashes filled while not empty, and mutant squads triggering stalker stash events.
+    - Fixed squads oscillating between nearby locations.
+    - Fixed revenge rolling against factions that are not enemies, and elite hunters ignoring the protection list.
+
+  Compatibility
+    - Changed NPC protection to one check for permanent squads, active roles, task targets and squads another mod scripts, applied at the producer, the search and the tracker.
+
+  News
+    - Changed the PDA sender to follow the vanilla news manager, friendly factions only, from the stalkers already online.
+    - Added a toggle for the map markers apart from debug tracing.
+
+  Development
+    - Added the mod and xlibs versions at startup, and the Russian MCM reads in windows-1251 again.
+    - Fixed timed events with the demonized time events addon and the major modpacks.
 
 1.2.2
-  Summary: xlibs dependency update
-  xlibs 1.2.3 dependency.
-  Changed: updated a stash-loot call after an xlibs rename.
+  The xlibs 1.2.3 dependency
+    AlifePlus now needs xlibs 1.2.3.
+
+  - Changed a stash loot call for an xlibs rename.
 
 1.2.1
-  Summary: Russian translation
-  Localization:
-    Added: Russian MCM translation
+  The Russian MCM
+    The MCM has Russian text.
+
+  - Added the Russian MCM translation.
 
 1.2.0
-  Summary: Needs system, item consumption, area conquest, stash protection, shelter routing, walk/rush toggle, fixes
-  NPC protection:
-    Fixed: named NPCs, traders, quest givers, and guards excluded from AlifePlus
-    Fixed: squads already on a mission (Warfare patrols, vanilla scripted routes) are now skipped
-    Fixed: guards and bodyguards added to protected list (Rostok, Yantar, Army Warehouses, Jupiter, Pripyat, Sarcophagus, Lab X-18)
-    Fixed: Aslan (Dead City barman) ID corrected in protected list
-    Fixed: squads no longer respond to their own events
-  Gameplay:
-    Added: walk/rush toggle per consequence (MCM per-consequence on/off)
-    Added: stash protection - NPCs skip stashes containing toolkits and essential items (MCM on/off)
-    Added: area conquest mutation toggle - keep squad movement without changing smart terrain ownership (MCM on/off)
-    Added: shelter outdoor - squads seek campfires when no indoor shelter nearby (MCM on/off)
-    Added: stash fill allowed at bases, ambush and loot still blocked
-    Changed: revenge and elite hunters skip friendly factions
-    Changed: area conquest only targets enemy or unclaimed territory
-    Changed: needs back off after failing to find a destination, other needs get a turn
-    Changed: default consequence chances raised to 30% (MCM per-consequence chance sliders)
-    Note: needs use game time - thresholds work correctly at any time_factor including real-time
-  Smart terrain routing:
-    Changed: heal and shelter now target surge shelters, not mutant lairs
-    Changed: heal, shelter, social accept any non-hostile location instead of requiring a base
-    Changed: guard, worship, exercise send squads to outposts and forward positions, away from bases
-    Changed: squads arriving at full locations complete their action then return to simulation
-  Stability:
-    Fixed: elite kill PDA always showing mutant template instead of stalker
-    Fixed: consequence handlers duplicating across save/load cycles
-    Fixed: artefact drop/pickup cycling triggering infinite harvest chasers
-    Changed: squad tracking uses game time - survives sleep and time acceleration
-    Changed: xlibs patch updates no longer require AlifePlus updates
-  Internal:
-    Changed: debug/trace overhead eliminated below DEBUG log level
-    Added: structured arrival logging, smart search diagnostics
-    Changed: territory conquest extracted to own module
-    Removed: periodic sync (belt and suspenders, never needed), dead enum values
+  Needs with item use, area conquest options, stash protection and shelter routing
+    Named NPCs, traders, quest givers and guards stay out of AlifePlus, and squads on another mission are skipped.
+    Squads walk or rush per consequence, skip stashes with essential items, and seek a campfire when no indoor shelter is near.
+    Other things you will notice. Needs back off after a failed search, heal and shelter head to surge shelters, and squads at a full location complete their action and leave.
 
-1.2.0-RC1 - "Needs"
-  Summary: Needs system, radiant/reactive split, PDA messages, MCM overhaul, manifesto
-  Needs:
-    Added: 9 new causes/needs: hunger, sleep, rest, heal, shelter, money, supply, job, social
-    Added: 15 new consequences with per-need MCM controls (toggle, threshold, chance, action)
-    Added: Night gate, faction-aware destination filter, destination limiter
-    Added: 8 arrival actions: NPCs consume real inventory items or trade artefacts for supplies
-    Added: Needs persisted per-squad in save data
-  Event pipeline:
-    Added: Radiant/reactive split with independent token buckets
-    Added: Consequence token bucket replaces global cause lock
-    Added: a radiant exhaustion peek, an interaction adapter, and an unscriptable guard
-  PDA:
-    Added: 168 message variants across 40 categories, stalker/mutant distinction
-  MCM:
-    Added: Reset button, retuned default chances, cleaned up labels
-    Added: Russian translation
-  Performance:
-    Changed: an MCM snapshot pattern and a debug-trace function swap, with no cost at the warn level
-  Docs:
-    Added: manifesto.md with GSC vision, engine source proof, developer quotes
-  Fixed:
-    Fixed: Reactive event starvation (cause lock starving needs and area causes)
-    Fixed: wounded_help faction matching (actor_stalker prefix)
-    Fixed: PDA messages now distinguish stalkers from mutants
-    Fixed: supply_trader exchange giving free items (now requires artefact)
+  Causes
+    - Added stash fill at bases, while ambush and loot stay blocked there.
+    - Changed area conquest to target enemy or unclaimed territory only, and revenge and elite hunters to skip friendly factions.
+    - Changed a need that cannot find a destination to back off and give other needs a turn.
+    - Changed heal and shelter to target surge shelters, and heal, shelter and social to accept any location that is not hostile.
+    - Changed guard, worship and exercise to send squads to outposts and forward positions.
+
+  Consequences
+    - Added a walk or rush toggle per consequence.
+    - Added stash protection. NPCs skip stashes with toolkits and essential items.
+    - Added an area conquest toggle that keeps the squad movement without changing smart ownership.
+    - Added Shelter Outdoor. Squads seek a campfire when no indoor shelter is near.
+    - Changed squads at a full location to complete their action and return to the simulation.
+
+  Compatibility
+    - Fixed named NPCs, traders, quest givers and guards taking part, and squads on a mission being taken over.
+    - Fixed squads responding to their own events.
+
+  Stability
+    - Fixed the elite kill PDA always using the mutant template, consequence handlers duplicating across a save and load, and artefact drops looping harvest chasers.
+    - Changed squad tracking to game time, which survives sleep and time acceleration.
+
+1.2.0-RC1
+  The Needs system, the radiant and reactive split, PDA messages and the manifesto
+    Stalkers now act on needs of their own, hunger, sleep, rest, heal, shelter, money, supply, job and social, beyond the events they react to.
+    Other things you will notice. PDA messages tell stalkers from mutants, the MCM has a reset button, and the manifesto explains the design.
+
+  Needs
+    - Added 9 needs with per-need MCM controls, a night gate, a faction-aware destination filter and per-squad save data.
+    - Added arrival actions. NPCs use real inventory items or trade artefacts for supplies.
+
+  Framework
+    - Added the radiant and reactive split with separate token buckets, so reactive events no longer starve.
+
+  News
+    - Added PDA message variants for each category, with stalkers and mutants told apart.
+
+  MCM
+    - Added a reset button and Russian text.
+
+  Fixed
+    - Fixed wounded_help matching the wrong faction, and supply_trader giving items for free. It now takes an artefact.
 
 1.1.1
-  Summary: fixes
-  Fixed: dependency gate uses exact version match instead of string comparison
+  A dependency gate fix
+    The dependency gate checks the xlibs version correctly.
+
+  - Fixed the dependency gate comparing versions as strings.
 
 1.1.0
-  Summary: Elite system, A-Life Ratio, grenade restock, AP ammo, rank boost, fixes
-  10-level elite system replaces binary elite/legend. Alife Ratio balances simulation across maps.
-  Elite: 10 levels, AP ammo restock (best k_ap for weapon), engine rank boost (up to 20% accuracy), grenade restock.
-  Alife Ratio: Bresenham ratio gate for on/off-map event distribution, MCM slider (-10 to +10).
-  Fixed: elitekill_targeted never firing (bounty was stopping the chain)
-  Fixed: PDA message tone, elite buff performance
+  The elite system and A-Life Ratio
+    The elites of 1.0.0 now have 10 levels, and A-Life Ratio balances the simulation between your map and the rest.
+
+  - Added the elite system. An elite restocks the best armor-piercing ammo for his weapon and grenades, and his rank raises his accuracy.
+  - Added A-Life Ratio, a slider for the split of events between your map and the rest.
+  - Fixed elitekill_targeted never firing, and the tone of the PDA messages.
 
 1.0.1
-  Summary: Dependency gate, Russian translation, fixes
-  Dependency gate, bugfixes, Russian translation.
-  Added: dependency gate - clear error message if xlibs is missing or outdated
-  Added: Russian translation
-  Fixed: companion squads excluded from squad searches (xlibs)
-  Fixed: player-created stashes excluded from stash searches (xlibs)
+  The dependency gate and the Russian translation
+    A missing or outdated xlibs now shows a clear message.
+
+  - Added the dependency gate and the Russian translation.
+  - Fixed companion squads and player stashes showing up in searches.
 
 1.0.0
-  Summary: First release, massacre, squad kill, base kill, wounded, harvest, stash, area conquer, chase API, MCM
-  First release. Event-driven emergent A-Life system.
-  10 causes, 17 consequences. Full MCM configuration.
-  Added: reactive causes (massacre, squadkill, basekill, elite, legend, legendkill, wounded, harvest)
-  Added: radiant causes (stash, area)
-  Added: chase API, area conquest, hit modifiers, rank boost
+  The first release of an event-driven A-Life
+    AlifePlus turns engine events into squad reactions and world drives, with every cause and consequence in the MCM.
+
+  - Added the reactive causes, massacre, squadkill, basekill, elite, legend, legendkill, wounded and harvest.
+  - Added the radiant causes, stash and area.
+  - Added the chase API, area conquest, hit modifiers and the rank boost.
