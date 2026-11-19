@@ -1173,7 +1173,7 @@ Each cause type maps to a range based on how the squad learns about the opportun
 | Opportunities (stash, territory) | EyeRange | EyeRange | Squad sees what is nearby on arrival |
 | Reactions (kills, massacres, wounded) | RadioRange | ScentRange | Stalkers hear over radio, mutants smell blood |
 | Needs (hunger, sleep, shelter) | RadioRange | - | Squad knows campfire / trader locations from PDA |
-| Instincts (feed, sleep, explore) | - | ScentRange | Mutants track by scent across the area |
+| Instincts (scatter, feed, slumber, roam, pack) | - | ScentRange | Mutants track by scent across the area |
 
 Three tiers create a natural separation: opportunities are local and opportunistic (200m), stalker coordination reaches further via radio (500m), mutant hunting extends through scent (500m). You act on what you see, respond to what you hear, hunt what you smell.
 
