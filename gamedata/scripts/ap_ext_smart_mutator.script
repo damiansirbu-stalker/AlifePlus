@@ -59,6 +59,8 @@ local SERVICE_KEY_PREFIX = "ap_service_"
 local GUARD_KEY = "ap_guard"
 -- Service suitability floor: needs squad room plus a campfire or surge-shelter anchor.
 local SERVICE_MIN_MAX_POP = 1
+-- Communities the surge kill pass spares (surge_manager.script:1254-1255) and the surge gate leaves home (smart_terrain.script:1565).
+local SURGE_IMMUNE = { monolith = true, zombied = true }
 -- Generic trade assortment (xr_logic.script:113); an unmade leftover service is re-inited to it.
 local GENERIC_TRADE = "items\\trade\\trade_generic.ltx"
 -- Engine PDA role spots (stalker_generic.script:98-126); the scan re-adds after a scheme reset.
@@ -389,9 +391,36 @@ local function _register_stationed_services(now)
     end
 end
 
--- One held outpost squad per scan pass: resolve identity, reassert the pin, or drop it for an online squad in a surge at an outpost without the surge prop.
+-- The name of the nearest smart with the surge prop this resident's faction may enter, found once per surge and kept on the hold row.
+-- @cost first call: one ap_core_util.find_smart walk of the level + 1 name read; after: 1 field read
+local function _get_surge_shelter(squad, entry)
+    if entry.surge_shelter == nil then
+        local faction = squad.player_id
+        local shelter = ap_core_util.find_smart(squad.position, { level_id = xlevel.get_level_id(squad),
+            filter = function(s) return xsmart.has_surge_shelter(s) and xsmart.can_accept_faction(s, faction) end })
+        entry.surge_shelter = shelter and shelter:name() or false
+    end
+    return entry.surge_shelter or nil
+end
+
+-- Point an exposed resident's pin at his surge shelter: he stays scripted, so dispatch skips him, and his squad smart takes the prop.
+-- A level without a shelter releases him to vanilla targeting instead.
+-- @cost O(1) after the first call | field reads + set_target
+local function _update_surge_pin(squad, squad_id, entry)
+    local shelter = _get_surge_shelter(squad, entry)
+    if not shelter then
+        xsquad.release_squad(squad)
+        return
+    end
+    if xsquad.set_target(squad, shelter) then
+        ap_core_debug.debug("[MUTATOR.SMART] surge_shelter: smart=%d role=%s squad=%d shelter=%s",
+            entry.smart_id, entry.role, squad_id, shelter)
+    end
+end
+
+-- One held outpost squad per scan pass: resolve identity, then reassert the pin, or in a surge at an outpost without the prop point it at a shelter.
 -- A dead or recycled id prunes the ledger row only, never the squad; returns false when the caller drops the entry.
--- @cost O(1) | _resolve_held + set_target; in a surge + 1 alife_object + prop read
+-- @cost O(1) | _resolve_held + set_target; in a surge + 1 alife_object + prop read, plus one shelter search per resident
 local function _update_service(squad_id, entry)
     local squad = _resolve_held(squad_id, entry)
     if not squad or not _state.conquest[entry.smart_id] then
@@ -399,13 +428,11 @@ local function _update_service(squad_id, entry)
             entry.smart_id, entry.role, squad_id, squad and "unledgered" or "gone")
         return false
     end
-    if squad.online and xlevel.is_surge() and not xsmart.has_surge_shelter(xobject.get_se(entry.smart_id)) then
-        if squad.scripted_target then
-            xsquad.release_squad(squad)
-            ap_core_debug.debug("[MUTATOR.SMART] surge_unpin: smart=%d role=%s squad=%d", entry.smart_id, entry.role, squad_id)
-        end
+    if xlevel.is_surge() and not SURGE_IMMUNE[squad.player_id] and not xsmart.has_surge_shelter(xobject.get_se(entry.smart_id)) then
+        _update_surge_pin(squad, squad_id, entry)
         return true
     end
+    entry.surge_shelter = nil
     local dbg = ap_core_debug.is_enabled()
     local prev_target = dbg and squad.scripted_target
     if xsquad.set_target(squad, entry.smart_name) and dbg then
@@ -434,12 +461,13 @@ local function _update_holds()
     end
 end
 
--- Re-pin every held squad when an emission or psi storm ends, so no resident unpinned in the surge waits for the next scan open to dispatch.
+-- Point every held squad back at its outpost when an emission or psi storm ends, instead of waiting for the next scan.
 -- The end event fires while the manager still reports started (surge_manager.script:312,316), so this skips the surge check.
 -- @cost O(n) held squads | 1-2 luabind each, once per surge
 local function _on_actor_interaction(kind, _, name)
     if kind ~= "anomalies" or (name ~= "emission_end" and name ~= "psi_storm_end") then return end
     for squad_id, entry in pairs(_held_squads) do
+        entry.surge_shelter = nil
         local squad = _state.conquest[entry.smart_id] and _resolve_held(squad_id, entry)
         if squad then xsquad.set_target(squad, entry.smart_name) end
     end
