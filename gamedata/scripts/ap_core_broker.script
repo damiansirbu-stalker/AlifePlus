@@ -1,7 +1,7 @@
 --- ap_core_broker: squad scripting lifecycle, ownership registry, protection, arrival, off-map; one _ap_scripted_squads table on a periodic scan.
 local pairs, next, tostring, type = pairs, next, tostring, type
 local table_remove, table_concat, RegisterScriptCallback = table.remove, table.concat, RegisterScriptCallback
-local xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler = xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler
+local xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler, xlevel = xobject, xsquad, xsmart, xtime, xtable, xslice, xprofiler, xlevel
 
 local CALLBACK = ap_core_const.CALLBACK
 local RESULT = ap_core_const.RESULT
@@ -401,6 +401,11 @@ local function _update_scripted_squad(squad_id)
         _ap_scripted_squads[squad_id] = nil
         return
     end
+    if squad.online and xlevel.is_surge() and is_routing(squad_id) then
+        ap_core_debug.debug("[SQUAD] surge_release: squad=%d target=%s", squad_id, tostring(data.scripted_target or data.target_squad_id))
+        _unregister_squad(squad)
+        return
+    end
     local now = xtime.get_game_sec()
     if data.offmap and _update_offmap_entry(squad_id, squad, data, now) then
         _ap_scripted_squads[squad_id] = nil
@@ -688,6 +693,7 @@ function register_squad(squad, smart, opts)
             tostring(squad.id))
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
+    if squad.online and xlevel.is_surge() then return { code = RESULT.FAILED_RULES, reason = REASON.SURGE, id = squad.id } end
     opts = opts or {}
     local name = smart:name()
     if not name or name == "" then
@@ -728,9 +734,9 @@ function register_squad(squad, smart, opts)
 end
 
 --- Script a squad to pursue the player directly (no arrival detection).
---- Runs the compute_chase leash first and refuses a start it would immediately pause/release, else sets scripted_target="actor" via xsquad.set_target_actor.
+--- Refuses an online squad in a surge or on a non-KEEP compute_chase verdict, else sets scripted_target="actor" via xsquad.set_target_actor.
 --- @safety SAFE - nil-guarded; gates before releasing, so a refused start leaves any existing chase intact
---- @cost O(1) | ~3 luabind medium on dispatch (compute_chase: actor smart, surge, optional relation)
+--- @cost O(1) | ~3 luabind medium on dispatch (surge, compute_chase: actor smart, optional relation)
 --- @param squad se_squad Squad server object
 --- @param opts table|nil { check_relation, interruptable }
 --- @return table { code = RESULT.X, id, dst, dst_id }
@@ -739,6 +745,7 @@ function register_actor_target(squad, opts)
     if not xsquad.is_squad(squad) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
+    if squad.online and xlevel.is_surge() then return { code = RESULT.FAILED_RULES, reason = REASON.SURGE, id = squad.id } end
     local entry = {
         is_chase = true,
         scripted_target = "actor",
@@ -779,6 +786,7 @@ function register_squad_target(squad, target_id, opts)
     if not xsquad.is_squad(squad) then
         return { code = RESULT.FAILED_ACTION, reason = REASON.NOT_A_SQUAD, id = squad.id }
     end
+    if squad.online and xlevel.is_surge() then return { code = RESULT.FAILED_RULES, reason = REASON.SURGE, id = squad.id } end
     local entry = {
         is_chase = true,
         target_squad_id = target_id,
