@@ -428,7 +428,7 @@ local function _update_service(squad_id, entry)
             entry.smart_id, entry.role, squad_id, squad and "unledgered" or "gone")
         return false
     end
-    if xlevel.is_surge() and not SURGE_IMMUNE[squad.player_id] and not xsmart.has_surge_shelter(xobject.get_se(entry.smart_id)) then
+    if cfg.emission_override and xlevel.is_surge() and not SURGE_IMMUNE[squad.player_id] and not xsmart.has_surge_shelter(xobject.get_se(entry.smart_id)) then
         _update_surge_pin(squad, squad_id, entry)
         return true
     end

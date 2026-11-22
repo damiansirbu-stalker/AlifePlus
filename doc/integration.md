@@ -17,8 +17,8 @@ This file is for mods that want to react to AlifePlus, drive squads through it, 
 | *get_scripted_squads* | none | table | Shallow-copy map keyed by squad id. Fresh per call. |
 | *get_scripted_squad* | *squad_id*: number | table \| nil | Shallow copy of one entry. |
 | *release_squad* | *squad_id*: number | bool | *false* if AP wasn't scripting it. |
-| *register_squad* | *squad*: userdata; *smart*: userdata; *opts*: { *rush*, *on_arrive*, *on_arrive_args*, *pre_release_gulag*, *interruptable* } | { code, id, dst, dst_id } | Full lifecycle: engine target + reassert + marker + TTL + gulag. An online squad is refused while a surge runs, and a surge releases it to vanilla shelter routing. |
-| *register_actor_target* | *squad*: userdata; *opts*: { *check_relation*, *interruptable* } | { code, id, dst, dst_id } | Pursue the player; no arrival detection. Refused for an online squad while a surge runs, or unless the chase leash verdict is KEEP; a surge releases an online chase. |
+| *register_squad* | *squad*: userdata; *smart*: userdata; *opts*: { *rush*, *on_arrive*, *on_arrive_args*, *pre_release_gulag*, *interruptable* } | { code, id, dst, dst_id } | Full lifecycle: engine target + reassert + marker + TTL + gulag. While Emission override is on, an online squad is refused while a surge runs, and a surge releases it to vanilla shelter routing. |
+| *register_actor_target* | *squad*: userdata; *opts*: { *check_relation*, *interruptable* } | { code, id, dst, dst_id } | Pursue the player; no arrival detection. Refused for an online squad while a surge runs and Emission override is on, or unless the chase leash verdict is KEEP; a surge releases an online chase under the same toggle. |
 | *add_record* | *subject_squad*: userdata; *cause_key*, *consequence_key*: string; *opts*: { *action_key*, *other_squad*, *smart*, *level_id*, *cause_id* } | number \| nil | *cons_id*. Call after every register_\* SUCCESS or your dispatch is invisible. |
 | *get_record* | *opts*: { *squad_id*, *assigned*, ... } | table \| nil | Newest match. O(1) for *{squad_id, assigned=true}*. |
 | *get_records* | *opts*: table \| nil | table | Every match (array). |
