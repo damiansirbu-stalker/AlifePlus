@@ -41,12 +41,12 @@ end
 --- Read MCM log_level and apply it to the xlog logger; idempotent.
 --- Exposed so a module whose first_update runs before this one's can set the level before emitting.
 --- @safety SAFE - nil-guarded; falls back to "WARN" if MCM not loaded yet
---- @cost O(1) | 0 luabind (set_level + flush_on_level are pure Lua field sets)
+--- @cost O(1) | 0 luabind (set_level + set_flush_level are pure Lua field sets)
 function init_log_level()
     local level = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_level") or "WARN"
     log.set_level(level)
     local flush = ap_core_mcm and ap_core_mcm.get_config and ap_core_mcm.get_config("log_flush") or false
-    log._logger.flush_on_level = flush and _log_levels.TRACE or _log_levels.ERROR
+    log.set_flush_level(flush and _log_levels.TRACE or _log_levels.ERROR)
 end
 
 function on_game_start()
