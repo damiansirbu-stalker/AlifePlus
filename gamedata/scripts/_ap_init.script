@@ -1,6 +1,7 @@
 --- _ap_init: dependency gate and platform status. Logic hash-locked identical across mods (deps.logic_hash); identity read from _ap_manifest.
 
-local assert, tostring, type, math_floor = assert, tostring, type, math.floor
+local assert, tostring, type, math_floor, string_format = assert, tostring, type, math.floor, string.format
+local RegisterScriptCallback, UnregisterScriptCallback = RegisterScriptCallback, UnregisterScriptCallback
 
 local manifest = _ap_manifest.MANIFEST
 
@@ -15,6 +16,12 @@ local XLIBS_URL     = "https://www.moddb.com/mods/stalker-anomaly/addons/xlibs-1
 -- xray-monolith build (YYYYMMDD) as the themrdemonized tag style, no zero padding (20260912 -> "2026.9.12").
 local function _build_tag(build)
     return math_floor(build / 10000) .. "." .. (math_floor(build / 100) % 100) .. "." .. (build % 100)
+end
+
+-- First frame: xlibs posts the day's update message; every gate arms this, and the day mark keeps it to one message.
+local function _show_update_news()
+    UnregisterScriptCallback("actor_on_first_update", _show_update_news)
+    xlibs.show_update_news()
 end
 
 --- @return string Version string
@@ -42,7 +49,7 @@ function get_platform_status()
     return line .. " (incompatible)", "blocked"
 end
 
--- MCM footer functor: writes get_platform_status into the desc, verdict-colored; colors build lazily (GetARGB absent under the validator).
+-- MCM footer functor: get_platform_status plus the update notice, verdict-colored; colors build lazily (GetARGB absent under the validator).
 local _footer_clr = nil
 function get_platform_functor()
     return function(_anchor, handlers)
@@ -54,9 +61,16 @@ function get_platform_functor()
             }
         end
         local line, level = get_platform_status()
+        local newer = xlibs and xlibs.find_update and xlibs.find_update(manifest)
+        if newer then line = line .. string_format(game.translate_string("st_xlibs_update_footer"), newer) end
         handlers.desc:SetText(line)
         handlers.desc:SetTextColor(_footer_clr[level])
     end
+end
+
+-- MCM Check for update button: xlibs runs the save-load update check now and shows the answer.
+function show_update_check(gui)
+    if xlibs and xlibs.show_update_check then xlibs.show_update_check(manifest, gui) end
 end
 
 function on_game_start()
@@ -103,6 +117,12 @@ function on_game_start()
 
     local platform_line = (get_platform_status())
     printf("~ [%s] %s", manifest.name, platform_line)
-    xlog.get_logger(manifest.name, { outfile = manifest.name:lower() .. ".log" })
-        .info("%s", platform_line)
+    local log = xlog.get_logger(manifest.name, { outfile = manifest.name:lower() .. ".log" })
+    log.info("%s", platform_line)
+    if xlibs.run_update_check and xlibs.show_update_news then
+        local update = xlibs.run_update_check(manifest)
+        if update then log.info("%s", update) end
+        xlibs.run_update_check(xlibs.get_manifest())
+        RegisterScriptCallback("actor_on_first_update", _show_update_news)
+    end
 end
