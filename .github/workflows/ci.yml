@@ -38,6 +38,10 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
+    # The Pages artifact this attempt uploads; deploy-pages reads it, so a deploy-only re-run finds
+    # the artifact of the attempt that made it.
+    outputs:
+      pages_artifact: github-pages-${{ github.run_attempt }}
     steps:
       - name: Checkout mod
         uses: actions/checkout@v7
@@ -132,10 +136,13 @@ jobs:
 
       # Publish-then-gate: the Pages artifact and the dashboard deploy run unconditionally, so a red run
       # still shows the report that names what failed. The Grade gate, last, reds the check.
+      # Named per attempt: a re-run keeps the first attempt's artifact, and deploy-pages refuses a run
+      # holding two artifacts of one name.
       - name: Upload Pages artifact
         if: always()
         uses: actions/upload-pages-artifact@v5
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: out
 
       - name: Grade gate
@@ -159,6 +166,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.validate.outputs.pages_artifact }}
 
   # Dev prerelease (option B): one moving `snapshot` prerelease per repo, zip clobbered in place,
   # kept out of the Latest slot. The zip carries the -snapshot version so a tester's log shows a dev build.
