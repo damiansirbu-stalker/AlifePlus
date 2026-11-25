@@ -1,9 +1,12 @@
 --- _ap_init: dependency gate and platform status. Logic hash-locked identical across mods (deps.logic_hash); identity read from _ap_manifest.
 
-local assert, tostring, type, math_floor, string_format = assert, tostring, type, math.floor, string.format
+local assert, tostring, type, math_floor = assert, tostring, type, math.floor
 local RegisterScriptCallback, UnregisterScriptCallback = RegisterScriptCallback, UnregisterScriptCallback
 
 local manifest = _ap_manifest.MANIFEST
+local LOG_OUTFILE = manifest.name:lower() .. ".log"
+-- The load's version line and update checks, kept until the mod's log level is set.
+local _trace = nil
 
 -- Compatibility floor, YYYYMMDD. @src xray/script_ini_file_script.cpp:95-125
 local MIN_DEMONIZED_VERSION = 20250908
@@ -18,10 +21,48 @@ local function _build_tag(build)
     return math_floor(build / 10000) .. "." .. (math_floor(build / 100) % 100) .. "." .. (build % 100)
 end
 
--- First frame: xlibs posts the day's update message; every gate arms this, and the day mark keeps it to one message.
-local function _show_update_news()
-    UnregisterScriptCallback("actor_on_first_update", _show_update_news)
-    xlibs.show_update_news()
+-- The mod's logger: the mod creates it under the manifest name, with its settings, before any on_game_start runs.
+local function _get_log()
+    return xlog.get_logger(manifest.name, { outfile = LOG_OUTFILE })
+end
+
+-- One update check as a trace line; check holds what it did, the HTTP status, the failure and the time.
+local function _trace_check(log, what, name, check)
+    log.debug("%s %s: %s, http %s, %s, %s ms", what, name, tostring(check.outcome), tostring(check.code), tostring(check.reason), tostring(check.ms))
+end
+
+-- Run one update check under a timer and keep what it did for the trace.
+local function _run_check(check_manifest)
+    local timer = xprofiler.new()
+    timer:start()
+    local msg, outcome, code, reason = xlibs.run_update_check(check_manifest)
+    timer:stop()
+    return msg, { outcome = outcome, code = code, reason = reason, ms = timer:get_ms() }
+end
+
+-- One tick after the first frame, once every mod has applied its log level: the version line and the load's update checks.
+local function _write_trace()
+    local log, trace = _get_log(), _trace
+    _trace = nil
+    if not trace then return true end
+    log.info("%s", trace.platform)
+    if trace.update then log.info("%s", trace.update) end
+    _trace_check(log, "update check", manifest.name, trace.check)
+    _trace_check(log, "update check", "xlibs", trace.xlibs_check)
+    log.debug("update news: %s newer, posted %s, %s ms", tostring(trace.news_count), tostring(trace.news_posted), tostring(trace.news_ms))
+    return true
+end
+
+-- First frame: xlibs posts the day's update message, and the load's lines go out on the next tick.
+-- Every copy arms this; the day mark keeps the message to one.
+local function _on_first_update()
+    UnregisterScriptCallback("actor_on_first_update", _on_first_update)
+    local timer = xprofiler.new()
+    timer:start()
+    local count, posted = xlibs.show_update_news()
+    timer:stop()
+    if _trace then _trace.news_count, _trace.news_posted, _trace.news_ms = count, posted, timer:get_ms() end
+    CreateTimeEvent(manifest.name, "init_trace", 0, _write_trace)
 end
 
 --- @return string Version string
@@ -49,7 +90,7 @@ function get_platform_status()
     return line .. " (incompatible)", "blocked"
 end
 
--- MCM footer functor: get_platform_status plus the update notice, verdict-colored; colors build lazily (GetARGB absent under the validator).
+-- MCM footer functor: get_platform_status, verdict-colored; colors build lazily (GetARGB absent under the validator).
 local _footer_clr = nil
 function get_platform_functor()
     return function(_anchor, handlers)
@@ -61,18 +102,43 @@ function get_platform_functor()
             }
         end
         local line, level = get_platform_status()
-        local newer = xlibs and xlibs.find_update and xlibs.find_update(manifest)
-        if newer then line = line .. string_format(game.translate_string("st_xlibs_update_footer"), newer) end
         handlers.desc:SetText(line)
         handlers.desc:SetTextColor(_footer_clr[level])
     end
 end
 
--- MCM Check for update button: xlibs runs the save-load update check now and shows the answer.
-function show_update_check(gui)
-    if xlibs and xlibs.show_update_check then xlibs.show_update_check(manifest, gui) end
+-- MCM update row functor, under the footer: the stored update check, colored by its state; a mod without moddb shows nothing.
+local _update_clr = nil
+function get_update_functor()
+    return function(_anchor, handlers)
+        if not (xlibs and xlibs.get_update_status) then return end
+        local text, state = xlibs.get_update_status(manifest)
+        if not text then return end
+        if not _update_clr then
+            _update_clr = {
+                newer     = GetARGB(255, 230, 210, 120),
+                current   = GetARGB(255, 170, 220, 170),
+                offline   = GetARGB(255, 180, 180, 180),
+                unchecked = GetARGB(255, 180, 180, 180),
+            }
+        end
+        handlers.desc:SetText(text)
+        handlers.desc:SetTextColor(_update_clr[state])
+    end
 end
 
+-- MCM Check for update button: xlibs runs the update check now and shows the answer; the span goes to the mod's log at DEBUG.
+function show_update_check(gui)
+    if not (xlibs and xlibs.show_update_check) then return end
+    local log = _get_log()
+    local timer = xprofiler.new_if(log.get_level() >= xlog.get_levels().DEBUG)
+    timer:start()
+    local _, outcome, code, reason = xlibs.show_update_check(manifest, gui)
+    timer:stop()
+    _trace_check(log, "update button", manifest.name, { outcome = outcome, code = code, reason = reason, ms = timer:get_ms() })
+end
+
+-- The asserts, then the update checks, each timed now during the load; their lines wait in _trace until the mod's log level is set.
 function on_game_start()
     assert(xlog,
         "\n\n! [" .. manifest.name .. "] xlibs is not installed.\n"..
@@ -118,12 +184,10 @@ function on_game_start()
     xlog.start_flush_hook()
     local platform_line = (get_platform_status())
     printf("~ [%s] %s", manifest.name, platform_line)
-    local log = xlog.get_logger(manifest.name, { outfile = manifest.name:lower() .. ".log" })
-    log.info("%s", platform_line)
-    if xlibs.run_update_check and xlibs.show_update_news then
-        local update = xlibs.run_update_check(manifest)
-        if update then log.info("%s", update) end
-        xlibs.run_update_check(xlibs.get_manifest())
-        RegisterScriptCallback("actor_on_first_update", _show_update_news)
-    end
+    local trace = { platform = platform_line }
+    trace.update, trace.check = _run_check(manifest)
+    local _
+    _, trace.xlibs_check = _run_check(xlibs.get_manifest())
+    _trace = trace
+    RegisterScriptCallback("actor_on_first_update", _on_first_update)
 end
