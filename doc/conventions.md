@@ -306,3 +306,8 @@ Drive-grouped families (needs, instincts): threshold slider is per-drive, while 
 Family with a single cause (alpha, alphakill, massacre, squadkill, basekill, wounded, harvest): just one tag, no sub-divisions.
 
 The per-cause budget (`cause_max_<category>`) is exposed in the Framework MCM tab, not duplicated on family pages.
+
+## LuaDoc
+
+AP core (`ap_core_*`) is framework code: every public function carries full LuaDoc, what it does and why, `@safety`, `@cost`, `@src`, `@param` and `@return`, as xlibs does.
+AP ext (`ap_ext_*`) carries `@cost` only on a handler that calls `find_squads` or `find_smart`.
