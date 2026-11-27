@@ -608,7 +608,7 @@ AlifePlus stacks safety layers on top of the engine capability:
 | Layer | Mechanism | Site |
 |-------|-----------|------|
 | Source-level rate | TTL counter (game-sec, persisted), cap `cfg.cause_max_offmap`, window `OFFMAP_WINDOW_SEC` (48 game-hours) | `ap_core_limiter` offmap counter (see Rate limiting) |
-| Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + master rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
+| Adjacency narrowing | candidates narrowed to BFS-reachable neighbor levels, source level excluded; the links follow the game graph on exes from 2026.10.11 and vanilla `level_links` before; hop count from `_resolve_offmap_hops` (X-16 + Brain Scorcher + veteran rank) | `ap_ext_causes_needs.script`, `xlevel.get_neighbor_levels` |
 | Cross-level filter | prop-only / SIMBOARD / static-set predicates (`xsmart.is_base`, `xsmart.has_campfire`, `_is_unclaimed`, occupied-non-base); `has_animated_jobs` / dynamic `npc_info` omitted because `stalker_jobs` / `npc_info` are empty for off-actor-level smarts (`smart_terrain.script:462`) | offmap CAUSES entries in `ap_ext_causes_needs.script` |
 | Destination selection | `xsmart.find_first_smart` over the narrowed neighbor set (distance-free; foreign-level candidates share no comparable position frame) | `ap_core_util.find_first_smart` |
 | SIMBOARD bookkeeping | `SIMBOARD:assign_squad_to_smart` called at dispatch (source clear via nil target) and commit (destination add), so cross-level capacity / garrison / faction-quota queries read truth | `ap_core_broker` `register_squad` + `_commit_arrival` |
