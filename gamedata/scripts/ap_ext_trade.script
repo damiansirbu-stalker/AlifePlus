@@ -189,7 +189,7 @@ function execute_trade(npc, seller)
     local sold, bought = {}, {}
     if not npc or not seller then return { sold = sold, bought = bought } end
 
-    local tier_name = (npc:character_rank() >= ap_core_const.RANK_VETERAN) and "veteran" or "rookie"
+    local tier_name = ap_ext_util.is_veteran(npc:id()) and "veteran" or "rookie"
     local policy = TRADE_POLICY and TRADE_POLICY[tier_name]
     if not policy then return { sold = sold, bought = bought } end
 

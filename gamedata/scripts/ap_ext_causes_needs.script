@@ -1,7 +1,7 @@
 --- ap_ext_causes_needs: Hull-scored human needs generator; 9 drives (NEEDS), 17 specific causes (CAUSES), picker emits one per call.
 
 local table_sort, next, math_random = table.sort, next, math.random
-local xsmart, xsquad, xtime, xlevel = xsmart, xsquad, xtime, xlevel
+local xsmart, xtime, xlevel = xsmart, xtime, xlevel
 local ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker =
     ap_core_debug, ap_core_limiter, ap_core_producer, ap_core_util, ap_core_broker
 local ap_ext_util, ap_ext_tracker = ap_ext_util, ap_ext_tracker
@@ -16,7 +16,6 @@ local RESULT = ap_core_const.RESULT
 local REASON = ap_core_const.REASON
 local RANGE_RADIO = ap_core_const.RANGE_RADIO
 local HOURS_TO_SECONDS = ap_core_const.HOURS_TO_SECONDS
-local RANK_VETERAN = ap_core_const.RANK_VETERAN
 local PERSONALITY = ap_ext_const.PERSONALITY
 
 -- Vanilla story flags for _resolve_offmap_hops: X16 @src tm_yantar.ltx (X-16 quest), RADAR @src tm_radar.ltx (Brain Scorcher).
@@ -92,12 +91,12 @@ end
 
 -- Resolve total BFS hops for the off-map adjacency search; pre-story stalkers stay home (hops = 0 -> no neighbors -> off-map never publishes).
 -- Each progression milestone (X-16, Brain Scorcher) and a veteran-rank commander adds MCM-tunable reach.
--- @cost O(1) | 2 alife_info reads + commander rank (3-4 luabind)
+-- @cost O(1) | 2 alife_info reads + commander id + the cached commander rank (1 luabind on a hit)
 local function _resolve_offmap_hops(squad)
     local hops = cfg.offmap_base_hops
     if has_alife_info(STORY_FLAG.X16_OFF) then hops = hops + cfg.offmap_extra_map_x16 end
     if has_alife_info(STORY_FLAG.RADAR_OFF) then hops = hops + cfg.offmap_extra_map_radar end
-    if xsquad.get_commander_rank(squad) >= RANK_VETERAN then hops = hops + cfg.offmap_extra_map_rank end
+    if ap_ext_util.is_veteran(squad:commander_id()) then hops = hops + cfg.offmap_extra_map_rank end
     return hops
 end
 

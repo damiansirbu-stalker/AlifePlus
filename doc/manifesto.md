@@ -120,7 +120,7 @@ Stalkers walk to a neighboring map. A supply run heads to a faction base, a bart
 GSC described the walk as part of the lifecycle, a stalker crossing from one map to another to find artefacts and trade them at a dealer.
 The engine ships the walk but scores far smart terrains low, and the simulation almost never sends anyone off-map on its own.
 AlifePlus sends them, gated by story progress.
-If you open X-16 or the Brain Scorcher, the deeper Zone opens to the squads as well, and a master-rank commander earns one more map.
+If you open X-16 or the Brain Scorcher, the deeper Zone opens to the squads as well, and a veteran commander earns one more map.
 
 > "I followed a stalker from one level to another, saw how he searched for artifacts, found them, returned to the dealer, approached him, traded, picked a new quest, went on."
 > Dmitriy Iassenev, Game Developer (2008) [1]

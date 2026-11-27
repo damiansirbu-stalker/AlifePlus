@@ -1,13 +1,47 @@
---- ap_ext_util: Ext-layer utilities (period/alignment/personality/tactics gates, shared radiant sub-cause attempt).
+--- ap_ext_util: Ext-layer utilities (period/alignment/personality/tactics/rank gates, shared radiant sub-cause attempt).
 local math_random, xcreature = math.random, xcreature
 local ap_core_debug, xprofiler = ap_core_debug, xprofiler
+local RegisterScriptCallback, xobject = RegisterScriptCallback, xobject
 local cfg = ap_core_mcm.cfg
 
+local CALLBACK = ap_core_const.CALLBACK
 local PERSONALITY = ap_ext_const.PERSONALITY
 local _alignment_mutant_night = ap_ext_const.alignment_mutant_night
 
 local TACTICS_WEIGHT_LAST_OF_FACTION = 0.20
 local TACTICS_WEIGHT_SMART_TARGETED  = 0.20
+local RANK_TTL_S         = 600
+local RANK_SWEEP_S       = 60
+local RANK_INDEX_VETERAN = 4
+local INVALID_ENTITY_ID  = xconst.INVALID_ENTITY_ID
+
+local _tier_index = nil
+local _rank_cache = xttltable.create_ttl_table({ default_ttl = RANK_TTL_S, cleanup_interval = RANK_SWEEP_S })
+
+-- The 0-based place of each tier name in xcreature.RANK_TIERS, built once.
+local function _get_tier_index()
+    if not _tier_index then
+        _tier_index = {}
+        for i = 1, #xcreature.RANK_TIERS do _tier_index[xcreature.RANK_TIERS[i]] = i - 1 end
+    end
+    return _tier_index
+end
+
+-- The rank record of an id, { rank, tier, index }, from its online object or its server object, kept 10 real minutes.
+local function _get_rank(id)
+    local rec = _rank_cache:get(id)
+    if rec then return rec end
+    local obj = xobject.get_go(id) or xobject.get_se(id)
+    if not obj then return nil end
+    local tier = ranks.get_obj_rank_name(obj)
+    rec = { rank = obj.character_rank and obj:character_rank() or obj:rank(), tier = tier, index = tier and _get_tier_index()[tier] }
+    _rank_cache:set(id, rec)
+    return rec
+end
+
+local function _on_entity_unregister(se_obj)
+    if se_obj then _rank_cache:remove(se_obj.id) end
+end
 
 --- Attempt one radiant sub-cause with uniform gating and tracing; returns the publish payload when the cause fires (result carries .cause), else nil.
 --- The single per-sub-cause seam shared by every radiant generator; a disabled MCM toggle skips silently before any timer.
@@ -162,5 +196,17 @@ function is_last_faction_smart(smart)
         if xsmart.get_faction_count(se.player_id, level_id) <= 1 then return true end
     end
     return false
+end
+
+--- True when the stalker with this id ranks veteran or higher in the loaded rank table, so a modpack that moves the table moves the cut.
+--- The rank is read once and kept 10 real minutes, and a release drops it.
+function is_veteran(id)
+    if not id or id == INVALID_ENTITY_ID then return false end
+    local rec = _get_rank(id)
+    return rec ~= nil and rec.index ~= nil and rec.index >= RANK_INDEX_VETERAN
+end
+
+function on_game_start()
+    RegisterScriptCallback(CALLBACK.SERVER_ENTITY_ON_UNREGISTER, _on_entity_unregister)
 end
 
