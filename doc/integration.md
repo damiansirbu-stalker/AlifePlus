@@ -270,7 +270,7 @@ end
 
 -- Consequence handler: route nearby outlaws to the smart
 local function _handler(event_data)
-    local smart = xobject.se(event_data.smart_id)
+    local smart = xobject.get_se(event_data.smart_id)
     if not smart then return { code = ap_core_const.RESULT.FAILED_SCAN } end
     local squads = find_outlaw_squads_near(event_data)
     for _, squad in ipairs(squads) do

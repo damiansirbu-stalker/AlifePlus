@@ -133,7 +133,7 @@ Consequence handlers receive trace from consumer. Rate limiting handled by consu
 Every consequence follows a three-phase structure. Each phase returns immediately on failure.
 
 1. **Rules** - alignment check, species check (direct hash), personality roll, match validation, at_base guard -> `FAILED_RULES`
-2. **Scan** - find_squads, find_smart, xobject.se lookups -> `FAILED_SCAN`
+2. **Scan** - find_squads, find_smart, xobject.get_se lookups -> `FAILED_SCAN`
 3. **Action** - register_squad, record, PDA message -> `FAILED_ACTION` or `SUCCESS`
 
 Gate order within rules: alignment -> species -> personality -> match -> validation.
@@ -161,7 +161,7 @@ Each code names the template phase that answered: SUCCESS (action), FAILED_RULES
 ## A-Life Rules
 
 - **ID-based** - Track by server ID, not game_object (ephemeral)
-- **Synchronous payload only** - Server userdata in cause payloads is valid only for the synchronous dispatch chain (producer -> consumer -> consequence handler -> `ap_core_record.add_record`). Anything invoked on a later tick (xlice/CreateTimeEvent jobs, on_arrive callbacks, deferred scanners) references entities by server ID and re-resolves via `xobject.se(id)` / `alife_object(id)`.
+- **Synchronous payload only** - Server userdata in cause payloads is valid only for the synchronous dispatch chain (producer -> consumer -> consequence handler -> `ap_core_record.add_record`). Anything invoked on a later tick (xlice/CreateTimeEvent jobs, on_arrive callbacks, deferred scanners) references entities by server ID and re-resolves via `xobject.get_se(id)` / `alife_object(id)`.
 - **Squad-based** - Squads are atomic units, NPCs are members
 - **Bias not command** - scripted_target is suggestion, not force
 - **Same-level** - Operations constrained to current level
